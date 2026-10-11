@@ -241,6 +241,13 @@ struct SlideObjectInspector: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            InspectorPicker("Type", selection: categoryBinding()) {
+                Text(model.presentation.presentationKind == .song ? "Worship (song)" : "None").tag("")
+                Divider()
+                ForEach(PresentationTypes.builtIn, id: \.self) { Text($0).tag($0) }
+            }
+            .help("Each type can run default actions when it goes live — set them in Settings › Presentation Types")
+
             InspectorPicker("Key", selection: musicKeyBinding()) {
                 Text("None").tag("")
                 Divider()
@@ -267,6 +274,13 @@ struct SlideObjectInspector: View {
     }
 
     private static let keyNames = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+
+    private func categoryBinding() -> Binding<String> {
+        Binding(
+            get: { model.presentation.category ?? "" },
+            set: { model.setCategory($0.isEmpty ? nil : $0) }
+        )
+    }
 
     private func musicKeyBinding() -> Binding<String> {
         Binding(

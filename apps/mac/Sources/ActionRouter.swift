@@ -45,6 +45,17 @@ final class ActionRouter {
         presets.activate(presetID)
     }
 
+    /// Runs the presentation type's default actions when a presentation of
+    /// that type goes live (not on every slide within it).
+    func presentationDidGoLive(_ presentation: Presentation) {
+        let actions = PresentationTypes.actions(
+            for: presentation, rules: model.slideBuilding.presentationTypeRules)
+        guard !actions.isEmpty else { return }
+        DiagnosticsStore.shared.note(
+            "actions.presentationType", detail: PresentationTypes.category(of: presentation) ?? "")
+        execute(actions, depth: 0, visited: [])
+    }
+
     func slideDidFire(_ slide: Slide, contextID: String?) {
         guard let actions = slide.actions, !actions.isEmpty else { return }
         let protected = SlideSceneBuilder.protectedLayers(for: slide, mediaLayer: mediaLayer)

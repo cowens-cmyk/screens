@@ -79,6 +79,7 @@ public enum ScriptureSlideBuilder {
             folder: folder,
             slides: slides(for: passage, format: format, theme: theme)
         )
+        presentation.category = PresentationTypes.bible
         if let copyright = passage.copyright, !copyright.isEmpty {
             for index in presentation.slides.indices { presentation.slides[index].notes = copyright }
         }

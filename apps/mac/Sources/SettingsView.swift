@@ -395,6 +395,16 @@ struct AppSettingsView: View {
             keywords: "ndi network interface adapter nic vlan ethernet wifi wired discovery pin bind",
             control: AnyView(NDINetworkScopeControl())
         ))
+        if let model {
+            rows.append(SettingsRowSpec(
+                id: "present.types", category: .present,
+                title: "Presentation types",
+                caption: "Default actions for each type of presentation, run when one goes live — stage layout, timers, output looks.",
+                keywords: "presentation type category sermon worship bible announcement default action stage layout timer look preset",
+                control: AnyView(PresentationTypeRulesForm(model: model)),
+                stacked: true
+            ))
+        }
         rows.append(SettingsRowSpec(
             id: "bible.sources", category: .bible,
             title: "Bible translations",

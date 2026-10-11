@@ -1361,6 +1361,9 @@
         },
         "displayKey": {
           "type": "string"
+        },
+        "category": {
+          "type": "string"
         }
       },
       "required": [
@@ -3868,6 +3871,12 @@
         },
         "scriptureThemeId": {
           "type": "string"
+        },
+        "presentationTypeRules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/PresentationTypeRule"
+          }
         }
       },
       "required": [
@@ -3939,6 +3948,24 @@
       },
       "required": [
         "id"
+      ]
+    },
+    "PresentationTypeRule": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideAction"
+          }
+        }
+      },
+      "required": [
+        "category",
+        "actions"
       ]
     }
   }

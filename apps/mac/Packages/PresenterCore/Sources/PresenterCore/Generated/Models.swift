@@ -877,8 +877,9 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
     public var musicKey: String?
     public var autoAdvance: AutoAdvance?
     public var displayKey: String?
+    public var category: String?
 
-    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil) {
+    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil, category: String? = nil) {
         self.id = id
         self.name = name
         self.presentationKind = presentationKind
@@ -899,6 +900,7 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
         self.musicKey = musicKey
         self.autoAdvance = autoAdvance
         self.displayKey = displayKey
+        self.category = category
     }
 }
 
@@ -2473,13 +2475,15 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
     public var messageNotesThemeId: String?
     public var lyricsImportThemeId: String?
     public var scriptureThemeId: String?
+    public var presentationTypeRules: [PresentationTypeRule]?
 
-    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil) {
+    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil) {
         self.id = id
         self.designMap = designMap
         self.messageNotesThemeId = messageNotesThemeId
         self.lyricsImportThemeId = lyricsImportThemeId
         self.scriptureThemeId = scriptureThemeId
+        self.presentationTypeRules = presentationTypeRules
     }
 }
 
@@ -2522,5 +2526,15 @@ public struct WorkspaceSettings: Codable, Sendable, Equatable, Identifiable {
         self.signage = signage
         self.inputs = inputs
         self.behavior = behavior
+    }
+}
+
+public struct PresentationTypeRule: Codable, Sendable, Equatable {
+    public var category: String
+    public var actions: [SlideAction]
+
+    public init(category: String, actions: [SlideAction]) {
+        self.category = category
+        self.actions = actions
     }
 }

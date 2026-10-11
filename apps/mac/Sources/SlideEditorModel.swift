@@ -2011,6 +2011,10 @@ final class SlideEditorModel {
         }
     }
 
+    func setCategory(_ category: String?) {
+        updateDocument { $0.category = category }
+    }
+
     func setMusicKey(_ key: String?) {
         updateDocument { presentation in
             presentation.musicKey = key

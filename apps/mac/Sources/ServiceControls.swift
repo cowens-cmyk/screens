@@ -461,12 +461,15 @@ final class ServiceControls {
         contextID: String?, occurrence: Int?
     ) {
 
+        let deckWasLive = livePresentationID == presentation.id
+        if !deckWasLive {
+            actionRouter?.presentationDidGoLive(presentation)
+        }
         actionRouter?.applyPresetSwitches(for: slide, contextID: contextID)
 
         if let own = RenderContext.sceneTransition(from: slide.transition) {
             render.nextLiveTransitions[.slide] = own
         }
-        let deckWasLive = livePresentationID == presentation.id
         state.fire(
             slide: slide, presentation: presentation,
             theme: theme, arrangementId: arrangementId,

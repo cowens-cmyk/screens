@@ -1691,6 +1691,11 @@
           "name": "displayKey",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "optional": true
         }
       ]
     },
@@ -4529,6 +4534,11 @@
           "name": "scriptureThemeId",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "presentationTypeRules",
+          "type": "list:PresentationTypeRule",
+          "optional": true
         }
       ]
     },
@@ -4609,6 +4619,19 @@
           "name": "behavior",
           "type": "string",
           "optional": true
+        }
+      ]
+    },
+    "PresentationTypeRule": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "category",
+          "type": "string"
+        },
+        {
+          "name": "actions",
+          "type": "list:SlideAction"
         }
       ]
     }
