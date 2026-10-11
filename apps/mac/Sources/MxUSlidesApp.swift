@@ -170,6 +170,7 @@ struct MxUSlidesApp: App {
             keyIn.attach()
             _keyIn = State(initialValue: keyIn)
             PlanningCenterSync.shared.attach(model)
+            LiveAssist.shared.attach(model: model, controls: controls)
             let tracking = ServiceTimingController(model: model, controls: controls, render: render)
             controls.serviceTracking = tracking
             _serviceTracking = State(initialValue: tracking)
@@ -307,6 +308,12 @@ struct MxUSlidesApp: App {
             }
         }
         .defaultSize(width: 780, height: 540)
+
+        Window("Live Assist", id: "liveAssist") {
+            LiveAssistView()
+        }
+        .defaultSize(width: 400, height: 600)
+        .keyboardShortcut("l", modifiers: [.command, .option])
 
         Window("Engine", id: "engine") {
             if presentLayout.runOnly {

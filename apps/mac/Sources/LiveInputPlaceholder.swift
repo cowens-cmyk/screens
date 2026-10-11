@@ -1,15 +1,22 @@
 import CoreGraphics
 import Foundation
 import MediaEngine
+import RenderEngine
 
 enum LiveInputPlaceholder {
     static let cameraID = "placeholder::liveinput::camera"
     static let ndiID = "placeholder::liveinput::ndi"
     static let screenID = "placeholder::screenmirror"
+    static let webID = "placeholder::liveinput::web"
+
+    // Engine IDs of inventoried Web Page inputs, kept current by VideoInputInventory so remapping
+    // (called off the main actor too) can pick the globe placeholder without touching the inventory.
+    static let webEngineIDs = Locked<Set<String>>([])
 
     static func remap(_ id: String) -> String? {
         if id.hasPrefix("screen::") { return screenID }
         guard id.hasPrefix("input::") else { return nil }
+        if id.hasPrefix("input::web::") || webEngineIDs.value.contains(id) { return webID }
         return id.hasPrefix("input::ndi::") ? ndiID : cameraID
     }
 
@@ -22,6 +29,10 @@ enum LiveInputPlaceholder {
             _ = try? await media.showStill(
                 image: ndi, cacheKey: ndiID, id: ndiID)
         }
+        if let web = image(glyph: .web) {
+            _ = try? await media.showStill(
+                image: web, cacheKey: webID, id: webID)
+        }
         if let screen = image(glyph: .screen) {
             _ = try? await media.showStill(
                 image: screen, cacheKey: screenID, id: screenID)
@@ -32,6 +43,7 @@ enum LiveInputPlaceholder {
         case camera
         case ndi
         case screen
+        case web
     }
 
     private static func image(glyph: Glyph) -> CGImage? {
@@ -102,6 +114,24 @@ enum LiveInputPlaceholder {
             context.addLine(to: CGPoint(x: body.maxX + 128, y: center.y + 88))
             context.addLine(to: CGPoint(x: body.maxX + 26, y: center.y + 42))
             context.closePath()
+            context.strokePath()
+        case .web:
+
+            let radius: CGFloat = 200
+            let globe = CGRect(
+                x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+            context.strokeEllipse(in: globe)
+            context.strokeEllipse(in: globe.insetBy(dx: radius * 0.5, dy: 0))
+            context.move(to: CGPoint(x: center.x, y: globe.minY))
+            context.addLine(to: CGPoint(x: center.x, y: globe.maxY))
+            context.move(to: CGPoint(x: globe.minX, y: center.y))
+            context.addLine(to: CGPoint(x: globe.maxX, y: center.y))
+            let latitude = radius * 0.5
+            let chord = (radius * radius - latitude * latitude).squareRoot()
+            for y in [center.y - latitude, center.y + latitude] {
+                context.move(to: CGPoint(x: center.x - chord, y: y))
+                context.addLine(to: CGPoint(x: center.x + chord, y: y))
+            }
             context.strokePath()
         case .screen:
 

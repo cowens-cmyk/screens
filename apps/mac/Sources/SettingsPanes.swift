@@ -283,6 +283,7 @@ private struct VideoInputsSection: View {
     @State private var ndiRuntimeAvailable = true
     @State private var addingNDI = false
     @State private var ndiName = ""
+    @State private var addingWeb = false
 
     var body: some View {
         Section {
@@ -292,7 +293,7 @@ private struct VideoInputsSection: View {
             ForEach(inventory.entries) { entry in
                 Button { open(entry.id) } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: entry.kind == .ndi ? "network" : "video")
+                        Image(systemName: VideoInputWords.symbol(entry))
                             .foregroundStyle(.secondary)
                             .frame(width: 18)
                         VStack(alignment: .leading, spacing: 1) {
@@ -328,6 +329,7 @@ private struct VideoInputsSection: View {
                 }
                 Divider()
                 Button("NDI Source by Name\u{2026}") { addingNDI = true }
+                Button("Web Page\u{2026}") { addingWeb = true }
             }
             .fixedSize()
         } header: {
@@ -342,6 +344,13 @@ private struct VideoInputsSection: View {
                 ndiRuntimeAvailable = names != nil
                 discoveredNDI = names ?? []
                 try? await Task.sleep(for: .seconds(4))
+            }
+        }
+        .sheet(isPresented: $addingWeb) {
+            WebInputSheet(title: "Add Web Page", confirm: "Add") { choice in
+                inventory.createWeb(
+                    name: choice.name, url: choice.url, width: choice.width,
+                    height: choice.height, frameRate: choice.frameRate)
             }
         }
         .alert("NDI Source by Name", isPresented: $addingNDI) {
@@ -368,7 +377,26 @@ private enum VideoInputWords {
     static func device(_ entry: VideoInputInventory.Entry) -> String {
         guard let sourceId = entry.sourceId, !sourceId.isEmpty, let kind = entry.kind else { return "No device" }
         if kind == .ndi { return "NDI \u{B7} \(sourceId)" }
+        if kind == .web { return "Web \u{B7} \(WebInputURL.normalized(sourceId)?.host() ?? sourceId)" }
+        if kind == .decklink { return "DeckLink \u{B7} not supported yet" }
         return AVCaptureDevice(uniqueID: sourceId)?.localizedName ?? "Missing camera"
+    }
+
+    static func symbol(_ entry: VideoInputInventory.Entry) -> String {
+        switch entry.kind {
+        case .ndi: return "network"
+        case .web: return "globe"
+        case .decklink: return "rectangle.connected.to.line.below"
+        case .camera, nil: return "video"
+        }
+    }
+
+    static func webStatus(_ source: WebInputSource?) -> String {
+        guard let source else { return "Not running" }
+        let text = WebInputSource.statusText(
+            source.state, width: source.width, height: source.height, fps: source.framesPerSecond)
+        if source.state == .capturing, !source.isReceiving { return text + " \u{2014} waiting for the page" }
+        return text
     }
 
     static func newName(_ inventory: VideoInputInventory) -> String {
@@ -400,6 +428,8 @@ private struct VideoInputDetail: View {
     @State private var addingNDI = false
     @State private var ndiName = ""
     @State private var confirmRemove = false
+    @State private var assigningWeb = false
+    @State private var webURL = ""
 
     @State private var frameRates: [Double] = []
 
@@ -414,6 +444,8 @@ private struct VideoInputDetail: View {
                             if tag == "" { inventory.assignDevice(id: id, kind: nil, sourceId: nil) }
                             else if tag.hasPrefix("ndi:") { inventory.assignDevice(id: id, kind: .ndi, sourceId: String(tag.dropFirst(4))) }
                             else if tag == "ndi-by-name" { addingNDI = true }
+                            else if tag == "web-new" { assigningWeb = true }
+                            else if tag.hasPrefix("web:") || tag.hasPrefix("decklink:") { return }
                             else { inventory.assignDevice(id: id, kind: .camera, sourceId: tag) }
                         })
                     ) {
@@ -428,6 +460,50 @@ private struct VideoInputDetail: View {
                             }
                             Text("NDI Source by Name\u{2026}").tag("ndi-by-name")
                         }
+                        Section("Web") {
+                            if let sourceId = entry.sourceId, entry.kind == .web {
+                                Text(VideoInputWords.device(entry)).tag("web:\(sourceId)")
+                            }
+                            Text("Web Page\u{2026}").tag("web-new")
+                        }
+                        if let sourceId = entry.sourceId, entry.kind == .decklink {
+                            Text("DeckLink \u{B7} \(sourceId) (not supported yet)").tag("decklink:\(sourceId)")
+                        }
+                    }
+                    if entry.kind == .web {
+                        TextField("Web address", text: $webURL)
+                            .onSubmit {
+                                guard let url = WebInputURL.normalized(webURL) else { return }
+                                inventory.assignDevice(id: id, kind: .web, sourceId: url.absoluteString)
+                            }
+                            .onAppear { webURL = entry.sourceId ?? "" }
+                            .onChange(of: entry.sourceId) { _, url in webURL = url ?? "" }
+                        Picker("Resolution", selection: Binding(
+                            get: { VideoInputInventory.webSize(entry).height },
+                            set: { inventory.setWebResolution(id: id, width: $0 * 16 / 9, height: $0) })
+                        ) {
+                            ForEach(WebInputSheet.heights, id: \.self) { Text(WebInputSheet.resolutionLabel($0)).tag($0) }
+                        }
+                        Picker("Frame rate", selection: Binding(
+                            get: { VideoInputInventory.webSize(entry).fps },
+                            set: { inventory.setFrameRate(id: id, rate: Double($0)) })
+                        ) {
+                            ForEach(WebInputSheet.rates, id: \.self) { Text("\($0) fps").tag($0) }
+                        }
+                        Toggle("Mute page audio", isOn: Binding(
+                            get: { entry.pageMuted ?? false },
+                            set: { inventory.setPageMuted(id: id, muted: $0) }))
+                        LabeledContent("Status") {
+                            let source = inventory.webSource(id: id)
+                            HStack(spacing: 8) {
+                                Text(VideoInputWords.webStatus(source))
+                                    .foregroundStyle(source?.state == .needsPermission ? Color.orange : Color.secondary)
+                                if source?.state == .needsPermission {
+                                    Button("Open Settings") { WebInputURL.openScreenRecordingSettings() }
+                                }
+                            }
+                        }
+                        Button("Show Web Input Window") { inventory.showWebWindow(id: id) }
                     }
                     Picker("Audio input", selection: Binding(
                         get: { entry.audioInputId ?? "" },
@@ -469,6 +545,9 @@ private struct VideoInputDetail: View {
                     Button("Remove Input\u{2026}", role: .destructive) { confirmRemove = true }
                 } footer: {
                     Text("Removing stops its capture; slides using it render empty. The audio input rides with it in the Mixer while live; video delay holds the picture back to match late audio. Frame rate is the capture device's mode, from the rates the device offers: Auto takes 30; pick the one nearest your source when it runs faster (60 for a 59.94 camera). Inputs on the same device share it.")
+                    if entry.kind == .web {
+                        Text("A web page input records its Web Input window with Screen Recording, so keep that window open on a display (it can sit behind other windows) and use it to click play, scroll or sign in. Page audio plays from this Mac's sound output, not the Mixer. For a full-frame video, use the player's embed address (youtube.com/embed/\u{2026}).")
+                    }
                 }
             }
             .settingsForm()
@@ -498,6 +577,13 @@ private struct VideoInputDetail: View {
                 }
                 Button("Cancel", role: .cancel) { ndiName = "" }
             }
+            .sheet(isPresented: $assigningWeb) {
+                WebInputSheet(title: "Web Page", confirm: "Assign", name: entry.name) { choice in
+                    inventory.assignWeb(
+                        id: id, url: choice.url, width: choice.width, height: choice.height,
+                        frameRate: choice.frameRate)
+                }
+            }
             .alert("Remove \u{201C}\(entry.name)\u{201D}?", isPresented: $confirmRemove) {
                 Button("Remove", role: .destructive) { inventory.remove(entry); back() }
                 Button("Cancel", role: .cancel) {}
@@ -509,7 +595,76 @@ private struct VideoInputDetail: View {
 
     private func deviceTag(_ entry: VideoInputInventory.Entry) -> String {
         guard let sourceId = entry.sourceId, !sourceId.isEmpty, let kind = entry.kind else { return "" }
-        return kind == .ndi ? "ndi:\(sourceId)" : sourceId
+        switch kind {
+        case .ndi: return "ndi:\(sourceId)"
+        case .web: return "web:\(sourceId)"
+        case .decklink: return "decklink:\(sourceId)"
+        case .camera: return sourceId
+        }
+    }
+}
+
+// Collects a Web Page input's address, output size and rate — for adding one or reassigning an input.
+private struct WebInputSheet: View {
+    struct Choice {
+        var name: String
+        var url: String
+        var width: Int
+        var height: Int
+        var frameRate: Double
+    }
+
+    static let heights = [1080, 720]
+    static let rates = [30, 60]
+
+    static func resolutionLabel(_ height: Int) -> String {
+        "\(height * 16 / 9)\u{D7}\(height)"
+    }
+
+    let title: String
+    let confirm: String
+    var name: String? = nil
+    let done: (Choice) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var url = ""
+    @State private var height = 1080
+    @State private var rate = 30
+
+    private var normalized: URL? { WebInputURL.normalized(url) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.headline)
+            Form {
+                TextField("Web address", text: $url, prompt: Text("https://example.com"))
+                Picker("Resolution", selection: $height) {
+                    ForEach(Self.heights, id: \.self) { Text(Self.resolutionLabel($0)).tag($0) }
+                }
+                Picker("Frame rate", selection: $rate) {
+                    ForEach(Self.rates, id: \.self) { Text("\($0) fps").tag($0) }
+                }
+            }
+            Text("The page opens in its own Web Input window \u{2014} click, scroll and sign in there. Capturing it needs Screen Recording permission.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(confirm) {
+                    guard let normalized else { return }
+                    done(Choice(
+                        name: name ?? normalized.host() ?? "Web Page",
+                        url: normalized.absoluteString, width: height * 16 / 9, height: height,
+                        frameRate: Double(rate)))
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(normalized == nil)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
     }
 }
 

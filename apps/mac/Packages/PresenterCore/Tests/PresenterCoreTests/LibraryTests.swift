@@ -23,7 +23,7 @@ private func song(_ id: String, _ name: String) -> Presentation {
         try library.create(template.make(name: template.starterName))
     }
     #expect(try Set(library.index.entries(of: .confidenceLayout).map(\.name))
-        == ["Current + Next", "Timers", "Current Over Next", "Current Over Next + Chords"])
+        == ["Worship", "Sermon", "Current + Next", "Timers", "Current Over Next", "Current Over Next + Chords"])
 }
 
 @LibraryActor @Test func libraryIndexesOnCreateRenameAndDelete() throws {

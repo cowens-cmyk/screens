@@ -403,6 +403,7 @@ final class ServiceControls {
 
     func noteKeyboardFire() {
         keyboardFires += 1
+        LiveAssist.shared.operatorTookOver()
     }
 
     weak var actionRouter: ActionRouter?

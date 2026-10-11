@@ -389,7 +389,7 @@ private func median(_ runs: Int, _ work: () throws -> Void) rethrows -> Duration
         let deck = Presentation(id: "i", name: "n", presentationKind: .song, themeId: "t", folder: "f", folderId: "fi", slides: [],
                                 canvasWidth: 1, canvasHeight: 2, background: nil, backgroundFill: ObjectFill(fillKind: .solid, colorHex: "#000000"),
                                 sections: [], arrangements: [], defaultArrangementId: "a", reflowSource: "r", ccli: nil,
-                                chordProSource: "c", musicKey: "G", autoAdvance: nil, displayKey: "A")
+                                chordProSource: "c", musicKey: "G", autoAdvance: nil, displayKey: "A", category: "Sermon")
         let labels = Set(Mirror(reflecting: deck).children.compactMap(\.label)).subtracting(["slides"])
         #expect(Set(DeckField.all.map(\.key)) == labels)
         #expect(DeckField.all.count == labels.count)

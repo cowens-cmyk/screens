@@ -25,6 +25,11 @@ final class VideoInputInventory {
 
         var frameRate: Double?
 
+        // Web Page inputs: output size and whether the page's audio is muted. `sourceId` is the URL.
+        var width: Int?
+        var height: Int?
+        var pageMuted: Bool?
+
         var engineID: String { "input::item::\(id)" }
         var isAssigned: Bool { kind != nil && sourceId?.isEmpty == false }
 
@@ -32,7 +37,7 @@ final class VideoInputInventory {
             id: String = UUID().uuidString, name: String,
             kind: CaptureSourceKind? = nil, sourceId: String? = nil,
             audioInputId: String? = nil, delayFrames: Int? = nil,
-            frameRate: Double? = nil
+            frameRate: Double? = nil, width: Int? = nil, height: Int? = nil
         ) {
             self.id = id
             self.name = name
@@ -41,6 +46,8 @@ final class VideoInputInventory {
             self.audioInputId = audioInputId
             self.delayFrames = delayFrames
             self.frameRate = frameRate
+            self.width = width
+            self.height = height
         }
 
         init(from decoder: Decoder) throws {
@@ -52,6 +59,9 @@ final class VideoInputInventory {
             audioInputId = try container.decodeIfPresent(String.self, forKey: .audioInputId)
             delayFrames = try container.decodeIfPresent(Int.self, forKey: .delayFrames)
             frameRate = try container.decodeIfPresent(Double.self, forKey: .frameRate)
+            width = try container.decodeIfPresent(Int.self, forKey: .width)
+            height = try container.decodeIfPresent(Int.self, forKey: .height)
+            pageMuted = try container.decodeIfPresent(Bool.self, forKey: .pageMuted)
         }
     }
 
@@ -66,6 +76,11 @@ final class VideoInputInventory {
     var onEntriesChanged: (() -> Void)?
 
     private var ndiSources: [String: NDIInputSource] = [:]
+    private var webSources: [String: WebInputSource] = [:]
+
+    static let webDefaultWidth = 1920
+    static let webDefaultHeight = 1080
+    static let webDefaultFrameRate = 30
 
     var onConnectedChanged: (([String]) -> Void)?
     private var connectivityTimer: Timer?
@@ -85,6 +100,7 @@ final class VideoInputInventory {
 
             persist()
         }
+        syncPlaceholderKinds()
     }
 
     func entry(id: String) -> Entry? {
@@ -105,6 +121,7 @@ final class VideoInputInventory {
         startConnectivityPoll()
         startHotplugWatch()
         for entry in entries where entry.kind == .ndi { start(entry) }
+        for entry in entries where entry.kind == .web && entry.isAssigned { start(entry) }
         let cameras = entries.filter { $0.kind == .camera && $0.isAssigned }
         guard !cameras.isEmpty else { return }
         withCameraPermission { [weak self] granted in
@@ -121,6 +138,17 @@ final class VideoInputInventory {
         entries.append(entry)
         persist()
         if entry.isAssigned { startWithPermission(entry) }
+        return entry
+    }
+
+    @discardableResult
+    func createWeb(name: String, url: String, width: Int, height: Int, frameRate: Double) -> Entry {
+        let entry = Entry(
+            name: name, kind: .web, sourceId: url, frameRate: frameRate,
+            width: width, height: height)
+        entries.append(entry)
+        persist()
+        start(entry)
         return entry
     }
 
@@ -142,12 +170,22 @@ final class VideoInputInventory {
         guard !trimmed.isEmpty else { return }
         entries[index].name = trimmed
         persist()
+        webSources[id]?.rename(trimmed)
     }
 
     func assignDevice(id: String, kind: CaptureSourceKind?, sourceId: String?) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+
+        if kind == .web, entries[index].kind == .web, let sourceId, let source = webSources[id] {
+            entries[index].sourceId = sourceId
+            persist()
+            source.load(sourceId)
+            return
+        }
         render?.media.stop(id: entries[index].engineID)
         running.remove(id)
+        webSources[id]?.stop()
+        webSources[id] = nil
         entries[index].kind = kind
         entries[index].sourceId = sourceId
 
@@ -156,6 +194,23 @@ final class VideoInputInventory {
         persist()
         let entry = entries[index]
         if entry.isAssigned { startWithPermission(entry) }
+    }
+
+    func assignWeb(id: String, url: String, width: Int, height: Int, frameRate: Double) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        render?.media.stop(id: entries[index].engineID)
+        running.remove(id)
+        ndiSources[id] = nil
+        webSources[id]?.stop()
+        webSources[id] = nil
+        entries[index].kind = .web
+        entries[index].sourceId = url
+        entries[index].frameRate = frameRate
+        entries[index].width = width
+        entries[index].height = height
+        shareDeviceRates()
+        persist()
+        start(entries[index])
     }
 
     func assignAudioInput(id: String, audioInputId: String?) {
@@ -175,6 +230,12 @@ final class VideoInputInventory {
     }
 
     func setFrameRate(id: String, rate: Double?) {
+        if let index = entries.firstIndex(where: { $0.id == id }), entries[index].kind == .web {
+            entries[index].frameRate = rate
+            persist()
+            reconfigureWeb(entries[index])
+            return
+        }
         if let index = entries.firstIndex(where: { $0.id == id }) {
             let mates = deviceMates(of: entries[index])
             for mate in mates {
@@ -185,6 +246,48 @@ final class VideoInputInventory {
             persist()
             for mate in mates where entries[mate].isAssigned { startWithPermission(entries[mate]) }
         }
+    }
+
+    func setWebResolution(id: String, width: Int, height: Int) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[index].width = width
+        entries[index].height = height
+        persist()
+        reconfigureWeb(entries[index])
+    }
+
+    func setPageMuted(id: String, muted: Bool) {
+        guard let index = entries.firstIndex(where: { $0.id == id }),
+              entries[index].pageMuted ?? false != muted
+        else { return }
+        entries[index].pageMuted = muted ? true : nil
+        persist()
+        webSources[id]?.setMuted(muted)
+    }
+
+    func webSource(id: String) -> WebInputSource? {
+        webSources[id]
+    }
+
+    func showWebWindow(id: String) {
+        if let source = webSources[id] {
+            source.showWindow()
+        } else if let entry = entry(id: id), entry.kind == .web, entry.isAssigned {
+            start(entry)
+        }
+    }
+
+    private func reconfigureWeb(_ entry: Entry) {
+        let size = Self.webSize(entry)
+        webSources[entry.id]?.reconfigure(
+            width: size.width, height: size.height, framesPerSecond: size.fps)
+    }
+
+    static func webSize(_ entry: Entry) -> (width: Int, height: Int, fps: Int) {
+        (
+            entry.width ?? webDefaultWidth, entry.height ?? webDefaultHeight,
+            entry.frameRate.map { Int($0.rounded()) } ?? webDefaultFrameRate
+        )
     }
 
     private func deviceMates(of entry: Entry) -> [Int] {
@@ -210,6 +313,8 @@ final class VideoInputInventory {
         render?.media.stop(id: entry.engineID)
         running.remove(entry.id)
         ndiSources[entry.id] = nil
+        webSources[entry.id]?.stop()
+        webSources[entry.id] = nil
     }
 
     func startIfNeeded(engineID: String) {
@@ -292,6 +397,28 @@ final class VideoInputInventory {
                 DiagnosticsStore.shared.note("input.ndi", detail: "runtime unavailable: \(error)")
                 return
             }
+        case .web:
+            let size = Self.webSize(entry)
+            let source = WebInputSource(
+                name: entry.name, url: sourceId, width: size.width, height: size.height,
+                framesPerSecond: size.fps, muted: entry.pageMuted ?? false)
+            let frames = source.frames
+            render.media.registerLiveSource(
+                id: entry.engineID,
+                latestFrame: { frames.value },
+                onStop: { Task { @MainActor in source.stop() } })
+            let entryID = entry.id
+            source.onMuteChanged = { [weak self] muted in
+                self?.setPageMuted(id: entryID, muted: muted)
+            }
+            webSources[entry.id] = source
+            running.insert(entry.id)
+            source.start()
+        case .decklink:
+
+            DiagnosticsStore.shared.note(
+                "input.decklink", detail: "DeckLink inputs not supported yet: \(entry.name)")
+            return
         }
 
         render.media.setInputDelay(id: entry.engineID, frames: entry.delayFrames ?? 0)
@@ -389,7 +516,11 @@ final class VideoInputInventory {
                 if case .receiving = ndiSources[entry.id]?.state {
                     connected.append(entry.id)
                 }
-            case nil:
+            case .web:
+                guard let source = webSources[entry.id] else { break }
+                source.retryIfPermitted()
+                if source.isReceiving { connected.append(entry.id) }
+            case .decklink, nil:
                 break
             }
         }
@@ -403,6 +534,12 @@ final class VideoInputInventory {
         if let data = try? JSONEncoder().encode(entries) {
             UserDefaults.standard.set(data, forKey: Self.defaultsKey)
         }
+        syncPlaceholderKinds()
         onEntriesChanged?()
+    }
+
+    private func syncPlaceholderKinds() {
+        LiveInputPlaceholder.webEngineIDs.value = Set(
+            entries.filter { $0.kind == .web }.map(\.engineID))
     }
 }
