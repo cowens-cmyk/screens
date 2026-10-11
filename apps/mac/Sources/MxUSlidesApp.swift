@@ -171,6 +171,7 @@ struct MxUSlidesApp: App {
             _keyIn = State(initialValue: keyIn)
             PlanningCenterSync.shared.attach(model)
             LiveAssist.shared.attach(model: model, controls: controls)
+            AppUpdater.shared.start()
             let tracking = ServiceTimingController(model: model, controls: controls, render: render)
             controls.serviceTracking = tracking
             _serviceTracking = State(initialValue: tracking)
@@ -246,6 +247,9 @@ struct MxUSlidesApp: App {
             ViewCommands()
             PresentCommands()
             HelpCommands(model: appModel, showWelcome: $showWelcome, showFeedback: $showFeedback)
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { Task { await AppUpdater.shared.check(userInitiated: true) } }
+            }
         }
 
         Settings {

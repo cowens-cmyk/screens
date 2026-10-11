@@ -38,5 +38,7 @@
 	<string>Screens can include a capture device's audio when it is used as a live input.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Screens listens to a microphone you choose to follow lyrics and spot Bible references.</string>
+	<key>ScreensUpdateRepository</key>
+	<string>cowens-cmyk/screens</string>
 </dict>
 </plist>

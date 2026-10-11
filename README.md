@@ -1,22 +1,14 @@
-# MxU Slides
+# Screens
 
-A native macOS presentation app for churches: lyrics, slides, media, timers, stage displays, NDI and DeckLink output, and live streaming. Everything runs on this Mac: no account, no server.
+A native macOS presentation app for Hope Church: lyrics, scripture, slides, media, timers, stage displays, NDI and DeckLink output, Planning Center sync, and live streaming. Everything runs on this Mac.
 
-MxU Slides is source-available under the PolyForm Shield License 1.0.0. See [LICENSE.md](LICENSE.md).
+Screens is built on [MxU Slides](https://getmxu.com), which is source-available under the PolyForm Shield License 1.0.0 — see [LICENSE.md](LICENSE.md). Required Notice: Copyright MxU (https://getmxu.com). The MxU name and logos are MxU's trademarks.
 
-What the license allows:
+## Installing and updating
 
-- [x] Use it for any purpose, including commercially and in production, at a church, a venue, or a business
-- [x] Read, modify, and build on the source
-- [x] Fork it and distribute copies or modified versions, as long as the license and its notice travel with them
-- [x] Contribute changes back
+Download the latest DMG from [Releases](https://github.com/cowens-cmyk/screens/releases). After that, Screens checks this repository's releases at launch and every few hours, and offers to update and relaunch (Screens › Check for Updates…). Updates are only installed when they're signed by Hope Church's Developer ID.
 
-What it does not allow:
-
-- [ ] Providing a product that competes with MxU Slides, or with any product MxU provides using it, even if that product is free, uses a different interface or platform, or is written in another language
-- [ ] Removing or altering the license text or the required notice
-
-The full terms, including what happens if MxU later ships a product that competes with yours, are in [LICENSE.md](LICENSE.md).
+To publish a release: bump `MARKETING_VERSION` in `apps/mac/project.yml`, commit, then run `apps/mac/scripts/release-github.sh --publish`.
 
 ## Getting started
 

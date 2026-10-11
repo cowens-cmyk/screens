@@ -84,6 +84,7 @@ targets:
         NSLocalNetworkUsageDescription: "Screens uses your local network to discover and receive NDI video sources, and announces its Local API so remotes and control surfaces can find this Mac."
         NSCameraUsageDescription: "Screens shows cameras and capture devices on your screens as live video inputs."
         NSMicrophoneUsageDescription: "Screens can include a capture device's audio when it is used as a live input."
+        ScreensUpdateRepository: cowens-cmyk/screens
         NSSpeechRecognitionUsageDescription: "Screens listens to a microphone you choose to follow lyrics and spot Bible references."
         NSAppleEventsUsageDescription: "Screens asks Keynote to export decks so they can be imported."
         NSCalendarsFullAccessUsageDescription: "Screens can fire slides and macros when events on your calendar start."
@@ -92,7 +93,7 @@ targets:
         PRODUCT_NAME: "Screens"
         PRODUCT_BUNDLE_IDENTIFIER: com.example.mxuslides
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: "0.1.0"
+        MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: "1"
         MXU_GIT_COMMIT: ""
         MTL_COMPILER_FLAGS: "-fcikernel"
