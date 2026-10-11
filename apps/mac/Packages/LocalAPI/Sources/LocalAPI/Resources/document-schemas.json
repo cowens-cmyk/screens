@@ -2544,7 +2544,9 @@
       "type": "string",
       "enum": [
         "noteOn",
-        "controlChange"
+        "controlChange",
+        "noteOff",
+        "programChange"
       ]
     },
     "TimerMode": {

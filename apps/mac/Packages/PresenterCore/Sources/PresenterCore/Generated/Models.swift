@@ -1649,6 +1649,8 @@ public enum SlideActionKind: String, Codable, Sendable, CaseIterable, Equatable 
 public enum MIDIMessageKind: String, Codable, Sendable, CaseIterable, Equatable {
     case noteOn
     case controlChange
+    case noteOff
+    case programChange
 }
 
 public enum TimerMode: String, Codable, Sendable, CaseIterable, Equatable {

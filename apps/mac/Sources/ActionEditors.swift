@@ -262,10 +262,14 @@ struct ActionParameterFields: View {
                 set: { value in update(action.id) { $0.midiKind = value } }
             )) {
                 Text("Note On").tag(MIDIMessageKind.noteOn)
+                Text("Note Off").tag(MIDIMessageKind.noteOff)
                 Text("Control Change").tag(MIDIMessageKind.controlChange)
+                Text("Program Change").tag(MIDIMessageKind.programChange)
             }
             intField(action, "Channel", \.midiChannel, default: 1, range: 1...16)
-            if action.midiKind == .controlChange {
+            if action.midiKind == .programChange {
+                intField(action, "Program", \.midiNumber, default: 0, range: 0...127)
+            } else if action.midiKind == .controlChange {
                 intField(action, "Controller", \.midiNumber, default: 0, range: 0...127)
                 intField(action, "Value", \.midiValue, default: 127, range: 0...127)
             } else {

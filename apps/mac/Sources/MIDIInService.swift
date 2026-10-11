@@ -120,6 +120,7 @@ final class MIDIInController {
             }
         }
         MIDIInService.shared.setSources(MIDIDeviceInventory.shared.items.inputSourceUIDs)
+        MIDIOutService.shared.prepare()
     }
 
     private func receive(sourceUid: Int32, status: UInt8, data1: UInt8, data2: UInt8) {

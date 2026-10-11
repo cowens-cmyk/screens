@@ -498,9 +498,10 @@ struct ActionCombosModule: View {
                 }
             }
         case .midiOut:
-            QuietMenuChip(title: (action.midiKind ?? .noteOn) == .noteOn ? "Note On" : "Control Change") {
-                Button("Note On") { updateAction(comboID, action.id) { $0.midiKind = .noteOn } }
-                Button("Control Change") { updateAction(comboID, action.id) { $0.midiKind = .controlChange } }
+            QuietMenuChip(title: (action.midiKind ?? .noteOn).displayName) {
+                ForEach(MIDIMessageKind.allCases, id: \.self) { kind in
+                    Button(kind.displayName) { updateAction(comboID, action.id) { $0.midiKind = kind } }
+                }
             }
             QuietMenuChip(title: midiDeviceTitle(action.midiDeviceId)) {
 

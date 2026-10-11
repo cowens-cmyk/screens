@@ -555,6 +555,10 @@ final class MIDIOutService: @unchecked Sendable {
 
     private var client = MIDIClientRef()
     private var port = MIDIPortRef()
+    /// A virtual source named "Screens" that every message is also sent from,
+    /// so Lightkey (or any MIDI app) can listen to Screens directly — no IAC
+    /// bus or Audio MIDI Setup needed.
+    private var virtualSource = MIDIEndpointRef()
     private var ready = false
 
     private var targetUIDs: Set<Int32>?
@@ -570,31 +574,59 @@ final class MIDIOutService: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Creates the client, output port and the "Screens" virtual source.
+    /// Called at launch so the source is visible to other apps before the
+    /// first message.
+    func prepare() {
+        lock.lock()
+        defer { lock.unlock() }
+        prepareLocked()
+    }
+
+    @discardableResult
+    private func prepareLocked() -> Bool {
+        if ready { return true }
+        guard MIDIClientCreate("Screens" as CFString, nil, nil, &client) == noErr,
+              MIDIOutputPortCreate(client, "Screens Out" as CFString, &port) == noErr
+        else { return false }
+        if MIDISourceCreate(client, "Screens" as CFString, &virtualSource) != noErr {
+            virtualSource = 0
+        }
+        ready = true
+        return true
+    }
+
+    static func bytes(kind: MIDIMessageKind, channel: Int, number: Int, value: Int) -> [UInt8] {
+        let channelBits = UInt8((max(1, min(16, channel)) - 1) & 0x0F)
+        switch kind {
+        case .noteOn: return [0x90 | channelBits, UInt8(number & 0x7F), UInt8(value & 0x7F)]
+        case .noteOff: return [0x80 | channelBits, UInt8(number & 0x7F), UInt8(value & 0x7F)]
+        case .controlChange: return [0xB0 | channelBits, UInt8(number & 0x7F), UInt8(value & 0x7F)]
+        case .programChange: return [0xC0 | channelBits, UInt8(number & 0x7F)]
+        }
+    }
+
     func send(
         kind: MIDIMessageKind, channel: Int, number: Int, value: Int,
         toDestination explicitUID: Int32? = nil
     ) {
         lock.lock()
         defer { lock.unlock() }
-        if !ready {
-            guard MIDIClientCreate("Screens" as CFString, nil, nil, &client) == noErr,
-                  MIDIOutputPortCreate(client, "Screens Out" as CFString, &port) == noErr
-            else { return }
-            ready = true
-        }
+        guard prepareLocked() else { return }
         if !targetsLoaded {
 
             targetUIDs = MIDIDeviceStore.loadCachedTargets()
             targetsLoaded = true
         }
-        if explicitUID == nil, let targets = targetUIDs, targets.isEmpty { return }
-        let status: UInt8 = (kind == .controlChange ? 0xB0 : 0x90)
-            | UInt8((max(1, min(16, channel)) - 1) & 0x0F)
-        let data: [UInt8] = [status, UInt8(number & 0x7F), UInt8(value & 0x7F)]
+        let data = Self.bytes(kind: kind, channel: channel, number: number, value: value)
         var packetList = MIDIPacketList()
         let packet = MIDIPacketListInit(&packetList)
         _ = MIDIPacketListAdd(
             &packetList, MemoryLayout<MIDIPacketList>.size, packet, 0, data.count, data)
+        if explicitUID == nil, virtualSource != 0 {
+            MIDIReceived(virtualSource, &packetList)
+        }
+        if explicitUID == nil, let targets = targetUIDs, targets.isEmpty { return }
         for index in 0..<MIDIGetNumberOfDestinations() {
             let destination = MIDIGetDestination(index)
             if explicitUID != nil || targetUIDs != nil {
@@ -609,6 +641,17 @@ final class MIDIOutService: @unchecked Sendable {
                 }
             }
             MIDISend(port, destination, &packetList)
+        }
+    }
+}
+
+extension MIDIMessageKind {
+    var displayName: String {
+        switch self {
+        case .noteOn: "Note On"
+        case .noteOff: "Note Off"
+        case .controlChange: "Control Change"
+        case .programChange: "Program Change"
         }
     }
 }

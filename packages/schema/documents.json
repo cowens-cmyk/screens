@@ -3029,7 +3029,9 @@
       "kind": "enum",
       "cases": [
         "noteOn",
-        "controlChange"
+        "controlChange",
+        "noteOff",
+        "programChange"
       ]
     },
     "TimerMode": {
