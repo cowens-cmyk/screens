@@ -47,6 +47,10 @@ public enum LinkedText {
         case .currentPresentation: return nonEmpty(info.currentPresentationName)
 
         case .nextServiceTitle: return nonEmpty(info.nextServiceTitle)
+        case .songKey:
+            guard let key = nonEmpty(info.current?.displayKey) ?? nonEmpty(info.current?.musicKey) else { return nil }
+            return "Key: \(key)"
+        case .slideNotes: return nonEmpty(info.current?.notes)
         case .stageMessage:
 
             guard let alert = info.alert, alert.showsOnConfidence, info.alertVisible else { return nil }
@@ -128,7 +132,7 @@ public enum LinkedText {
             return true
         case .currentSlide, .nextSlide, .lastSlide, .slidePosition,
              .currentServiceItem, .nextServiceItem, .stageMessage, .currentGroup,
-             .currentPresentation, .nextServiceTitle:
+             .currentPresentation, .nextServiceTitle, .songKey, .slideNotes:
             return false
         }
     }
@@ -139,7 +143,7 @@ public enum LinkedText {
             return link.timerPattern.map(TimerPattern.hasFraction) == true
         case .clock, .currentSlide, .nextSlide, .lastSlide, .slidePosition,
              .currentServiceItem, .nextServiceItem, .stageMessage, .currentGroup,
-             .currentPresentation, .nextServiceTitle:
+             .currentPresentation, .nextServiceTitle, .songKey, .slideNotes:
             return false
         }
     }
@@ -158,7 +162,8 @@ public enum LinkedText {
                 ChordPlacement(line: 1, column: 5, symbol: "Em"),
                 ChordPlacement(line: 1, column: 13, symbol: "D"),
             ],
-            musicKey: "G"
+            musicKey: "G",
+            notes: "Welcome everyone — invite them to stand"
         ),
         next: .init(
             body: "I once was lost, but now am found\nWas blind, but now I see",

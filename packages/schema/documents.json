@@ -3668,7 +3668,9 @@
         "stageMessage",
         "currentGroup",
         "currentPresentation",
-        "nextServiceTitle"
+        "nextServiceTitle",
+        "songKey",
+        "slideNotes"
       ]
     },
     "TimerTextFormat": {

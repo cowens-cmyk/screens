@@ -7,6 +7,8 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     case timers
     case currentOverNext
     case currentOverNextChords
+    case worship
+    case sermon
 
     public var title: String {
         switch self {
@@ -16,6 +18,8 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         case .timers: "Timers"
         case .currentOverNext: "Current Over Next"
         case .currentOverNextChords: "Current Over Next + Chords"
+        case .worship: "Worship"
+        case .sermon: "Sermon"
         }
     }
 
@@ -24,7 +28,7 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     }
 
     public static let workspaceStarters: [ConfidenceLayoutTemplate] = [
-        .currentAndNext, .timers, .currentOverNext, .currentOverNextChords,
+        .worship, .sermon, .currentAndNext, .timers, .currentOverNext, .currentOverNextChords,
     ]
 
     public func make(name: String) -> ConfidenceLayout {
@@ -35,6 +39,8 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         case .timers: Self.timers(name: name)
         case .currentOverNext: Self.currentOverNext(name: name)
         case .currentOverNextChords: Self.currentOverNextChords(name: name)
+        case .worship: Self.worship(name: name)
+        case .sermon: Self.sermon(name: name)
         }
     }
 
@@ -42,6 +48,68 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     static let dimmed = "#B8B8B8FF"
 
     static let green = "#7ED957FF"
+    static let yellow = "#FFE500FF"
+    static let white = "#FFFFFFFF"
+
+    /// Current lyrics in yellow with Nashville numbers above the words, the
+    /// next slide in white, and the clock and song key along the bottom.
+    static func worship(name: String) -> ConfidenceLayout {
+        var current = linked("Current Slide", .currentSlide,
+                             x: 60, y: 40, width: 1800, height: 600,
+                             size: 104, color: yellow, shrink: true, minSize: 48, chords: true)
+        current.textStyle?.chordNotation = .numbers
+        current.textStyle?.chordColorHex = white
+        var next = linked("Next Slide", .nextSlide,
+                          x: 60, y: 680, width: 1800, height: 260,
+                          size: 72, color: white, shrink: true, minSize: 36, chords: true)
+        next.textStyle?.chordNotation = .numbers
+        return ConfidenceLayout(
+            id: UUID().uuidString,
+            name: name,
+            objects: [
+                current,
+                divider(y: 660),
+                next,
+                linked("Clock", .clock, x: 60, y: 960, width: 600, height: 100,
+                       size: 72, color: white, alignment: .left, tabular: true, clockFormat: "h:mm a"),
+                linked("Song Key", .songKey, x: 1260, y: 960, width: 600, height: 100,
+                       size: 72, color: yellow, alignment: .right),
+            ]
+        )
+    }
+
+    /// A big sermon countdown, the clock, the current slide and its notes.
+    static func sermon(name: String) -> ConfidenceLayout {
+        ConfidenceLayout(
+            id: UUID().uuidString,
+            name: name,
+            objects: [
+                box("Timer Box", x: 60, y: 40, width: 1100, height: 330),
+                linked("Sermon Timer", .timer, x: 100, y: 70, width: 1020, height: 270,
+                       size: 240, color: green, tabular: true, shrink: true, minSize: 80),
+                caption("SERMON TIME REMAINING", x: 60, width: 1100, boxBottom: 370),
+                box("Clock Box", x: 1200, y: 40, width: 660, height: 330),
+                linked("Clock", .clock, x: 1230, y: 70, width: 600, height: 270,
+                       size: 140, color: dimmed, tabular: true, shrink: true, clockFormat: "h:mm"),
+                caption("CLOCK", x: 1200, width: 660, boxBottom: 370),
+                linked("Current Slide", .currentSlide, x: 60, y: 420, width: 1100, height: 600,
+                       size: 72, alignment: .left, shrink: true, minSize: 30),
+                linked("Notes", .slideNotes, x: 1200, y: 420, width: 660, height: 600,
+                       size: 44, color: yellow, alignment: .left, shrink: true, minSize: 20),
+            ]
+        )
+    }
+
+    private static func divider(y: Double) -> SlideObject {
+        var object = SlideObject(id: UUID().uuidString, objectKind: .shape, name: "Divider", text: "")
+        object.shapeKind = .rectangle
+        object.x = 60
+        object.y = y
+        object.width = 1800
+        object.height = 3
+        object.fill = ObjectFill(fillKind: .solid, colorHex: "#FFFFFF55")
+        return object
+    }
 
     static func classic(name: String) -> ConfidenceLayout {
         ConfidenceLayout(

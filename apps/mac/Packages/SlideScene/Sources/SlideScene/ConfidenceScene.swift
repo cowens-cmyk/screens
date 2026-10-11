@@ -273,6 +273,8 @@ public struct ConfidenceInfo: Sendable, Equatable {
 
         public var objectTexts: [ObjectText]?
 
+        public var notes: String?
+
         public struct ObjectText: Sendable, Equatable {
             public var name: String
             public var text: String
@@ -290,8 +292,10 @@ public struct ConfidenceInfo: Sendable, Equatable {
             displayKey: String? = nil,
             stepIndex: Int? = nil,
             stepCount: Int? = nil,
-            objectTexts: [ObjectText]? = nil
+            objectTexts: [ObjectText]? = nil,
+            notes: String? = nil
         ) {
+            self.notes = notes
             self.body = body
             self.chords = chords
             self.musicKey = musicKey
@@ -490,7 +494,8 @@ public enum ConfidenceSceneBuilder {
             chords: lyricChords(for: slide),
             musicKey: presentation?.musicKey,
             displayKey: presentation?.displayKey,
-            objectTexts: objectTexts.isEmpty ? nil : objectTexts
+            objectTexts: objectTexts.isEmpty ? nil : objectTexts,
+            notes: slide.notes
         )
     }
 

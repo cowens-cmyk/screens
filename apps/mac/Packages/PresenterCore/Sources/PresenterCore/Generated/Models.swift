@@ -2017,6 +2017,8 @@ public enum TextSourceKind: String, Codable, Sendable, CaseIterable, Equatable {
     case currentGroup
     case currentPresentation
     case nextServiceTitle
+    case songKey
+    case slideNotes
 }
 
 public enum TimerTextFormat: String, Codable, Sendable, CaseIterable, Equatable {

@@ -479,7 +479,7 @@ private let theme = Theme(
     song.background = CueMedia(mediaId: "song-bg", layer: .loopingVideos)
     #expect(SlideSceneBuilder.effectiveBackground(slide: slide, presentation: song)?.mediaId == "song-bg")
     let scene = SlideSceneBuilder.scene(for: slide, theme: nil, presentation: song)
-    #expect(scene.layers.first { $0.kind == .loopingVideos }!.items.count == 1)
+    #expect(scene.layers.first { $0.kind == .loopingVideos }!.items.filter { !$0.id.hasSuffix("-letterbox") }.count == 1)
 
     slide.background = CueMedia(mediaId: "cue-bg", layer: .videos)
     #expect(SlideSceneBuilder.effectiveBackground(slide: slide, presentation: song)?.mediaId == "cue-bg")
