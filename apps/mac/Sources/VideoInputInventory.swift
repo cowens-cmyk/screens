@@ -77,6 +77,10 @@ final class VideoInputInventory {
 
     private var ndiSources: [String: NDIInputSource] = [:]
     private var webSources: [String: WebInputSource] = [:]
+    private var decklinkSources: [String: DeckLinkInputClient] = [:]
+
+    // DeckLink capture status per entry id, refreshed by the connectivity poll for the Settings UI.
+    private(set) var decklinkStates: [String: DeckLinkInputClient.State] = [:]
 
     static let webDefaultWidth = 1920
     static let webDefaultHeight = 1080
@@ -122,6 +126,7 @@ final class VideoInputInventory {
         startHotplugWatch()
         for entry in entries where entry.kind == .ndi { start(entry) }
         for entry in entries where entry.kind == .web && entry.isAssigned { start(entry) }
+        for entry in entries where entry.kind == .decklink && entry.isAssigned { start(entry) }
         let cameras = entries.filter { $0.kind == .camera && $0.isAssigned }
         guard !cameras.isEmpty else { return }
         withCameraPermission { [weak self] granted in
@@ -186,6 +191,7 @@ final class VideoInputInventory {
         running.remove(id)
         webSources[id]?.stop()
         webSources[id] = nil
+        stopDeckLink(id: id)
         entries[index].kind = kind
         entries[index].sourceId = sourceId
 
@@ -203,6 +209,7 @@ final class VideoInputInventory {
         ndiSources[id] = nil
         webSources[id]?.stop()
         webSources[id] = nil
+        stopDeckLink(id: id)
         entries[index].kind = .web
         entries[index].sourceId = url
         entries[index].frameRate = frameRate
@@ -315,6 +322,17 @@ final class VideoInputInventory {
         ndiSources[entry.id] = nil
         webSources[entry.id]?.stop()
         webSources[entry.id] = nil
+        stopDeckLink(id: entry.id)
+    }
+
+    func decklinkState(id: String) -> DeckLinkInputClient.State? {
+        decklinkStates[id]
+    }
+
+    private func stopDeckLink(id: String) {
+        decklinkSources[id]?.stop()
+        decklinkSources[id] = nil
+        decklinkStates[id] = nil
     }
 
     func startIfNeeded(engineID: String) {
@@ -415,10 +433,21 @@ final class VideoInputInventory {
             running.insert(entry.id)
             source.start()
         case .decklink:
-
-            DiagnosticsStore.shared.note(
-                "input.decklink", detail: "DeckLink inputs not supported yet: \(entry.name)")
-            return
+            // sourceId is the port's BMDDeckLinkPersistentID. Capture runs in the DeckLink helper.
+            guard let persistentID = Int64(sourceId) else {
+                DiagnosticsStore.shared.note(
+                    "input.decklink", detail: "bad DeckLink port id \(sourceId): \(entry.name)")
+                return
+            }
+            let client = DeckLinkInputClient(persistentID: persistentID, name: entry.name)
+            render.media.registerLiveSource(
+                id: entry.engineID,
+                latestFrame: { client.latestFrame() },
+                onStop: { client.stop() })
+            decklinkSources[entry.id] = client
+            decklinkStates[entry.id] = .starting
+            running.insert(entry.id)
+            client.start()
         }
 
         render.media.setInputDelay(id: entry.engineID, frames: entry.delayFrames ?? 0)
@@ -520,7 +549,12 @@ final class VideoInputInventory {
                 guard let source = webSources[entry.id] else { break }
                 source.retryIfPermitted()
                 if source.isReceiving { connected.append(entry.id) }
-            case .decklink, nil:
+            case .decklink:
+                guard let client = decklinkSources[entry.id] else { break }
+                let state = client.state
+                if decklinkStates[entry.id] != state { decklinkStates[entry.id] = state }
+                if case .receiving = state { connected.append(entry.id) }
+            case nil:
                 break
             }
         }

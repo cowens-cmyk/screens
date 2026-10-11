@@ -50,10 +50,95 @@ final class DeckLinkOutputStore: @unchecked Sendable {
     }
 }
 
-final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol {
+/// One capture per DeckLink port, shared by every connection that asks for it (two inputs in
+/// the app can point at the same port; the card only lets one process-side open capture).
+final class DeckLinkInputStore: @unchecked Sendable {
+    static let shared = DeckLinkInputStore()
+    typealias Subscriber = @Sendable (CVPixelBuffer) -> Void
+
+    private final class Capture {
+        var source: DeckLinkInputSource?
+        var subscribers: [UUID: Subscriber] = [:]
+    }
+
+    private let lock = NSLock()
+    private var captures: [Int64: Capture] = [:]
+
+    func subscribe(device: Int64, token: UUID, onFrame: @escaping Subscriber) throws {
+        lock.lock()
+        if let capture = captures[device] {
+            capture.subscribers[token] = onFrame
+            lock.unlock()
+            return
+        }
+        let capture = Capture()
+        capture.subscribers[token] = onFrame
+        captures[device] = capture
+        lock.unlock()
+        do {
+            let source = try DeckLinkInputSource(persistentID: device) { [weak self] buffer in
+                self?.fanOut(device: device, buffer: buffer)
+            }
+            lock.lock()
+            if captures[device] === capture {
+                capture.source = source
+                lock.unlock()
+            } else {
+                lock.unlock()
+                source.stop()
+            }
+        } catch {
+            lock.lock()
+            if captures[device] === capture { captures[device] = nil }
+            lock.unlock()
+            throw error
+        }
+    }
+
+    func unsubscribe(device: Int64, token: UUID) {
+        lock.lock()
+        guard let capture = captures[device] else {
+            lock.unlock()
+            return
+        }
+        capture.subscribers[token] = nil
+        guard capture.subscribers.isEmpty else {
+            lock.unlock()
+            return
+        }
+        captures[device] = nil
+        let source = capture.source
+        lock.unlock()
+        // Closing waits out the driver's callback; keep it off the XPC queue.
+        DispatchQueue.global(qos: .utility).async { source?.stop() }
+    }
+
+    func state(device: Int64) -> DeckLinkInputSource.State? {
+        lock.lock()
+        let source = captures[device]?.source
+        lock.unlock()
+        return source?.state
+    }
+
+    private func fanOut(device: Int64, buffer: CVPixelBuffer) {
+        lock.lock()
+        let subscribers = captures[device].map { Array($0.subscribers.values) } ?? []
+        lock.unlock()
+        for subscriber in subscribers { subscriber(buffer) }
+    }
+}
+
+final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol, @unchecked Sendable {
 
     private var device: Int64?
     private var generation: UUID?
+
+    weak var connection: NSXPCConnection?
+    private let inputLock = NSLock()
+    private var inputDevice: Int64?
+    private let inputToken = UUID()
+    private var inputError: String?
+    private let framesInFlight = Locked(0)
 
     func listDevices(reply: @escaping (Data) -> Void) {
         let devices = DeckLinkRuntime.devices().map { device in
@@ -212,8 +297,146 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol {
         generation = nil
     }
 
+    func listInputDevices(reply: @escaping (Data) -> Void) {
+        let devices = DeckLinkRuntime.inputDevices()
+            .filter(\.supportsCapture)
+            .map { device in
+                DeckLinkHelperInputDevice(
+                    name: device.name,
+                    persistentID: device.persistentID,
+                    supportsFormatDetection: device.supportsFormatDetection,
+                    usableForCapture: device.isUsableForCapture,
+                    captureBusy: device.captureBusy,
+                    playbackBusy: device.playbackBusy)
+            }
+        reply((try? JSONEncoder().encode(devices)) ?? Data())
+    }
+
+    func startInput(devicePersistentID: Int64, reply: @escaping (String?) -> Void) {
+        stopInput()
+        guard DeckLinkRuntime.isAvailable else {
+            reply("Desktop Video is not installed (blackmagicdesign.com/support)")
+            return
+        }
+        if DeckLinkRuntime.runtimeIsTooOld {
+            reply(
+                "Desktop Video \(DeckLinkRuntime.apiVersionString ?? "?") is too old — "
+                    + "install \(DeckLinkRuntime.requiredAPIMajor).0 or later")
+            return
+        }
+        guard let port = DeckLinkRuntime.inputDevices()
+            .first(where: { $0.persistentID == devicePersistentID })
+        else {
+            reply("DeckLink device not found (unplugged, or Desktop Video not installed)")
+            return
+        }
+        guard port.supportsCapture, !port.inactive else {
+            reply("\(port.name) cannot capture in the card's current profile (Desktop Video Setup)")
+            return
+        }
+        guard port.inputModeCount > 0 else {
+            reply("\(port.name) is mapped as an output — map it as an input in Desktop Video Setup")
+            return
+        }
+        do {
+            try DeckLinkInputStore.shared.subscribe(
+                device: devicePersistentID, token: inputToken
+            ) { [weak self] buffer in
+                self?.push(buffer)
+            }
+            inputLock.lock()
+            inputDevice = devicePersistentID
+            inputError = nil
+            inputLock.unlock()
+            reply(nil)
+        } catch DeckLinkError.openFailed(let message) {
+            inputLock.lock()
+            inputError = message
+            inputLock.unlock()
+            reply(message)
+        } catch {
+            reply("DeckLink capture failed: \(error)")
+        }
+    }
+
+    func inputStatus(reply: @escaping (Data) -> Void) {
+        inputLock.lock()
+        let device = inputDevice
+        let startError = inputError
+        inputLock.unlock()
+        var status = DeckLinkHelperInputStatus(signal: .starting)
+        if let startError {
+            status = DeckLinkHelperInputStatus(signal: .failed, error: startError)
+        } else if let device, let state = DeckLinkInputStore.shared.state(device: device) {
+            switch state {
+            case .noSignal:
+                status.signal = .noSignal
+            case .receiving(let format):
+                status = DeckLinkHelperInputStatus(
+                    signal: .receiving, format: format.label,
+                    width: format.width, height: format.height)
+            case .failed(let message):
+                status = DeckLinkHelperInputStatus(signal: .failed, error: message)
+            }
+        } else if device == nil {
+            status = DeckLinkHelperInputStatus(signal: .failed, error: "not capturing")
+        }
+        reply((try? JSONEncoder().encode(status)) ?? Data())
+    }
+
+    func stopInput() {
+        inputLock.lock()
+        let device = inputDevice
+        inputDevice = nil
+        inputError = nil
+        inputLock.unlock()
+        if let device {
+            DeckLinkInputStore.shared.unsubscribe(device: device, token: inputToken)
+        }
+    }
+
+    /// Hands a frame to the app. At most two in flight; the surface's global use count stays
+    /// raised until the app answers, so the capture ring never overwrites it mid-flight.
+    private func push(_ buffer: CVPixelBuffer) {
+        guard let connection,
+            let surfaceRef = CVPixelBufferGetIOSurface(buffer)?.takeUnretainedValue()
+        else { return }
+        let claimed = framesInFlight.withLock { count -> Bool in
+            guard count < 2 else { return false }
+            count += 1
+            return true
+        }
+        guard claimed else { return }
+        IOSurfaceIncrementUseCount(surfaceRef)
+        nonisolated(unsafe) let held = surfaceRef
+        let inFlight = framesInFlight
+        let release: @Sendable () -> Void = {
+            IOSurfaceDecrementUseCount(held)
+            inFlight.withLock { $0 -= 1 }
+        }
+        let proxy = connection.remoteObjectProxyWithErrorHandler { _ in release() }
+        guard let client = proxy as? DeckLinkInputClientProtocol else {
+            release()
+            return
+        }
+        client.inputFrame(unsafeBitCast(surfaceRef, to: IOSurface.self)) { release() }
+    }
+
     func ping(reply: @escaping (Bool) -> Void) {
         reply(true)
+    }
+}
+
+final class Locked<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
+
+    init(_ value: Value) { self.value = value }
+
+    func withLock<Result>(_ body: (inout Value) -> Result) -> Result {
+        lock.lock()
+        defer { lock.unlock() }
+        return body(&value)
     }
 }
 
@@ -222,7 +445,12 @@ final class ListenerDelegate: NSObject, NSXPCListenerDelegate {
         _ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection
     ) -> Bool {
         connection.exportedInterface = NSXPCInterface(with: DeckLinkHelperProtocol.self)
-        connection.exportedObject = DeckLinkHelperService()
+        connection.remoteObjectInterface = NSXPCInterface(with: DeckLinkInputClientProtocol.self)
+        let service = DeckLinkHelperService()
+        service.connection = connection
+        connection.exportedObject = service
+        // A capture must not outlive its app-side owner (app quit, input removed mid-call).
+        connection.invalidationHandler = { service.stopInput() }
         connection.resume()
         return true
     }

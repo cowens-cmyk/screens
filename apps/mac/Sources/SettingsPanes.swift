@@ -284,6 +284,7 @@ private struct VideoInputsSection: View {
     @State private var addingNDI = false
     @State private var ndiName = ""
     @State private var addingWeb = false
+    @State private var decklink = DeckLinkInputCatalog.shared
 
     var body: some View {
         Section {
@@ -330,10 +331,27 @@ private struct VideoInputsSection: View {
                 Divider()
                 Button("NDI Source by Name\u{2026}") { addingNDI = true }
                 Button("Web Page\u{2026}") { addingWeb = true }
+                Menu("DeckLink Input\u{2026}") {
+                    ForEach(decklink.ports) { port in
+                        Button(VideoInputWords.decklinkPortLabel(port)) {
+                            inventory.create(name: port.name, kind: .decklink, sourceId: String(port.persistentID))
+                        }
+                        .disabled(!port.usableForCapture)
+                    }
+                    if let reason = decklink.emptyReason {
+                        Text(reason)
+                    }
+                }
             }
             .fixedSize()
         } header: {
             Text("Video Inputs")
+        }
+        .task {
+            while !Task.isCancelled {
+                decklink.refresh()
+                try? await Task.sleep(for: .seconds(8))
+            }
         }
         .task {
             while !Task.isCancelled {
@@ -378,7 +396,11 @@ private enum VideoInputWords {
         guard let sourceId = entry.sourceId, !sourceId.isEmpty, let kind = entry.kind else { return "No device" }
         if kind == .ndi { return "NDI \u{B7} \(sourceId)" }
         if kind == .web { return "Web \u{B7} \(WebInputURL.normalized(sourceId)?.host() ?? sourceId)" }
-        if kind == .decklink { return "DeckLink \u{B7} not supported yet" }
+        if kind == .decklink {
+            let port = DeckLinkInputCatalog.shared.port(id: sourceId)?.name ?? "Port \(sourceId)"
+            guard let state = VideoInputInventory.shared.decklinkState(id: entry.id) else { return "DeckLink \u{B7} \(port)" }
+            return "DeckLink \u{B7} \(port) \u{B7} \(state.text)"
+        }
         return AVCaptureDevice(uniqueID: sourceId)?.localizedName ?? "Missing camera"
     }
 
@@ -389,6 +411,12 @@ private enum VideoInputWords {
         case .decklink: return "rectangle.connected.to.line.below"
         case .camera, nil: return "video"
         }
+    }
+
+    static func decklinkPortLabel(_ port: DeckLinkHelperInputDevice) -> String {
+        if !port.usableForCapture { return "\(port.name) \u{2014} mapped as output" }
+        if port.playbackBusy { return "\(port.name) \u{2014} in use for output" }
+        return port.name
     }
 
     static func webStatus(_ source: WebInputSource?) -> String {
@@ -430,6 +458,7 @@ private struct VideoInputDetail: View {
     @State private var confirmRemove = false
     @State private var assigningWeb = false
     @State private var webURL = ""
+    @State private var decklink = DeckLinkInputCatalog.shared
 
     @State private var frameRates: [Double] = []
 
@@ -445,7 +474,12 @@ private struct VideoInputDetail: View {
                             else if tag.hasPrefix("ndi:") { inventory.assignDevice(id: id, kind: .ndi, sourceId: String(tag.dropFirst(4))) }
                             else if tag == "ndi-by-name" { addingNDI = true }
                             else if tag == "web-new" { assigningWeb = true }
-                            else if tag.hasPrefix("web:") || tag.hasPrefix("decklink:") { return }
+                            else if tag.hasPrefix("decklink:") {
+                                let port = String(tag.dropFirst("decklink:".count))
+                                guard entry.kind != .decklink || entry.sourceId != port else { return }
+                                inventory.assignDevice(id: id, kind: .decklink, sourceId: port)
+                            }
+                            else if tag.hasPrefix("web:") { return }
                             else { inventory.assignDevice(id: id, kind: .camera, sourceId: tag) }
                         })
                     ) {
@@ -466,8 +500,20 @@ private struct VideoInputDetail: View {
                             }
                             Text("Web Page\u{2026}").tag("web-new")
                         }
-                        if let sourceId = entry.sourceId, entry.kind == .decklink {
-                            Text("DeckLink \u{B7} \(sourceId) (not supported yet)").tag("decklink:\(sourceId)")
+                        Section("DeckLink") {
+                            ForEach(decklink.capturePorts) { Text($0.name).tag("decklink:\($0.persistentID)") }
+                            if let sourceId = entry.sourceId, entry.kind == .decklink,
+                               !decklink.capturePorts.contains(where: { String($0.persistentID) == sourceId }) {
+                                Text("\(decklink.port(id: sourceId)?.name ?? "DeckLink port \(sourceId)") (not available)")
+                                    .tag("decklink:\(sourceId)")
+                            }
+                        }
+                    }
+                    if entry.kind == .decklink {
+                        LabeledContent("Signal") {
+                            let state = inventory.decklinkState(id: id)
+                            Text(state?.text ?? "Not running")
+                                .foregroundStyle(Self.decklinkColor(state))
                         }
                     }
                     if entry.kind == .web {
@@ -545,6 +591,9 @@ private struct VideoInputDetail: View {
                     Button("Remove Input\u{2026}", role: .destructive) { confirmRemove = true }
                 } footer: {
                     Text("Removing stops its capture; slides using it render empty. The audio input rides with it in the Mixer while live; video delay holds the picture back to match late audio. Frame rate is the capture device's mode, from the rates the device offers: Auto takes 30; pick the one nearest your source when it runs faster (60 for a 59.94 camera). Inputs on the same device share it.")
+                    if entry.kind == .decklink {
+                        Text("A DeckLink input captures one port of the card and follows the incoming format automatically (an Apple TV or other HDMI source needs an HDMI\u{2192}SDI converter on SDI-only cards). Only ports mapped as inputs in Desktop Video Setup can capture; a port that is driving a DeckLink screen output can't.")
+                    }
                     if entry.kind == .web {
                         Text("A web page input records its Web Input window with Screen Recording, so keep that window open on a display (it can sit behind other windows) and use it to click play, scroll or sign in. Page audio plays from this Mac's sound output, not the Mixer. For a full-frame video, use the player's embed address (youtube.com/embed/\u{2026}).")
                     }
@@ -558,6 +607,7 @@ private struct VideoInputDetail: View {
                         .map { MediaEngine.captureFrameRates(for: $0) } ?? []
                 }.value
             }
+            .task { decklink.refresh() }
             .task {
                 while !Task.isCancelled {
                     let names = await Task.detached(priority: .utility) { () -> [String]? in
@@ -590,6 +640,14 @@ private struct VideoInputDetail: View {
             }
         } else {
             ContentUnavailableView("Input not found", systemImage: "video")
+        }
+    }
+
+    private static func decklinkColor(_ state: DeckLinkInputClient.State?) -> Color {
+        switch state {
+        case .receiving: .green
+        case .failed: .orange
+        case .noSignal, .starting, nil: .secondary
         }
     }
 
