@@ -586,12 +586,10 @@ public struct ShowState: Sendable, Equatable {
             ?? SlideSceneBuilder.canvasSize(for: liveSlide?.presentation)
         var scene = RenderScene(canvasSize: canvasSize)
         for (layer, media) in liveMedia {
-            scene.addItem(
-                RenderItem(
-                    id: "live-media-\(layer.rawValue)",
-                    frame: CGRect(origin: .zero, size: canvasSize),
-                    content: .media(id: media.mediaId, scaleMode: .fill)
-                ),
+            scene.addItems(
+                SlideSceneBuilder.fullFrameMediaItems(
+                    id: "live-media-\(layer.rawValue)", mediaId: media.mediaId,
+                    scaleMode: media.scaleMode, canvasSize: canvasSize),
                 to: layer
             )
         }

@@ -3863,6 +3863,9 @@
         },
         "lyricsImportThemeId": {
           "type": "string"
+        },
+        "scriptureThemeId": {
+          "type": "string"
         }
       },
       "required": [

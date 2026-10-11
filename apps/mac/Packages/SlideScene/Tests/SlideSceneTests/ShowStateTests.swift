@@ -82,7 +82,7 @@ private func cue(
     #expect(show.liveMedia[.loopingVideos]?.mediaId == "ocean")
     let scene = show.scene()
     #expect(scene.layers.first { $0.kind == .slide }!.items.isEmpty)
-    #expect(scene.layers.first { $0.kind == .loopingVideos }!.items.count == 1)
+    #expect(scene.layers.first { $0.kind == .loopingVideos }!.items.map(\.id) == ["live-media-loopingVideos-letterbox", "live-media-loopingVideos"])
 }
 
 @Test func clearFunctionMediaDropsEveryMediaLayer() {

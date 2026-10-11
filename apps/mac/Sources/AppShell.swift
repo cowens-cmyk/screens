@@ -1687,6 +1687,7 @@ extension FocusedValues {
     @Entry var presentLibrarySearch: MenuAction?
 
     @Entry var presentLyricImport: MenuAction?
+    @Entry var presentScripture: MenuAction?
 
     @Entry var presentNewSlide: MenuAction?
 

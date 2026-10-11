@@ -395,6 +395,14 @@ struct AppSettingsView: View {
             keywords: "ndi network interface adapter nic vlan ethernet wifi wired discovery pin bind",
             control: AnyView(NDINetworkScopeControl())
         ))
+        rows.append(SettingsRowSpec(
+            id: "bible.sources", category: .bible,
+            title: "Bible translations",
+            caption: "Where scripture text comes from. Type a reference in Scripture Slides (File menu) and slides are built with your Bible template — each slide starts at the beginning of a verse.",
+            keywords: "bible scripture translation esv niv kjv nlt api verse passage key",
+            control: AnyView(BibleSettingsForm()),
+            stacked: true
+        ))
         rows.append(contentsOf: apiRows)
         return rows
     }
@@ -524,6 +532,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case keyboard
     case screens
     case streamRecord
+    case bible
     case api
 
     var id: String { rawValue }
@@ -539,6 +548,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .keyboard: "Keyboard"
         case .screens: "Screen Outputs"
         case .streamRecord: "Stream & Record"
+        case .bible: "Bible"
 
         case .api: "Network & API"
         }
@@ -555,6 +565,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .keyboard: "keyboard"
         case .screens: "display"
         case .streamRecord: "record.circle"
+        case .bible: "book"
         case .api: "network"
         }
     }

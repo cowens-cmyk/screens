@@ -431,9 +431,10 @@ private let theme = Theme(
     let scene = SlideSceneBuilder.scene(for: slide, theme: nil)
 
     let background = scene.layers.first { $0.kind == .loopingVideos }!.items
-    #expect(background.count == 1)
-    #expect(background[0].content == .media(id: "media-9", scaleMode: .fill))
-    #expect(background[0].frame == CGRect(origin: .zero, size: SlideSceneBuilder.canvasSize))
+    #expect(background.count == 2, "black letterbox backing, then the fitted media")
+    #expect(background[0].content == .solid(SceneColor(red: 0, green: 0, blue: 0)))
+    #expect(background[1].content == .media(id: "media-9", scaleMode: .fit))
+    #expect(background[1].frame == CGRect(origin: .zero, size: SlideSceneBuilder.canvasSize))
 
     let layerOrder = scene.layers.map(\.kind)
     #expect(layerOrder.firstIndex(of: .loopingVideos)! < layerOrder.firstIndex(of: .slide)!)
@@ -1566,4 +1567,14 @@ private func conditioned(_ conditions: [VisibilityCondition], match: VisibilityM
         #expect(preset.id.hasPrefix("builtin."), "\(preset.name)")
     }
     #expect(Set(EffectPreset.recommended.map(\.id)).count == EffectPreset.recommended.count)
+}
+
+@Test func fullFrameMediaFitsWithBlackBarsUnlessSetToFill() {
+    let canvas = CGSize(width: 1920, height: 1080)
+    let fit = SlideSceneBuilder.fullFrameMediaItems(id: "m", mediaId: "portrait", scaleMode: nil, canvasSize: canvas)
+    #expect(fit.map(\.content) == [
+        .solid(SceneColor(red: 0, green: 0, blue: 0)), .media(id: "portrait", scaleMode: .fit),
+    ])
+    let fill = SlideSceneBuilder.fullFrameMediaItems(id: "m", mediaId: "loop", scaleMode: .fill, canvasSize: canvas)
+    #expect(fill.map(\.content) == [.media(id: "loop", scaleMode: .fill)])
 }

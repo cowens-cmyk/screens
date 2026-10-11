@@ -115,6 +115,11 @@ struct InspectorView: View {
                 }
                 Toggle("Favorite", isOn: binding(item, \.favorite))
                 Toggle("Loops", isOn: binding(item, \.loops))
+                Picker("Full-Screen Scaling", selection: binding(item, \.scaleMode)) {
+                    Text("Fit (black bars)").tag(MediaScaleMode?.none)
+                    Text("Fill (crop)").tag(MediaScaleMode?.some(.fill))
+                    Text("Stretch").tag(MediaScaleMode?.some(.stretch))
+                }
                 TagsField(tags: binding(item, \.tags))
             }
         } else {

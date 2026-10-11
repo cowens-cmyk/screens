@@ -37,6 +37,7 @@ struct LibrarySidebar: View {
     @State private var pendingApplyTheme: PendingDeckTheme?
     @State private var creatingFolder = false
     @State private var importingLyrics = false
+    @State private var buildingScripture = false
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     @Environment(\.openWindow) private var openWindow
@@ -107,6 +108,10 @@ struct LibrarySidebar: View {
         .focusedSceneValue(\.presentLyricImport, MenuAction("importLyrics") { importingLyrics = true })
         .sheet(isPresented: $importingLyrics) {
             ImportLyricsSheet(model: model, render: render, onImported: showImported)
+        }
+        .focusedSceneValue(\.presentScripture, MenuAction("scripture") { buildingScripture = true })
+        .sheet(isPresented: $buildingScripture) {
+            ScriptureSheet(model: model, render: render, onCreated: showImported)
         }
         .deckThemeConfirmation(model: model, pending: $pendingApplyTheme)
         .sheet(item: $newFolderTarget) { entry in
@@ -1281,6 +1286,7 @@ struct LibrarySidebar: View {
 struct LibraryCommands: Commands {
     @FocusedValue(\.presentLibrarySearch) private var presentSearch
     @FocusedValue(\.presentLyricImport) private var presentLyricImport
+    @FocusedValue(\.presentScripture) private var presentScripture
     @FocusedValue(\.presentWorkspaceImport) private var presentWorkspaceImport
     @FocusedValue(\.libraryModel) private var model
     @FocusedValue(\.slideEditor) private var slideEditor
@@ -1325,6 +1331,9 @@ struct LibraryCommands: Commands {
                 .disabled(presentSearch == nil || runOnly)
         }
         CommandGroup(after: .importExport) {
+            Button("Scripture Slides…") { presentScripture?() }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+                .disabled(presentScripture == nil || runOnly)
             Button("Import Lyrics…") { presentLyricImport?() }
                 .disabled(presentLyricImport == nil || runOnly)
             Button("Import from ProPresenter…") { importProPresenter() }

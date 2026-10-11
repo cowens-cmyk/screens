@@ -115,7 +115,7 @@ private func carried(_ presentation: Presentation, _ index: Int) -> [LayerKind: 
             carriedMedia: [.loopingVideos: "bg-video", .stillGraphics: "fg-still", .videos: "fg-video"]
         )
         func ids(_ kind: LayerKind) -> [String] {
-            scene.layers.first { $0.kind == kind }?.items.map(\.id) ?? []
+            scene.layers.first { $0.kind == kind }?.items.map(\.id).filter { !$0.hasSuffix("-letterbox") } ?? []
         }
         #expect(ids(.loopingVideos) == ["a-cue-background"], "the cue background already fills its layer with that id")
         #expect(ids(.stillGraphics) == ["a-carried-stillGraphics"])
@@ -123,7 +123,7 @@ private func carried(_ presentation: Presentation, _ index: Int) -> [LayerKind: 
         let replaced = SlideSceneBuilder.scene(
             for: deck.slides[0], theme: nil, presentation: deck, carriedMedia: [.loopingVideos: "bg-still"]
         )
-        #expect(ids(.loopingVideos).count == 1 && replaced.layers.first { $0.kind == .loopingVideos }?.items.count == 2,
+        #expect(ids(.loopingVideos).count == 1 && replaced.layers.first { $0.kind == .loopingVideos }?.items.filter { !$0.id.hasSuffix("-letterbox") }.count == 2,
                 "a different id on the background's layer stacks over the cue background")
     }
 }

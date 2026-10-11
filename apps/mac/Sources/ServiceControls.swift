@@ -1091,7 +1091,7 @@ final class ServiceControls {
         state.fire(
             media: CueMedia(
                 mediaId: mediaItem.id, loops: loopsOverride,
-                classification: mediaItem.classification),
+                classification: mediaItem.classification, scaleMode: mediaItem.scaleMode),
             on: layer)
         apply()
 

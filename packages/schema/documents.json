@@ -4522,6 +4522,11 @@
           "name": "lyricsImportThemeId",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "scriptureThemeId",
+          "type": "string",
+          "optional": true
         }
       ]
     },

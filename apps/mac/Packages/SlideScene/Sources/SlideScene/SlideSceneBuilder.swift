@@ -389,12 +389,10 @@ public enum SlideSceneBuilder {
             slide: slide, presentation: presentation, arrangementId: arrangementId
         )
         if let background {
-            scene.addItem(
-                RenderItem(
-                    id: "\(slide.id)-cue-background",
-                    frame: CGRect(origin: .zero, size: canvasSize),
-                    content: .media(id: background.mediaId, scaleMode: .fill)
-                ),
+            scene.addItems(
+                fullFrameMediaItems(
+                    id: "\(slide.id)-cue-background", mediaId: background.mediaId,
+                    scaleMode: background.scaleMode, canvasSize: canvasSize),
                 to: layerKind(background.layer)
             )
         }
@@ -403,12 +401,10 @@ public enum SlideSceneBuilder {
         for layer in LayerKind.allCases {
             if let mediaId = carriedMedia[layer],
                !(cueBackground?.layer == layer && cueBackground?.mediaId == mediaId) {
-                scene.addItem(
-                    RenderItem(
-                        id: "\(slide.id)-carried-\(layer.rawValue)",
-                        frame: CGRect(origin: .zero, size: canvasSize),
-                        content: .media(id: mediaId, scaleMode: .fill)
-                    ),
+                scene.addItems(
+                    fullFrameMediaItems(
+                        id: "\(slide.id)-carried-\(layer.rawValue)", mediaId: mediaId,
+                        scaleMode: nil, canvasSize: canvasSize),
                     to: layer
                 )
             }
