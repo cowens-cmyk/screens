@@ -75,9 +75,14 @@ echo "DMG: $MAC_DIR/build/dist/Screens-$VERSION.dmg"
 
 if [ $PUBLISH = 1 ]; then
   echo "==> Publishing v$VERSION to $REPO"
-  NOTES="$(git -C "$MAC_DIR" log --pretty='- %s' "$(git -C "$MAC_DIR" describe --tags --abbrev=0 2>/dev/null || git -C "$MAC_DIR" rev-list --max-parents=0 HEAD)"..HEAD | head -40)"
-  git -C "$MAC_DIR" tag -f "v$VERSION"
-  git -C "$MAC_DIR" push origin "v$VERSION" --force
+  PREVIOUS="$(gh release view --repo "$REPO" --json tagName -q .tagName 2>/dev/null || true)"
+  RANGE="${PREVIOUS:+$PREVIOUS..}HEAD"
+  git -C "$MAC_DIR" fetch -q --tags -c credential.helper= -c 'credential.helper=!gh auth git-credential' origin 2>/dev/null || true
+  NOTES="$(git -C "$MAC_DIR" log --pretty='- %s' "$RANGE" 2>/dev/null | head -40)"
+  # Push with the gh login so a different Keychain git credential can't get in the way.
+  git -C "$MAC_DIR" -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin HEAD:main
   gh release create "v$VERSION" "$MAC_DIR/build/dist/Screens-$VERSION.dmg" \
-    --repo "$REPO" --title "Screens $VERSION" --notes "$NOTES"
+    --repo "$REPO" --target "$(git -C "$MAC_DIR" rev-parse HEAD)" \
+    --title "Screens $VERSION" --notes "$NOTES"
+  git -C "$MAC_DIR" fetch -q --tags -c credential.helper= -c 'credential.helper=!gh auth git-credential' origin 2>/dev/null || true
 fi
