@@ -918,6 +918,12 @@ private struct TriggerDetailEditor: View {
                             id: UUID().uuidString, kind: .timerReaches,
                             timerId: controls?.timers.timers.first?.id, timerSeconds: 0))
                     }
+                    Button("Calendar Event") {
+                        append(ScheduleCondition(
+                            id: UUID().uuidString, kind: .calendarEvent,
+                            eventTitleContains: "", offsetSeconds: 0))
+                        Task { await CalendarBridge.shared.requestAccess() }
+                    }
                 }
             }
             Section("Actions") {
@@ -976,6 +982,7 @@ private struct ConditionEditor: View {
         case .weekly: "Weekly"
         case .oneTime: "One Time"
         case .timerReaches: "Timer Reaches"
+        case .calendarEvent: "Calendar Event"
         }
     }
 
@@ -1037,6 +1044,8 @@ private struct ConditionEditor: View {
                 ),
                 includesDate: true
             )
+        case .calendarEvent:
+            CalendarConditionFields(condition: condition, update: update)
         case .timerReaches:
             Picker("Timer", selection: Binding(
                 get: { condition.timerId ?? "" },
@@ -1292,6 +1301,11 @@ extension SchedulerView {
                 return ScheduleConditionFormat.seconds(in: raw) > 0
                     ? date.formatted(.dateTime.month(.abbreviated).day().hour().minute().second())
                     : date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+            case .calendarEvent:
+                let title = condition.eventTitleContains.flatMap { $0.isEmpty ? nil : "“\($0)”" } ?? "any event"
+                let offset = Int(condition.offsetSeconds ?? 0) / 60
+                let when = offset == 0 ? "starts" : offset < 0 ? "starts in \(-offset) min" : "started \(offset) min ago"
+                return "Calendar: \(title) \(when)"
             case .timerReaches:
                 let name = condition.timerId.flatMap {
                     controls?.timers.snapshot(id: $0)?.name
@@ -1307,5 +1321,36 @@ extension SchedulerView {
         return actionCount == 0
             ? summary + " · no actions"
             : summary + " · \(actionCount) action\(actionCount == 1 ? "" : "s")"
+    }
+}
+
+private struct CalendarConditionFields: View {
+    let condition: ScheduleCondition
+    let update: (@escaping @Sendable (inout ScheduleCondition) -> Void) -> Void
+    @Bindable private var bridge = CalendarBridge.shared
+
+    var body: some View {
+        if !bridge.authorized {
+            Button("Allow Calendar Access") { Task { await bridge.requestAccess() } }
+            if let status = bridge.statusText { Text(status).font(.caption).foregroundStyle(.secondary) }
+        }
+        Picker("Calendar", selection: Binding(
+            get: { condition.calendarId ?? "" },
+            set: { value in update { $0.calendarId = value.isEmpty ? nil : value } }
+        )) {
+            Text("Any Calendar").tag("")
+            ForEach(bridge.calendars) { Text($0.title).tag($0.id) }
+        }
+        TextField("Event title contains", text: Binding(
+            get: { condition.eventTitleContains ?? "" },
+            set: { value in update { $0.eventTitleContains = value } }
+        ))
+        Stepper(value: Binding(
+            get: { Int(condition.offsetSeconds ?? 0) / 60 },
+            set: { value in update { $0.offsetSeconds = Double(value * 60) } }
+        ), in: -240...240) {
+            let minutes = Int(condition.offsetSeconds ?? 0) / 60
+            LabeledContent("Fire", value: minutes == 0 ? "At start" : minutes < 0 ? "\(-minutes) min before" : "\(minutes) min after")
+        }
     }
 }

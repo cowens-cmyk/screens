@@ -1342,6 +1342,10 @@ struct LibraryCommands: Commands {
                 .disabled(presentWorkspaceImport == nil || runOnly)
             Button("Import PowerPoint…") { importPowerPoint() }
                 .disabled(model == nil || runOnly)
+            Button("Import Keynote or PDF…") { importDocuments() }
+                .disabled(model == nil || runOnly)
+            Button("Import Chord Chart…") { importDocuments(chordChartsOnly: true) }
+                .disabled(model == nil || runOnly)
             Divider()
             Button("Export Library Backup…") { exportBackup() }
                 .disabled(model == nil || runOnly)
@@ -1372,6 +1376,36 @@ struct LibraryCommands: Commands {
             let urls = panel.urls
             Task { @MainActor in
                 await runImport(model: model, urls: urls)
+            }
+        }
+    }
+
+    /// Keynote decks, PDF slides, or chord charts (PDF, ChordPro or
+    /// chords-over-lyrics text) — a chord chart becomes a song with chords.
+    private func importDocuments(chordChartsOnly: Bool = false) {
+        guard let model else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = chordChartsOnly
+            ? [.pdf, .plainText] + ["cho", "chopro", "crd", "chordpro"].compactMap { UTType(filenameExtension: $0) }
+            : [.pdf] + ["key"].compactMap { UTType(filenameExtension: $0) }
+        panel.message = chordChartsOnly
+            ? "Choose chord charts — each becomes a song with lyrics, sections, chords and key"
+            : "Choose Keynote decks or PDFs"
+        panel.begin { response in
+            guard response == .OK else { return }
+            let urls = panel.urls
+            Task { @MainActor in
+                for url in urls {
+                    if chordChartsOnly, url.pathExtension.lowercased() != "pdf",
+                       let text = try? String(contentsOf: url, encoding: .utf8) {
+                        let source = LyricTextImporter.detectFormat(text) == .chordPro
+                            ? text : ChordChartImport.chordPro(fromChart: text)
+                        model.importChordChart(source: source, fallbackTitle: url.deletingPathExtension().lastPathComponent)
+                    } else {
+                        _ = await model.importFiles([url])
+                    }
+                }
             }
         }
     }

@@ -1614,6 +1614,8 @@ public struct StreamRecordPreset: Codable, Sendable, Equatable, Identifiable {
 public enum CaptureSourceKind: String, Codable, Sendable, CaseIterable, Equatable {
     case camera
     case ndi
+    case web
+    case decklink
 }
 
 public enum SlideActionKind: String, Codable, Sendable, CaseIterable, Equatable {
@@ -1757,6 +1759,7 @@ public enum ScheduleConditionKind: String, Codable, Sendable, CaseIterable, Equa
     case weekly
     case oneTime
     case timerReaches
+    case calendarEvent
 }
 
 public struct ScheduleCondition: Codable, Sendable, Equatable, Identifiable {
@@ -1768,8 +1771,11 @@ public struct ScheduleCondition: Codable, Sendable, Equatable, Identifiable {
     public var timerId: String?
     public var timerSeconds: Double?
     public var excludedDates: [String]?
+    public var calendarId: String?
+    public var eventTitleContains: String?
+    public var offsetSeconds: Double?
 
-    public init(id: String, kind: ScheduleConditionKind, days: [Int]? = nil, timeOfDay: String? = nil, date: String? = nil, timerId: String? = nil, timerSeconds: Double? = nil, excludedDates: [String]? = nil) {
+    public init(id: String, kind: ScheduleConditionKind, days: [Int]? = nil, timeOfDay: String? = nil, date: String? = nil, timerId: String? = nil, timerSeconds: Double? = nil, excludedDates: [String]? = nil, calendarId: String? = nil, eventTitleContains: String? = nil, offsetSeconds: Double? = nil) {
         self.id = id
         self.kind = kind
         self.days = days
@@ -1778,6 +1784,9 @@ public struct ScheduleCondition: Codable, Sendable, Equatable, Identifiable {
         self.timerId = timerId
         self.timerSeconds = timerSeconds
         self.excludedDates = excludedDates
+        self.calendarId = calendarId
+        self.eventTitleContains = eventTitleContains
+        self.offsetSeconds = offsetSeconds
     }
 }
 

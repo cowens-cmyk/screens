@@ -406,6 +406,14 @@ struct AppSettingsView: View {
             ))
         }
         rows.append(SettingsRowSpec(
+            id: "pco.sync", category: .planningCenter,
+            title: "Planning Center",
+            caption: "Upcoming plans become services and stay updated — songs, keys, arrangements and order.",
+            keywords: "planning center pco services plan sync song key arrangement token import month",
+            control: AnyView(PlanningCenterSettingsForm()),
+            stacked: true
+        ))
+        rows.append(SettingsRowSpec(
             id: "bible.sources", category: .bible,
             title: "Bible translations",
             caption: "Where scripture text comes from. Type a reference in Scripture Slides (File menu) and slides are built with your Bible template — each slide starts at the beginning of a verse.",
@@ -463,7 +471,7 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "api.address", category: .api,
                 title: "Connect at",
-                caption: "Enter this address and port in Companion, a Stream Deck, or any remote — then sign in with an access key from the row below.",
+                caption: "Phone & tablet remote: open http://<this address>/ in Safari or Chrome on the same Wi-Fi and paste a Control access key from the row below. Companion and Stream Deck use the same address.",
                 keywords: "api address ip port connect companion stream deck remote host default key",
                 control: AnyView(LocalAPIAddressRow(api: api))
             ),
@@ -543,6 +551,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case screens
     case streamRecord
     case bible
+    case planningCenter
     case api
 
     var id: String { rawValue }
@@ -559,6 +568,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .screens: "Screen Outputs"
         case .streamRecord: "Stream & Record"
         case .bible: "Bible"
+        case .planningCenter: "Planning Center"
 
         case .api: "Network & API"
         }
@@ -576,6 +586,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .screens: "display"
         case .streamRecord: "record.circle"
         case .bible: "book"
+        case .planningCenter: "calendar.badge.clock"
         case .api: "network"
         }
     }

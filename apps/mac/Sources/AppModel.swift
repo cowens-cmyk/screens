@@ -2997,7 +2997,7 @@ final class AppModel {
     }
 
     private(set) var isImporting = false
-    private(set) var lastImportSummary: String?
+    var lastImportSummary: String?
 
     private(set) var importReplaceVersion = 0
 
@@ -3011,6 +3011,11 @@ final class AppModel {
 
     @discardableResult
     func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil) async -> [String] {
+        if urls.contains(where: { Self.documentImportExtensions.contains($0.pathExtension.lowercased()) }) {
+            let split = await importDocuments(from: urls)
+            noteLibraryWideMutation()
+            return split.rest.isEmpty ? [] : await importFiles(split.rest, placement: placement)
+        }
         isImporting = true
         defer { isImporting = false }
         let results = await importer?.importFiles(at: urls, placement: placement ?? newPlacement) ?? []

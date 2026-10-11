@@ -127,8 +127,14 @@ public enum ScheduleMath {
             return date > after ? date : nil
         case .timerReaches:
             return nil
+        case .calendarEvent:
+            return calendarEventStart(condition, after)
         }
     }
+
+    /// The next matching Calendar event start (plus the condition's offset)
+    /// after a date. The app installs an EventKit-backed lookup at launch.
+    nonisolated(unsafe) public static var calendarEventStart: @Sendable (ScheduleCondition, Date) -> Date? = { _, _ in nil }
 
     public static func nextDue(
         for trigger: ScheduleTrigger, after: Date, calendar: Calendar
@@ -169,7 +175,7 @@ public enum ScheduleMath {
                   let date = parseLocalDate(raw, calendar: calendar)
             else { return false }
             return now >= date
-        case .timerReaches:
+        case .timerReaches, .calendarEvent:
             return false
         }
     }

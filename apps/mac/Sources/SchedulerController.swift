@@ -132,6 +132,9 @@ final class SchedulerController {
             ) { [weak self] _ in Task { @MainActor in self?.sweep() } },
         ]
 
+        CalendarBridge.shared.onChange = { [weak self] in self?.sweep() }
+        CalendarBridge.shared.start()
+
         armObservation()
         sweep()
     }

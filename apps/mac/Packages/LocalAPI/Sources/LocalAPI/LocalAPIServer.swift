@@ -78,6 +78,20 @@ public final class LocalAPIServer: @unchecked Sendable {
             )
         }
 
+        let serviceName = configuration.serviceName
+        for path in ["/", "/remote"] {
+            await http.appendRoute(HTTPRoute("GET \(path)")) { _ in
+                HTTPResponse(
+                    statusCode: .ok,
+                    headers: [
+                        HTTPHeader("Content-Type"): "text/html; charset=utf-8",
+                        HTTPHeader("Cache-Control"): "no-store",
+                    ],
+                    body: Data(RemotePage.html(serviceName: serviceName).utf8)
+                )
+            }
+        }
+
         let router = self.router
         let events = self.events
         let tokens = self.tokens

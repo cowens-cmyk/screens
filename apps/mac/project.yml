@@ -84,6 +84,8 @@ targets:
         NSLocalNetworkUsageDescription: "Screens uses your local network to discover and receive NDI video sources, and announces its Local API so remotes and control surfaces can find this Mac."
         NSCameraUsageDescription: "Screens shows cameras and capture devices on your screens as live video inputs."
         NSMicrophoneUsageDescription: "Screens can include a capture device's audio when it is used as a live input."
+        NSAppleEventsUsageDescription: "Screens asks Keynote to export decks so they can be imported."
+        NSCalendarsFullAccessUsageDescription: "Screens can fire slides and macros when events on your calendar start."
     settings:
       base:
         PRODUCT_NAME: "Screens"

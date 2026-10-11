@@ -26,6 +26,10 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>MXUGitCommit</key>
 	<string>$(MXU_GIT_COMMIT)</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Screens asks Keynote to export decks so they can be imported.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Screens can fire slides and macros when events on your calendar start.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Screens shows cameras and capture devices on your screens as live video inputs.</string>
 	<key>NSLocalNetworkUsageDescription</key>

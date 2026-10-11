@@ -2990,7 +2990,9 @@
       "kind": "enum",
       "cases": [
         "camera",
-        "ndi"
+        "ndi",
+        "web",
+        "decklink"
       ]
     },
     "SlideActionKind": {
@@ -3257,7 +3259,8 @@
       "cases": [
         "weekly",
         "oneTime",
-        "timerReaches"
+        "timerReaches",
+        "calendarEvent"
       ]
     },
     "ScheduleCondition": {
@@ -3299,6 +3302,21 @@
         {
           "name": "excludedDates",
           "type": "list:string",
+          "optional": true
+        },
+        {
+          "name": "calendarId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "eventTitleContains",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "offsetSeconds",
+          "type": "double",
           "optional": true
         }
       ]

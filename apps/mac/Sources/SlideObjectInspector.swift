@@ -2,6 +2,7 @@ import PresenterCore
 import RenderEngine
 import SlideScene
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SlideObjectInspector: View {
     let model: SlideEditorModel
@@ -248,6 +249,9 @@ struct SlideObjectInspector: View {
             }
             .help("Each type can run default actions when it goes live — set them in Settings › Presentation Types")
 
+            Button("Attach Chord Chart…") { attachChordChart() }
+                .help("Drop in the song's chord chart (PDF, ChordPro or text) — lyrics, sections, chords and key are rebuilt from it")
+
             InspectorPicker("Key", selection: musicKeyBinding()) {
                 Text("None").tag("")
                 Divider()
@@ -274,6 +278,19 @@ struct SlideObjectInspector: View {
     }
 
     private static let keyNames = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+
+    private func attachChordChart() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.pdf, .plainText]
+            + ["cho", "chopro", "crd", "chordpro"].compactMap { UTType(filenameExtension: $0) }
+        panel.message = "Choose this song's chord chart — its slides, sections, chords and key will be replaced"
+        let appModel = model.appModel
+        let id = model.presentation.id
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in _ = await appModel.applyChordChart(url, to: id) }
+        }
+    }
 
     private func categoryBinding() -> Binding<String> {
         Binding(

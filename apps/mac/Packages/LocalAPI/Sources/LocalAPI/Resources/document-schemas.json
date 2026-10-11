@@ -2505,7 +2505,9 @@
       "type": "string",
       "enum": [
         "camera",
-        "ndi"
+        "ndi",
+        "web",
+        "decklink"
       ]
     },
     "SlideActionKind": {
@@ -2707,7 +2709,8 @@
       "enum": [
         "weekly",
         "oneTime",
-        "timerReaches"
+        "timerReaches",
+        "calendarEvent"
       ]
     },
     "ScheduleCondition": {
@@ -2742,6 +2745,15 @@
           "items": {
             "type": "string"
           }
+        },
+        "calendarId": {
+          "type": "string"
+        },
+        "eventTitleContains": {
+          "type": "string"
+        },
+        "offsetSeconds": {
+          "type": "number"
         }
       },
       "required": [
