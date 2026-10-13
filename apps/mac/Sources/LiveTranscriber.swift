@@ -11,6 +11,8 @@ final class LiveTranscriber {
 
     private(set) var state: State = .idle
     var onText: ((_ text: String, _ isFinal: Bool) -> Void)?
+    /// Input level, 0…1, a few times a second — proof the right mic is live.
+    var onLevel: ((Float) -> Void)?
     var onState: ((State) -> Void)?
 
     private var hub: AudioInputHub?
@@ -19,13 +21,13 @@ final class LiveTranscriber {
     private var task: Task<Void, Never>?
     private var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
 
-    static func inputDevices() -> [(uid: String, name: String)] {
-        AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified
-        ).devices.map { ($0.uniqueID, $0.localizedName) }
+    /// Every input Core Audio knows: built-in and USB mics, audio
+    /// interfaces, Dante and aggregate devices.
+    static func inputDevices() -> [(uid: String, name: String, channels: Int)] {
+        AudioDeviceList.inputDevices().map { ($0.uid, $0.name, $0.channelCount) }
     }
 
-    func start(deviceUID: String) {
+    func start(deviceUID: String, channels: InputChannelSelection = .default) {
         stop()
         guard #available(macOS 26, *) else {
             set(.failed("Live listening needs macOS 26 or newer."))
@@ -38,7 +40,11 @@ final class LiveTranscriber {
             hubUID = deviceUID
             let (stream, continuation) = AsyncStream<AVAudioPCMBuffer>.makeStream(bufferingPolicy: .bufferingNewest(64))
             self.continuation = continuation
-            tapToken = hub.addTap(channels: .default) { buffer, _, _ in
+            let levels = LevelMeter { [weak self] level in
+                Task { @MainActor in self?.onLevel?(level) }
+            }
+            tapToken = hub.addTap(channels: channels) { buffer, _, _ in
+                levels.measure(buffer)
                 continuation.yield(buffer)
             }
             task = Task { [weak self] in await self?.run(buffers: stream) }
@@ -124,5 +130,28 @@ final class LiveTranscriber {
             return buffer
         }
         return error == nil && output.frameLength > 0 ? output : nil
+    }
+}
+
+/// Peak level of the incoming audio, reported about ten times a second.
+private final class LevelMeter: @unchecked Sendable {
+    private let report: @Sendable (Float) -> Void
+    private let lock = NSLock()
+    private var peak: Float = 0
+    private var last = Date.distantPast
+
+    init(report: @escaping @Sendable (Float) -> Void) { self.report = report }
+
+    func measure(_ buffer: AVAudioPCMBuffer) {
+        guard let data = buffer.floatChannelData?[0] else { return }
+        var loudest: Float = 0
+        for index in 0..<Int(buffer.frameLength) { loudest = max(loudest, abs(data[index])) }
+        lock.lock()
+        peak = max(peak, loudest)
+        let due = Date().timeIntervalSince(last) > 0.1
+        let value = peak
+        if due { peak = 0; last = Date() }
+        lock.unlock()
+        if due { report(min(1, value)) }
     }
 }

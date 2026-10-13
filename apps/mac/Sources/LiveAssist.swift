@@ -16,8 +16,20 @@ final class LiveAssist {
     private static let deviceKey = "liveAssist.deviceUID"
 
     var deviceUID: String {
-        didSet { UserDefaults.standard.set(deviceUID, forKey: Self.deviceKey) }
+        didSet {
+            UserDefaults.standard.set(deviceUID, forKey: Self.deviceKey)
+            if deviceUID != oldValue { channel = nil; restartIfListening() }
+        }
     }
+    /// One input channel (the worship leader's mic on an interface), or
+    /// nil for the first pair.
+    var channel: Int? {
+        didSet {
+            UserDefaults.standard.set(channel ?? -1, forKey: "liveAssist.channel")
+            if channel != oldValue { restartIfListening() }
+        }
+    }
+    private(set) var level: Float = 0
     var followsLyrics = false
     var detectsScripture = true
     /// Below this, the follower only suggests; the operator decides.
@@ -41,7 +53,10 @@ final class LiveAssist {
 
     private init() {
         deviceUID = UserDefaults.standard.string(forKey: Self.deviceKey) ?? ""
+        let storedChannel = UserDefaults.standard.object(forKey: "liveAssist.channel") as? Int ?? -1
+        channel = storedChannel >= 0 ? storedChannel : nil
         transcriber.onText = { [weak self] text, isFinal in self?.heard(text, isFinal: isFinal) }
+        transcriber.onLevel = { [weak self] level in self?.level = level }
         transcriber.onState = { [weak self] state in self?.update(state) }
     }
 
@@ -51,7 +66,9 @@ final class LiveAssist {
     }
 
     func start() async {
-        if deviceUID.isEmpty { deviceUID = LiveTranscriber.inputDevices().first?.uid ?? "" }
+        if deviceUID.isEmpty || !LiveTranscriber.inputDevices().contains(where: { $0.uid == deviceUID }) {
+            deviceUID = LiveTranscriber.inputDevices().first?.uid ?? ""
+        }
         guard !deviceUID.isEmpty else {
             status = "Choose an audio input"
             return
@@ -63,12 +80,19 @@ final class LiveAssist {
             status = "Allow Speech Recognition in System Settings › Privacy & Security"
             return
         }
-        transcriber.start(deviceUID: deviceUID)
+        transcriber.start(
+            deviceUID: deviceUID, channels: channel.map { .mono(channel: $0) } ?? .default)
+    }
+
+    private func restartIfListening() {
+        guard listening else { return }
+        Task { await start() }
     }
 
     func stop() {
         transcriber.stop()
         listening = false
+        level = 0
         status = "Off"
     }
 
@@ -166,6 +190,9 @@ struct LiveAssistView: View {
 
     var body: some View {
         Form {
+            Section("Microphone") {
+                LiveAssistInputPicker()
+            }
             Section {
                 HStack {
                     Circle().fill(assist.listening ? .green : .secondary).frame(width: 8, height: 8)
@@ -177,7 +204,7 @@ struct LiveAssistView: View {
                 }
                 Text(assist.transcript.isEmpty ? "…" : assist.transcript)
                     .font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                Text("Input, lyric following and scripture detection are in Settings › Show Setup.")
+                Text("Lyric following and scripture detection options are in Settings › Show Setup.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
             if assist.followsLyrics {
@@ -232,5 +259,42 @@ private struct ConfidenceMeter: View {
         case .jump: "jumped to slide \(decision.slideIndex + 1)"
         }
         return "\(Int(value * 100))% — \(what)"
+    }
+}
+
+/// Which microphone (and which channel of an interface) Live Assist hears,
+/// with a level meter to confirm it.
+struct LiveAssistInputPicker: View {
+    @Bindable private var assist = LiveAssist.shared
+    @State private var devices = LiveTranscriber.inputDevices()
+
+    private var channels: Int { devices.first { $0.uid == assist.deviceUID }?.channels ?? 0 }
+
+    var body: some View {
+        Picker("Listen to", selection: $assist.deviceUID) {
+            if !devices.contains(where: { $0.uid == assist.deviceUID }) {
+                Text("Choose a microphone…").tag(assist.deviceUID)
+            }
+            ForEach(devices, id: \.uid) { device in
+                Text(device.channels > 2 ? "\(device.name) (\(device.channels) ch)" : device.name).tag(device.uid)
+            }
+        }
+        .onAppear { devices = LiveTranscriber.inputDevices() }
+        if channels > 1 {
+            Picker("Channel", selection: $assist.channel) {
+                Text(channels > 2 ? "Channels 1–2" : "Both").tag(Int?.none)
+                ForEach(0..<channels, id: \.self) { Text("Channel \($0 + 1)").tag(Int?.some($0)) }
+            }
+        }
+        HStack {
+            Text("Level").font(.caption).foregroundStyle(.secondary)
+            ProgressView(value: Double(assist.level))
+                .tint(assist.level > 0.9 ? .red : .green)
+            if !assist.listening {
+                Text("Start listening to check").font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        Button("Refresh Inputs") { devices = LiveTranscriber.inputDevices() }
+            .controlSize(.small)
     }
 }

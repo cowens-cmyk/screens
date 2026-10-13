@@ -39,9 +39,7 @@ struct LiveAssistSettingsForm: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Picker("Listen to", selection: $assist.deviceUID) {
-                ForEach(LiveTranscriber.inputDevices(), id: \.uid) { Text($0.name).tag($0.uid) }
-            }
+            LiveAssistInputPicker()
             Toggle("Advance lyrics as they're sung", isOn: $assist.followsLyrics)
             Slider(value: $assist.autoAdvanceConfidence, in: 0.5...0.95) {
                 Text("Advance when \(Int(assist.autoAdvanceConfidence * 100))% sure")
