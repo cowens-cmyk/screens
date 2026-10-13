@@ -227,6 +227,8 @@ final class DeckLinkDeviceCatalog {
     static let shared = DeckLinkDeviceCatalog()
 
     private(set) var devices: [DeckLinkHelperDevice] = []
+    /// Every port the driver reports, output-capable or not — for diagnosis.
+    private(set) var allDevices: [DeckLinkHelperDevice] = []
     private(set) var hasFetched = false
 
     private(set) var runtimeVersionLabel = ""
@@ -260,6 +262,7 @@ final class DeckLinkDeviceCatalog {
             let devices = (try? JSONDecoder().decode(
                 [DeckLinkHelperDevice].self, from: data)) ?? []
             Task { @MainActor [weak self] in
+                self?.allDevices = devices
                 self?.devices = devices.filter(\.supportsPlayback)
                 self?.hasFetched = true
                 replyConnection.invalidate()

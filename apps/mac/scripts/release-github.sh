@@ -29,6 +29,13 @@ if [ $PUBLISH = 1 ] && gh release view "v$VERSION" --repo "$REPO" >/dev/null 2>&
   exit 1
 fi
 
+# Without the generated ProPresenter types the importer builds as a stub
+# and imports nothing — never ship that.
+if [ ! -d "$MAC_DIR/Packages/ProImport/Sources/ProImport/Generated" ]; then
+  echo "ProPresenter import types missing: run apps/mac/scripts/generate-propresenter-proto.sh (needs: brew install protobuf swift-protobuf)" >&2
+  exit 1
+fi
+
 # Build outside iCloud-synced folders: Finder metadata breaks codesign.
 rm -rf "$WORK" && mkdir -p "$WORK"
 xcodegen generate --spec "$MAC_DIR/project.yml" --project "$MAC_DIR" | tail -1

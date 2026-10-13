@@ -32,7 +32,7 @@ final class DeckLinkAutoSetup {
         let catalog = DeckLinkDeviceCatalog.shared
         if catalog.runtimeTooOld { return "Desktop Video \(catalog.runtimeVersionLabel) is too old — install 16.0 or later." }
         if catalog.hasFetched, catalog.runtimeVersionLabel.isEmpty, catalog.devices.isEmpty {
-            return "No DeckLink devices found. Is Blackmagic Desktop Video installed?"
+            return "Blackmagic Desktop Video isn't installed (or its driver isn't allowed in System Settings › Privacy & Security)."
         }
         guard catalog.hasFetched else { return "Looking for DeckLink devices…" }
         let outputs = catalog.devices.filter { catalog.displayModes[$0.persistentID]?.isEmpty == false }
@@ -40,6 +40,23 @@ final class DeckLinkAutoSetup {
         return outputs.isEmpty
             ? "No DeckLink output ports found (Desktop Video \(catalog.runtimeVersionLabel))."
             : "Outputs: \(names)"
+    }
+
+    /// What the driver actually reported, in one copyable block.
+    static var details: String {
+        let catalog = DeckLinkDeviceCatalog.shared
+        var lines = ["Desktop Video: \(catalog.runtimeVersionLabel.isEmpty ? "not found" : catalog.runtimeVersionLabel)\(catalog.runtimeTooOld ? " (needs 16.0+)" : "")"]
+        if catalog.allDevices.isEmpty {
+            lines.append(catalog.hasFetched ? "Ports: none reported" : "Ports: checking…")
+        }
+        for device in catalog.allDevices {
+            let modes = catalog.displayModes[device.persistentID]
+            let role = !device.supportsPlayback ? "capture only"
+                : modes == nil ? "output (checking modes)"
+                : modes!.isEmpty ? "mapped as input" : "output, \(modes!.count) modes"
+            lines.append("• \(device.name) — \(role)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     func start(render: RenderContext) {
@@ -96,6 +113,10 @@ struct DeckLinkSetupForm: View {
                 Spacer()
                 Button("Find Devices") { setup.refreshNow(render: render) }
             }
+            Text(DeckLinkAutoSetup.details)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
             if !setup.lastAdded.isEmpty {
                 Text("Added: \(setup.lastAdded.joined(separator: ", ")). Choose what each shows in Show Setup above, and turn on Alpha Key for the livestream in Screen Configuration.")
                     .font(.caption).foregroundStyle(.secondary)
