@@ -58,3 +58,15 @@ import Testing
     ], continuesVerse: false)
     #expect(page.reference(book: book) == "John 3:16–17")
 }
+
+@Test func categoriesMatchStarterThemeNames() {
+    let theme = StarterPack.allCases[0].makeTheme()
+    let slides = theme.slides ?? []
+    #expect(ThemeCategories.match("Bible", in: slides)?.name == "Verse + Reference")
+    #expect(ThemeCategories.match("Sermon Points", in: slides)?.name == "Point")
+    let lowerThirds = ThemeCategories.lowerThirds(of: theme).slides ?? []
+    #expect(lowerThirds.first?.name == "Lower Third")
+    #expect(lowerThirds.allSatisfy { $0.folder == "Lower Thirds" })
+    #expect(ThemeCategories.match("Bible", in: lowerThirds)?.name == "Verse + Reference")
+    #expect(ThemeCategories.match("Lyrics", in: lowerThirds)?.name == "Lyrics")
+}

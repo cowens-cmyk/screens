@@ -209,7 +209,7 @@ final class OutputPresetsController {
                     let key = "stream-lower-third:\(lowerThirdID)"
                     routing[stream] = overlays.union([LayerKind.slide.rawValue])
                     themeRouting[stream] = key
-                    overrides[key] = lowerThird
+                    overrides[key] = ThemeCategories.lowerThirds(of: lowerThird)
                 } else {
                     routing[stream] = overlays
                 }

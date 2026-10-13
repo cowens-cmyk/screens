@@ -169,7 +169,7 @@ public enum SlideSceneBuilder {
     public static func themeSlide(for slide: Slide, theme: Theme?) -> Slide? {
         guard let slides = theme?.slides, !slides.isEmpty else { return nil }
         if let name = slide.themeSlideName, !name.isEmpty,
-           let match = slides.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+           let match = ThemeCategories.match(name, in: slides) {
             return match
         }
         return slides.first

@@ -461,6 +461,11 @@ struct ShellView: View {
                 }
             }
             .frame(height: Self.headerHeight)
+            // Centered over the slides, not the window, so it never runs
+            // into the chips beside the sidebar or the buttons over the rail.
+            .frame(maxWidth: .infinity)
+            .padding(.leading, sidebarVisible ? (draftSidebarWidth ?? sidebarWidth) + 220 : 260)
+            .padding(.trailing, railVisible ? (draftRightRailWidth ?? rightRailWidth) + 140 : 140)
         }
         .overlay(alignment: .topLeading) {
             HStack(spacing: 6) {
@@ -476,7 +481,7 @@ struct ShellView: View {
                             .lineLimit(1)
                     }
                     presentViewMenu
-                    transitionChips
+                    if centerWidth > 900 { transitionChips }
                 }
             }
             .frame(height: Self.headerHeight)
@@ -486,7 +491,7 @@ struct ShellView: View {
             if mode == .present, sidebarVisible {
                 HStack(spacing: 6) {
                     presentViewMenu
-                    transitionChips
+                    if centerWidth > 900 { transitionChips }
                 }
                 .frame(height: Self.headerHeight)
                 .padding(.leading, (draftSidebarWidth ?? sidebarWidth) + 16)
@@ -503,15 +508,11 @@ struct ShellView: View {
                             .help("Add scripture slides (⌘⇧B)")
                         TopBarAddButton(title: "Points", systemImage: "list.bullet.rectangle", action: presentPoints)
                             .help("Add sermon point slides (⌘⇧P)")
-                            .padding(.trailing, 8)
+                            .padding(.leading, 6)
+                            .padding(.trailing, 10)
                     }
 
                     BroadcastStatusChip(controls: controls)
-
-                    if let presets {
-                        Spacer().frame(width: 8)
-                        OutputPresetChip(presets: presets, showName: showPresetName)
-                    }
 
                     ClearChip(controls: controls)
                         .padding(.leading, 8)
@@ -1447,7 +1448,6 @@ struct ShellView: View {
     }
 
     private var showTransitionSliders: Bool { centerWidth > 950 }
-    private var showPresetName: Bool { centerWidth > 800 }
 
     private var transitionChips: some View {
         HStack(spacing: 10) {
@@ -1776,11 +1776,11 @@ struct TopBarAddButton: View {
 
     var body: some View {
         Button { action?() } label: {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 12, weight: .medium))
-                .padding(.horizontal, 10)
-                .frame(height: 26)
-                .background(Color.primary.opacity(0.06), in: Capsule())
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 28, height: 26)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                .accessibilityLabel(title)
         }
         .buttonStyle(.plain)
         .disabled(action == nil)

@@ -10,7 +10,7 @@ import RenderEngine
 public enum ScriptureSlideBuilder {
 
     public static let themeSlideName = "Bible"
-    public static let scriptureObjectName = "Scripture"
+    public static let scriptureObjectName = "Verse"
     public static let referenceObjectName = "Reference"
 
     public static func slides(

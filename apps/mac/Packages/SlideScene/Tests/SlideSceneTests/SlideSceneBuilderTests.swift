@@ -1578,3 +1578,21 @@ private func conditioned(_ conditions: [VisibilityCondition], match: VisibilityM
     let fill = SlideSceneBuilder.fullFrameMediaItems(id: "m", mediaId: "loop", scaleMode: .fill, canvasSize: canvas)
     #expect(fill.map(\.content) == [.media(id: "loop", scaleMode: .fill)])
 }
+
+@Test func scriptureOnTheStreamUsesTheLowerThirdDesign() {
+    var slide = Slide(id: "s", name: "John 3:16", objects: [
+        SlideObject(id: "v", objectKind: .text, name: "Verse", text: "For God so loved the world"),
+        SlideObject(id: "r", objectKind: .text, name: "Reference", text: "John 3:16 ESV"),
+    ])
+    slide.themeSlideName = "Bible"
+    for pack in StarterPack.allCases {
+        let stream = ThemeCategories.lowerThirds(of: pack.makeTheme())
+        let scene = SlideSceneBuilder.scene(for: slide, theme: stream)
+        let texts = scene.layers.flatMap(\.items).filter {
+            if case .text(let text) = $0.content { return text.string.contains("God") || text.string.contains("John") }
+            return false
+        }
+        #expect(!texts.isEmpty, "\(pack): the verse renders")
+        #expect(texts.allSatisfy { $0.frame.minY > 1080 * 0.5 }, "\(pack): every line sits in the lower half, not full screen")
+    }
+}
