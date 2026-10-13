@@ -33,6 +33,7 @@ import Testing
         "SignageController.swift": [.quiet("the 2 Hz loop tick advances only a loop that is due")],
         "MediaSoak.swift": [.quiet("the soak harness's own readout")],
         "AudioMixerModule.swift": [.moves(["displayLevels", "busLevels", "playerLevels", "outputLevels"])],  
+        "LivestreamModule.swift": [.quiet("the 4 Hz stream badge writes coverage only when it changes")],
     ]
 
     private let readers: [String: (hint: String, pattern: Regex<Substring>, views: Set<String>)] = [
