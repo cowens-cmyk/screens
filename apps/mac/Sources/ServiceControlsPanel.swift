@@ -130,7 +130,6 @@ struct ServiceControlsPanel: View {
         case .combos: ActionCombosModule(model: model, controls: controls)
         case .confidence: ConfidenceModule(model: model, controls: controls)
         case .outputs: OutputsModule(model: model, controls: controls, presets: presets)
-        case .livestream: LivestreamModule(model: model, controls: controls, presets: presets)
         }
     }
 
@@ -253,8 +252,6 @@ struct ServiceControlsPanel: View {
 
             let outputs = controls.render.outputs
             return outputs.displays.contains { outputs.isLive($0.uuid) } ? .green : nil
-        case .livestream:
-            return nil
         }
     }
 }

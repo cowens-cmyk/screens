@@ -167,9 +167,6 @@ struct LiveAssistView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Listen to", selection: $assist.deviceUID) {
-                    ForEach(LiveTranscriber.inputDevices(), id: \.uid) { Text($0.name).tag($0.uid) }
-                }
                 HStack {
                     Circle().fill(assist.listening ? .green : .secondary).frame(width: 8, height: 8)
                     Text(assist.status).font(.callout)
@@ -180,20 +177,17 @@ struct LiveAssistView: View {
                 }
                 Text(assist.transcript.isEmpty ? "…" : assist.transcript)
                     .font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                Text("Input, lyric following and scripture detection are in Settings › Show Setup.")
+                    .font(.caption).foregroundStyle(.tertiary)
             }
-            Section("Lyric Following") {
-                Toggle("Advance lyrics as they're sung", isOn: $assist.followsLyrics)
-                Slider(value: $assist.autoAdvanceConfidence, in: 0.5...0.95) {
-                    Text("Advance at \(Int(assist.autoAdvanceConfidence * 100))% sure")
+            if assist.followsLyrics {
+                Section("Lyric Following") {
+                    ConfidenceMeter(decision: assist.lastDecision, threshold: assist.autoAdvanceConfidence)
+                    Button("Take Over (pause 8 s)") { assist.operatorTookOver() }
+                        .keyboardShortcut(.escape, modifiers: [])
                 }
-                ConfidenceMeter(decision: assist.lastDecision, threshold: assist.autoAdvanceConfidence)
-                Button("Take Over (pause 8 s)") { assist.operatorTookOver() }
-                    .keyboardShortcut(.escape, modifiers: [])
-                Text("Works best on the worship leader's vocal mic. Any arrow-key or click advance also pauses it briefly.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Scripture Detection") {
-                Toggle("Watch for spoken Bible references", isOn: $assist.detectsScripture)
                 if assist.detected.isEmpty {
                     Text("When the pastor says “turn to Genesis 32”, it appears here.")
                         .font(.caption).foregroundStyle(.secondary)

@@ -525,6 +525,23 @@ final class SlideEditorModel {
         }
     }
 
+    /// The theme being edited: its livestream lower-third theme.
+    var streamLowerThirdThemeID: String {
+        guard case .theme(let document) = host else { return "" }
+        return document.value.streamLowerThirdThemeId ?? ""
+    }
+
+    func setStreamLowerThirdTheme(_ id: String) {
+        guard case .theme(let document) = host else { return }
+        _ = try? document.update { $0.streamLowerThirdThemeId = id.isEmpty ? nil : id }
+        finishMutation()
+    }
+
+    var editedThemeID: String? {
+        guard case .theme(let document) = host else { return nil }
+        return document.value.id
+    }
+
     var currentTemplate: Slide? {
         guard case .presentation = host, let slide = currentSlide else { return nil }
         return SlideSceneBuilder.themeSlide(for: slide, theme: theme)

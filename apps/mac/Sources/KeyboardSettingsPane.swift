@@ -278,9 +278,9 @@ struct KeyboardMapPane: View {
                 addComboControl
             }
         } header: {
-            Text("Action Combos")
+            Text("Macros")
         } footer: {
-            Text("Any combo can wear a key — features without their own command are one combo away from a shortcut.")
+            Text("Any macro can have a key — anything without its own command is one macro away from a shortcut.")
         }
     }
 
@@ -313,12 +313,12 @@ struct KeyboardMapPane: View {
                 )
             }
         } else {
-            Menu("Add Combo Shortcut\u{2026}") {
+            Menu("Add Macro Shortcut\u{2026}") {
                 let unbound = model.comboBoard.allItemIDs.filter {
                     store.map.chord(forComboID: $0) == nil
                 }
                 if unbound.isEmpty {
-                    Text("No combos without a shortcut")
+                    Text("No macros without a shortcut")
                 }
                 ForEach(unbound, id: \.self) { id in
                     Button(comboName(id)) { recordingComboID = id }

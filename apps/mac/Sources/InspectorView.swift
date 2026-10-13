@@ -25,7 +25,7 @@ struct InspectorView: View {
                         Text("Stream & Record Presets are edited in the Stream & Record module.")
                     case .alertPreset: Text("Alerts are edited in the Service Controls panel.")
                     case .actionCombo:
-                        Text("Action Combos run and edit in the Service Controls rail.")
+                        Text("Macros run and edit in the Macros panel.")
                     case .scheduleTrigger, .schedulerBoard:
                         Text("Triggers are edited in Scheduler mode.")
                     case .confidenceLayout:

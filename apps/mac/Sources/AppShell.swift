@@ -272,6 +272,9 @@ struct ShellView: View {
     @Bindable var model: AppModel
     let render: RenderContext?
     let controls: ServiceControls?
+
+    @FocusedValue(\.presentScripture) private var presentScripture
+    @FocusedValue(\.presentPoints) private var presentPoints
     let presets: OutputPresetsController?
     let layout: PresentLayoutController?
 
@@ -363,12 +366,12 @@ struct ShellView: View {
     @State private var gripHovering = false
     @State private var gripDragging = false
 
-    @AppStorage("shell.rightSplit") private var rightSplit = 0.5
+    @AppStorage("shell.rightSplit.monitors") private var rightSplit = 0.68
     @State private var draftRightSplit: Double?
     @State private var rightGripHovering = false
     @State private var rightGripDragging = false
 
-    @AppStorage("shell.rightRailWidth") private var rightRailWidth = 280.0
+    @AppStorage("shell.rightRailWidth.monitors") private var rightRailWidth = 340.0
 
     @AppStorage(PresentLayoutController.rightRailHiddenKey) private var rightRailHidden = false
 
@@ -494,6 +497,14 @@ struct ShellView: View {
             if let controls {
 
                 HStack(spacing: 0) {
+
+                    if layout?.runOnly != true {
+                        TopBarAddButton(title: "Scripture", systemImage: "book", action: presentScripture)
+                            .help("Add scripture slides (⌘⇧B)")
+                        TopBarAddButton(title: "Points", systemImage: "list.bullet.rectangle", action: presentPoints)
+                            .help("Add sermon point slides (⌘⇧P)")
+                            .padding(.trailing, 8)
+                    }
 
                     BroadcastStatusChip(controls: controls)
 
@@ -1292,19 +1303,18 @@ struct ShellView: View {
                 max(available * (draftRightSplit ?? rightSplit), 200), max(200, available - 160)
             )
             VStack(spacing: 0) {
-                LivePanel(
-                    model: model, render: render, controls: controls,
-                    layout: layout
-                )
-                    .frame(height: topHeight)
-                    .floatingPanel()
+                if let render {
+                    MonitorsPanel(render: render)
+                        .frame(height: topHeight)
+                        .floatingPanel()
+                }
                 rightSplitGrip(available: available)
                     .frame(height: gap)
-                ServiceControlsPanel(
-                    model: model, controls: controls, presets: presets, layout: layout
-                )
-                    .frame(maxHeight: .infinity)
-                    .floatingPanel()
+                if let controls {
+                    ShowControlsPanel(model: model, controls: controls)
+                        .frame(maxHeight: .infinity)
+                        .floatingPanel()
+                }
             }
             .coordinateSpace(name: "rightRail")
         }
@@ -1755,5 +1765,24 @@ private struct ServiceVersionAlerts: ViewModifier {
             } message: {
                 Text("Its changes are deleted, and any computer running it goes back to Main.")
             }
+    }
+}
+
+/// A plain top-bar button for the slide builders people reach for mid-service.
+struct TopBarAddButton: View {
+    let title: String
+    let systemImage: String
+    let action: MenuAction?
+
+    var body: some View {
+        Button { action?() } label: {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 10)
+                .frame(height: 26)
+                .background(Color.primary.opacity(0.06), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(action == nil)
     }
 }

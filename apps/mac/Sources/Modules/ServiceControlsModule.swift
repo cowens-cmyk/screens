@@ -13,10 +13,9 @@ enum ServiceControlsModule: String, Codable, CaseIterable, Sendable {
     case confidence
 
     case outputs
-    case livestream
 
     static let defaultOrder: [ServiceControlsModule] = [
-        .livestream, .combos, .timers, .tracking, .overlays, .audio, .alerts,
+        .combos, .timers, .tracking, .overlays, .audio, .alerts,
         .mixer, .media, .confidence, .outputs,
     ]
 
@@ -30,10 +29,9 @@ enum ServiceControlsModule: String, Codable, CaseIterable, Sendable {
         case .tracking: "Service Tracking"
         case .alerts: "Alerts"
         case .overlays: "Overlays"
-        case .combos: "Combos"
+        case .combos: "Macros"
         case .confidence: "Confidence Monitor"
         case .outputs: "Outputs"
-        case .livestream: "Livestream"
         }
     }
 
@@ -49,7 +47,6 @@ enum ServiceControlsModule: String, Codable, CaseIterable, Sendable {
         case .combos: .combos
         case .confidence: .confidence
         case .outputs: .screens
-        case .livestream: .screens
         }
     }
 }

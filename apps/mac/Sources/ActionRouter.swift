@@ -38,6 +38,10 @@ final class ActionRouter {
         (confidenceMonitor?.confidenceScreens ?? []).map { ($0.id.uuidString, $0.name) }
     }
 
+    func noteLiveTheme(_ theme: Theme?) {
+        presets.noteLiveTheme(theme)
+    }
+
     func applyPresetSwitches(for slide: Slide, contextID: String?, theme: Theme? = nil) {
         guard let presetID = resolvedPresetID(for: slide, contextID: contextID, theme: theme),
               presets.activePresetID != presetID

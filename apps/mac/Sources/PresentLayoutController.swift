@@ -230,8 +230,8 @@ final class PresentLayoutController {
     ) {
         let defaults = UserDefaults.standard
         defaults.set(layout.selectedModule, forKey: "serviceControls.module")
-        defaults.set(layout.rightRailWidth, forKey: "shell.rightRailWidth")
-        defaults.set(layout.rightSplit, forKey: "shell.rightSplit")
+        defaults.set(layout.rightRailWidth, forKey: "shell.rightRailWidth.monitors")
+        defaults.set(layout.rightSplit, forKey: "shell.rightSplit.monitors")
         defaults.set(layout.sidebarWidth, forKey: "shell.sidebarWidth")
         defaults.set(layout.sidebarVisible, forKey: "shell.sidebarVisible")
         defaults.set(layout.rightRailHidden ?? false, forKey: Self.rightRailHiddenKey)
@@ -320,8 +320,8 @@ final class PresentLayoutController {
                         autosaveName: PreviewWindowView.autosaveName(for: target))
                 )
             },
-            rightRailWidth: defaults.object(forKey: "shell.rightRailWidth") as? Double ?? 280,
-            rightSplit: defaults.object(forKey: "shell.rightSplit") as? Double ?? 0.5,
+            rightRailWidth: defaults.object(forKey: "shell.rightRailWidth.monitors") as? Double ?? 340,
+            rightSplit: defaults.object(forKey: "shell.rightSplit.monitors") as? Double ?? 0.68,
             sidebarWidth: defaults.object(forKey: "shell.sidebarWidth") as? Double ?? 272,
             sidebarVisible: defaults.object(forKey: "shell.sidebarVisible") as? Bool ?? true,
             rightRailHidden: defaults.bool(forKey: Self.rightRailHiddenKey),

@@ -30,6 +30,7 @@ final class OutputPresetsController {
         activePresetID = UserDefaults.standard.string(forKey: Self.activeKey)
         applyActivePreset()
         armThemeMutationWatch()
+        ShowSetup.shared.onChange = { [weak self] in self?.republishStream() }
     }
 
     private func armThemeMutationWatch() {
@@ -122,9 +123,7 @@ final class OutputPresetsController {
             if let id = activePresetID {
                 DiagnosticsStore.shared.note("presets.routing", detail: "active preset \(id) is not in the library — every layer routes")
             }
-            outputs.setLayerRouting([:])
-            outputs.setSlideThemeRouting([:])
-            controls?.setSlideThemeOverrides([:])
+            publish(routing: [:], themeRouting: [:], overrides: [:])
             applyMaskActivation(nil)
         }
     }
@@ -138,7 +137,6 @@ final class OutputPresetsController {
         for assignment in preset.assignments {
             routing[assignment.targetId] = Set(assignment.enabledLayers)
         }
-        outputs.setLayerRouting(routing)
 
         var themeRouting: [String: String] = [:]
         var overrides: [String: Theme] = [:]
@@ -172,9 +170,72 @@ final class OutputPresetsController {
             }
             themeRouting[assignment.targetId] = key
         }
+        publish(routing: routing, themeRouting: themeRouting, overrides: overrides)
+        applyMaskActivation(preset)
+    }
+
+    // MARK: Livestream
+
+    private var lookRouting: [String: Set<String>] = [:]
+    private var lookThemeRouting: [String: String] = [:]
+    private var lookOverrides: [String: Theme] = [:]
+    /// The live slide's theme, for the stream's Auto mode.
+    private var liveTheme: Theme?
+
+    /// The Look's routing plus the livestream screen's own: unless the Look
+    /// itself routes the stream screen, its Auto · Full Screen · Off switch
+    /// decides what goes over the camera.
+    private func publish(
+        routing: [String: Set<String>], themeRouting: [String: String], overrides: [String: Theme]
+    ) {
+        lookRouting = routing
+        lookThemeRouting = themeRouting
+        lookOverrides = overrides
+        var routing = routing
+        var themeRouting = themeRouting
+        var overrides = overrides
+        let setup = ShowSetup.shared
+        let stream = setup.streamTarget
+        if !stream.isEmpty, routing[stream] == nil, themeRouting[stream] == nil {
+            let overlays: Set<String> = [LayerKind.overlays.rawValue, LayerKind.alerts.rawValue]
+            switch setup.streamMode {
+            case .fullScreen:
+                break
+            case .off:
+                routing[stream] = []
+            case .auto:
+                if let lowerThirdID = liveTheme?.streamLowerThirdThemeId, !lowerThirdID.isEmpty,
+                   let lowerThird = appModel.theme(lowerThirdID) {
+                    let key = "stream-lower-third:\(lowerThirdID)"
+                    routing[stream] = overlays.union([LayerKind.slide.rawValue])
+                    themeRouting[stream] = key
+                    overrides[key] = lowerThird
+                } else {
+                    routing[stream] = overlays
+                }
+            }
+        }
+        outputs.setLayerRouting(routing)
         outputs.setSlideThemeRouting(themeRouting)
         controls?.setSlideThemeOverrides(overrides)
-        applyMaskActivation(preset)
+    }
+
+    /// Called as each slide goes live, so Auto follows the slide's theme.
+    func noteLiveTheme(_ theme: Theme?) {
+        let lowerThirdID = theme?.streamLowerThirdThemeId ?? ""
+        if lowerThirdID == (liveTheme?.streamLowerThirdThemeId ?? ""), theme?.id == liveTheme?.id { return }
+        liveTheme = theme
+        if !lowerThirdID.isEmpty, appModel.theme(lowerThirdID) == nil {
+            Task { @MainActor [weak self] in
+                await self?.appModel.themesFilled([lowerThirdID])
+                self?.republishStream()
+            }
+        }
+        republishStream()
+    }
+
+    func republishStream() {
+        publish(routing: lookRouting, themeRouting: lookThemeRouting, overrides: lookOverrides)
     }
 
     static func lookKey(themeID: String, folder: String?, slideID: String?) -> String {

@@ -18,7 +18,7 @@ extension SlideActionKind {
         case .timerReset: "Reset Timer"
         case .timerConfigure: "Configure Timer"
         case .midiOut: "MIDI Out"
-        case .fireCombo: "Fire Action Combo"
+        case .fireCombo: "Run Macro"
         case .captureStart: "Start Capture"
         case .captureStop: "Stop Capture"
         case .firePresentation: "Fire Presentation"
@@ -847,7 +847,7 @@ struct AddActionMenuItems: View {
         }
         let combos = model.actionCombos.filter { $0.id != excludeComboID }
         if !combos.isEmpty {
-            Menu("Action Combo") {
+            Menu("Macro") {
                 ForEach(combos, id: \.id) { combo in
                     Button(combo.name) {
                         add(make(.fireCombo) { $0.comboId = combo.id })

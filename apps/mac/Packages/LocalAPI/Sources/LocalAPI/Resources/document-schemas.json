@@ -2253,6 +2253,9 @@
           "items": {
             "$ref": "#/components/schemas/Slide"
           }
+        },
+        "streamLowerThirdThemeId": {
+          "type": "string"
         }
       },
       "required": [

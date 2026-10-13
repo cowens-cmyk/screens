@@ -2668,6 +2668,11 @@
           "name": "slides",
           "type": "list:Slide",
           "optional": true
+        },
+        {
+          "name": "streamLowerThirdThemeId",
+          "type": "string",
+          "optional": true
         }
       ]
     },

@@ -383,7 +383,7 @@ struct AppSettingsView: View {
         rows.append(SettingsRowSpec(
             id: "midi.map", category: .midi,
             title: "MIDI input map",
-            caption: "What incoming notes trigger — clears, slides, videos, overlays, media, music, timers, alerts, Action Combos. ProPresenter's stock numbers out of the box; every assignment is editable.",
+            caption: "What incoming notes trigger — clears, slides, videos, overlays, media, music, timers, alerts, macros. ProPresenter's stock numbers out of the box; every assignment is editable.",
             keywords: "midi input map note trigger command clear slide advance timer combo channel propresenter overlay prop playlist media audio music alert message select index",
             control: AnyView(MIDIMapManager())
         ))
@@ -395,7 +395,33 @@ struct AppSettingsView: View {
             keywords: "ndi network interface adapter nic vlan ethernet wifi wired discovery pin bind",
             control: AnyView(NDINetworkScopeControl())
         ))
+        if let controls {
+            rows.append(SettingsRowSpec(
+                id: "show.screens", category: .showSetup,
+                title: "Screens",
+                caption: nil,
+                keywords: "audience livestream stream stage display confidence screen monitor lower third transparent full screen key",
+                control: AnyView(ShowSetupForm(controls: controls)),
+                stacked: true
+            ))
+        }
+        rows.append(SettingsRowSpec(
+            id: "show.liveAssist", category: .showSetup,
+            title: "Live Assist",
+            caption: nil,
+            keywords: "live assist lyric following speech microphone scripture detection auto advance",
+            control: AnyView(LiveAssistSettingsForm()),
+            stacked: true
+        ))
         if let model {
+            rows.append(SettingsRowSpec(
+                id: "bible.themes", category: .bible,
+                title: "Scripture and points themes",
+                caption: "Used by the Scripture and Points buttons in the top bar.",
+                keywords: "scripture bible points sermon theme default template",
+                control: AnyView(Form { ScriptureThemeSetting(model: model) }.formStyle(.columns)),
+                stacked: true
+            ))
             rows.append(SettingsRowSpec(
                 id: "present.types", category: .present,
                 title: "Presentation types",
@@ -539,6 +565,7 @@ struct AppSettingsView: View {
 enum SettingsCategory: String, CaseIterable, Identifiable {
 
     case appearance
+    case showSetup
     case present
 
     case groups
@@ -559,6 +586,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .appearance: "Appearance"
+        case .showSetup: "Show Setup"
         case .present: "Present"
         case .groups: "Groups"
         case .audio: "Music"
@@ -577,6 +605,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .appearance: "circle.lefthalf.filled"
+        case .showSetup: "rectangle.3.group"
         case .present: "play.rectangle"
         case .groups: "tag"
         case .audio: "speaker.wave.2"
