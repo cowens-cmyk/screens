@@ -38,8 +38,8 @@ final class ActionRouter {
         (confidenceMonitor?.confidenceScreens ?? []).map { ($0.id.uuidString, $0.name) }
     }
 
-    func noteLiveTheme(_ theme: Theme?) {
-        presets.noteLiveTheme(theme)
+    func noteLiveTheme(_ theme: Theme?, slide: Slide?) {
+        presets.noteLiveTheme(theme, slide: slide)
     }
 
     func applyPresetSwitches(for slide: Slide, contextID: String?, theme: Theme? = nil) {

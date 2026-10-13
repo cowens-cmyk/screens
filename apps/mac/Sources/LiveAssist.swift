@@ -29,6 +29,32 @@ final class LiveAssist {
             if channel != oldValue { restartIfListening() }
         }
     }
+    /// The pastor's mic for sermon listening, kept apart from the worship input.
+    var sermonDeviceUID: String {
+        didSet {
+            UserDefaults.standard.set(sermonDeviceUID, forKey: "liveAssist.sermon.deviceUID")
+            if sermonDeviceUID != oldValue { sermonChannel = nil; restartIfListening() }
+        }
+    }
+    var sermonChannel: Int? {
+        didSet {
+            UserDefaults.standard.set(sermonChannel ?? -1, forKey: "liveAssist.sermon.channel")
+            if sermonChannel != oldValue { restartIfListening() }
+        }
+    }
+
+    enum Mode { case worship, sermon }
+    private(set) var mode: Mode = .worship
+
+    /// Everything said during the sermon, newest last.
+    private(set) var sermonTranscript = ""
+    /// Passages built as soon as they're heard, so Show is instant.
+    private(set) var prepared: [String: Presentation] = [:]
+    /// Puts each newly spoken passage live by itself.
+    var showsAutomatically = false {
+        didSet { UserDefaults.standard.set(showsAutomatically, forKey: "liveAssist.sermon.autoShow") }
+    }
+
     private(set) var level: Float = 0
     var followsLyrics = false
     var detectsScripture = true
@@ -55,6 +81,10 @@ final class LiveAssist {
         deviceUID = UserDefaults.standard.string(forKey: Self.deviceKey) ?? ""
         let storedChannel = UserDefaults.standard.object(forKey: "liveAssist.channel") as? Int ?? -1
         channel = storedChannel >= 0 ? storedChannel : nil
+        sermonDeviceUID = UserDefaults.standard.string(forKey: "liveAssist.sermon.deviceUID") ?? ""
+        let sermonStored = UserDefaults.standard.object(forKey: "liveAssist.sermon.channel") as? Int ?? -1
+        sermonChannel = sermonStored >= 0 ? sermonStored : nil
+        showsAutomatically = UserDefaults.standard.bool(forKey: "liveAssist.sermon.autoShow")
         transcriber.onText = { [weak self] text, isFinal in self?.heard(text, isFinal: isFinal) }
         transcriber.onLevel = { [weak self] level in self?.level = level }
         transcriber.onState = { [weak self] state in self?.update(state) }
@@ -65,11 +95,29 @@ final class LiveAssist {
         self.controls = controls
     }
 
+    /// Listens to the pastor: a running transcript and every Bible
+    /// reference as it's said.
+    func startSermon() async {
+        mode = .sermon
+        if sermonDeviceUID.isEmpty { sermonDeviceUID = deviceUID }
+        await start()
+    }
+
+    func startWorship() async {
+        mode = .worship
+        await start()
+    }
+
     func start() async {
-        if deviceUID.isEmpty || !LiveTranscriber.inputDevices().contains(where: { $0.uid == deviceUID }) {
-            deviceUID = LiveTranscriber.inputDevices().first?.uid ?? ""
+        let devices = LiveTranscriber.inputDevices()
+        if mode == .sermon {
+            if !devices.contains(where: { $0.uid == sermonDeviceUID }) { sermonDeviceUID = devices.first?.uid ?? "" }
+        } else if deviceUID.isEmpty || !devices.contains(where: { $0.uid == deviceUID }) {
+            deviceUID = devices.first?.uid ?? ""
         }
-        guard !deviceUID.isEmpty else {
+        let device = mode == .sermon ? sermonDeviceUID : deviceUID
+        let inputChannel = mode == .sermon ? sermonChannel : channel
+        guard !device.isEmpty else {
             status = "Choose an audio input"
             return
         }
@@ -81,7 +129,7 @@ final class LiveAssist {
             return
         }
         transcriber.start(
-            deviceUID: deviceUID, channels: channel.map { .mono(channel: $0) } ?? .default)
+            deviceUID: device, channels: inputChannel.map { .mono(channel: $0) } ?? .default)
     }
 
     private func restartIfListening() {
@@ -114,6 +162,11 @@ final class LiveAssist {
     private func heard(_ text: String, isFinal: Bool) {
         transcript = String((lastHeardFinal + " " + text).suffix(400))
         if isFinal { lastHeardFinal = String((lastHeardFinal + " " + text).suffix(600)) }
+        if mode == .sermon {
+            if isFinal { sermonTranscript = String((sermonTranscript + "\n" + text).suffix(8000)) }
+            if isFinal { spotScripture(in: text) }
+            return
+        }
         if detectsScripture, isFinal { spotScripture(in: text) }
         if followsLyrics { follow(text, isFinal: isFinal) }
     }
@@ -121,8 +174,35 @@ final class LiveAssist {
     private func spotScripture(in text: String) {
         for reference in SpokenReference.references(in: text) where !detected.contains(reference) {
             detected.insert(reference, at: 0)
+            Task { await prepare(reference, thenShow: mode == .sermon && showsAutomatically) }
         }
-        if detected.count > 12 { detected.removeLast(detected.count - 12) }
+        if detected.count > 20 { detected.removeLast(detected.count - 20) }
+    }
+
+    func clearSermon() {
+        sermonTranscript = ""
+        detected = []
+        prepared = [:]
+    }
+
+    /// Fetches and lays out the passage ahead of time.
+    private func prepare(_ reference: BibleReference, thenShow: Bool) async {
+        guard let model, prepared[reference.display] == nil else {
+            if thenShow { try? await show(reference) }
+            return
+        }
+        let settings = BibleSettings.shared
+        if settings.translation == nil { await settings.refreshTranslations() }
+        guard let translation = settings.translation,
+              let passage = try? await settings.service.passage(reference, translation: translation)
+        else { return }
+        let themeID = model.slideBuilding.scriptureThemeId ?? ""
+        await model.themesFilled([themeID])
+        var presentation = ScriptureSlideBuilder.presentation(
+            for: passage, format: settings.format, theme: model.theme(themeID))
+        presentation.folder = "Sermon Scripture"
+        prepared[reference.display] = presentation
+        if thenShow { try? await show(reference) }
     }
 
     // MARK: Lyric following
@@ -168,6 +248,11 @@ final class LiveAssist {
     /// Builds the passage with the Bible template and puts its first slide live.
     func show(_ reference: BibleReference) async throws {
         guard let model, let controls else { return }
+        if let ready = prepared[reference.display] {
+            if model.libraryEntry(ready.id) == nil { model.createInDrive(ready) }
+            if let first = ready.slides.first { controls.fire(slide: first, in: ready) }
+            return
+        }
         let settings = BibleSettings.shared
         if settings.translation == nil { await settings.refreshTranslations() }
         guard let translation = settings.translation else { throw BibleError.missingKey("API.Bible or ESV") }
@@ -199,7 +284,7 @@ struct LiveAssistView: View {
                     Text(assist.status).font(.callout)
                     Spacer()
                     Button(assist.listening ? "Stop" : "Start Listening") {
-                        if assist.listening { assist.stop() } else { Task { await assist.start() } }
+                        if assist.listening { assist.stop() } else { Task { await assist.startWorship() } }
                     }
                 }
                 Text(assist.transcript.isEmpty ? "…" : assist.transcript)
@@ -265,15 +350,18 @@ private struct ConfidenceMeter: View {
 /// Which microphone (and which channel of an interface) Live Assist hears,
 /// with a level meter to confirm it.
 struct LiveAssistInputPicker: View {
+    var forSermon = false
     @Bindable private var assist = LiveAssist.shared
     @State private var devices = LiveTranscriber.inputDevices()
 
-    private var channels: Int { devices.first { $0.uid == assist.deviceUID }?.channels ?? 0 }
+    private var device: Binding<String> { forSermon ? $assist.sermonDeviceUID : $assist.deviceUID }
+    private var channel: Binding<Int?> { forSermon ? $assist.sermonChannel : $assist.channel }
+    private var channels: Int { devices.first { $0.uid == device.wrappedValue }?.channels ?? 0 }
 
     var body: some View {
-        Picker("Listen to", selection: $assist.deviceUID) {
-            if !devices.contains(where: { $0.uid == assist.deviceUID }) {
-                Text("Choose a microphone…").tag(assist.deviceUID)
+        Picker(forSermon ? "Pastor's mic" : "Listen to", selection: device) {
+            if !devices.contains(where: { $0.uid == device.wrappedValue }) {
+                Text("Choose a microphone…").tag(device.wrappedValue)
             }
             ForEach(devices, id: \.uid) { device in
                 Text(device.channels > 2 ? "\(device.name) (\(device.channels) ch)" : device.name).tag(device.uid)
@@ -281,7 +369,7 @@ struct LiveAssistInputPicker: View {
         }
         .onAppear { devices = LiveTranscriber.inputDevices() }
         if channels > 1 {
-            Picker("Channel", selection: $assist.channel) {
+            Picker("Channel", selection: channel) {
                 Text(channels > 2 ? "Channels 1–2" : "Both").tag(Int?.none)
                 ForEach(0..<channels, id: \.self) { Text("Channel \($0 + 1)").tag(Int?.some($0)) }
             }
@@ -296,5 +384,77 @@ struct LiveAssistInputPicker: View {
         }
         Button("Refresh Inputs") { devices = LiveTranscriber.inputDevices() }
             .controlSize(.small)
+    }
+}
+
+/// The Sermon tab: start listening to the pastor, see what's said, and put
+/// any passage they mention on screen with one click.
+struct SermonPanel: View {
+    @Bindable private var assist = LiveAssist.shared
+    @State private var error: String?
+
+    private var sermonListening: Bool { assist.listening && assist.mode == .sermon }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Button {
+                    if sermonListening { assist.stop() } else { Task { await assist.startSermon() } }
+                } label: {
+                    Label(sermonListening ? "Stop Listening" : "Listen to Sermon",
+                          systemImage: sermonListening ? "mic.fill" : "mic")
+                }
+                .tint(sermonListening ? .red : nil)
+                .buttonStyle(.borderedProminent)
+                Spacer()
+                if sermonListening {
+                    ProgressView(value: Double(assist.level)).frame(width: 60).tint(.green)
+                }
+            }
+            if !sermonListening, assist.mode == .sermon, assist.status != "Off" {
+                Text(assist.status).font(.caption).foregroundStyle(.orange)
+            }
+            DisclosureGroup("Microphone") { LiveAssistInputPicker(forSermon: true) }
+                .font(.caption)
+            Toggle("Show passages automatically", isOn: $assist.showsAutomatically)
+                .font(.caption)
+            Text("Mentioned").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            if assist.detected.isEmpty {
+                Text("When a reference is said (“turn to Genesis 32”), it appears here, ready to show.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            ForEach(assist.detected, id: \.self) { reference in
+                HStack {
+                    Text(reference.display).font(.callout)
+                    if assist.prepared[reference.display] != nil {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
+                            .help("Ready")
+                    }
+                    Spacer()
+                    Button("Show") {
+                        Task {
+                            do { try await assist.show(reference) } catch { self.error = error.localizedDescription }
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            Text("Transcript").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(assist.sermonTranscript.isEmpty ? "…" : assist.sermonTranscript)
+                        .font(.callout)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .id("end")
+                }
+                .frame(minHeight: 120)
+                .onChange(of: assist.sermonTranscript) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+            }
+            if !assist.sermonTranscript.isEmpty || !assist.detected.isEmpty {
+                Button("Clear") { assist.clearSermon() }.controlSize(.small)
+            }
+        }
     }
 }

@@ -1447,8 +1447,9 @@ public struct Theme: Codable, Sendable, Equatable, Identifiable {
     public var backgroundColorHex: String
     public var slides: [Slide]?
     public var streamLowerThirdThemeId: String?
+    public var streamDesigns: [StreamDesign]?
 
-    public init(id: String, name: String, fontFamily: String, fontSize: Double, textColorHex: String, backgroundColorHex: String, slides: [Slide]? = nil, streamLowerThirdThemeId: String? = nil) {
+    public init(id: String, name: String, fontFamily: String, fontSize: Double, textColorHex: String, backgroundColorHex: String, slides: [Slide]? = nil, streamLowerThirdThemeId: String? = nil, streamDesigns: [StreamDesign]? = nil) {
         self.id = id
         self.name = name
         self.fontFamily = fontFamily
@@ -1457,6 +1458,7 @@ public struct Theme: Codable, Sendable, Equatable, Identifiable {
         self.backgroundColorHex = backgroundColorHex
         self.slides = slides
         self.streamLowerThirdThemeId = streamLowerThirdThemeId
+        self.streamDesigns = streamDesigns
     }
 }
 
@@ -2553,5 +2555,25 @@ public struct PresentationTypeRule: Codable, Sendable, Equatable {
     public init(category: String, actions: [SlideAction]) {
         self.category = category
         self.actions = actions
+    }
+}
+
+public enum StreamDesignMode: String, Codable, Sendable, CaseIterable, Equatable {
+    case clear
+    case audience
+    case design
+}
+
+public struct StreamDesign: Codable, Sendable, Equatable {
+    public var category: String
+    public var mode: StreamDesignMode
+    public var themeId: String?
+    public var slideId: String?
+
+    public init(category: String, mode: StreamDesignMode, themeId: String? = nil, slideId: String? = nil) {
+        self.category = category
+        self.mode = mode
+        self.themeId = themeId
+        self.slideId = slideId
     }
 }

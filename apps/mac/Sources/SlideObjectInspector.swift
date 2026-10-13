@@ -121,20 +121,8 @@ struct SlideObjectInspector: View {
         InspectorForm {
             if model.isThemeEditor {
 
-                InspectorSection("Livestream") {
-                    InspectorPicker("Lower third", selection: Binding(
-                        get: { model.streamLowerThirdThemeID },
-                        set: { model.setStreamLowerThirdTheme($0) }
-                    )) {
-                        Text("None — keep the camera clear").tag("")
-                        Divider()
-                        ForEach(model.appModel.entries(of: .theme).filter { $0.id != model.editedThemeID }, id: \.id) {
-                            Text($0.name).tag($0.id)
-                        }
-                    }
-                    Text("When a slide in this theme is live, the livestream shows it in this lower-third theme (its categories are matched by name — Bible, Sermon Points, Lyrics). Livestream set to Auto.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                InspectorSection("Where It Goes") {
+                    ThemeRoutingTable(model: model)
                 }
 
                 InspectorSection("Category") {

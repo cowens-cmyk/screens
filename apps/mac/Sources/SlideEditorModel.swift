@@ -537,6 +537,24 @@ final class SlideEditorModel {
         finishMutation()
     }
 
+    var streamDesigns: [StreamDesign] {
+        guard case .theme(let document) = host else { return [] }
+        return document.value.streamDesigns ?? []
+    }
+
+    /// nil removes the choice, so the category falls back to the theme's
+    /// lower-third theme (or a clear camera).
+    func setStreamDesign(_ design: StreamDesign?, for category: String) {
+        guard case .theme(let document) = host else { return }
+        _ = try? document.update { theme in
+            var designs = theme.streamDesigns ?? []
+            designs.removeAll { $0.category.caseInsensitiveCompare(category) == .orderedSame }
+            if let design { designs.append(design) }
+            theme.streamDesigns = designs.isEmpty ? nil : designs
+        }
+        finishMutation()
+    }
+
     var editedThemeID: String? {
         guard case .theme(let document) = host else { return nil }
         return document.value.id

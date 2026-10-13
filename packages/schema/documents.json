@@ -2673,6 +2673,11 @@
           "name": "streamLowerThirdThemeId",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "streamDesigns",
+          "type": "list:StreamDesign",
+          "optional": true
         }
       ]
     },
@@ -4667,6 +4672,37 @@
         {
           "name": "actions",
           "type": "list:SlideAction"
+        }
+      ]
+    },
+    "StreamDesignMode": {
+      "kind": "enum",
+      "cases": [
+        "clear",
+        "audience",
+        "design"
+      ]
+    },
+    "StreamDesign": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "category",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "StreamDesignMode"
+        },
+        {
+          "name": "themeId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "slideId",
+          "type": "string",
+          "optional": true
         }
       ]
     }

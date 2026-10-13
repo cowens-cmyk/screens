@@ -130,44 +130,32 @@ struct SidebarSectionHeader<Accessory: View>: View {
 
 struct ModeSwitcher: View {
     @Binding var modeRaw: String
-    @State private var hovering = false
-
-    private var mode: AppMode { AppMode(rawValue: modeRaw) ?? .edit }
 
     var body: some View {
-        Menu {
+        HStack(spacing: 2) {
             ForEach(AppMode.allCases, id: \.rawValue) { mode in
-                Toggle(mode.title, isOn: Binding(
-                    get: { modeRaw == mode.rawValue },
-                    set: { _ in modeRaw = mode.rawValue }
-                ))
+                let selected = modeRaw == mode.rawValue
+                Button { modeRaw = mode.rawValue } label: {
+                    Text(mode.title)
+                        .font(.subheadline.weight(selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 12)
+                        .frame(height: 24)
+                        .background(
+                            selected ? Color.primary.opacity(0.12) : .clear,
+                            in: RoundedRectangle.standard(CornerStandard.element))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-        } label: {
-            HStack(spacing: 5) {
-                Text(mode.title)
-                    .font(.subheadline.weight(.medium))
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 4)
-            .contentShape(RoundedRectangle.standard(CornerStandard.element))
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .background(
-            hovering ? Color.primary.opacity(0.06) : .clear,
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
+        .padding(2)
         .overlay(
             RoundedRectangle.standard(CornerStandard.element)
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
         )
-        .onHover { hovering = $0 }
-        .help("Switch between Present and Edit")
+        .fixedSize()
+        .help("Present, Edit or Scheduler")
     }
 }
 
@@ -504,6 +492,8 @@ struct ShellView: View {
 
                 HStack(spacing: 0) {
 
+                    SermonMicButton()
+                        .padding(.trailing, 6)
                     if layout?.runOnly != true {
                         TopBarAddButton(title: "Songs", systemImage: "music.note", action: presentSongSearch)
                             .help("Song Search — import a song and arrangement from Planning Center (⌘⇧L)")
@@ -1789,5 +1779,32 @@ struct TopBarAddButton: View {
         }
         .buttonStyle(.plain)
         .disabled(action == nil)
+    }
+}
+
+/// Starts and stops sermon listening; red while it's on.
+struct SermonMicButton: View {
+    @Bindable private var assist = LiveAssist.shared
+    @AppStorage("show.controlsTab") private var tab: ShowControlsPanel.Tab = .timers
+
+    private var on: Bool { assist.listening && assist.mode == .sermon }
+
+    var body: some View {
+        Button {
+            if on {
+                assist.stop()
+            } else {
+                tab = .sermon
+                Task { await assist.startSermon() }
+            }
+        } label: {
+            Image(systemName: on ? "mic.fill" : "mic")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(on ? Color.white : Color.primary)
+                .frame(width: 28, height: 26)
+                .background(on ? Color.red : Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help(on ? "Stop listening to the sermon" : "Listen to the sermon — transcribe it and catch every Bible reference")
     }
 }

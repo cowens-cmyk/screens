@@ -3,6 +3,7 @@ import Observation
 import OutputEngine
 import PresenterCore
 import RenderEngine
+import SlideScene
 
 @MainActor
 @Observable
@@ -204,14 +205,15 @@ final class OutputPresetsController {
             case .off:
                 routing[stream] = []
             case .auto:
-                if let lowerThirdID = liveTheme?.streamLowerThirdThemeId, !lowerThirdID.isEmpty,
-                   let lowerThird = appModel.theme(lowerThirdID) {
-                    let key = "stream-lower-third:\(lowerThirdID)"
+                switch streamChoice() {
+                case .clear:
+                    routing[stream] = overlays
+                case .audience:
+                    break
+                case .design(let key, let theme):
                     routing[stream] = overlays.union([LayerKind.slide.rawValue])
                     themeRouting[stream] = key
-                    overrides[key] = ThemeCategories.lowerThirds(of: lowerThird)
-                } else {
-                    routing[stream] = overlays
+                    overrides[key] = theme
                 }
             }
         }
@@ -220,14 +222,53 @@ final class OutputPresetsController {
         controls?.setSlideThemeOverrides(overrides)
     }
 
+    private var liveSlide: Slide?
+
+    enum StreamChoice {
+        case clear
+        case audience
+        case design(key: String, theme: Theme)
+    }
+
+    /// What the livestream shows for the live slide, from its theme: the
+    /// design picked for its category in the theme editor, else the theme's
+    /// lower-third theme, else a clear camera.
+    private func streamChoice() -> StreamChoice {
+        guard let theme = liveTheme else { return .clear }
+        let category = liveSlide.flatMap { SlideSceneBuilder.themeSlide(for: $0, theme: theme)?.name } ?? ""
+        if let pick = theme.streamDesigns?.first(where: { $0.category.caseInsensitiveCompare(category) == .orderedSame }) {
+            switch pick.mode {
+            case .clear:
+                return .clear
+            case .audience:
+                return .audience
+            case .design:
+                guard let themeID = pick.themeId, let source = appModel.theme(themeID) else { return .clear }
+                var scoped = source.scoped(toSlideID: pick.slideId)
+                // The picked design answers to this category's name.
+                if pick.slideId != nil, var only = scoped.slides?.first {
+                    only.name = category
+                    scoped.slides = [only]
+                }
+                return .design(key: "stream-design:\(themeID)##\(pick.slideId ?? "")", theme: scoped)
+            }
+        }
+        if let lowerThirdID = theme.streamLowerThirdThemeId, !lowerThirdID.isEmpty,
+           let lowerThird = appModel.theme(lowerThirdID) {
+            return .design(key: "stream-lower-third:\(lowerThirdID)", theme: ThemeCategories.lowerThirds(of: lowerThird))
+        }
+        return .clear
+    }
+
     /// Called as each slide goes live, so Auto follows the slide's theme.
-    func noteLiveTheme(_ theme: Theme?) {
-        let lowerThirdID = theme?.streamLowerThirdThemeId ?? ""
-        if lowerThirdID == (liveTheme?.streamLowerThirdThemeId ?? ""), theme?.id == liveTheme?.id { return }
+    func noteLiveTheme(_ theme: Theme?, slide: Slide? = nil) {
         liveTheme = theme
-        if !lowerThirdID.isEmpty, appModel.theme(lowerThirdID) == nil {
+        liveSlide = slide
+        let needed = ([theme?.streamLowerThirdThemeId] + (theme?.streamDesigns ?? []).map(\.themeId))
+            .compactMap { $0 }.filter { !$0.isEmpty && appModel.theme($0) == nil }
+        if !needed.isEmpty {
             Task { @MainActor [weak self] in
-                await self?.appModel.themesFilled([lowerThirdID])
+                await self?.appModel.themesFilled(needed)
                 self?.republishStream()
             }
         }

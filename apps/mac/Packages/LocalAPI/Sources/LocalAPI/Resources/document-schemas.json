@@ -2256,6 +2256,12 @@
         },
         "streamLowerThirdThemeId": {
           "type": "string"
+        },
+        "streamDesigns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/StreamDesign"
+          }
         }
       },
       "required": [
@@ -3989,6 +3995,35 @@
       "required": [
         "category",
         "actions"
+      ]
+    },
+    "StreamDesignMode": {
+      "type": "string",
+      "enum": [
+        "clear",
+        "audience",
+        "design"
+      ]
+    },
+    "StreamDesign": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/StreamDesignMode"
+        },
+        "themeId": {
+          "type": "string"
+        },
+        "slideId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "mode"
       ]
     }
   }

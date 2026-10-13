@@ -143,7 +143,7 @@ struct ShowControlsPanel: View {
     let model: AppModel
     let controls: ServiceControls
 
-    enum Tab: String, CaseIterable { case timers = "Timers", macros = "Macros" }
+    enum Tab: String, CaseIterable { case timers = "Timers", macros = "Macros", sermon = "Sermon" }
     @AppStorage("show.controlsTab") private var tab: Tab = .timers
     @Environment(\.openWindow) private var openWindow
 
@@ -169,6 +169,7 @@ struct ShowControlsPanel: View {
                     switch tab {
                     case .timers: TimersModule(model: model, controls: controls)
                     case .macros: ActionCombosModule(model: model, controls: controls)
+                    case .sermon: SermonPanel()
                     }
                 }
                 .padding(.horizontal, 10)
