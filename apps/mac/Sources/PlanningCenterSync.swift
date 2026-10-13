@@ -176,7 +176,17 @@ final class PlanningCenterSync {
     }
 
     static func importSong(_ planItem: PCOClient.Item, themeId: String) -> Presentation? {
-        let arrangement = planItem.arrangement
+        importSong(
+            title: planItem.song?.title ?? planItem.title, song: planItem.song,
+            arrangement: planItem.arrangement, themeId: themeId)
+    }
+
+    /// A library song from a PCO arrangement: its chord chart (chords and
+    /// sections) or lyrics, ordered by the arrangement's sequence.
+    static func importSong(
+        title: String, song: PCOClient.Song?, arrangement: PCOClient.Arrangement?,
+        playingKey: String? = nil, themeId: String
+    ) -> Presentation? {
         let source: String
         if let chart = arrangement?.chordChart, !chart.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             source = ChordChartImport.chordPro(fromChart: chart)
@@ -185,17 +195,21 @@ final class PlanningCenterSync {
         } else {
             return nil
         }
-        let title = planItem.song?.title ?? planItem.title
         var presentation = LyricTextImporter.makePresentation(source, fallbackTitle: title, themeId: themeId)
         presentation.name = title
         presentation.presentationKind = .song
         presentation.category = PresentationTypes.worship
         if presentation.musicKey == nil { presentation.musicKey = arrangement?.chordChartKey }
+        if let playingKey, let musicKey = presentation.musicKey,
+           let display = ChordMath.displayKey(playing: playingKey, musicKey: musicKey),
+           display.caseInsensitiveCompare(musicKey) != .orderedSame {
+            presentation.displayKey = display
+        }
         var ccli = presentation.ccli ?? CCLIInfo()
-        ccli.songNumber = ccli.songNumber ?? planItem.song?.ccliNumber
-        ccli.songTitle = ccli.songTitle ?? planItem.song?.title
-        ccli.author = ccli.author ?? planItem.song?.author
-        ccli.copyright = ccli.copyright ?? planItem.song?.copyright
+        ccli.songNumber = ccli.songNumber ?? song?.ccliNumber
+        ccli.songTitle = ccli.songTitle ?? song?.title
+        ccli.author = ccli.author ?? song?.author
+        ccli.copyright = ccli.copyright ?? song?.copyright
         presentation.ccli = ccli
         if let arrangement, let sections = presentation.sections,
            let order = PCOPlanSync.arrangement(

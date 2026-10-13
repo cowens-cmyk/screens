@@ -64,3 +64,28 @@ private func planItem(
         named: "Phil Wickham", sequence: ["V1", "Chorus", "Verse 1", "C", "Bridge", "Chorus"], sections: sections)
     #expect(order?.sectionIds == ["v1", "c", "v1", "c", "b", "c"])
 }
+
+@Test func decodesSongsAndArrangements() throws {
+    let songs = """
+    {"data":[{"type":"Song","id":"23035018","attributes":{"title":"Holy Forever","author":"Chris Tomlin","ccli_number":7201044}}],"links":{}}
+    """
+    let document = try JSONDecoder().decode(PCOClient.Document.self, from: Data(songs.utf8))
+    let song = PCOClient.song(document.data[0])
+    #expect(song.title == "Holy Forever" && song.ccliNumber == 7201044)
+
+    let arrangements = """
+    {"data":[{"type":"Arrangement","id":"1","attributes":{"name":"Chris Tomlin","chord_chart_key":"Bb","bpm":72,"meter":"4/4",
+    "sequence":["Verse 1","Chorus","Verse 2","Chorus","Bridge"],
+    "chord_chart":"VERSE 1\\nBb          F\\nA thousand generations\\n\\nCHORUS\\nEb         Bb\\nHoly forever",
+    "lyrics":null}}]}
+    """
+    let arrangement = PCOClient.arrangement(
+        try JSONDecoder().decode(PCOClient.Document.self, from: Data(arrangements.utf8)).data[0])
+    #expect(arrangement.sequence.count == 5 && arrangement.chordChartKey == "Bb" && arrangement.bpm == 72)
+    let presentation = LyricTextImporter.makePresentation(
+        ChordChartImport.chordPro(fromChart: arrangement.chordChart ?? ""), fallbackTitle: "Holy Forever")
+    let order = PCOPlanSync.arrangement(
+        named: arrangement.name, sequence: arrangement.sequence, sections: presentation.sections ?? [])
+    #expect(order?.sectionIds.count == 3, "Verse 1, Chorus, Chorus — Verse 2 and Bridge aren't in this short chart")
+    #expect(presentation.slides.contains { !($0.objects.first?.chords ?? []).isEmpty })
+}

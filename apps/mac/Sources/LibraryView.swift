@@ -39,6 +39,7 @@ struct LibrarySidebar: View {
     @State private var importingLyrics = false
     @State private var buildingScripture = false
     @State private var buildingPoints = false
+    @State private var searchingSongs = false
     @State private var slideTarget: SlideTarget?
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
@@ -121,6 +122,10 @@ struct LibrarySidebar: View {
         })
         .sheet(isPresented: $buildingScripture) {
             ScriptureSheet(model: model, render: render, target: slideTarget, onCreated: showImported)
+        }
+        .focusedSceneValue(\.presentSongSearch, MenuAction("songs") { searchingSongs = true })
+        .sheet(isPresented: $searchingSongs) {
+            SongSearchSheet(model: model, render: render, onCreated: showImported)
         }
         .sheet(isPresented: $buildingPoints) {
             PointSlidesSheet(model: model, render: render, target: slideTarget, onCreated: showImported)
@@ -1311,6 +1316,7 @@ struct LibraryCommands: Commands {
     @FocusedValue(\.presentLyricImport) private var presentLyricImport
     @FocusedValue(\.presentScripture) private var presentScripture
     @FocusedValue(\.presentPoints) private var presentPoints
+    @FocusedValue(\.presentSongSearch) private var presentSongSearch
     @FocusedValue(\.presentWorkspaceImport) private var presentWorkspaceImport
     @FocusedValue(\.libraryModel) private var model
     @FocusedValue(\.slideEditor) private var slideEditor
@@ -1355,6 +1361,9 @@ struct LibraryCommands: Commands {
                 .disabled(presentSearch == nil || runOnly)
         }
         CommandGroup(after: .importExport) {
+            Button("Song Search…") { presentSongSearch?() }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .disabled(presentSongSearch == nil || runOnly)
             Button(addLabel("Scripture")) { presentScripture?() }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
                 .disabled(presentScripture == nil || runOnly)

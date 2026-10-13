@@ -275,6 +275,7 @@ struct ShellView: View {
 
     @FocusedValue(\.presentScripture) private var presentScripture
     @FocusedValue(\.presentPoints) private var presentPoints
+    @FocusedValue(\.presentSongSearch) private var presentSongSearch
     let presets: OutputPresetsController?
     let layout: PresentLayoutController?
 
@@ -504,6 +505,9 @@ struct ShellView: View {
                 HStack(spacing: 0) {
 
                     if layout?.runOnly != true {
+                        TopBarAddButton(title: "Songs", systemImage: "music.note", action: presentSongSearch)
+                            .help("Song Search — import a song and arrangement from Planning Center (⌘⇧L)")
+                            .padding(.trailing, 6)
                         TopBarAddButton(title: "Scripture", systemImage: "book", action: presentScripture)
                             .help("Add scripture slides (⌘⇧B)")
                         TopBarAddButton(title: "Points", systemImage: "list.bullet.rectangle", action: presentPoints)
@@ -1699,6 +1703,7 @@ extension FocusedValues {
     @Entry var presentLyricImport: MenuAction?
     @Entry var presentScripture: MenuAction?
     @Entry var presentPoints: MenuAction?
+    @Entry var presentSongSearch: MenuAction?
 
     @Entry var presentNewSlide: MenuAction?
 

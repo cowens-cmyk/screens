@@ -125,23 +125,8 @@ public struct PCOClient: Sendable {
             return included["\(link.type)/\(link.id)"]
         }
         return documents.flatMap(\.data).map { resource in
-            let song = related(resource, "song").map { song in
-                Song(
-                    id: song.id, title: song.string("title") ?? "",
-                    author: song.string("author"), copyright: song.string("copyright"),
-                    ccliNumber: song.int("ccli_number"))
-            }
-            let arrangement = related(resource, "arrangement").map { arrangement in
-                Arrangement(
-                    id: arrangement.id, name: arrangement.string("name") ?? "",
-                    lyrics: arrangement.string("lyrics"),
-                    chordChart: arrangement.string("chord_chart"),
-                    chordChartKey: arrangement.string("chord_chart_key"),
-                    sequence: arrangement.strings("sequence") ?? [],
-                    bpm: arrangement.double("bpm"),
-                    meter: arrangement.string("meter"),
-                    updatedAt: arrangement.string("updated_at"))
-            }
+            let song = related(resource, "song").map(Self.song)
+            let arrangement = related(resource, "arrangement").map(Self.arrangement)
             let key = related(resource, "key").map { Key(id: $0.id, startingKey: $0.string("starting_key")) }
             return Item(
                 id: resource.id,
@@ -157,6 +142,54 @@ public struct PCOClient: Sendable {
                 song: song, arrangement: arrangement, key: key)
         }
         .sorted { $0.sequence < $1.sequence }
+    }
+
+    // MARK: Song library
+
+    /// Songs whose title (or CCLI number, when the text is digits) matches.
+    public func searchSongs(_ text: String) async throws -> [Song] {
+        let term = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return [] }
+        func query(_ name: String, _ value: String) async throws -> [Song] {
+            let document = try await get("songs", query: [
+                .init(name: "where[\(name)]", value: value),
+                .init(name: "order", value: "title"),
+                .init(name: "per_page", value: "40"),
+            ])
+            return document.data.map(Self.song)
+        }
+        if term.allSatisfy(\.isNumber) { return try await query("ccli_number", term) }
+        let plain = try await query("title", term)
+        return plain.isEmpty ? try await query("title", "%\(term)%") : plain
+    }
+
+    public func arrangements(songID: String) async throws -> [Arrangement] {
+        let documents = try await getAll("songs/\(songID)/arrangements", query: [])
+        return documents.flatMap(\.data).map(Self.arrangement)
+    }
+
+    public func keys(songID: String, arrangementID: String) async throws -> [String] {
+        let document = try await get("songs/\(songID)/arrangements/\(arrangementID)/keys", query: [])
+        return document.data.compactMap { $0.string("starting_key") }
+    }
+
+    static func song(_ resource: Resource) -> Song {
+        Song(
+            id: resource.id, title: resource.string("title") ?? "",
+            author: resource.string("author"), copyright: resource.string("copyright"),
+            ccliNumber: resource.int("ccli_number"))
+    }
+
+    static func arrangement(_ resource: Resource) -> Arrangement {
+        Arrangement(
+            id: resource.id, name: resource.string("name") ?? "",
+            lyrics: resource.string("lyrics"),
+            chordChart: resource.string("chord_chart"),
+            chordChartKey: resource.string("chord_chart_key"),
+            sequence: resource.strings("sequence") ?? [],
+            bpm: resource.double("bpm"),
+            meter: resource.string("meter"),
+            updatedAt: resource.string("updated_at"))
     }
 
     // MARK: JSON:API plumbing
