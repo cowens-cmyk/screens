@@ -9,6 +9,7 @@ struct ScriptureSheet: View {
     let model: AppModel
     let render: RenderContext?
     var initialReference = ""
+    var target: SlideTarget? = nil
     let onCreated: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -18,8 +19,13 @@ struct ScriptureSheet: View {
     @State private var slides: [Slide] = []
     @State private var error: String?
     @State private var loading = false
+    @State private var addToTarget = true
 
-    private var themeId: String { model.slideBuilding.scriptureThemeId ?? "" }
+    /// The scripture template, or the target presentation's own theme.
+    private var themeId: String {
+        let chosen = model.slideBuilding.scriptureThemeId ?? ""
+        return chosen.isEmpty && addToTarget ? (target?.themeId ?? "") : chosen
+    }
     private var parsed: BibleReference? { BibleReference.parse(reference) }
 
     var body: some View {
@@ -52,9 +58,12 @@ struct ScriptureSheet: View {
             .onChange(of: settings.keepsLineBreaks) { _, _ in Task { await rebuild() } }
             .onChange(of: settings.showsVerseNumbers) { _, _ in Task { await rebuild() } }
             .onChange(of: themeId) { _, _ in Task { await rebuild() } }
+            .onChange(of: addToTarget) { _, _ in Task { await rebuild() } }
 
             preview
                 .frame(minHeight: 260)
+
+            DestinationPicker(target: target, addToTarget: $addToTarget)
 
             if !settings.hasAnyKey {
                 Text("Add an API.Bible or ESV key in Settings › Bible to look up passages.")
@@ -69,7 +78,7 @@ struct ScriptureSheet: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Create \(slides.count) Slides", action: create)
+                Button(addToTarget && target != nil ? "Add \(slides.count) Slides" : "Create \(slides.count) Slides", action: create)
                     .keyboardShortcut(.defaultAction)
                     .disabled(slides.isEmpty)
             }
@@ -132,6 +141,16 @@ struct ScriptureSheet: View {
 
     private func create() {
         guard let passage else { return }
+        if addToTarget, let target {
+            let built = slides.map { slide in
+                var slide = slide
+                slide.notes = passage.copyright
+                return slide
+            }
+            target.insert(target.adopting(built, builtWith: themeId))
+            dismiss()
+            return
+        }
         var presentation = ScriptureSlideBuilder.presentation(
             for: passage, format: settings.format, theme: model.theme(themeId))
         presentation.slides = slides.map { slide in

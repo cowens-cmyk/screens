@@ -128,6 +128,19 @@ struct SlideObjectInspector: View {
                         .foregroundStyle(.secondary)
                 }
 
+                InspectorSection("Look") {
+                    InspectorPicker("Switch to", selection: lookBinding()) {
+                        Text("Don't change").tag("")
+                        Divider()
+                        ForEach(model.appModel.entries(of: .outputPreset), id: \.id) { entry in
+                            Text(entry.name).tag(entry.id)
+                        }
+                    }
+                    Text("Every slide in this category switches outputs to this Look when it goes live — e.g. Bible → your scripture lower third, Sermon Points → your points lower third. Give Lyrics your normal Look so it switches back.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 InspectorSection("Actions") {
                     ActionListEditor(model: model.appModel, actions: slideActionsBinding())
                 }
@@ -364,6 +377,16 @@ struct SlideObjectInspector: View {
         Binding(
             get: { model.currentSlide?.actions ?? [] },
             set: { model.setSlideActions($0) }
+        )
+    }
+
+    private func lookBinding() -> Binding<String> {
+        Binding(
+            get: { model.currentSlide?.lookPresetId ?? "" },
+            set: { value in
+                guard let id = model.currentSlide?.id else { return }
+                model.updateSlide(id) { $0.lookPresetId = value.isEmpty ? nil : value }
+            }
         )
     }
 

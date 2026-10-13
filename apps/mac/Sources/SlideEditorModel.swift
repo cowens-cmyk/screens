@@ -1006,6 +1006,14 @@ final class SlideEditorModel {
         }
     }
 
+    /// Built slides (scripture, points) land after the selected slide.
+    func insertBuiltSlides(_ slides: [Slide]) {
+        guard !slides.isEmpty else { return }
+        let anchor = selectedSlideID ?? presentation.slides.last?.id
+        updateDocument { SlideBulkEdit.insertSlides(slides, after: anchor, in: &$0) }
+        selectSlide(slides[0].id)
+    }
+
     func addSlide(_ choice: NewSlideChoice) {
         let anchor = selectedSlideID
         let slide = choice.slide(sectionId: nil, deckThemeId: presentation.themeId)

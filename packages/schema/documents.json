@@ -1490,6 +1490,11 @@
           "name": "history",
           "type": "list:SlideVersion",
           "optional": true
+        },
+        {
+          "name": "lookPresetId",
+          "type": "string",
+          "optional": true
         }
       ]
     },
@@ -4558,6 +4563,11 @@
         {
           "name": "presentationTypeRules",
           "type": "list:PresentationTypeRule",
+          "optional": true
+        },
+        {
+          "name": "pointsThemeId",
+          "type": "string",
           "optional": true
         }
       ]

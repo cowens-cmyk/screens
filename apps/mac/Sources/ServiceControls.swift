@@ -466,7 +466,7 @@ final class ServiceControls {
         if !deckWasLive {
             actionRouter?.presentationDidGoLive(presentation)
         }
-        actionRouter?.applyPresetSwitches(for: slide, contextID: contextID)
+        actionRouter?.applyPresetSwitches(for: slide, contextID: contextID, theme: theme)
 
         if let own = RenderContext.sceneTransition(from: slide.transition) {
             render.nextLiveTransitions[.slide] = own

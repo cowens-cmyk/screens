@@ -38,6 +38,8 @@ struct LibrarySidebar: View {
     @State private var creatingFolder = false
     @State private var importingLyrics = false
     @State private var buildingScripture = false
+    @State private var buildingPoints = false
+    @State private var slideTarget: SlideTarget?
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     @Environment(\.openWindow) private var openWindow
@@ -109,9 +111,19 @@ struct LibrarySidebar: View {
         .sheet(isPresented: $importingLyrics) {
             ImportLyricsSheet(model: model, render: render, onImported: showImported)
         }
-        .focusedSceneValue(\.presentScripture, MenuAction("scripture") { buildingScripture = true })
+        .focusedSceneValue(\.presentScripture, MenuAction("scripture") {
+            slideTarget = SlideTarget.current(model: model, editor: slideEditor)
+            buildingScripture = true
+        })
+        .focusedSceneValue(\.presentPoints, MenuAction("points") {
+            slideTarget = SlideTarget.current(model: model, editor: slideEditor)
+            buildingPoints = true
+        })
         .sheet(isPresented: $buildingScripture) {
-            ScriptureSheet(model: model, render: render, onCreated: showImported)
+            ScriptureSheet(model: model, render: render, target: slideTarget, onCreated: showImported)
+        }
+        .sheet(isPresented: $buildingPoints) {
+            PointSlidesSheet(model: model, render: render, target: slideTarget, onCreated: showImported)
         }
         .deckThemeConfirmation(model: model, pending: $pendingApplyTheme)
         .sheet(item: $newFolderTarget) { entry in
@@ -969,6 +981,17 @@ struct LibrarySidebar: View {
             Button("Add to Service") { model.addToCurrentService(entry) }
             Divider()
         }
+        if entry.kind == .presentation, !runOnly {
+            Button("Add Scripture…") {
+                slideTarget = SlideTarget.library(entry.id, model: model)
+                buildingScripture = true
+            }
+            Button("Add Point Slides…") {
+                slideTarget = SlideTarget.library(entry.id, model: model)
+                buildingPoints = true
+            }
+            Divider()
+        }
         if entry.kind.opensInEditor {
 
             Button("Edit…") {
@@ -1287,6 +1310,7 @@ struct LibraryCommands: Commands {
     @FocusedValue(\.presentLibrarySearch) private var presentSearch
     @FocusedValue(\.presentLyricImport) private var presentLyricImport
     @FocusedValue(\.presentScripture) private var presentScripture
+    @FocusedValue(\.presentPoints) private var presentPoints
     @FocusedValue(\.presentWorkspaceImport) private var presentWorkspaceImport
     @FocusedValue(\.libraryModel) private var model
     @FocusedValue(\.slideEditor) private var slideEditor
@@ -1331,9 +1355,12 @@ struct LibraryCommands: Commands {
                 .disabled(presentSearch == nil || runOnly)
         }
         CommandGroup(after: .importExport) {
-            Button("Scripture Slides…") { presentScripture?() }
+            Button(addLabel("Scripture")) { presentScripture?() }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
                 .disabled(presentScripture == nil || runOnly)
+            Button(addLabel("Point Slides")) { presentPoints?() }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .disabled(presentPoints == nil || runOnly)
             Button("Import Lyrics…") { presentLyricImport?() }
                 .disabled(presentLyricImport == nil || runOnly)
             Button("Import from ProPresenter…") { importProPresenter() }
@@ -1352,6 +1379,14 @@ struct LibraryCommands: Commands {
             Button("Import Library Backup…") { importBackup() }
                 .disabled(model == nil || runOnly)
         }
+    }
+
+    /// "Add Scripture to “Sunday Sermon”…" when a presentation is open or selected.
+    private func addLabel(_ what: String) -> String {
+        guard let model, let target = SlideTarget.current(model: model, editor: slideEditor) else {
+            return "\(what)…"
+        }
+        return "Add \(what) to “\(target.name)”…"
     }
 
     private func createAndSelect(_ section: LibrarySection) {

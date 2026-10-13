@@ -771,8 +771,9 @@ public struct Slide: Codable, Sendable, Equatable, Identifiable {
     public var buildOrder: [String]?
     public var keepWords: Bool?
     public var history: [SlideVersion]?
+    public var lookPresetId: String?
 
-    public init(id: String, name: String, objects: [SlideObject], background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sectionId: String? = nil, folder: String? = nil, themeSlideName: String? = nil, themeId: String? = nil, unthemed: Bool? = nil, overrideDesigns: [OverrideDesign]? = nil, actions: [SlideAction]? = nil, notes: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, animationOrder: [String]? = nil, buildOrder: [String]? = nil, keepWords: Bool? = nil, history: [SlideVersion]? = nil) {
+    public init(id: String, name: String, objects: [SlideObject], background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sectionId: String? = nil, folder: String? = nil, themeSlideName: String? = nil, themeId: String? = nil, unthemed: Bool? = nil, overrideDesigns: [OverrideDesign]? = nil, actions: [SlideAction]? = nil, notes: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, animationOrder: [String]? = nil, buildOrder: [String]? = nil, keepWords: Bool? = nil, history: [SlideVersion]? = nil, lookPresetId: String? = nil) {
         self.id = id
         self.name = name
         self.objects = objects
@@ -792,6 +793,7 @@ public struct Slide: Codable, Sendable, Equatable, Identifiable {
         self.buildOrder = buildOrder
         self.keepWords = keepWords
         self.history = history
+        self.lookPresetId = lookPresetId
     }
 }
 
@@ -2487,14 +2489,16 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
     public var lyricsImportThemeId: String?
     public var scriptureThemeId: String?
     public var presentationTypeRules: [PresentationTypeRule]?
+    public var pointsThemeId: String?
 
-    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil) {
+    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil) {
         self.id = id
         self.designMap = designMap
         self.messageNotesThemeId = messageNotesThemeId
         self.lyricsImportThemeId = lyricsImportThemeId
         self.scriptureThemeId = scriptureThemeId
         self.presentationTypeRules = presentationTypeRules
+        self.pointsThemeId = pointsThemeId
     }
 }
 

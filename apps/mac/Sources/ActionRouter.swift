@@ -38,8 +38,8 @@ final class ActionRouter {
         (confidenceMonitor?.confidenceScreens ?? []).map { ($0.id.uuidString, $0.name) }
     }
 
-    func applyPresetSwitches(for slide: Slide, contextID: String?) {
-        guard let presetID = resolvedPresetID(for: slide, contextID: contextID),
+    func applyPresetSwitches(for slide: Slide, contextID: String?, theme: Theme? = nil) {
+        guard let presetID = resolvedPresetID(for: slide, contextID: contextID, theme: theme),
               presets.activePresetID != presetID
         else { return }
         presets.activate(presetID)
@@ -94,12 +94,22 @@ final class ActionRouter {
             protected: [layer])
     }
 
-    private func resolvedPresetID(for slide: Slide, contextID: String?) -> String? {
-        resolvedPresetID(actions: slide.actions, contextID: contextID)
+    private func resolvedPresetID(for slide: Slide, contextID: String?, theme: Theme? = nil) -> String? {
+        resolvedPresetID(actions: slide.actions, contextID: contextID, themeLook: themeLook(for: slide, theme: theme))
     }
 
-    private func resolvedPresetID(actions: [SlideAction]?, contextID: String?) -> String? {
-        var result = itemPresetID(contextID: contextID)
+    /// The Look the slide's theme category asks for (Bible → scripture lower
+    /// third). It beats the service item's preset; the slide's own Switch
+    /// Look action still beats both.
+    private func themeLook(for slide: Slide, theme: Theme?) -> String? {
+        guard let id = SlideSceneBuilder.themeSlide(for: slide, theme: theme)?.lookPresetId,
+              !id.isEmpty, presets.preset(id) != nil
+        else { return nil }
+        return id
+    }
+
+    private func resolvedPresetID(actions: [SlideAction]?, contextID: String?, themeLook: String? = nil) -> String? {
+        var result = themeLook ?? itemPresetID(contextID: contextID)
         func scan(_ actions: [SlideAction], depth: Int, visited: Set<String>) {
 
             for action in actions where !SlideSceneBuilder.waitsBeforeFiring(action) {

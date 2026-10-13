@@ -1192,6 +1192,9 @@
           "items": {
             "$ref": "#/components/schemas/SlideVersion"
           }
+        },
+        "lookPresetId": {
+          "type": "string"
         }
       },
       "required": [
@@ -3891,6 +3894,9 @@
           "items": {
             "$ref": "#/components/schemas/PresentationTypeRule"
           }
+        },
+        "pointsThemeId": {
+          "type": "string"
         }
       },
       "required": [
