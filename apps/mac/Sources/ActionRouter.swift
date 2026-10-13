@@ -61,6 +61,9 @@ final class ActionRouter {
     }
 
     func slideDidFire(_ slide: Slide, contextID: String?) {
+        if let layoutID = slide.stageLayoutId, !layoutID.isEmpty {
+            confidenceMonitor?.apply(layoutID: layoutID, toScreen: nil)
+        }
         guard let actions = slide.actions, !actions.isEmpty else { return }
         let protected = SlideSceneBuilder.protectedLayers(for: slide, mediaLayer: mediaLayer)
         let effective = SlideSceneBuilder.fireActions(for: slide, protected: protected)

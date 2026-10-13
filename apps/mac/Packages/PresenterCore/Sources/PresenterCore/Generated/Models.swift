@@ -772,8 +772,10 @@ public struct Slide: Codable, Sendable, Equatable, Identifiable {
     public var keepWords: Bool?
     public var history: [SlideVersion]?
     public var lookPresetId: String?
+    public var streamDesign: StreamDesign?
+    public var stageLayoutId: String?
 
-    public init(id: String, name: String, objects: [SlideObject], background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sectionId: String? = nil, folder: String? = nil, themeSlideName: String? = nil, themeId: String? = nil, unthemed: Bool? = nil, overrideDesigns: [OverrideDesign]? = nil, actions: [SlideAction]? = nil, notes: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, animationOrder: [String]? = nil, buildOrder: [String]? = nil, keepWords: Bool? = nil, history: [SlideVersion]? = nil, lookPresetId: String? = nil) {
+    public init(id: String, name: String, objects: [SlideObject], background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sectionId: String? = nil, folder: String? = nil, themeSlideName: String? = nil, themeId: String? = nil, unthemed: Bool? = nil, overrideDesigns: [OverrideDesign]? = nil, actions: [SlideAction]? = nil, notes: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, animationOrder: [String]? = nil, buildOrder: [String]? = nil, keepWords: Bool? = nil, history: [SlideVersion]? = nil, lookPresetId: String? = nil, streamDesign: StreamDesign? = nil, stageLayoutId: String? = nil) {
         self.id = id
         self.name = name
         self.objects = objects
@@ -794,6 +796,8 @@ public struct Slide: Codable, Sendable, Equatable, Identifiable {
         self.keepWords = keepWords
         self.history = history
         self.lookPresetId = lookPresetId
+        self.streamDesign = streamDesign
+        self.stageLayoutId = stageLayoutId
     }
 }
 

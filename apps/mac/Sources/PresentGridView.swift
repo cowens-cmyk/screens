@@ -514,6 +514,7 @@ struct SlideGridBody: View {
     @State private var actionEditorSlide: Slide?
 
     @State private var actionPlacement: ActionPlacement?
+    @State private var screensTarget: SlideScreensTarget?
 
     @State private var autoAdvanceTarget: AutoAdvanceTarget?
 
@@ -712,6 +713,9 @@ struct SlideGridBody: View {
                 actions: slideActionsBinding(target.id)
             )
         }
+        .sheet(item: $screensTarget) { target in
+            SlideScreensSheet(model: model, presentation: presentation, slideIDs: target.slideIDs)
+        }
         .sheet(item: $actionPlacement) { placement in
             ActionPlacementSheet(model: model, draft: placement.draft) { action in
                 addAction(action, to: placement.slideIDs)
@@ -841,6 +845,7 @@ struct SlideGridBody: View {
     @ViewBuilder
     private func bulkMenu(slideIDs: [String]) -> some View {
         Text("\(slideIDs.count) Slides")
+        Button("Screens…") { screensTarget = SlideScreensTarget(slideIDs: slideIDs) }
         Menu("Add Action") {
             AddActionMenuItems(
                 model: model,
@@ -1022,6 +1027,8 @@ struct SlideGridBody: View {
     @ViewBuilder
     private func singleMenu(slide: Slide) -> some View {
 
+        Button("Screens…") { screensTarget = SlideScreensTarget(slideIDs: [slide.id]) }
+        Divider()
         Button("Edit…") {
             model.openInEditor(
                 entryID: presentation.id, slideID: slide.id

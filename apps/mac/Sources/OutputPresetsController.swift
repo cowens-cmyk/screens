@@ -234,6 +234,22 @@ final class OutputPresetsController {
     /// design picked for its category in the theme editor, else the theme's
     /// lower-third theme, else a clear camera.
     private func streamChoice() -> StreamChoice {
+        // A choice made on the slide itself wins over the theme's.
+        if let own = liveSlide?.streamDesign {
+            switch own.mode {
+            case .clear: return .clear
+            case .audience: return .audience
+            case .design:
+                if let themeID = own.themeId, let source = appModel.theme(themeID) {
+                    var scoped = source.scoped(toSlideID: own.slideId)
+                    if own.slideId != nil, var only = scoped.slides?.first, let name = liveSlide?.themeSlideName {
+                        only.name = name
+                        scoped.slides = [only]
+                    }
+                    return .design(key: "stream-slide:\(themeID)##\(own.slideId ?? "")", theme: scoped)
+                }
+            }
+        }
         guard let theme = liveTheme else { return .clear }
         let category = liveSlide.flatMap { SlideSceneBuilder.themeSlide(for: $0, theme: theme)?.name } ?? ""
         if let pick = theme.streamDesigns?.first(where: { $0.category.caseInsensitiveCompare(category) == .orderedSame }) {
@@ -264,7 +280,7 @@ final class OutputPresetsController {
     func noteLiveTheme(_ theme: Theme?, slide: Slide? = nil) {
         liveTheme = theme
         liveSlide = slide
-        let needed = ([theme?.streamLowerThirdThemeId] + (theme?.streamDesigns ?? []).map(\.themeId))
+        let needed = ([theme?.streamLowerThirdThemeId, slide?.streamDesign?.themeId] + (theme?.streamDesigns ?? []).map(\.themeId))
             .compactMap { $0 }.filter { !$0.isEmpty && appModel.theme($0) == nil }
         if !needed.isEmpty {
             Task { @MainActor [weak self] in

@@ -1195,6 +1195,12 @@
         },
         "lookPresetId": {
           "type": "string"
+        },
+        "streamDesign": {
+          "$ref": "#/components/schemas/StreamDesign"
+        },
+        "stageLayoutId": {
+          "type": "string"
         }
       },
       "required": [

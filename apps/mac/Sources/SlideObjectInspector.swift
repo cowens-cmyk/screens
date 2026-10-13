@@ -161,10 +161,9 @@ struct SlideObjectInspector: View {
 
     @ViewBuilder
     private func presentationCueSections() -> some View {
-        InspectorSection("Slide") {
-            InspectorTextField("Name", text: slideNameBinding())
+        InspectorSection("Screens") {
             if !model.themeSlideNames.isEmpty || !model.otherThemeChoices.isEmpty {
-                InspectorPicker("Theme Slide", selection: themeSlideSelection()) {
+                InspectorPicker("Audience", selection: themeSlideSelection()) {
                     Text("Automatic").tag("")
 
                     ForEach(Array(model.themeSlideGroups.enumerated()), id: \.offset) { _, group in
@@ -186,6 +185,14 @@ struct SlideObjectInspector: View {
                     }
                 }
             }
+            SlideStreamPicker(model: model)
+            SlideStagePicker(model: model)
+            Text("What this slide puts on each screen when it goes live. Livestream and Stage default to the theme's choices.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        InspectorSection("Slide") {
+            InspectorTextField("Name", text: slideNameBinding())
         }
         InspectorSection("Background") {
             if let background = model.effectiveBackground {

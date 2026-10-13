@@ -1495,6 +1495,16 @@
           "name": "lookPresetId",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "streamDesign",
+          "type": "StreamDesign",
+          "optional": true
+        },
+        {
+          "name": "stageLayoutId",
+          "type": "string",
+          "optional": true
         }
       ]
     },
