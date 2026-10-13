@@ -33,6 +33,8 @@ struct ModuleWindowView: View {
                         case .combos: ActionCombosModule(model: model, controls: controls)
                         case .confidence: ConfidenceModule(model: model, controls: controls)
                         case .outputs: OutputsModule(model: model, controls: controls, presets: presets)
+                        case .livestream: LivestreamModule(model: model, controls: controls, presets: presets)
+        case .livestream: LivestreamModule(model: model, controls: controls, presets: presets)
                         }
                     }
                 }

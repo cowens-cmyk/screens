@@ -1850,7 +1850,7 @@ func slideActionLabel(
     }
     return switch action.kind {
     case .switchOutputPreset:
-        "Switch Output Preset: \(entryName(action.presetId))"
+        "Look: \(entryName(action.presetId))"
     case .clearLayer:
         "Clear \(action.layer.flatMap(LayerKind.init(rawValue:))?.displayName ?? "Layer")"
     case .clearAll: "Clear All"

@@ -19,7 +19,7 @@ struct PresentationTypeRulesForm: View {
                     Button("Edit…") { editing = category }
                 }
             }
-            Text("Example: Sermon → set stage layout “Sermon”, configure and start the sermon timer. Bible → switch to the Bible lower-third output preset. Songs count as Worship.")
+            Text("Example: Sermon → set stage layout “Sermon”, configure and start the sermon timer. Bible → switch to the Bible lower-third Look. Songs count as Worship.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

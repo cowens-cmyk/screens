@@ -115,7 +115,7 @@ struct KeyboardMapPane: View {
         var sections: [(String, String?, [GeneratedRowSpec])] = []
         let presets = model.entries(of: .outputPreset)
         if !presets.isEmpty {
-            sections.append(("Output Presets", nil, presets.map {
+            sections.append(("Looks", nil, presets.map {
                 GeneratedRowSpec(
                     key: GeneratedKey(.outputPreset, $0.id),
                     label: "Switch to \u{201C}\($0.name)\u{201D}")

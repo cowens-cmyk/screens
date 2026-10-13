@@ -655,7 +655,7 @@ struct RunOrderList: View {
     private func outputPresetMenu(_ item: ServiceItem) -> some View {
         let presets = model.entries(of: .outputPreset)
         if !presets.isEmpty {
-            Menu("Output Preset") {
+            Menu("Look") {
                 Toggle(
                     "Keep Current Look",
                     isOn: Binding(

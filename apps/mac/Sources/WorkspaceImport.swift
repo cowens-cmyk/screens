@@ -354,7 +354,7 @@ struct WorkspaceImportRunner {
         if inputsImported > 0 { lines.append("\(inputsImported) video inputs") }
         if !result.midiDevicesImported.isEmpty { lines.append("\(result.midiDevicesImported.count) MIDI devices: \(result.midiDevicesImported.joined(separator: ", "))") }
         if screensAdded > 0 { lines.append("\(screensAdded) screens (with roles and stage layout assignments)") }
-        if looksImported > 0 { lines.append("\(looksImported) looks → Output Presets") }
+        if looksImported > 0 { lines.append("\(looksImported) Looks") }
         if !result.servicesImported.isEmpty { lines.append("\(result.servicesImported.count) playlists → Services: \(result.servicesImported.joined(separator: ", "))") }
         if !result.schedulesImported.isEmpty { lines.append("\(result.schedulesImported.count) calendar events → Scheduler: \(result.schedulesImported.joined(separator: ", "))") }
 

@@ -111,7 +111,7 @@ struct OutputPresetMenu: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Output Preset — which layers reach the glass")
+        .help("Look — what each screen shows")
     }
 
     struct Choice: Identifiable {

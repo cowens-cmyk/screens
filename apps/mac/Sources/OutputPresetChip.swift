@@ -27,7 +27,7 @@ struct OutputPresetChip: View {
                 }
                 Divider()
 
-                Button("Edit Output Presets\u{2026}") {
+                Button("Edit Looks\u{2026}") {
                     ScreenConfigRouter.shared.pendingPresetID = presets.activePresetID ?? ""
                     openWindow(id: "outputs")
                 }
@@ -57,7 +57,7 @@ struct OutputPresetChip: View {
             .menuIndicator(.hidden)
             .fixedSize()
 
-            .help("Output Preset: \(OutputPresetMenu.activeName(presets)) — which layers reach the glass")
+            .help("Look: \(OutputPresetMenu.activeName(presets)) — what each screen shows")
         }
     }
 }

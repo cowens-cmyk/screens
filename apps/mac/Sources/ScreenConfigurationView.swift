@@ -125,7 +125,7 @@ struct ScreenConfigurationView: View {
                 }
                 if let presets {
                     HStack {
-                        sectionLabel("Output Presets")
+                        sectionLabel("Looks")
                         Spacer()
                         addPresetMenu(presets)
                     }
@@ -294,7 +294,7 @@ struct ScreenConfigurationView: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("New Output Preset — Broadcast Feed starts from slide + overlays only (keying over a switcher)")
+        .help("New Look — Broadcast Feed starts from slide + overlays only (keying over a switcher)")
     }
 
     private func presetListRow(

@@ -105,7 +105,7 @@ struct OutputsPanel: View {
     private var presetSection: some View {
         if let presets {
             HStack {
-                Picker("Output Preset", selection: Binding(
+                Picker("Look", selection: Binding(
                     get: { presets.activePresetID ?? "" },
                     set: { presets.activate($0.isEmpty ? nil : $0) }
                 )) {
@@ -130,7 +130,7 @@ struct OutputsPanel: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
-                .help("New Output Preset — Broadcast Feed routes slide + overlays only (no media layers), for keying over a switcher")
+                .help("New Look — Broadcast Feed routes slide + overlays only (no media layers), for keying over a switcher")
             }
             if let activeID = presets.activePresetID, presets.preset(activeID) != nil {
                 ForEach(outputs.displays) { display in

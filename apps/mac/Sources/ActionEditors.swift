@@ -9,7 +9,7 @@ extension SlideActionKind {
         case .clearAll: "Clear All"
         case .clearAudio: "Clear Music"
         case .clearSignage: "Clear Signage"
-        case .switchOutputPreset: "Switch Output Preset"
+        case .switchOutputPreset: "Set Look"
         case .fireMedia: "Fire Media"
         case .fireAlert: "Fire Alert"
         case .dismissAlert: "Dismiss Alert"
@@ -189,7 +189,7 @@ struct ActionParameterFields: View {
                 }
             }
         case .switchOutputPreset:
-            Picker("Preset", selection: stringBinding(action, \.presetId)) {
+            Picker("Look", selection: stringBinding(action, \.presetId)) {
                 Text("Choose\u{2026}").tag("")
                 ForEach(entries(of: .outputPreset), id: \.id) { entry in
                     Text(entry.name).tag(entry.id)
@@ -685,17 +685,18 @@ struct AddActionMenuItems: View {
     let add: (SlideAction) -> Void
 
     @Environment(\.signage) private var signage
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let presets = entries(of: .outputPreset)
-        if !presets.isEmpty {
-            Menu("Output Preset") {
-                ForEach(presets, id: \.id) { preset in
-                    Button(preset.name) {
-                        add(make(.switchOutputPreset) { $0.presetId = preset.id })
-                    }
+        Menu("Look") {
+            ForEach(presets, id: \.id) { preset in
+                Button(preset.name) {
+                    add(make(.switchOutputPreset) { $0.presetId = preset.id })
                 }
             }
+            if !presets.isEmpty { Divider() }
+            Button("New Look\u{2026}") { openWindow(id: "outputs") }
         }
         Menu("Clear") {
             Button("Clear All") { add(make(.clearAll)) }

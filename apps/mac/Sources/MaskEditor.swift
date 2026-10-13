@@ -126,7 +126,7 @@ struct OutputMaskEditor: View {
                 )
                 .toggleStyle(.checkbox)
                 .controlSize(.mini)
-                .help("On = room geometry, applies regardless of preset. Off = only while an Output Preset activates it.")
+                .help("On = room geometry, applies regardless of preset. Off = only while a Look activates it.")
                 Button(editingMaskID == mask.id ? "Done" : "Edit Points") {
                     drawing = false
                     editingMaskID = editingMaskID == mask.id ? nil : mask.id

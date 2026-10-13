@@ -232,7 +232,7 @@ private struct WorkspaceOptionsView: View {
                     }
                     .padding(.leading, 18)
                 }
-                row("Looks → Output Presets", scan.looks, $options.looks)
+                row("Looks", scan.looks, $options.looks)
                 row("Stage layout assignments", nil, $options.stageAssignments)
                 row("Timers", scan.timers, $options.timers)
                 row("Video inputs", scan.videoInputs, $options.videoInputs)

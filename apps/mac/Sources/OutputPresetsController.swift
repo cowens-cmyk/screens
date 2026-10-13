@@ -201,6 +201,14 @@ final class OutputPresetsController {
     }
 
     @discardableResult
+    func createPreset(name: String, assignments: [OutputAssignment]) -> String {
+        let preset = OutputPreset(id: UUID().uuidString, name: name, assignments: assignments)
+        appModel.client.create(preset)
+        version += 1
+        return preset.id
+    }
+
+    @discardableResult
     func createPreset(fromBroadcastTemplate: Bool) -> String? {
         let id = UUID().uuidString
         var assignments: [OutputAssignment] = []
@@ -220,7 +228,7 @@ final class OutputPresetsController {
         }
         let preset = OutputPreset(
             id: id,
-            name: fromBroadcastTemplate ? "Broadcast Feed" : "Untitled Preset",
+            name: fromBroadcastTemplate ? "Broadcast Feed" : "Untitled Look",
             assignments: assignments
         )
         appModel.client.create(preset)
