@@ -52,6 +52,7 @@ final class ServiceControls {
 
         NDIScreenOutputs.shared.restore(render: render)
         DeckLinkScreenOutputs.shared.restore(render: render)
+        DeckLinkAutoSetup.shared.start(render: render)
 
         VideoInputInventory.shared.warmUp(render: render)
 
@@ -504,6 +505,7 @@ final class ServiceControls {
         }
 
         actionRouter?.slideDidFire(slide, contextID: contextID)
+        LightkeyLink.shared.slideWentLive(slide, in: presentation)
         armAutoAdvance(for: slide, in: presentation)
 
         if !deckWasLive {

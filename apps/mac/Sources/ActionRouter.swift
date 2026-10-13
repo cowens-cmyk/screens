@@ -407,6 +407,12 @@ final class ActionRouter {
                 durationSeconds: action.timerDurationSeconds,
                 hour: action.timerHour, minute: action.timerMinute
             )
+        case .midiOut where action.midiDeviceId == LightkeyLink.deviceID:
+            LightkeyLink.shared.send(
+                kind: action.midiKind ?? .noteOn,
+                channel: action.midiChannel ?? LightkeyLink.shared.channel,
+                number: action.midiNumber ?? 0,
+                value: action.midiValue ?? 127)
         case .midiOut:
             switch MIDIOutTarget.resolve(
                 deviceId: action.midiDeviceId, items: MIDIDeviceInventory.shared.items
@@ -618,6 +624,22 @@ final class MIDIOutService: @unchecked Sendable {
         case .controlChange: return [0xB0 | channelBits, UInt8(number & 0x7F), UInt8(value & 0x7F)]
         case .programChange: return [0xC0 | channelBits, UInt8(number & 0x7F)]
         }
+    }
+
+    /// To Lightkey: the "Screens" virtual source (Lightkey on this Mac) and,
+    /// when given, a network MIDI session (Lightkey on another Mac).
+    func sendToLightkey(
+        kind: MIDIMessageKind, channel: Int, number: Int, value: Int, network: MIDIEndpointRef?
+    ) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard prepareLocked() else { return }
+        let data = Self.bytes(kind: kind, channel: channel, number: number, value: value)
+        var packetList = MIDIPacketList()
+        let packet = MIDIPacketListInit(&packetList)
+        _ = MIDIPacketListAdd(&packetList, MemoryLayout<MIDIPacketList>.size, packet, 0, data.count, data)
+        if virtualSource != 0 { MIDIReceived(virtualSource, &packetList) }
+        if let network, network != 0 { MIDISend(port, network, &packetList) }
     }
 
     func send(

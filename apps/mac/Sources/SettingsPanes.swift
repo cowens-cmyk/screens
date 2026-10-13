@@ -66,6 +66,11 @@ struct SettingsCategoryPane: View {
             .settingsForm()
         case .midi:
             Form {
+                Section {
+                    ForEach(rows.filter { $0.id == "midi.lightkey" }) { $0.control }
+                } header: {
+                    Text("Lightkey")
+                }
                 MIDIDevicesSection { page = .midiDevice($0) }
                 Section {
                     ForEach(rows.filter { $0.id == "midi.map" }) { SettingsFormRow(spec: $0) }

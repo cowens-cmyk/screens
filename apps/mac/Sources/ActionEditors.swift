@@ -689,6 +689,19 @@ struct AddActionMenuItems: View {
 
     var body: some View {
         let presets = entries(of: .outputPreset)
+        Menu("Lightkey Cue") {
+            ForEach(1...24, id: \.self) { note in
+                Button("Cue note \(note)") {
+                    add(make(.midiOut) {
+                        $0.midiDeviceId = LightkeyLink.deviceID
+                        $0.midiKind = .noteOn
+                        $0.midiChannel = LightkeyLink.shared.channel
+                        $0.midiNumber = 30 + note
+                        $0.midiValue = 127
+                    })
+                }
+            }
+        }
         Menu("Look") {
             ForEach(presets, id: \.id) { preset in
                 Button(preset.name) {

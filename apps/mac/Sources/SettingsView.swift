@@ -381,6 +381,14 @@ struct AppSettingsView: View {
             stacked: true
         ))
         rows.append(SettingsRowSpec(
+            id: "midi.lightkey", category: .midi,
+            title: "Lightkey",
+            caption: nil,
+            keywords: "lightkey lighting dmx midi network rtp cue section verse chorus",
+            control: AnyView(LightkeySettingsForm()),
+            stacked: true
+        ))
+        rows.append(SettingsRowSpec(
             id: "midi.map", category: .midi,
             title: "MIDI input map",
             caption: "What incoming notes trigger — clears, slides, videos, overlays, media, music, timers, alerts, macros. ProPresenter's stock numbers out of the box; every assignment is editable.",
@@ -402,6 +410,16 @@ struct AppSettingsView: View {
                 caption: nil,
                 keywords: "audience livestream stream stage display confidence screen monitor lower third transparent full screen key",
                 control: AnyView(ShowSetupForm(controls: controls)),
+                stacked: true
+            ))
+        }
+        if let controls {
+            rows.append(SettingsRowSpec(
+                id: "show.decklink", category: .showSetup,
+                title: "Blackmagic DeckLink",
+                caption: nil,
+                keywords: "decklink blackmagic sdi ultrastudio desktop video output card 8k duo quad",
+                control: AnyView(DeckLinkSetupForm(render: controls.render)),
                 stacked: true
             ))
         }
