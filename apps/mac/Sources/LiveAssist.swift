@@ -121,15 +121,23 @@ final class LiveAssist {
             status = "Choose an audio input"
             return
         }
-        let authorized = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
-        }
+        let authorized = await Self.speechAuthorized()
         guard authorized else {
             status = "Allow Speech Recognition in System Settings › Privacy & Security"
             return
         }
         transcriber.start(
             deviceUID: device, channels: inputChannel.map { .mono(channel: $0) } ?? .default)
+    }
+
+    /// macOS answers the permission request on a background queue; the
+    /// callback must not be main-actor isolated or Swift traps on the hop.
+    nonisolated private static func speechAuthorized() async -> Bool {
+        await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { @Sendable status in
+                continuation.resume(returning: status == .authorized)
+            }
+        }
     }
 
     private func restartIfListening() {
