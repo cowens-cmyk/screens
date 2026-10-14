@@ -202,7 +202,7 @@ struct SlideEditorView: View {
         }
 
         .sheet(isPresented: Binding(get: { model.choosingNewSlide }, set: { model.choosingNewSlide = $0 })) {
-            NewSlideSheet(appModel: appModel, render: render, deckThemeId: model.presentation.themeId) { choice in
+            NewSlideSheet(appModel: appModel, render: render, deckThemeId: model.presentation.themeId, startsWithThemes: true) { choice in
                 model.addSlide(choice)
             }
         }
@@ -228,8 +228,7 @@ struct SlideEditorView: View {
                 Button {
                     model.addSlide()
                 } label: {
-                    Label(model.isThemeEditor ? "Add Category" : "Add Slide…", systemImage: "plus")
-                        .labelStyle(.iconOnly)
+                    Label(model.isThemeEditor ? "Add Category" : "Add Slide", systemImage: "plus")
                 }
                 .buttonStyle(.borderless)
                 .help(model.isThemeEditor ? "Add Category" : "Add Slide: Blank or From Theme")
@@ -374,12 +373,13 @@ struct SlideEditorView: View {
             })
         .overlay { ListMarqueeBand(rect: slideMarquee) }
         .focused($slideListFocused)
-        .onSlideClipboardKeys(active: slideListFocused) { verb in
+        .onSlideClipboardKeys(active: slideListFocused, deletes: true) { verb in
             switch verb {
             case .copy: model.copySelectedSlides()
             case .cut: model.cutSelectedSlides()
             case .paste: model.paste()
             case .selectAll: model.selectAllSlides()
+            case .delete: model.deleteSlides(Array(model.selectedSlideIDs))
             }
         }
     }
@@ -707,7 +707,6 @@ struct SlideEditorView: View {
                 moveToThemeMenu(model, batch: [slide.id])
                 Button("Duplicate") { model.duplicateSlide(slide.id) }
                 Button("Delete", role: .destructive) { model.deleteSlide(slide.id) }
-                    .disabled(model.presentation.slides.count == 1)
             }
         }
     }
@@ -1005,12 +1004,13 @@ struct SlideEditorView: View {
             objectSelectionChangedAt = Date()
         }
         .focused($objectsPanelFocused)
-        .onSlideClipboardKeys(active: objectsPanelFocused) { verb in
+        .onSlideClipboardKeys(active: objectsPanelFocused, deletes: true) { verb in
             switch verb {
             case .copy: model.copySelectedObjects()
             case .cut: model.cutSelectedObjects()
             case .paste: model.paste()
             case .selectAll: model.selectAllObjects(includingHidden: true)
+            case .delete: model.deleteSelectedObjects()
             }
         }
     }
@@ -1309,6 +1309,13 @@ struct SlideEditorView: View {
                         .padding(EditorGeometry.pasteboardInset)
                     SceneCanvas(render: render, transparentBackground: true, inset: EditorGeometry.pasteboardInset)
                     EditorInteractionView(model: model)
+
+                    if model.presentation.slides.isEmpty {
+                        VStack(spacing: 10) {
+                            Text(model.isThemeEditor ? "No categories" : "No slides").foregroundStyle(.secondary)
+                            Button(model.isThemeEditor ? "Add Category" : "Add Slide…") { model.addSlide() }
+                        }
+                    }
 
                     if model.editorMode == .animate {
                         AnimateCanvasOverlay(model: model)

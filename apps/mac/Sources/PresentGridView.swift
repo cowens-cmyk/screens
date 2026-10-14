@@ -256,7 +256,7 @@ final class SlidePasteboardChanges {
 }
 
 struct SlideClipboardRequests: Equatable {
-    enum Verb { case copy, cut, paste, selectAll }
+    enum Verb { case copy, cut, paste, selectAll, delete }
 
     var copies = 0
     var cuts = 0
@@ -269,6 +269,7 @@ struct SlideClipboardRequests: Equatable {
         case .cut: cuts += 1
         case .paste: pastes += 1
         case .selectAll: selectAlls += 1
+        case .delete: break
         }
     }
 }
@@ -299,19 +300,23 @@ extension View {
             .onKeyPress(.space) { fire(1) }
     }
 
+    /// `deletes` also routes the Delete and Forward Delete keys (lists in
+    /// the editor; never the live grid, where a stray key would cost slides).
     func onSlideClipboardKeys(
-        active: Bool, perform action: @escaping (SlideClipboardRequests.Verb) -> Void
+        active: Bool, deletes: Bool = false, perform action: @escaping (SlideClipboardRequests.Verb) -> Void
     ) -> some View {
-        background(SlideClipboardKeyMonitor(active: active, action: action))
+        background(SlideClipboardKeyMonitor(active: active, deletes: deletes, action: action))
     }
 }
 
 private struct SlideClipboardKeyMonitor: NSViewRepresentable {
     let active: Bool
+    var deletes = false
     let action: (SlideClipboardRequests.Verb) -> Void
 
     final class Coordinator {
         var monitor: Any?
+        var deletes = false
         var action: (SlideClipboardRequests.Verb) -> Void = { _ in }
         weak var view: NSView?
 
@@ -339,6 +344,11 @@ private struct SlideClipboardKeyMonitor: NSViewRepresentable {
         private func verb(for event: NSEvent) -> SlideClipboardRequests.Verb? {
             let typing = event.window?.firstResponder is NSText
             if let window = view?.window, event.window === window, window.isKeyWindow,
+               window.attachedSheet == nil, !typing, deletes,
+               event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+               event.keyCode == 51 || event.keyCode == 117 {
+                return .delete
+            } else if let window = view?.window, event.window === window, window.isKeyWindow,
                window.attachedSheet == nil, !typing,
                event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
                 switch event.charactersIgnoringModifiers?.lowercased() {
@@ -374,6 +384,7 @@ private struct SlideClipboardKeyMonitor: NSViewRepresentable {
 
     private func sync(_ coordinator: Coordinator) {
         coordinator.action = action
+        coordinator.deletes = deletes
         if active { coordinator.install() } else { coordinator.remove() }
     }
 }
@@ -441,6 +452,16 @@ struct SlideGridBody: View {
                         }
                     }
                 }
+            }
+            if !runOnly {
+                Button {
+                    addSlideTarget = NewSlideTarget(after: presentation.slides.last)
+                } label: {
+                    Label(slides.isEmpty ? "Add a Slide" : "Add Slide", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Add a slide from any theme, or a blank one")
             }
         }
     }
@@ -551,6 +572,8 @@ struct SlideGridBody: View {
     @State private var slideShowPresented = false
 
     @State private var newSlideTarget: NewSlideTarget?
+    /// The Add Slide button opens straight on the theme picker.
+    @State private var addSlideTarget: NewSlideTarget?
 
     @State private var applyThemeTarget: ApplyThemeTarget?
 
@@ -656,6 +679,11 @@ struct SlideGridBody: View {
         .onChange(of: NewSlideRouter.shared.requests) { _, _ in newSlideFromMenu() }
         .sheet(item: $newSlideTarget) { target in
             NewSlideSheet(appModel: model, render: render, deckThemeId: presentation.themeId) { choice in
+                insertNewSlide(choice, after: target.after)
+            }
+        }
+        .sheet(item: $addSlideTarget) { target in
+            NewSlideSheet(appModel: model, render: render, deckThemeId: presentation.themeId, startsWithThemes: true) { choice in
                 insertNewSlide(choice, after: target.after)
             }
         }
@@ -1117,7 +1145,6 @@ struct SlideGridBody: View {
         Button("Delete Slide", role: .destructive) {
             deleteSlides([slide.id])
         }
-        .disabled(presentation.slides.count == 1)
     }
 
     /// Change Theme › one entry per theme (each sermon series is its own).

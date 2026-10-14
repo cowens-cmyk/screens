@@ -120,3 +120,29 @@ struct ShareTransferRunner {
         return installed
     }
 }
+
+/// Files opened from Finder before or after the library is ready.
+@MainActor
+enum ShareOpenQueue {
+    static var model: AppModel? {
+        didSet { flush() }
+    }
+    private static var pending: [URL] = []
+
+    static func open(_ urls: [URL]) {
+        let kinds = [ShareBundle.themeExtension, ShareBundle.presentationExtension]
+        pending += urls.filter { kinds.contains($0.pathExtension.lowercased()) }
+        flush()
+    }
+
+    private static func flush() {
+        guard let model, !pending.isEmpty else { return }
+        let urls = pending
+        pending = []
+        model.whenLibraryReady {
+            Task { @MainActor in
+                for url in urls { await ShareTransferRunner(model: model).importFile(url) }
+            }
+        }
+    }
+}

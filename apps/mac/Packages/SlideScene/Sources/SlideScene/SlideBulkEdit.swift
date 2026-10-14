@@ -94,7 +94,8 @@ public enum SlideBulkEdit {
     public static func deleteSlides(_ slideIDs: [String], in slides: inout [Slide]) -> Bool {
         let targets = Set(slideIDs)
         let remaining = slides.filter { !targets.contains($0.id) }
-        let deletes = !remaining.isEmpty && remaining.count < slides.count
+        // A presentation may end up with no slides; Add Slide refills it.
+        let deletes = remaining.count < slides.count
         if deletes {
             slides = remaining
         }

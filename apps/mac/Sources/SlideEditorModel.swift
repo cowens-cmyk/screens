@@ -1249,7 +1249,7 @@ final class SlideEditorModel {
     func deleteSlides(_ ids: [String]) {
         let targets = Set(ids)
         let survivors = presentation.slides.filter { !targets.contains($0.id) }
-        if !survivors.isEmpty, survivors.count < presentation.slides.count {
+        if survivors.count < presentation.slides.count {
             let firstIndex = presentation.slides.firstIndex { targets.contains($0.id) } ?? 0
             updateDocument { SlideBulkEdit.deleteSlides(ids, in: &$0) }
             reselectAfterRemoval(of: targets, firstIndex: firstIndex)
@@ -1258,6 +1258,12 @@ final class SlideEditorModel {
 
     private func reselectAfterRemoval(of targets: Set<String>, firstIndex: Int) {
         if let current = selectedSlideID, targets.contains(current) {
+            guard !presentation.slides.isEmpty else {
+                selectedSlideID = nil
+                selectedSlideIDs = []
+                selectedObjectIDs = []
+                return
+            }
             let fallback = presentation.slides[min(firstIndex, presentation.slides.count - 1)].id
             selectedSlideID = nil
             selectSlide(fallback)

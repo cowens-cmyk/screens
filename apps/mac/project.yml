@@ -88,12 +88,32 @@ targets:
         NSSpeechRecognitionUsageDescription: "Screens listens to a microphone you choose to follow lyrics and spot Bible references."
         NSAppleEventsUsageDescription: "Screens asks Keynote to export decks so they can be imported."
         NSCalendarsFullAccessUsageDescription: "Screens can fire slides and macros when events on your calendar start."
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: org.hopejc.screens.theme
+            UTTypeDescription: Screens Theme
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [screenstheme]
+          - UTTypeIdentifier: org.hopejc.screens.presentation
+            UTTypeDescription: Screens Presentation
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [screenspres]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Screens Theme
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSItemContentTypes: [org.hopejc.screens.theme]
+          - CFBundleTypeName: Screens Presentation
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSItemContentTypes: [org.hopejc.screens.presentation]
     settings:
       base:
         PRODUCT_NAME: "Screens"
         PRODUCT_BUNDLE_IDENTIFIER: com.example.mxuslides
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: "0.4.9"
+        MARKETING_VERSION: "0.5.0"
         CURRENT_PROJECT_VERSION: "1"
         MXU_GIT_COMMIT: ""
         MTL_COMPILER_FLAGS: "-fcikernel"

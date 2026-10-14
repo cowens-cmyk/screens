@@ -42,6 +42,11 @@ enum WindowBridge {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Double-clicked .screenstheme / .screenspres files import themselves.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated { ShareOpenQueue.open(urls) }
+    }
+
     func applicationShouldHandleReopen(
         _ sender: NSApplication, hasVisibleWindows flag: Bool
     ) -> Bool {
@@ -116,6 +121,7 @@ struct MxUSlidesApp: App {
         #endif
         _renderContext = State(initialValue: render)
         _appModel = State(initialValue: model)
+        ShareOpenQueue.model = model
         if let render {
             let controls = ServiceControls(appModel: model, render: render)
             let stream = StreamRouter(

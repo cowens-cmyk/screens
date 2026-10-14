@@ -121,16 +121,14 @@ final class SlideBulkEditTests: XCTestCase {
         )
     }
 
-    func testDeleteSlidesNeverEmptiesTheDeck() {
+    func testDeleteSlidesCanEmptyTheDeck() {
         var doc = presentation([slide("s1"), slide("s2"), slide("s3")])
         XCTAssertTrue(SlideBulkEdit.deleteSlides(["s1", "s3"], in: &doc))
         XCTAssertEqual(doc.slides.map(\.id), ["s2"])
 
-        XCTAssertFalse(
-            SlideBulkEdit.deleteSlides(["s2"], in: &doc),
-            "the last slide stays — an empty presentation has no canvas"
-        )
-        XCTAssertEqual(doc.slides.map(\.id), ["s2"])
+        XCTAssertTrue(SlideBulkEdit.deleteSlides(["s2"], in: &doc), "a presentation may have no slides")
+        XCTAssertEqual(doc.slides, [])
+        XCTAssertFalse(SlideBulkEdit.deleteSlides(["s9"], in: &doc), "nothing to delete")
     }
 
     func testBatchIsTheSelectionInSlideOrderOnlyWhenTheRowIsInIt() {

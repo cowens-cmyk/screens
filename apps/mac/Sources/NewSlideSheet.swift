@@ -11,6 +11,9 @@ struct NewSlideSheet: View {
     let render: RenderContext?
 
     let deckThemeId: String
+    /// Open on the theme picker (the Add Slide buttons) instead of the
+    /// Blank / From Theme choice.
+    var startsWithThemes = false
     let onCreate: (NewSlideChoice) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -33,7 +36,11 @@ struct NewSlideSheet: View {
             Divider()
             HStack {
                 if exploring {
-                    Button("Back") { exploring = false }
+                    if startsWithThemes {
+                        Button("Blank Slide") { create(.blank) }
+                    } else {
+                        Button("Back") { exploring = false }
+                    }
                 }
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
@@ -43,6 +50,7 @@ struct NewSlideSheet: View {
         }
         .frame(width: exploring ? 820 : 520, height: exploring ? 600 : nil)
         .task { looks = await ThemeLook.load(appModel, firstThemeId: deckThemeId) }
+        .onAppear { if startsWithThemes { exploring = true } }
     }
 
     private var doors: some View {
