@@ -37,3 +37,17 @@ import Testing
     #expect(SeriesDesign.color("#ffb21e", fallback: "#000000FF") == "#FFB21EFF")
     #expect(SeriesDesign.color("orange", fallback: "#000000FF") == "#000000FF")
 }
+
+@Test func claudeDesignExportDecodesWithSingleOrListedFonts() throws {
+    let json = #"""
+    {"series":"God's Promise","background":"background.png","lowerThird":"lower-third.png",
+     "headingFont":["Gotham Black","Avenir Next Heavy"],"bodyFont":"Gotham Book",
+     "headingAllCaps":true,"textColor":"#0E1B2A","lowerThirdTextColor":"#F7F4ED"}
+    """#
+    let export = try SeriesExport.decode(Data(json.utf8))
+    #expect(export.series == "God's Promise")
+    #expect(export.headingFont == ["Gotham Black", "Avenir Next Heavy"])
+    #expect(export.bodyFont == ["Gotham Book"])
+    #expect(export.scriptureFont == nil)
+    #expect(export.headingAllCaps == true)
+}

@@ -27,6 +27,7 @@ struct SermonSeriesSheet: View {
     @State private var creating = false
     @State private var ownArtwork = false
     @State private var error: String?
+    @State private var importNote: String?
 
     private let families = NSFontManager.shared.availableFontFamilies
 
@@ -35,16 +36,20 @@ struct SermonSeriesSheet: View {
             Text("New Sermon Series").font(.headline)
             Form {
                 TextField("Series name", text: $name)
-                Toggle("Use my own artwork", isOn: $ownArtwork)
+                Toggle("Use artwork from Claude Design", isOn: $ownArtwork)
                 if ownArtwork {
                     HStack {
                         Button(copied ? "Copied" : "Copy Claude Design Prompt") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(
-                                SermonSeriesTheme.claudeDesignPrompt(series: name.isEmpty ? "New Series" : name), forType: .string)
+                                SeriesExport.exportPrompt(series: name.isEmpty ? "New Series" : name), forType: .string)
                             copied = true
                         }
+                        Button("Import Claude Design Download…", action: chooseDownload)
                         Spacer()
+                    }
+                    if let importNote {
+                        Text(importNote).font(.caption).foregroundStyle(.secondary)
                     }
                     imageRow("Background (1920×1080)", $background, types: [.jpeg, .png, .heic])
                     imageRow("Lower third (transparent PNG)", $lowerThird, types: [.png])
@@ -60,7 +65,7 @@ struct SermonSeriesSheet: View {
             }
             .formStyle(.grouped)
             Text(ownArtwork
-                 ? "Makes Point, Scripture and Point + Scripture slides from your images, each with a matching lower third."
+                 ? "Paste the prompt into Claude Design, download the ZIP it makes, and import or drop it here. Everything below fills in."
                  : "Claude designs the background, lower-third bar, fonts and colors from the series name. Takes about a minute.")
                 .font(.caption).foregroundStyle(.secondary)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
@@ -74,6 +79,60 @@ struct SermonSeriesSheet: View {
         }
         .padding(16)
         .frame(width: 540)
+        .dropDestination(for: URL.self) { urls, _ in
+            load(urls)
+            return true
+        }
+    }
+
+    private func chooseDownload() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.zip, .folder, .png, .jpeg, .json]
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.begin { response in
+            guard response == .OK else { return }
+            let urls = panel.urls
+            Task { @MainActor in load(urls) }
+        }
+    }
+
+    /// Fills the form from a Claude Design download.
+    private func load(_ urls: [URL]) {
+        do {
+            let found = try ClaudeDesignImport.read(urls)
+            ownArtwork = true
+            error = nil
+            if let series = found.series, name.trimmingCharacters(in: .whitespaces).isEmpty { name = series }
+            if let url = found.background { background = url }
+            if let url = found.lowerThird { lowerThird = url }
+            if let font = found.headingFont { headingFont = font }
+            if let font = found.bodyFont { bodyFont = font }
+            if let font = found.scriptureFont { verseFont = font }
+            if let caps = found.headingCaps { headingCaps = caps }
+            if let hex = found.textColor { textColor = Self.color(hex) }
+            if let hex = found.accentColor { accentColor = Self.color(hex) }
+            if let hex = found.lowerThirdTextColor { barTextColor = Self.color(hex) }
+            if let hex = found.lowerThirdAccentColor { barAccentColor = Self.color(hex) }
+            var notes = ["Imported. Check the fields, then Create Series Theme."]
+            if !found.missingFonts.isEmpty {
+                notes.append("Not installed, using the fallback: \(found.missingFonts.joined(separator: ", ")).")
+            }
+            if found.background == nil { notes.append("No background found.") }
+            if found.lowerThird == nil { notes.append("No transparent lower third found.") }
+            importNote = notes.joined(separator: " ")
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    static func color(_ hex: String) -> Color {
+        let digits = Array(hex.replacingOccurrences(of: "#", with: ""))
+        func channel(_ at: Int) -> Double {
+            guard digits.count >= at + 2, let value = Int(String(digits[at..<at + 2]), radix: 16) else { return 1 }
+            return Double(value) / 255
+        }
+        return Color(.sRGB, red: channel(0), green: channel(2), blue: channel(4))
     }
 
     private func imageRow(_ title: String, _ url: Binding<URL?>, types: [UTType]) -> some View {
