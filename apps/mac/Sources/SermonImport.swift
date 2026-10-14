@@ -23,6 +23,8 @@ struct SermonImportSheet: View {
     @State private var replaces = true
     @State private var addToService = true
     @State private var dropping = false
+    /// The series theme being designed after the notes are read.
+    @State private var designing: String?
 
     private var seriesThemeID: String { model.slideBuilding.sermonThemeId ?? "" }
 
@@ -35,6 +37,12 @@ struct SermonImportSheet: View {
                 slideList
             }
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            if let designing {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Designing the \(designing) theme…").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Form {
                 Picker("Series theme", selection: model.slideBuildingBinding(\.sermonThemeId)) {
                     Text("Choose…").tag("")
@@ -61,7 +69,7 @@ struct SermonImportSheet: View {
                 Button("Cancel") { dismiss() }
                 Button(building ? "Building…" : "Build Slides") { Task { await build() } }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(outline?.slides.isEmpty != false || seriesThemeID.isEmpty || building)
+                    .disabled(outline?.slides.isEmpty != false || seriesThemeID.isEmpty || building || designing != nil)
             }
         }
         .padding(16)
@@ -139,10 +147,32 @@ struct SermonImportSheet: View {
         defer { reading = false }
         do {
             let pdf = try await SermonFiles.pdfData(for: url)
-            outline = try await ClaudeClient.outline(fromPDF: pdf, fileName: url.lastPathComponent)
+            let read = try await ClaudeClient.outline(fromPDF: pdf, fileName: url.lastPathComponent)
+            outline = read
             error = nil
+            reading = false
+            await useSeriesTheme(for: read)
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    /// Each series gets its own theme: reuse the one already made for the
+    /// series the notes name, or have Claude design it now.
+    private func useSeriesTheme(for outline: SermonOutline) async {
+        let series = outline.series.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !series.isEmpty else { return }
+        if let id = SeriesGenerator.existingTheme(for: series, model: model) {
+            model.updateSlideBuilding { $0.sermonThemeId = id }
+            return
+        }
+        designing = series
+        defer { designing = nil }
+        do {
+            let id = try await SeriesGenerator.generate(series: series, hint: outline.title, model: model)
+            model.updateSlideBuilding { $0.sermonThemeId = id }
+        } catch {
+            self.error = "Couldn't design the \(series) theme: \(error.localizedDescription) Pick a theme below instead."
         }
     }
 

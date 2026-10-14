@@ -3,9 +3,10 @@ import PresenterCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// New Sermon Series: the artwork made in Claude Design becomes a theme with
-/// Point, Scripture and Point + Scripture designs and a matching lower third
-/// for each, already tied for the livestream.
+/// New Sermon Series: Claude designs the artwork from the series name (or
+/// staff pick their own images) and it becomes a theme with Point, Scripture
+/// and Point + Scripture designs and a matching lower third for each,
+/// already tied for the livestream. One theme per series.
 struct SermonSeriesSheet: View {
     let model: AppModel
 
@@ -19,39 +20,45 @@ struct SermonSeriesSheet: View {
     @State private var accentColor = Color(red: 1, green: 0.7, blue: 0.12)
     @State private var copied = false
     @State private var creating = false
+    @State private var ownArtwork = false
+    @State private var error: String?
 
     private let families = NSFontManager.shared.availableFontFamilies
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New Sermon Series").font(.headline)
-            Text("1. Copy the prompt into Claude Design and make the artwork. 2. Pick the two images it makes below.")
-                .font(.callout).foregroundStyle(.secondary)
-            HStack {
-                Button(copied ? "Copied" : "Copy Claude Design Prompt") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(
-                        SermonSeriesTheme.claudeDesignPrompt(series: name.isEmpty ? "New Series" : name), forType: .string)
-                    copied = true
-                }
-                Spacer()
-            }
             Form {
                 TextField("Series name", text: $name)
-                imageRow("Background (1920×1080)", $background, types: [.jpeg, .png, .heic])
-                imageRow("Lower third (transparent PNG)", $lowerThird, types: [.png])
-                Picker("Heading font", selection: $headingFont) { ForEach(families, id: \.self) { Text($0).tag($0) } }
-                Picker("Body font", selection: $bodyFont) { ForEach(families, id: \.self) { Text($0).tag($0) } }
-                ColorPicker("Text color", selection: $textColor, supportsOpacity: false)
-                ColorPicker("Accent color", selection: $accentColor, supportsOpacity: false)
+                Toggle("Use my own artwork", isOn: $ownArtwork)
+                if ownArtwork {
+                    HStack {
+                        Button(copied ? "Copied" : "Copy Claude Design Prompt") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(
+                                SermonSeriesTheme.claudeDesignPrompt(series: name.isEmpty ? "New Series" : name), forType: .string)
+                            copied = true
+                        }
+                        Spacer()
+                    }
+                    imageRow("Background (1920×1080)", $background, types: [.jpeg, .png, .heic])
+                    imageRow("Lower third (transparent PNG)", $lowerThird, types: [.png])
+                    Picker("Heading font", selection: $headingFont) { ForEach(families, id: \.self) { Text($0).tag($0) } }
+                    Picker("Body font", selection: $bodyFont) { ForEach(families, id: \.self) { Text($0).tag($0) } }
+                    ColorPicker("Text color", selection: $textColor, supportsOpacity: false)
+                    ColorPicker("Accent color", selection: $accentColor, supportsOpacity: false)
+                }
             }
             .formStyle(.grouped)
-            Text("Makes Point, Scripture and Point + Scripture slides for the room, each with a matching lower third for the livestream. Edit any of them later in the theme editor.")
+            Text(ownArtwork
+                 ? "Makes Point, Scripture and Point + Scripture slides from your images, each with a matching lower third."
+                 : "Claude designs the background, lower-third bar, fonts and colors from the series name. Takes about a minute.")
                 .font(.caption).foregroundStyle(.secondary)
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button(creating ? "Creating…" : "Create Series Theme") { Task { await create() } }
+                Button(creating ? (ownArtwork ? "Creating…" : "Designing…") : "Create Series Theme") { Task { await create() } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || creating)
             }
@@ -78,12 +85,24 @@ struct SermonSeriesSheet: View {
     private func create() async {
         creating = true
         defer { creating = false }
+        error = nil
+        let seriesName = name.trimmingCharacters(in: .whitespaces)
+        if !ownArtwork {
+            do {
+                let id = try await SeriesGenerator.generate(series: seriesName, hint: "", model: model)
+                model.updateSlideBuilding { $0.sermonThemeId = id }
+                dismiss()
+            } catch {
+                self.error = error.localizedDescription
+            }
+            return
+        }
         var mediaIDs: [URL: String] = [:]
         for url in [background, lowerThird].compactMap({ $0 }) {
             if let id = await model.importFiles([url]).first { mediaIDs[url] = id }
         }
         let style = SermonSeriesStyle(
-            name: name.trimmingCharacters(in: .whitespaces),
+            name: seriesName,
             backgroundMediaID: background.flatMap { mediaIDs[$0] },
             lowerThirdMediaID: lowerThird.flatMap { mediaIDs[$0] },
             font: Self.postScript(bodyFont, bold: false),

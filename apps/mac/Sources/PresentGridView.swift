@@ -882,6 +882,7 @@ struct SlideGridBody: View {
         Button(presentation.autoAdvance == nil ? "Slide Show…" : "Slide Show… ✓") {
             slideShowPresented = true
         }
+        changeThemeMenu(slideIDs)
         Button("Apply Theme…") {
             applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: slideIDs)
         }
@@ -1093,6 +1094,7 @@ struct SlideGridBody: View {
         Button(presentation.autoAdvance == nil ? "Slide Show…" : "Slide Show… ✓") {
             slideShowPresented = true
         }
+        changeThemeMenu([slide.id])
         Button("Apply Theme…") {
             applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: [slide.id])
         }
@@ -1116,6 +1118,23 @@ struct SlideGridBody: View {
             deleteSlides([slide.id])
         }
         .disabled(presentation.slides.count == 1)
+    }
+
+    /// Change Theme › one entry per theme (each sermon series is its own).
+    private func changeThemeMenu(_ slideIDs: [String]) -> some View {
+        Menu("Change Theme") {
+            let current = Set(presentation.slides.filter { slideIDs.contains($0.id) }.map { presentation.themeId(for: $0) })
+            ForEach(menuThemes, id: \.id) { theme in
+                Button((current == [theme.id] ? "✓ " : "") + theme.name) {
+                    model.changeTheme(of: slideIDs, in: presentation.id, to: theme.id)
+                }
+            }
+        }
+        .disabled(menuThemes.isEmpty)
+    }
+
+    private var menuThemes: [LibraryIndex.Entry] {
+        model.entries(of: .theme).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     private func applyThemeScope(_ slideIDs: [String]) -> String {

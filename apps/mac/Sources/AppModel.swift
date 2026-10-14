@@ -2061,6 +2061,25 @@ final class AppModel {
         }
     }
 
+    /// Right-click › Change Theme: the slides follow the chosen theme and
+    /// drop their own text sizes and positions, so they match it fully.
+    /// Each keeps its category (Lyrics, Bible, Sermon Points…), which the new
+    /// theme's matching design and lower third pick up.
+    func changeTheme(of slideIDs: [String], in presentationID: String, to themeID: String) {
+        Task {
+            await resident.ready([.theme])
+            let themes = Dictionary(resident.themes.values.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            guard let theme = themes[themeID] else { return }
+            let ids = Set(slideIDs)
+            updateSlides(presentationID: presentationID, undoLabel: "Change Theme") { presentation in
+                presentation.applyTheme(theme, toSlides: ids, themes: themes)
+                for index in presentation.slides.indices where ids.contains(presentation.slides[index].id) {
+                    SlideSceneBuilder.resetThemeOverrides(&presentation.slides[index])
+                }
+            }
+        }
+    }
+
     func presentationHasSlideThemes(_ presentationID: String) -> Bool {
         presentation(presentationID)?.hasSlideThemes ?? false
     }

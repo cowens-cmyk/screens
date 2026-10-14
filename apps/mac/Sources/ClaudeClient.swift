@@ -13,7 +13,7 @@ enum ClaudeClient {
             switch self {
             case .missingKey: "Add your Anthropic API key in Settings › Bible › Sermon import."
             case .http(401, _): "Anthropic rejected the API key — check it in Settings › Bible."
-            case .http(let code, let body): "Claude couldn't read the notes (\(code)). \(body.prefix(200))"
+            case .http(let code, let body): "Claude request failed (\(code)). \(body.prefix(200))"
             case .refused: "Claude declined to read these notes."
             case .empty: "Claude didn't return any slides."
             }
@@ -28,29 +28,44 @@ enum ClaudeClient {
     /// Sends the notes (a PDF) and gets the slides back as a structured
     /// outline — the response is constrained to SermonOutline's schema.
     static func outline(fromPDF pdf: Data, fileName: String) async throws -> SermonOutline {
+        let json = try await send(
+            system: SermonOutline.instructions, schema: SermonOutline.schema, effort: "medium",
+            content: [
+                ["type": "document", "title": fileName,
+                 "source": ["type": "base64", "media_type": "application/pdf", "data": pdf.base64EncodedString()]],
+                ["type": "text", "text": "Make the slides for this sermon."],
+            ])
+        return try SermonOutline.decode(json)
+    }
+
+    /// Asks Claude to design a series' look from its name (and the sermon
+    /// title, when there is one). Fonts are limited to ones on this Mac.
+    static func designSeries(name: String, hint: String, fonts: [String]) async throws -> SeriesDesign {
+        var prompt = "Sermon series: \(name)"
+        if !hint.isEmpty { prompt += "\nThis week's sermon: \(hint)" }
+        let json = try await send(
+            system: SeriesDesign.instructions, schema: SeriesDesign.schema(fonts: fonts), effort: "high",
+            content: [["type": "text", "text": prompt]])
+        return try JSONDecoder().decode(SeriesDesign.self, from: Data(json.utf8))
+    }
+
+    private static func send(system: String, schema: [String: Any], effort: String, content: [[String: Any]]) async throws -> String {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { throw ClaudeError.missingKey }
         let body: [String: Any] = [
             "model": model,
-            "max_tokens": 16000,
+            "max_tokens": 32000,
             // A rare safety decline is retried on Anthropic's recommended
-            // fallback model instead of failing the import.
+            // fallback model instead of failing the request.
             "fallbacks": "default",
-            "system": SermonOutline.instructions,
+            "system": system,
             "output_config": [
-                "effort": "medium",
-                "format": ["type": "json_schema", "schema": SermonOutline.schema],
+                "effort": effort,
+                "format": ["type": "json_schema", "schema": schema],
             ],
-            "messages": [[
-                "role": "user",
-                "content": [
-                    ["type": "document", "title": fileName,
-                     "source": ["type": "base64", "media_type": "application/pdf", "data": pdf.base64EncodedString()]],
-                    ["type": "text", "text": "Make the slides for this sermon."],
-                ],
-            ]],
+            "messages": [["role": "user", "content": content]],
         ]
-        var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!, timeoutInterval: 300)
+        var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!, timeoutInterval: 600)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.setValue(key, forHTTPHeaderField: "x-api-key")
@@ -71,7 +86,7 @@ enum ClaudeClient {
         let reply = try JSONDecoder().decode(Reply.self, from: data)
         if reply.stop_reason == "refusal" { throw ClaudeError.refused }
         guard let json = reply.content.first(where: { $0.type == "text" })?.text else { throw ClaudeError.empty }
-        return try SermonOutline.decode(json)
+        return json
     }
 
     private enum Keychain {

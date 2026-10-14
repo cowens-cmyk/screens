@@ -38,10 +38,13 @@ public struct SermonOutline: Codable, Equatable, Sendable {
     }
 
     public var title: String
+    /// The sermon series the notes belong to; empty when they don't say.
+    public var series: String
     public var slides: [Item]
 
-    public init(title: String, slides: [Item]) {
+    public init(title: String, series: String = "", slides: [Item]) {
         self.title = title
+        self.series = series
         self.slides = slides
     }
 
@@ -49,9 +52,10 @@ public struct SermonOutline: Codable, Equatable, Sendable {
     public static var schema: [String: Any] { [
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "slides"],
+        "required": ["title", "series", "slides"],
         "properties": [
             "title": ["type": "string"],
+            "series": ["type": "string"],
             "slides": [
                 "type": "array",
                 "items": [
@@ -76,7 +80,7 @@ public struct SermonOutline: Codable, Equatable, Sendable {
     - "scripture": a Bible passage the notes ask to read or show. reference is the passage as a reference, e.g. "Genesis 32:22-32" or "Romans 8:28"; text repeats it. Don't write out verse text — the app looks it up.
     - "pointScripture": a point the notes tie directly to one short verse (one or two verses). text is the point, reference is the verse.
 
-    Leave out the pastor's private notes, stories, transitions and stage directions — only what belongs on screen. title is the sermon's title.
+    Leave out the pastor's private notes, stories, transitions and stage directions — only what belongs on screen. title is the sermon's title. series is the name of the sermon series if the notes name one (often in a header), else an empty string.
     """
 
 
