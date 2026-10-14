@@ -187,16 +187,10 @@ final class PlanningCenterSync {
         title: String, song: PCOClient.Song?, arrangement: PCOClient.Arrangement?,
         playingKey: String? = nil, themeId: String
     ) -> Presentation? {
-        let source: String
-        if let chart = arrangement?.chordChart, !chart.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            source = ChordChartImport.chordPro(fromChart: chart)
-        } else if let lyrics = arrangement?.lyrics, !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            source = lyrics
-        } else {
-            return nil
-        }
-        var presentation = LyricTextImporter.makePresentation(source, fallbackTitle: title, themeId: themeId)
-        presentation.name = title
+        guard var presentation = SongAssembly.presentation(
+            lyrics: arrangement?.lyrics, chordChart: arrangement?.chordChart,
+            title: title, themeId: themeId)
+        else { return nil }
         presentation.presentationKind = .song
         presentation.category = PresentationTypes.worship
         if presentation.musicKey == nil { presentation.musicKey = arrangement?.chordChartKey }

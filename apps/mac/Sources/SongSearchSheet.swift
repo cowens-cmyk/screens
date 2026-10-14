@@ -48,6 +48,9 @@ struct SongSearchSheet: View {
                 Button("Cancel") { dismiss() }
                 if let existingID {
                     Button("Open Library Copy") { dismiss(); onCreated(existingID) }
+                    Button("Replace Library Copy") { replace(existingID) }
+                        .help("Re-import this song into the copy you already have — services using it keep it")
+                        .disabled(arrangement == nil || !hasText(arrangement))
                 }
                 Button(existingID == nil ? "Import Song" : "Import Again", action: importSong)
                     .keyboardShortcut(.defaultAction)
@@ -189,6 +192,32 @@ struct SongSearchSheet: View {
             return id
         }
         return nil
+    }
+
+    private func built() -> Presentation? {
+        guard let song = selectedSong, let arrangement else { return nil }
+        return PlanningCenterSync.importSong(
+            title: song.title, song: song, arrangement: arrangement,
+            playingKey: playingKey.isEmpty ? nil : playingKey,
+            themeId: model.slideBuilding.lyricsImportThemeId ?? "")
+    }
+
+    private func replace(_ id: String) {
+        guard let fresh = built() else { return }
+        model.updatePresentation(id) { presentation in
+            presentation.slides = fresh.slides
+            presentation.sections = fresh.sections
+            presentation.arrangements = fresh.arrangements
+            presentation.defaultArrangementId = fresh.defaultArrangementId
+            presentation.reflowSource = fresh.reflowSource
+            presentation.chordProSource = fresh.chordProSource
+            presentation.musicKey = fresh.musicKey
+            presentation.displayKey = fresh.displayKey
+            presentation.ccli = fresh.ccli
+            presentation.presentationKind = .song
+        }
+        dismiss()
+        onCreated(id)
     }
 
     private func importSong() {
