@@ -1774,7 +1774,8 @@ struct SlideTile: View {
         case .fireCombo: .combos
         case .captureStart, .captureStop: .broadcast
         case .firePresentation: .presentations
-        case .setConfidenceLayout: .confidence
+        case .setConfidenceLayout, .setStageMode: .confidence
+        case .setStreamMode: .screens
         case .fireOverlay, .dismissOverlay: .overlays
         case .fireLiveInput: .screens
         case .setSignage: .media
@@ -1880,6 +1881,10 @@ func slideActionLabel(
             : "Stop Capture: \(entryName(action.capturePresetId))"
     case .firePresentation:
         "Fire Presentation: \(entryName(action.presentationId))"
+    case .setStreamMode:
+        "Livestream: \(action.streamMode.flatMap(ShowSetup.StreamMode.init(rawValue:))?.title ?? "—")"
+    case .setStageMode:
+        "Stage Display: \(action.stageMode.flatMap(ShowSetup.StageMode.init(rawValue:))?.title ?? "—")"
     case .setConfidenceLayout:
 
         {

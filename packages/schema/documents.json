@@ -3049,7 +3049,9 @@
         "enableAudioInput",
         "disableAudioInput",
         "fireAudio",
-        "fireAudioPlaylist"
+        "fireAudioPlaylist",
+        "setStreamMode",
+        "setStageMode"
       ]
     },
     "MIDIMessageKind": {
@@ -3243,6 +3245,16 @@
         {
           "name": "delaySeconds",
           "type": "double",
+          "optional": true
+        },
+        {
+          "name": "streamMode",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "stageMode",
+          "type": "string",
           "optional": true
         }
       ]

@@ -22,12 +22,34 @@ final class ShowSetup {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .auto: "Auto"
+            case .auto: "Lower Third"
             case .fullScreen: "Full Screen"
-            case .off: "Off"
+            case .off: "Transparent"
             }
         }
     }
+
+    /// What the stage display shows. A playing video takes it over (preview
+    /// and time left) until the video ends, whatever the mode.
+    enum StageMode: String, CaseIterable, Identifiable {
+        case worship, message, mirror
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .worship: "Worship"
+            case .message: "Message"
+            case .mirror: "Mirror"
+            }
+        }
+    }
+
+    var stageMode: StageMode {
+        didSet {
+            UserDefaults.standard.set(stageMode.rawValue, forKey: "show.stageMode")
+            onStageChange?()
+        }
+    }
+    var onStageChange: (() -> Void)?
 
     var audienceTarget: String { didSet { save(audienceTarget, "show.audienceTarget") } }
     var streamTarget: String { didSet { save(streamTarget, "show.streamTarget"); changed() } }
@@ -48,6 +70,7 @@ final class ShowSetup {
         streamTarget = defaults.string(forKey: "show.streamTarget") ?? ""
         stageTarget = defaults.string(forKey: "show.stageTarget") ?? ""
         streamMode = defaults.string(forKey: "show.streamMode").flatMap(StreamMode.init(rawValue:)) ?? .auto
+        stageMode = defaults.string(forKey: "show.stageMode").flatMap(StageMode.init(rawValue:)) ?? .worship
     }
 
     private func save(_ value: String, _ key: String) {

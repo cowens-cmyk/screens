@@ -563,6 +563,18 @@ struct ActionCombosModule: View {
                     }
                 }
             }
+        case .setStreamMode:
+            QuietMenuChip(title: action.streamMode.flatMap(ShowSetup.StreamMode.init(rawValue:))?.title ?? "Livestream…") {
+                ForEach(ShowSetup.StreamMode.allCases) { mode in
+                    Button(mode.title) { updateAction(comboID, action.id) { $0.streamMode = mode.rawValue } }
+                }
+            }
+        case .setStageMode:
+            QuietMenuChip(title: action.stageMode.flatMap(ShowSetup.StageMode.init(rawValue:))?.title ?? "Stage…") {
+                ForEach(ShowSetup.StageMode.allCases) { mode in
+                    Button(mode.title) { updateAction(comboID, action.id) { $0.stageMode = mode.rawValue } }
+                }
+            }
         case .setConfidenceLayout:
             QuietMenuChip(title: confidenceLayoutTitle(action.confidenceLayoutId)) {
 

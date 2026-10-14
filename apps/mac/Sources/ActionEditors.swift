@@ -22,7 +22,9 @@ extension SlideActionKind {
         case .captureStart: "Start Capture"
         case .captureStop: "Stop Capture"
         case .firePresentation: "Fire Presentation"
-        case .setConfidenceLayout: "Set Confidence Layout"
+        case .setConfidenceLayout: "Set Stage Layout"
+        case .setStreamMode: "Livestream"
+        case .setStageMode: "Stage Display"
         case .fireOverlay: "Fire Overlay"
         case .dismissOverlay: "Take Down Overlay"
         case .fireLiveInput: "Fire Live Input"
@@ -316,6 +318,14 @@ struct ActionParameterFields: View {
                 }
             ), in: 1...999) {
                 LabeledContent("Slide", value: "\((action.slideIndex ?? 0) + 1)")
+            }
+        case .setStreamMode:
+            Picker("Livestream", selection: stringBinding(action, \.streamMode)) {
+                ForEach(ShowSetup.StreamMode.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+        case .setStageMode:
+            Picker("Stage Display", selection: stringBinding(action, \.stageMode)) {
+                ForEach(ShowSetup.StageMode.allCases) { Text($0.title).tag($0.rawValue) }
             }
         case .setConfidenceLayout:
             Picker("Layout", selection: stringBinding(action, \.confidenceLayoutId)) {
@@ -689,6 +699,16 @@ struct AddActionMenuItems: View {
 
     var body: some View {
         let presets = entries(of: .outputPreset)
+        Menu("Livestream") {
+            ForEach(ShowSetup.StreamMode.allCases) { mode in
+                Button(mode.title) { add(make(.setStreamMode) { $0.streamMode = mode.rawValue }) }
+            }
+        }
+        Menu("Stage Display") {
+            ForEach(ShowSetup.StageMode.allCases) { mode in
+                Button(mode.title) { add(make(.setStageMode) { $0.stageMode = mode.rawValue }) }
+            }
+        }
         Menu("Lightkey Cue") {
             ForEach(1...24, id: \.self) { note in
                 Button("Cue note \(note)") {

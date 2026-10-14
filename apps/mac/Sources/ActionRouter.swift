@@ -490,6 +490,14 @@ final class ActionRouter {
             presentationFireDepth += 1
             defer { presentationFireDepth -= 1 }
             controls.fire(slide: slides[index], in: presentation)
+        case .setStreamMode:
+            if let mode = action.streamMode.flatMap(ShowSetup.StreamMode.init(rawValue:)) {
+                ShowSetup.shared.streamMode = mode
+            }
+        case .setStageMode:
+            if let mode = action.stageMode.flatMap(ShowSetup.StageMode.init(rawValue:)) {
+                ShowSetup.shared.stageMode = mode
+            }
         case .setConfidenceLayout:
             guard let confidenceMonitor else { return miss(action, "confidenceMonitor") }
 
