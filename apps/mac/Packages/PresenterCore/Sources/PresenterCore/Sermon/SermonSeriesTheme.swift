@@ -14,12 +14,26 @@ public struct SermonSeriesStyle: Sendable {
     public var boldFont: String
     public var textColor: String
     public var accentColor: String
+    /// Scripture's face (often the body font's italic); body font when nil.
+    public var verseFont: String?
+    /// The lower-third bar is often the opposite of the background (navy
+    /// bar, cream background), so its text has its own colors.
+    public var lowerThirdTextColor: String?
+    public var lowerThirdAccentColor: String?
+    /// Headings in capitals with open letter spacing.
+    public var headingCaps: Bool
 
     public init(
         name: String, backgroundMediaID: String? = nil,
         lowerThirdMediaID: String? = nil, font: String = "Helvetica Neue", boldFont: String = "HelveticaNeue-Bold",
-        textColor: String = "#FFFFFFFF", accentColor: String = "#FFB21EFF"
+        textColor: String = "#FFFFFFFF", accentColor: String = "#FFB21EFF",
+        verseFont: String? = nil, lowerThirdTextColor: String? = nil, lowerThirdAccentColor: String? = nil,
+        headingCaps: Bool = false
     ) {
+        self.verseFont = verseFont
+        self.lowerThirdTextColor = lowerThirdTextColor
+        self.lowerThirdAccentColor = lowerThirdAccentColor
+        self.headingCaps = headingCaps
         self.name = name
         self.backgroundMediaID = backgroundMediaID
         self.lowerThirdMediaID = lowerThirdMediaID
@@ -37,15 +51,20 @@ public enum SermonSeriesTheme {
 
     public static func make(_ style: SermonSeriesStyle, id: String = UUID().uuidString) -> Theme {
         func text(_ name: String, _ sample: String, x: Double, y: Double, w: Double, h: Double,
-                  size: Double, bold: Bool = false, accent: Bool = false,
+                  size: Double, bold: Bool = false, accent: Bool = false, verse: Bool = false, onBar: Bool = false,
                   align: TextHorizontalAlignment = .center) -> SlideObject {
-            SlideObject(
+            let color = onBar
+                ? (accent ? style.lowerThirdAccentColor ?? style.accentColor : style.lowerThirdTextColor ?? style.textColor)
+                : (accent ? style.accentColor : style.textColor)
+            let caps = bold && style.headingCaps
+            return SlideObject(
                 id: UUID().uuidString, objectKind: .text, name: name, text: sample,
                 x: x, y: y, width: w, height: h,
                 textStyle: TextStyle(
-                    fontName: bold ? style.boldFont : style.font, fontSize: size,
-                    colorHex: accent ? style.accentColor : style.textColor,
+                    fontName: bold ? style.boldFont : (verse ? style.verseFont ?? style.font : style.font), fontSize: size,
+                    colorHex: color, tracking: caps ? size * 0.08 : nil,
                     horizontalAlignment: align, verticalAlignment: .middle,
+                    textTransform: caps ? .uppercase : nil,
                     autoShrink: true, minFontSize: size * 0.5))
         }
         func art(_ mediaID: String?) -> [SlideObject] {
@@ -70,27 +89,29 @@ public enum SermonSeriesTheme {
             text("Point", "Main point goes here", x: 160, y: 300, w: 1600, h: 480, size: 90, bold: true),
         ] + art(style.backgroundMediaID))
         let scripture = slide(scriptureCategory, [
-            text("Verse", "For God so loved the world…", x: 220, y: 230, w: 1480, h: 540, size: 60, align: .left),
+            text("Verse", "For God so loved the world…", x: 220, y: 230, w: 1480, h: 540, size: 60, verse: true, align: .left),
             text("Reference", "John 3:16 ESV", x: 220, y: 800, w: 1480, h: 70, size: 36, bold: true, accent: true, align: .left),
         ] + art(style.backgroundMediaID))
         let pointScripture = slide(pointScriptureCategory, [
             text("Point", "Main point goes here", x: 160, y: 170, w: 1600, h: 300, size: 80, bold: true),
-            text("Verse", "For God so loved the world…", x: 260, y: 520, w: 1400, h: 300, size: 44),
+            text("Verse", "For God so loved the world…", x: 260, y: 520, w: 1400, h: 300, size: 44, verse: true),
             text("Reference", "John 3:16 ESV", x: 260, y: 840, w: 1400, h: 60, size: 32, bold: true, accent: true),
         ] + art(style.backgroundMediaID))
 
         let thirds = BasicTemplates.lowerThirds
+        // Lower-third text sits inside the bottom ~200px, where series bars
+        // are drawn, inset from the left like a broadcast graphic.
         let pointLower = slide("\(pointCategory) (Lower Third)", [
-            text("Point", "Main point goes here", x: 120, y: 860, w: 1680, h: 160, size: 52, bold: true, align: .left),
+            text("Point", "Main point goes here", x: 80, y: 895, w: 1760, h: 150, size: 50, bold: true, onBar: true, align: .left),
         ] + bar(), folder: thirds)
         let scriptureLower = slide("\(scriptureCategory) (Lower Third)", [
-            text("Verse", "For God so loved the world…", x: 120, y: 840, w: 1680, h: 140, size: 38, align: .left),
-            text("Reference", "John 3:16 ESV", x: 120, y: 985, w: 1680, h: 50, size: 28, bold: true, accent: true, align: .left),
+            text("Verse", "For God so loved the world…", x: 80, y: 890, w: 1760, h: 115, size: 36, verse: true, onBar: true, align: .left),
+            text("Reference", "John 3:16 ESV", x: 80, y: 1008, w: 1760, h: 44, size: 26, bold: true, accent: true, onBar: true, align: .left),
         ] + bar(), folder: thirds)
         let pointScriptureLower = slide("\(pointScriptureCategory) (Lower Third)", [
-            text("Point", "Main point goes here", x: 120, y: 835, w: 1680, h: 80, size: 46, bold: true, align: .left),
-            text("Verse", "For God so loved the world…", x: 120, y: 920, w: 1680, h: 80, size: 30, align: .left),
-            text("Reference", "John 3:16 ESV", x: 120, y: 1005, w: 1680, h: 40, size: 24, bold: true, accent: true, align: .left),
+            text("Point", "Main point goes here", x: 80, y: 885, w: 1760, h: 60, size: 40, bold: true, onBar: true, align: .left),
+            text("Verse", "For God so loved the world…", x: 80, y: 948, w: 1760, h: 62, size: 28, verse: true, onBar: true, align: .left),
+            text("Reference", "John 3:16 ESV", x: 80, y: 1012, w: 1760, h: 38, size: 22, bold: true, accent: true, onBar: true, align: .left),
         ] + bar(), folder: thirds)
 
         let ties = [(pointCategory, pointLower), (scriptureCategory, scriptureLower),
@@ -110,7 +131,7 @@ public enum SermonSeriesTheme {
         1. Background — used behind three full-screen slide types: a sermon point (one large line), a scripture passage (a paragraph of verse text plus its reference), and a point with its supporting verse. Keep the middle calm and dark enough for large white text.
         2. Lower third — a transparent PNG with only a bar or shape across the bottom (roughly the bottom 260 pixels) for text to sit on over a camera shot of the pastor. Everything else fully transparent.
 
-        Also tell me a heading font and a body font (common Mac fonts), a text color and an accent color as hex codes.
+        Also tell me the heading, body and scripture fonts (with weights), whether headings are all caps, and as hex codes: the text and accent colors on the background, and the text and accent colors on the lower-third bar.
         Export 1 as JPG and 2 as PNG.
         """
     }

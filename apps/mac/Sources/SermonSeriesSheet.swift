@@ -14,10 +14,15 @@ struct SermonSeriesSheet: View {
     @State private var name = ""
     @State private var background: URL?
     @State private var lowerThird: URL?
-    @State private var headingFont = "Helvetica Neue"
-    @State private var bodyFont = "Helvetica Neue"
+    // PostScript names of the exact faces (e.g. Gotham-Black).
+    @State private var headingFont = "HelveticaNeue-Bold"
+    @State private var bodyFont = "HelveticaNeue"
+    @State private var verseFont = "HelveticaNeue-Italic"
+    @State private var headingCaps = false
     @State private var textColor = Color.white
     @State private var accentColor = Color(red: 1, green: 0.7, blue: 0.12)
+    @State private var barTextColor = Color.white
+    @State private var barAccentColor = Color(red: 1, green: 0.7, blue: 0.12)
     @State private var copied = false
     @State private var creating = false
     @State private var ownArtwork = false
@@ -43,10 +48,14 @@ struct SermonSeriesSheet: View {
                     }
                     imageRow("Background (1920×1080)", $background, types: [.jpeg, .png, .heic])
                     imageRow("Lower third (transparent PNG)", $lowerThird, types: [.png])
-                    Picker("Heading font", selection: $headingFont) { ForEach(families, id: \.self) { Text($0).tag($0) } }
-                    Picker("Body font", selection: $bodyFont) { ForEach(families, id: \.self) { Text($0).tag($0) } }
-                    ColorPicker("Text color", selection: $textColor, supportsOpacity: false)
-                    ColorPicker("Accent color", selection: $accentColor, supportsOpacity: false)
+                    FontFacePicker(title: "Heading font", families: families, postScript: $headingFont)
+                    Toggle("Headings in all caps", isOn: $headingCaps)
+                    FontFacePicker(title: "Body font", families: families, postScript: $bodyFont)
+                    FontFacePicker(title: "Scripture font", families: families, postScript: $verseFont)
+                    ColorPicker("Text on background", selection: $textColor, supportsOpacity: false)
+                    ColorPicker("Accent on background", selection: $accentColor, supportsOpacity: false)
+                    ColorPicker("Text on lower third", selection: $barTextColor, supportsOpacity: false)
+                    ColorPicker("Accent on lower third", selection: $barAccentColor, supportsOpacity: false)
                 }
             }
             .formStyle(.grouped)
@@ -105,9 +114,11 @@ struct SermonSeriesSheet: View {
             name: seriesName,
             backgroundMediaID: background.flatMap { mediaIDs[$0] },
             lowerThirdMediaID: lowerThird.flatMap { mediaIDs[$0] },
-            font: Self.postScript(bodyFont, bold: false),
-            boldFont: Self.postScript(headingFont, bold: true),
-            textColor: Self.hex(textColor), accentColor: Self.hex(accentColor))
+            font: bodyFont, boldFont: headingFont,
+            textColor: Self.hex(textColor), accentColor: Self.hex(accentColor),
+            verseFont: verseFont,
+            lowerThirdTextColor: Self.hex(barTextColor), lowerThirdAccentColor: Self.hex(barAccentColor),
+            headingCaps: headingCaps)
         let theme = SermonSeriesTheme.make(style)
         model.createInDrive(theme)
         model.updateSlideBuilding { $0.sermonThemeId = theme.id }
@@ -125,6 +136,45 @@ struct SermonSeriesSheet: View {
         let ns = NSColor(color).usingColorSpace(.sRGB) ?? .white
         return String(format: "#%02X%02X%02XFF",
                       Int(ns.redComponent * 255), Int(ns.greenComponent * 255), Int(ns.blueComponent * 255))
+    }
+}
+
+/// A font family, then one of its faces (Black, Book, Book Italic…), as the
+/// face's PostScript name.
+struct FontFacePicker: View {
+    let title: String
+    let families: [String]
+    @Binding var postScript: String
+
+    private var family: String { NSFont(name: postScript, size: 12)?.familyName ?? "" }
+
+    private func faces(_ family: String) -> [(name: String, style: String)] {
+        (NSFontManager.shared.availableMembers(ofFontFamily: family) ?? []).compactMap { member in
+            guard let name = member.first as? String, let style = member.dropFirst().first as? String else { return nil }
+            return (name, style)
+        }
+    }
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack {
+                Picker("", selection: Binding(
+                    get: { family },
+                    set: { picked in
+                        let options = faces(picked)
+                        postScript = options.first { $0.style == "Regular" }?.name ?? options.first?.name ?? postScript
+                    }
+                )) {
+                    ForEach(families, id: \.self) { Text($0).tag($0) }
+                }
+                .labelsHidden()
+                Picker("", selection: $postScript) {
+                    ForEach(faces(family), id: \.name) { Text($0.style).tag($0.name) }
+                }
+                .labelsHidden()
+                .frame(width: 130)
+            }
+        }
     }
 }
 

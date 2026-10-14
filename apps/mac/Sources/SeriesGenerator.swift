@@ -43,7 +43,10 @@ enum SeriesGenerator {
             font: SermonSeriesSheet.postScript(design.bodyFont, bold: false),
             boldFont: SermonSeriesSheet.postScript(design.headingFont, bold: true),
             textColor: SeriesDesign.color(design.textColor, fallback: "#FFFFFFFF"),
-            accentColor: SeriesDesign.color(design.accentColor, fallback: "#FFB21EFF"))
+            accentColor: SeriesDesign.color(design.accentColor, fallback: "#FFB21EFF"),
+            lowerThirdTextColor: SeriesDesign.color(design.lowerThirdTextColor, fallback: "#FFFFFFFF"),
+            lowerThirdAccentColor: SeriesDesign.color(design.lowerThirdAccentColor, fallback: "#FFB21EFF"),
+            headingCaps: design.headingAllCaps)
         let theme = SermonSeriesTheme.make(style)
         // Wait for the save so the theme is in the library (and the
         // pickers) before anything selects it.

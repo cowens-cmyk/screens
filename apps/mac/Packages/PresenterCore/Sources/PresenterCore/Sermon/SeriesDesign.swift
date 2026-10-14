@@ -10,13 +10,17 @@ public struct SeriesDesign: Codable, Equatable, Sendable {
     public var bodyFont: String
     public var textColor: String
     public var accentColor: String
+    public var lowerThirdTextColor: String
+    public var lowerThirdAccentColor: String
+    public var headingAllCaps: Bool
 
     /// The structured-output schema, with fonts limited to ones installed.
     public static func schema(fonts: [String]) -> [String: Any] {
         [
             "type": "object",
             "additionalProperties": false,
-            "required": ["backgroundSVG", "lowerThirdSVG", "headingFont", "bodyFont", "textColor", "accentColor"],
+            "required": ["backgroundSVG", "lowerThirdSVG", "headingFont", "bodyFont", "textColor", "accentColor",
+                         "lowerThirdTextColor", "lowerThirdAccentColor", "headingAllCaps"],
             "properties": [
                 "backgroundSVG": ["type": "string"],
                 "lowerThirdSVG": ["type": "string"],
@@ -24,6 +28,9 @@ public struct SeriesDesign: Codable, Equatable, Sendable {
                 "bodyFont": ["type": "string", "enum": fonts],
                 "textColor": ["type": "string"],
                 "accentColor": ["type": "string"],
+                "lowerThirdTextColor": ["type": "string"],
+                "lowerThirdAccentColor": ["type": "string"],
+                "headingAllCaps": ["type": "boolean"],
             ],
         ]
     }
@@ -33,8 +40,9 @@ public struct SeriesDesign: Codable, Equatable, Sendable {
 
     Return:
     - backgroundSVG: one complete SVG, width="1920" height="1080" viewBox="0 0 1920 1080". Text-free artwork that suits the series title and theme: tasteful, modern, a little bold — gradients, light, abstract or geometric shapes, a hint of the theme. Keep the center calm and dark (or light) enough that large text in textColor reads clearly over it.
-    - lowerThirdSVG: one complete SVG, same size, transparent everywhere except a bar or shape across the bottom of the frame (y from about 820 to 1080) for text to sit on over a camera shot of the pastor. It must match the background's style and be dark enough for textColor to read on it. No full-frame fill.
-    - headingFont and bodyFont from the allowed list; textColor and accentColor as #RRGGBB.
+    - lowerThirdSVG: one complete SVG, same size, transparent everywhere except a bar or shape across the bottom of the frame (solid from about y 880 to 1080, optionally fading above) for text to sit on over a camera shot of the pastor. It must match the background's style. No full-frame fill.
+    - headingFont and bodyFont from the allowed list. headingAllCaps if the style suits capitals.
+    - textColor and accentColor for text over the background; lowerThirdTextColor and lowerThirdAccentColor for text over the bar. All #RRGGBB, each clearly readable on what it sits on.
 
     SVG rules: only rect, circle, ellipse, line, polyline, polygon, path, g, linearGradient, radialGradient, stop, with fill, stroke, opacity and transform. No text, no images, no filters, no masks, no external references, no scripts.
     """
