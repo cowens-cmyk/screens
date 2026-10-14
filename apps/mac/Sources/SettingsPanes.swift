@@ -15,7 +15,6 @@ struct SettingsCategoryPane: View {
         case list
         case videoInput(String)
         case audioInput(String)
-        case audioOutput(String)
         case midiDevice(String)
     }
 
@@ -34,8 +33,6 @@ struct SettingsCategoryPane: View {
                 VideoInputDetail(id: id) { page = .list }
             case .audioInput(let id):
                 AudioInputDetail(id: id) { page = .list }
-            case .audioOutput(let id):
-                AudioOutputDetail(id: id) { page = .list }
             case .midiDevice(let id):
                 MIDIDeviceDetail(id: id) { page = .list }
             }
@@ -49,7 +46,6 @@ struct SettingsCategoryPane: View {
         case .list: category.title
         case .videoInput(let id): VideoInputInventory.shared.entries.first { $0.id == id }?.name ?? "Video Input"
         case .audioInput(let id): AudioInputInventory.shared.entries.first { $0.id == id }?.name ?? "Audio Input"
-        case .audioOutput(let id): AudioOutputInventory.shared.entries.first { $0.id == id }?.name ?? "Audio Output"
         case .midiDevice(let id): MIDIDeviceInventory.shared.items.first { $0.id == id }?.device.name ?? "MIDI Device"
         }
     }
@@ -61,7 +57,6 @@ struct SettingsCategoryPane: View {
             Form {
                 VideoInputsSection { page = .videoInput($0) }
                 AudioInputsSection { page = .audioInput($0) }
-                AudioOutputsSection { page = .audioOutput($0) }
             }
             .settingsForm()
         case .midi:
@@ -79,10 +74,6 @@ struct SettingsCategoryPane: View {
                 }
             }
             .settingsForm()
-        case .groups:
-            if let model {
-                GroupsForm(model: model)
-            }
         case .keyboard:
             if let model {
                 KeyboardMapPane(model: model, controls: controls)
@@ -173,111 +164,6 @@ struct SettingsFormRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-    }
-}
-
-private struct GroupsForm: View {
-    let model: AppModel
-    @State private var addingGroup = false
-    @State private var newGroupName = ""
-    @State private var confirmingRestore = false
-
-    var body: some View {
-        Form {
-            Section {
-                ForEach(model.groupPalette.groups) { group in
-                    GroupFormRow(model: model, group: group)
-                }
-                Button("Add Group\u{2026}") { newGroupName = ""; addingGroup = true }
-            } header: {
-                Text("Groups")
-            } footer: {
-                Text("Song section labels and their colors — pills in the slide grid and arrangements wear these. A section wears its named group's color wherever it appears; \u{201C}Pre-Chorus\u{201D} and \u{201C}PreChorus\u{201D} count as the same name.")
-            }
-            Section {
-                Button("Restore Default Groups\u{2026}") { confirmingRestore = true }
-            }
-        }
-        .settingsForm()
-        .alert("Add Group", isPresented: $addingGroup) {
-            TextField("Name", text: $newGroupName)
-            Button("Add") {
-                let trimmed = newGroupName.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty else { return }
-                let group = GroupDefinition(id: UUID().uuidString, name: trimmed, colorHex: "#808080FF")
-                model.updateGroupPalette { palette in
-                    palette.groups.append(group)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Sections with this name wear its color everywhere. Pick the color on the new row.")
-        }
-        .confirmationDialog(
-            "Replace the group list with the default groups and colors?",
-            isPresented: $confirmingRestore, titleVisibility: .visible
-        ) {
-            Button("Restore Defaults", role: .destructive) {
-                model.updateGroupPalette { $0.groups = GroupPalette.defaults.groups }
-            }
-        }
-    }
-}
-
-private struct GroupFormRow: View {
-    let model: AppModel
-    let group: GroupDefinition
-    @State private var draft = ""
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ColorPicker("", selection: colorBinding, supportsOpacity: false)
-                .labelsHidden()
-            TextField("Name", text: $draft)
-                .textFieldStyle(.plain)
-                .focused($focused)
-                .onSubmit(commit)
-                .onChange(of: focused) { _, f in if !f { commit() } }
-            Spacer()
-
-            GroupHotKeyChip(model: model, group: group)
-                .help("Hot key — this letter jumps the live song to this section in Present")
-            Button(role: .destructive) {
-                model.updateGroupPalette { $0.groups.removeAll { $0.id == group.id } }
-            } label: {
-                Image(systemName: "minus.circle").foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Remove — sections with this name fall back to their own color, or grey")
-        }
-        .onAppear { draft = group.name }
-        .onChange(of: group.name) { _, name in if !focused { draft = name } }
-    }
-
-    private func commit() {
-        let trimmed = draft.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, trimmed != group.name else { draft = group.name; return }
-        model.updateGroupPalette { palette in
-            if let i = palette.groups.firstIndex(where: { $0.id == group.id }) { palette.groups[i].name = trimmed }
-        }
-    }
-
-    private var colorBinding: Binding<Color> {
-        Binding(
-            get: { GroupColor.color(group.colorHex) ?? Color(.sRGB, white: 0.5) },
-            set: { color in
-                guard let srgb = NSColor(color).usingColorSpace(.sRGB) else { return }
-                let hex = String(
-                    format: "#%02X%02X%02XFF",
-                    Int((srgb.redComponent * 255).rounded()),
-                    Int((srgb.greenComponent * 255).rounded()),
-                    Int((srgb.blueComponent * 255).rounded()))
-                guard hex != group.colorHex else { return }
-                model.updateGroupPalette { palette in
-                    if let i = palette.groups.firstIndex(where: { $0.id == group.id }) { palette.groups[i].colorHex = hex }
-                }
-            })
     }
 }
 
@@ -595,12 +481,12 @@ private struct VideoInputDetail: View {
                 Section {
                     Button("Remove Input\u{2026}", role: .destructive) { confirmRemove = true }
                 } footer: {
-                    Text("Removing stops its capture; slides using it render empty. The audio input rides with it in the Mixer while live; video delay holds the picture back to match late audio. Frame rate is the capture device's mode, from the rates the device offers: Auto takes 30; pick the one nearest your source when it runs faster (60 for a 59.94 camera). Inputs on the same device share it.")
+                    Text("Removing stops its capture; slides using it render empty. The audio input plays with it while it is on screen; video delay holds the picture back to match late audio. Frame rate is the capture device's mode, from the rates the device offers: Auto takes 30; pick the one nearest your source when it runs faster (60 for a 59.94 camera). Inputs on the same device share it.")
                     if entry.kind == .decklink {
                         Text("A DeckLink input captures one port of the card and follows the incoming format automatically (an Apple TV or other HDMI source needs an HDMI\u{2192}SDI converter on SDI-only cards). Only ports mapped as inputs in Desktop Video Setup can capture; a port that is driving a DeckLink screen output can't.")
                     }
                     if entry.kind == .web {
-                        Text("A web page input records its Web Input window with Screen Recording, so keep that window open on a display (it can sit behind other windows) and use it to click play, scroll or sign in. Page audio plays from this Mac's sound output, not the Mixer. For a full-frame video, use the player's embed address (youtube.com/embed/\u{2026}).")
+                        Text("A web page input records its Web Input window with Screen Recording, so keep that window open on a display (it can sit behind other windows) and use it to click play, scroll or sign in. Page audio plays from this Mac's sound output. For a full-frame video, use the player's embed address (youtube.com/embed/\u{2026}).")
                     }
                 }
             }
@@ -876,7 +762,7 @@ private struct AudioInputDetail: View {
                 Section {
                     Button("Remove Input\u{2026}", role: .destructive) { confirmRemove = true }
                 } footer: {
-                    Text("Removing it makes presets that used it fall back to Program Audio. Delay holds this input's audio back everywhere it feeds — playout, mixes, streams.")
+                    Text("Delay holds this input's audio back to match late video.")
                 }
             }
             .settingsForm()
@@ -899,145 +785,6 @@ private struct AudioInputDetail: View {
         switch entry.channels {
         case .stereoPair(let offset): "s\(offset)"
         case .mono(let channel): "m\(channel)"
-        }
-    }
-}
-
-private struct AudioOutputsSection: View {
-    let open: (String) -> Void
-    @State private var inventory = AudioOutputInventory.shared
-    @State private var devices: [AudioOutputDevice] = []
-
-    var body: some View {
-        Section {
-            if inventory.entries.isEmpty {
-                Text("No audio outputs yet.").foregroundStyle(.secondary)
-            }
-            ForEach(inventory.entries) { entry in
-                Button { open(entry.id) } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "speaker.wave.2").foregroundStyle(.secondary).frame(width: 18)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(entry.name).font(.system(size: 13))
-                            Text(AudioOutputWords.subtitle(entry, devices: devices))
-                                .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            Menu("Add Output\u{2026}") {
-                Button("Empty Output — assign a device later") { _ = inventory.create() }
-                ForEach(devices, id: \.uid) { device in
-                    Button(device.name) {
-                        let entry = inventory.create(name: device.name)
-                        inventory.assignDevice(id: entry.id, deviceUID: device.uid, channelOffset: 0)
-                    }
-                }
-            }
-            .fixedSize()
-        } header: {
-            Text("Audio Outputs")
-        }
-        .task {
-            while !Task.isCancelled {
-                devices = AudioDeviceList.outputDevices()
-                try? await Task.sleep(for: .seconds(4))
-            }
-        }
-    }
-}
-
-@MainActor
-private enum AudioOutputWords {
-    static func subtitle(_ entry: AudioOutputInventory.Entry, devices: [AudioOutputDevice]) -> String {
-        var parts: [String] = []
-        if entry.isDeviceless { parts.append("No device") }
-        else if let uid = entry.deviceUID {
-            if let device = devices.first(where: { $0.uid == uid }) {
-                parts.append(device.channelCount > 2 ? "\(device.name) \(entry.channelOffset + 1)-\(entry.channelOffset + 2)" : device.name)
-            } else { parts.append("Missing device") }
-        } else { parts.append("System default") }
-        if let ms = entry.delayMs, ms > 0 { parts.append("\(ms) ms delay") }
-        return parts.joined(separator: " \u{B7} ")
-    }
-}
-
-private struct AudioOutputDetail: View {
-    let id: String
-    let back: () -> Void
-    @State private var inventory = AudioOutputInventory.shared
-    @State private var devices: [AudioOutputDevice] = []
-    @State private var confirmRemove = false
-
-    var body: some View {
-        if let entry = inventory.entries.first(where: { $0.id == id }) {
-            let device = entry.deviceUID.flatMap { uid in devices.first { $0.uid == uid } }
-            Form {
-                Section("Output") {
-                    TextField("Name", text: Binding(get: { entry.name }, set: { inventory.rename(id: id, to: $0) }))
-                    Picker("Device", selection: Binding(
-                        get: { entry.isDeviceless ? "none" : (entry.deviceUID ?? "") },
-                        set: { tag in
-                            if tag == "" { inventory.assignDevice(id: id, deviceUID: nil, channelOffset: 0) }
-                            else if tag == "none" { inventory.assignDevice(id: id, deviceUID: AudioOutputInventory.noDeviceUID, channelOffset: 0) }
-                            else { inventory.assignDevice(id: id, deviceUID: tag, channelOffset: 0) }
-                        })
-                    ) {
-                        Text("System default").tag("")
-                        Text("No device").tag("none")
-                        ForEach(devices, id: \.uid) { Text($0.name).tag($0.uid) }
-                        if let uid = entry.deviceUID, !entry.isDeviceless, !devices.contains(where: { $0.uid == uid }) {
-                            Text("Missing device (not connected)").tag(uid)
-                        }
-                    }
-                    if let device, device.channelCount > 2 {
-                        Picker("Channels", selection: Binding(
-                            get: { entry.channelOffset },
-                            set: { inventory.assignDevice(id: id, deviceUID: device.uid, channelOffset: $0) })
-                        ) {
-                            ForEach(Array(stride(from: 0, to: device.channelCount - 1, by: 2)), id: \.self) { offset in
-                                Text("\(offset + 1)-\(offset + 2)").tag(offset)
-                            }
-                        }
-                    }
-                    LabeledContent("Playout delay") {
-                        HStack(spacing: 4) {
-                            TextField("", value: Binding(
-                                get: { entry.delayMs ?? 0 },
-                                set: { inventory.setDelay(id: id, milliseconds: min(max($0, 0), 2000)) }),
-                                format: .number)
-                                .multilineTextAlignment(.trailing).frame(width: 56)
-                            Text("ms").foregroundStyle(.secondary)
-                            Stepper("", value: Binding(
-                                get: { entry.delayMs ?? 0 },
-                                set: { inventory.setDelay(id: id, milliseconds: $0) }),
-                                in: 0...2000, step: 5).labelsHidden()
-                        }
-                    }
-                }
-                Section {
-                    Button("Remove Output\u{2026}", role: .destructive) { confirmRemove = true }
-                } footer: {
-                    Text("Mixes sending here drop the send. Delay holds this output's playout back to match slower rooms or devices.")
-                }
-            }
-            .settingsForm()
-            .task {
-                while !Task.isCancelled {
-                    devices = AudioDeviceList.outputDevices()
-                    try? await Task.sleep(for: .seconds(4))
-                }
-            }
-            .alert("Remove \u{201C}\(entry.name)\u{201D}?", isPresented: $confirmRemove) {
-                Button("Remove", role: .destructive) { inventory.remove(entry); back() }
-                Button("Cancel", role: .cancel) {}
-            }
-        } else {
-            ContentUnavailableView("Output not found", systemImage: "speaker.wave.2")
         }
     }
 }

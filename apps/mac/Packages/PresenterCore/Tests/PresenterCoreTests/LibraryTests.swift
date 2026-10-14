@@ -19,11 +19,10 @@ private func song(_ id: String, _ name: String) -> Presentation {
     #expect(ConfidenceLayoutTemplate.blank.make(name: "x").objects.isEmpty)
     #expect(ConfidenceLayoutTemplate.blank.starterName == "Untitled Layout")
 
-    for template in ConfidenceLayoutTemplate.workspaceStarters {
+    for template in [ConfidenceLayoutTemplate.worship, .sermon] {
         try library.create(template.make(name: template.starterName))
     }
-    #expect(try Set(library.index.entries(of: .confidenceLayout).map(\.name))
-        == ["Worship", "Sermon", "Current + Next", "Timers", "Current Over Next", "Current Over Next + Chords"])
+    #expect(try Set(library.index.entries(of: .confidenceLayout).map(\.name)) == ["Worship", "Sermon"])
 }
 
 @LibraryActor @Test func libraryIndexesOnCreateRenameAndDelete() throws {

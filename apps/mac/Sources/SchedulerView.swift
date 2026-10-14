@@ -403,13 +403,6 @@ struct SchedulerView: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-
-                    if let preview = captureSourcePreview(trigger) {
-                        Text(preview.text)
-                            .font(.system(size: 9))
-                            .foregroundStyle(preview.isProblem ? Color.orange : Color.secondary)
-                            .lineLimit(1)
-                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
@@ -554,17 +547,6 @@ struct SchedulerView: View {
         }
     }
 
-    private func captureSourcePreview(_ trigger: ScheduleTrigger) -> ServiceControls.CaptureSourcePreview? {
-        guard let controls else { return nil }
-        for action in trigger.actions where action.kind == .captureStart {
-            guard let presetID = action.capturePresetId else { continue }
-            if let preview = controls.captureSourcePreview(presetID: presetID) {
-                return preview
-            }
-        }
-        return nil
-    }
-
     private func snooze(_ id: String, until date: Date) {
         model.updateScheduleTrigger(id) {
             $0.disabledUntil = ScheduleConditionFormat.localString(from: date)
@@ -642,8 +624,6 @@ struct SchedulerView: View {
         case .presentation: return make(.firePresentation) { $0.presentationId = entry.id }
         case .actionCombo: return make(.fireCombo) { $0.comboId = entry.id }
         case .alertPreset: return make(.fireAlert) { $0.alertId = entry.id }
-        case .streamRecordPreset: return make(.captureStart) { $0.capturePresetId = entry.id }
-        case .outputPreset: return make(.switchOutputPreset) { $0.presetId = entry.id }
         default:
             DiagnosticsStore.shared.note("scheduler.drop.unmapped", detail: entry.kind.rawValue)
             return nil

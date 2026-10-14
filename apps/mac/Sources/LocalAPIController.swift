@@ -101,13 +101,13 @@ final class LocalAPIController {
 
     init(
         appModel: AppModel, controls: ServiceControls,
-        outputPresets: OutputPresetsController, render: RenderContext,
+        render: RenderContext,
         scheduler: SchedulerController? = nil
     ) {
         self.appModel = appModel
         self.bridge = AppAPIBridge(
             appModel: appModel, controls: controls,
-            outputPresets: outputPresets, render: render,
+            render: render,
             scheduler: scheduler
         )
         self.tokens = APITokenStore(
@@ -260,7 +260,6 @@ final class LocalAPIController {
     private func armPublishers() {
         observe(.show) { bridge in try? Self.encode(bridge.showStatus()) }
         observe(.timers) { bridge in try? Self.encode(bridge.timers()) }
-        observe(.audio) { bridge in try? Self.encode(bridge.audioStatus()) }
         observe(.transport) { bridge in try? Self.encode(bridge.transportRows()) }
         observe(.outputs) { bridge in try? Self.encode(bridge.outputsStatus()) }
         observe(.library) { bridge in try? Self.encode(bridge.librarySummary()) }

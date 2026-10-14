@@ -1,35 +1,21 @@
 import PresenterCore
 import SwiftUI
 
-/// Settings › Show Setup: which screen is the audience, the livestream and
-/// the stage display, how the livestream behaves, and Live Assist.
+/// Settings › Show Setup: the Audience, Livestream and Stage screens and
+/// how the livestream behaves.
 struct ShowSetupForm: View {
     let controls: ServiceControls
     @Bindable private var setup = ShowSetup.shared
-    @Bindable private var assist = LiveAssist.shared
-
-    private var screens: [(id: String, name: String)] { PreviewTargets.screens(controls.render) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            screenPicker("Audience screen", $setup.audienceTarget)
-            screenPicker("Livestream screen", $setup.streamTarget)
-            screenPicker("Stage display", $setup.stageTarget)
-            Text("Screens are created and assigned to displays, NDI or DeckLink in Screen Configuration. For a keyed livestream, assign it to the DeckLink output with Alpha Key on.")
-                .font(.caption).foregroundStyle(.secondary)
+            ThreeScreensView(render: controls.render)
             Picker("Livestream", selection: $setup.streamMode) {
                 ForEach(ShowSetup.StreamMode.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
-            Text("Auto: a slide whose theme has a livestream lower third (set in the theme editor) shows in it; everything else leaves the camera clear. Full Screen: the room's slide, edge to edge. Off: nothing over the camera.")
+            Text("Transparent: nothing over the camera. Lower Third: a slide whose theme has a livestream design (set in the theme editor) shows in it; everything else leaves the camera clear. Full Screen: the room's slide, edge to edge.")
                 .font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    private func screenPicker(_ title: String, _ selection: Binding<String>) -> some View {
-        Picker(title, selection: selection) {
-            Text("Automatic").tag("")
-            ForEach(screens, id: \.id) { Text($0.name).tag($0.id) }
         }
     }
 }

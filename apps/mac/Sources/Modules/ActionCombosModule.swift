@@ -10,7 +10,6 @@ struct ActionCombosModule: View {
     @Environment(\.runOnly) private var runOnly
     @Environment(\.actionRouter) private var router
     @Environment(\.confidenceMonitor) private var confidenceMonitor
-    @Environment(\.signage) private var signage
 
     @State private var expanded: Set<String> = []
     @State private var mediaPick: MediaPickTarget?
@@ -36,7 +35,7 @@ struct ActionCombosModule: View {
         let comboID: String
         let actionID: String
 
-        var kind: DocumentKind = .media
+        let kind: DocumentKind = .media
         var id: String { actionID }
     }
 
@@ -71,13 +70,7 @@ struct ActionCombosModule: View {
         }
         .sheet(item: $mediaPick) { pick in
             LibraryPickerSheet(appModel: model, kind: pick.kind) { entry in
-                updateAction(pick.comboID, pick.actionID) {
-                    if pick.kind == .audio {
-                        $0.audioItemId = entry.id
-                    } else {
-                        $0.mediaId = entry.id
-                    }
-                }
+                updateAction(pick.comboID, pick.actionID) { $0.mediaId = entry.id }
                 mediaPick = nil
             }
         }
@@ -425,14 +418,6 @@ struct ActionCombosModule: View {
                     }
                 }
             }
-        case .switchOutputPreset:
-            QuietMenuChip(title: entryName(action.presetId) ?? "Preset\u{2026}") {
-                ForEach(entries(of: .outputPreset), id: \.id) { preset in
-                    Button(preset.name) {
-                        updateAction(comboID, action.id) { $0.presetId = preset.id }
-                    }
-                }
-            }
         case .fireMedia:
             Button {
                 mediaPick = MediaPickTarget(comboID: comboID, actionID: action.id)
@@ -516,27 +501,6 @@ struct ActionCombosModule: View {
                     }
                 }
             }
-        case .captureStart:
-            QuietMenuChip(title: entryName(action.capturePresetId) ?? "Preset\u{2026}") {
-                ForEach(entries(of: .streamRecordPreset), id: \.id) { preset in
-                    Button(preset.name) {
-                        updateAction(comboID, action.id) { $0.capturePresetId = preset.id }
-                    }
-                }
-            }
-        case .captureStop:
-            QuietMenuChip(title: entryName(action.capturePresetId) ?? "All Capture") {
-
-                Button("All Capture") {
-                    updateAction(comboID, action.id) { $0.capturePresetId = nil }
-                }
-                Divider()
-                ForEach(entries(of: .streamRecordPreset), id: \.id) { preset in
-                    Button(preset.name) {
-                        updateAction(comboID, action.id) { $0.capturePresetId = preset.id }
-                    }
-                }
-            }
         case .firePresentation:
             QuietMenuChip(title: entryName(action.presentationId) ?? "Presentation\u{2026}") {
                 ForEach(entries(of: .presentation), id: \.id) { presentation in
@@ -602,26 +566,6 @@ struct ActionCombosModule: View {
                     }
                 }
             }
-        case .fireOverlay:
-            QuietMenuChip(title: entryName(action.overlayId) ?? "Overlay\u{2026}") {
-                ForEach(entries(of: .overlay), id: \.id) { overlay in
-                    Button(overlay.name) {
-                        updateAction(comboID, action.id) { $0.overlayId = overlay.id }
-                    }
-                }
-            }
-        case .dismissOverlay:
-            QuietMenuChip(title: (action.overlayId?.isEmpty ?? true) ? "All Overlays" : (entryName(action.overlayId) ?? "Overlay\u{2026}")) {
-                Button("All Overlays") {
-                    updateAction(comboID, action.id) { $0.overlayId = nil }
-                }
-                Divider()
-                ForEach(entries(of: .overlay), id: \.id) { overlay in
-                    Button(overlay.name) {
-                        updateAction(comboID, action.id) { $0.overlayId = overlay.id }
-                    }
-                }
-            }
         case .fireLiveInput:
             QuietMenuChip(title: liveInputTitle(action)) {
                 ForEach(LiveInputCatalog.choices, id: \.token) { choice in
@@ -634,100 +578,14 @@ struct ActionCombosModule: View {
                     }
                 }
             }
-        case .setSignage:
-            QuietMenuChip(title: signageChannelTitle(action.signageId) ?? "Signage\u{2026}") {
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Button(channel.name) {
-                        updateAction(comboID, action.id) { $0.signageId = channel.id }
-                    }
-                }
-            }
-
-            QuietMenuChip(title: (action.playlistId?.isEmpty ?? true)
-                ? "Playlist\u{2026}" : (entryName(action.playlistId) ?? "Playlist\u{2026}")
-            ) {
-                ForEach(model.playlists(in: .media), id: \.id) { playlist in
-                    Button(playlist.name) {
-                        updateAction(comboID, action.id) { $0.playlistId = playlist.id }
-                    }
-                }
-            }
-        case .setScreenSource:
-            QuietMenuChip(title: signageScreenTitle(action.screenId)) {
-                ForEach(signage?.screens ?? [], id: \.id) { screen in
-                    Button(screen.name) {
-                        updateAction(comboID, action.id) { $0.screenId = screen.id.uuidString }
-                    }
-                }
-            }
-            QuietMenuChip(title: (action.signageId?.isEmpty ?? true)
-                ? "Program" : (signageChannelTitle(action.signageId) ?? "Signage\u{2026}")
-            ) {
-                Button("Program") {
-                    updateAction(comboID, action.id) { $0.signageId = nil }
-                }
-                Divider()
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Button("Signage — \(channel.name)") {
-                        updateAction(comboID, action.id) { $0.signageId = channel.id }
-                    }
-                }
-            }
-        case .enableAudioInput, .disableAudioInput:
-            QuietMenuChip(title: audioInputTitle(action)) {
-                ForEach(AudioInputInventory.shared.entries) { entry in
-                    Button(entry.name) {
-                        updateAction(comboID, action.id) { $0.audioInputId = entry.id }
-                    }
-                }
-            }
-        case .fireAudio:
-
-            Button {
-                mediaPick = MediaPickTarget(
-                    comboID: comboID, actionID: action.id, kind: .audio)
-            } label: {
-                Text(entryName(action.audioItemId) ?? "File\u{2026}")
-                    .font(.system(size: 10))
-                    .lineLimit(1)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .background(
-                Color.primary.opacity(0.05),
-                in: RoundedRectangle.standard(CornerStandard.element)
-            )
-            QuietMenuChip(title: action.audioRepeat == true ? "Repeat: On" : "Repeat: Off") {
-                Button("Repeat: Off") {
-                    updateAction(comboID, action.id) { $0.audioRepeat = nil }
-                }
-                Button("Repeat: On") {
-                    updateAction(comboID, action.id) { $0.audioRepeat = true }
-                }
-            }
-        case .fireAudioPlaylist:
-            QuietMenuChip(title: entryName(action.playlistId) ?? "Playlist\u{2026}") {
-                ForEach(model.playlists(in: .audio), id: \.id) { playlist in
-                    Button(playlist.name) {
-                        updateAction(comboID, action.id) { $0.playlistId = playlist.id }
-                    }
-                }
-            }
-            QuietMenuChip(title: repeatTitle(action.audioRepeat)) {
-                Button("Repeat: Playlist Setting") {
-                    updateAction(comboID, action.id) { $0.audioRepeat = nil }
-                }
-                Button("Repeat: On") {
-                    updateAction(comboID, action.id) { $0.audioRepeat = true }
-                }
-                Button("Repeat: Off") {
-                    updateAction(comboID, action.id) { $0.audioRepeat = false }
-                }
-            }
-        case .clearAll, .clearAudio, .clearSignage, .dismissAlert:
+        case .clearAll, .dismissAlert:
             EmptyView()
+        case .clearAudio, .clearSignage, .switchOutputPreset, .captureStart, .captureStop,
+             .fireOverlay, .dismissOverlay, .setSignage, .setScreenSource,
+             .enableAudioInput, .disableAudioInput, .fireAudio, .fireAudioPlaylist:
+            Text("No longer does anything")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -747,29 +605,6 @@ struct ActionCombosModule: View {
 
     private func durationLabel(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
-    }
-
-    private func repeatTitle(_ audioRepeat: Bool?) -> String {
-        switch audioRepeat {
-        case true?: "Repeat: On"
-        case false?: "Repeat: Off"
-        case nil: "Repeat: Playlist Setting"
-        }
-    }
-
-    private func audioInputTitle(_ action: SlideAction) -> String {
-        guard let id = action.audioInputId, !id.isEmpty else { return "Input\u{2026}" }
-        return AudioInputInventory.shared.name(forId: id) ?? "Missing input"
-    }
-
-    private func signageChannelTitle(_ id: String?) -> String? {
-        guard let id, !id.isEmpty else { return nil }
-        return signage?.channel(id)?.name ?? "Missing"
-    }
-
-    private func signageScreenTitle(_ id: String?) -> String {
-        guard let id, !id.isEmpty else { return "Screen\u{2026}" }
-        return signage?.screens.first { $0.id.uuidString == id }?.name ?? "Screen\u{2026}"
     }
 
     private func liveInputTitle(_ action: SlideAction) -> String {
@@ -917,9 +752,8 @@ struct ActionCombosModule: View {
 
     private static let icons: [(kind: GlyphKind, name: String)] = [
         (.combos, "Bolt"), (.timers, "Timer"), (.alerts, "Bell"),
-        (.media, "Media"), (.audio, "Music"), (.screens, "Screen"),
-        (.clear, "Clear"), (.midi, "MIDI"), (.broadcast, "Record"),
-        (.overlays, "Overlay"),
+        (.media, "Media"), (.screens, "Screen"),
+        (.clear, "Clear"), (.midi, "MIDI"),
     ]
 
     private func icon(of combo: ActionCombo) -> GlyphKind {

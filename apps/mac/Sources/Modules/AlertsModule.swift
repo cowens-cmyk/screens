@@ -434,7 +434,7 @@ private struct AlertInlineEditor: View {
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
-                    .help("The audience-side layer this alert renders on — screen presets route it like any layer")
+                    .help("The audience-side layer this alert renders on")
                     fieldLabel("THEME")
                     Menu {
                         Toggle("Built-in Banner", isOn: option((preset.themeId ?? "").isEmpty) {

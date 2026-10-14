@@ -5,8 +5,8 @@ public enum DocsPage {
         routes: [APIRoute], baseURL: String, schemaVersion: Int
     ) -> String {
         let grouped = Dictionary(grouping: routes, by: \.tag)
-        let tagOrder = ["Show", "Media", "Overlays", "Alerts", "Timers",
-                        "Audio", "Transport", "Outputs", "Services",
+        let tagOrder = ["Show", "Media", "Alerts", "Timers",
+                        "Transport", "Outputs", "Services",
                         "Documents", "Library"]
         let orderedTags = tagOrder.filter { grouped[$0] != nil }
             + grouped.keys.filter { !tagOrder.contains($0) }.sorted()
@@ -118,12 +118,10 @@ public enum DocsPage {
         case "advance": return #"{"steps": 1}"#
         case "clear": return #"{"function": "slides"}"#
         case "fireAlert": return #"{"presetId": "PRESET", "tokens": {"number": "142"}}"#
-        case "audioTransport": return #"{"action": "playPause"}"#
         case "mediaTransport": return #"{"action": "seek", "position": 12.5}"#
         case "addServiceItem": return #"{"refId": "PRESENTATION"}"#
         case "createDocument", "updateDocument":
             return #"{"name": "New Song", "presentationKind": "deck", "themeId": "", "slides": []}"#
-        case "fireAudioPlaylist": return #"{"startAtEntryId": null}"#
         default: return nil
         }
     }

@@ -35,7 +35,7 @@ struct SlideTarget {
     }
 
     /// Slides built with another theme keep that theme, so they stay in
-    /// their own design (and Look) inside this presentation.
+    /// their own design inside this presentation.
     func adopting(_ slides: [Slide], builtWith themeID: String) -> [Slide] {
         guard !themeID.isEmpty, themeID != themeId else { return slides }
         return slides.map { slide in
@@ -95,7 +95,7 @@ struct PointSlidesSheet: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(points.isEmpty)
             }
-            Text("Uses the theme's “Sermon Points” category, and its Look if you've set one.")
+            Text("Uses the theme's “Sermon Points” category.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(16)

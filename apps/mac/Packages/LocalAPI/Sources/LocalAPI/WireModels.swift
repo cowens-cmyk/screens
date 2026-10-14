@@ -32,10 +32,8 @@ public struct APIError: Error, Codable, Sendable {
 }
 
 public enum APIDocumentKind: String, Codable, CaseIterable, Sendable {
-    case presentations, services, themes, media, audio, playlists, overlays
+    case presentations, services, themes, media, playlists
     case alertPresets = "alert-presets"
-    case outputPresets = "output-presets"
-    case streamPresets = "stream-presets"
     case actionCombos = "action-combos"
     case scheduleTriggers = "schedule-triggers"
     case confidenceLayouts = "confidence-layouts"
@@ -500,112 +498,6 @@ public struct APIVideoInputStatus: Codable, Sendable {
     }
 }
 
-public struct APIAudioInputStatus: Codable, Sendable {
-    public var id: String
-    public var name: String
-
-    public var deviceUid: String?
-
-    public var live: Bool
-
-    public var enabled: Bool
-    public var gain: Double
-    public var muted: Bool
-
-    public var mixId: String?
-
-    public var delayMs: Int?
-
-    public init(
-        id: String, name: String, deviceUid: String? = nil,
-        live: Bool, enabled: Bool, gain: Double, muted: Bool,
-        mixId: String? = nil, delayMs: Int? = nil
-    ) {
-        self.id = id
-        self.name = name
-        self.deviceUid = deviceUid
-        self.live = live
-        self.enabled = enabled
-        self.gain = gain
-        self.muted = muted
-        self.mixId = mixId
-        self.delayMs = delayMs
-    }
-}
-
-public struct APIAudioMixStatus: Codable, Sendable {
-    public var id: String
-    public var name: String
-
-    public var deviceUid: String?
-    public var channelOffset: Int
-    public var gain: Double
-    public var muted: Bool
-
-    public var outputIds: [String]?
-
-    public init(
-        id: String, name: String, deviceUid: String? = nil,
-        channelOffset: Int, gain: Double, muted: Bool,
-        outputIds: [String]? = nil
-    ) {
-        self.id = id
-        self.name = name
-        self.deviceUid = deviceUid
-        self.channelOffset = channelOffset
-        self.gain = gain
-        self.muted = muted
-        self.outputIds = outputIds
-    }
-}
-
-public struct APIMixerInputCommand: Codable, Sendable {
-    public var enabled: Bool?
-    public var gain: Double?
-    public var muted: Bool?
-
-    public var delayMs: Int?
-
-    public init(
-        enabled: Bool? = nil, gain: Double? = nil, muted: Bool? = nil,
-        delayMs: Int? = nil
-    ) {
-        self.enabled = enabled
-        self.gain = gain
-        self.muted = muted
-        self.delayMs = delayMs
-    }
-}
-
-public struct APIAudioStatus: Codable, Sendable {
-    public struct Bus: Codable, Sendable {
-        public var playlistId: String?
-        public var audioItemId: String?
-        public var trackName: String?
-        public var playing: Bool
-        public var position: Double?
-        public var duration: Double?
-
-        public init(
-            playlistId: String?, audioItemId: String?, trackName: String?,
-            playing: Bool, position: Double?, duration: Double?
-        ) {
-            self.playlistId = playlistId
-            self.audioItemId = audioItemId
-            self.trackName = trackName
-            self.playing = playing
-            self.position = position
-            self.duration = duration
-        }
-    }
-
-    public var buses: [Bus]
-
-    public init(buses: [Bus]) {
-        self.buses = buses
-    }
-}
-
 public struct APITransportRow: Codable, Sendable {
     public var mediaId: String
     public var name: String
@@ -685,24 +577,10 @@ public struct APIOutputsStatus: Codable, Sendable {
         }
     }
 
-    public struct Preset: Codable, Sendable {
-        public var id: String
-        public var name: String
-        public var active: Bool
-
-        public init(id: String, name: String, active: Bool) {
-            self.id = id
-            self.name = name
-            self.active = active
-        }
-    }
-
     public var screens: [Screen]
-    public var presets: [Preset]
 
-    public init(screens: [Screen], presets: [Preset]) {
+    public init(screens: [Screen]) {
         self.screens = screens
-        self.presets = presets
     }
 }
 
@@ -775,35 +653,6 @@ public struct APIFireAlertCommand: Codable, Sendable {
 
 public enum APITimerAction: String, Codable, Sendable {
     case play, pause, reset
-}
-
-public struct APIAudioFireCommand: Codable, Sendable {
-    public var startAtEntryId: String?
-
-    public init(startAtEntryId: String? = nil) {
-        self.startAtEntryId = startAtEntryId
-    }
-}
-
-public struct APIAudioStopCommand: Codable, Sendable {
-    public var playlistId: String?
-    public var audioItemId: String?
-
-    public init(playlistId: String? = nil, audioItemId: String? = nil) {
-        self.playlistId = playlistId
-        self.audioItemId = audioItemId
-    }
-}
-
-public struct APIAudioTransportCommand: Codable, Sendable {
-
-    public var action: String
-    public var position: Double?
-
-    public init(action: String, position: Double? = nil) {
-        self.action = action
-        self.position = position
-    }
 }
 
 public struct APIMediaTransportCommand: Codable, Sendable {

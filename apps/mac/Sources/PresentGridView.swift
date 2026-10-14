@@ -1283,30 +1283,8 @@ struct SlideGridBody: View {
             return true
         }
 
-        if !insertZone, let entry = resolved, entry.kind == .audio {
-            appendSlideAction(
-                SlideAction(id: UUID().uuidString, kind: .fireAudio, audioItemId: entry.id),
-                to: slide)
-            return true
-        }
-        if !insertZone, let entry = resolved, entry.kind == .playlist,
-           (try? model.playlist(entry.id))?.effectiveKind == .audio {
-            appendSlideAction(
-                SlideAction(id: UUID().uuidString, kind: .fireAudioPlaylist, playlistId: entry.id),
-                to: slide)
-            return true
-        }
         if !insertZone, payload.hasPrefix("pltrk::") {
-            let parts = payload.components(separatedBy: "::")
-            guard parts.count == 3,
-                  let playlist = try? model.playlist(parts[1]),
-                  playlist.effectiveKind == .audio,
-                  let track = playlist.entries.first(where: { $0.id == parts[2] })
-            else { return false }
-            appendSlideAction(
-                SlideAction(id: UUID().uuidString, kind: .fireAudio, audioItemId: track.refId),
-                to: slide)
-            return true
+            return false
         }
         if insertZone {
             return insertMediaSlide(mediaID: payload, beforeIndex: index)
@@ -1597,20 +1575,6 @@ struct SlideTile: View {
                         .tileHelp("Text on this slide doesn't fit its box — the overflow is clipped on the output. Open the slide in Edit to see the outlined box.")
                 }
 
-                if !pageLooks.isEmpty {
-                    HStack(spacing: 2) {
-                        Image(systemName: "rectangle.stack")
-                        Text("\(pageLooks.map(\.pages.count).max() ?? 0)")
-                            .font(.system(size: 8, weight: .semibold).monospacedDigit())
-                    }
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-                    .tileHelp(pageLooks.map { "\($0.pages.count) pages on \($0.outputs)" }.joined(separator: "; ")
-                              + ". Each click turns one page there while the projector holds. Hover to see them.")
-                    .onHover { pagesHovered = $0 }
-                    .popover(isPresented: $pagesHovered, arrowEdge: .bottom) { pagesStrip }
-                }
-
                 if stepCount > 0 {
                     Text("\(isLive ? 1 + (liveAnimationStep ?? 0) : 0)/\(stepCount + 1)")
                         .font(.system(size: 8, weight: .semibold).monospacedDigit())
@@ -1670,72 +1634,21 @@ struct SlideTile: View {
             let slide = slide
             let theme = theme
             let presentation = presentation
-            let looks = predictedLooks.map { (id: $0.id, theme: $0.theme, outputs: $0.targetIds.map { render?.outputs.outputName($0) ?? "Output" }.joined(separator: ", ")) }
             let measured = await Task.detached(priority: .utility) {
                 let clipped = !SlideSceneBuilder.clippedTextObjectIDs(
                     for: slide, theme: theme, presentation: presentation
                 ).isEmpty
 
-                let pages = looks.compactMap { look -> PageLook? in
-                    let pages = Paging.pages(of: slide, through: look.theme, from: theme)
-                    return pages.count > 1 ? PageLook(id: look.id, outputs: look.outputs, theme: look.theme, pages: pages) : nil
-                }
-
-                let steps = PlaceholderAnimations.advanceCount(slide: slide, themes: [theme] + looks.map { $0.theme as Theme? })
-                return (clipped, pages, steps)
+                let steps = PlaceholderAnimations.advanceCount(slide: slide, themes: [theme])
+                return (clipped, steps)
             }.value
             hasClippedText = measured.0
-            pageLooks = measured.1
-            pagedStepCount = measured.2
+            pagedStepCount = measured.1
         }
     }
 
     @State private var hasClippedText = false
-    @State private var pageLooks: [PageLook] = []
-    @State private var pagesHovered = false
-
-    struct PageLook: Identifiable {
-        let id: String
-        let outputs: String
-        let theme: Theme
-        let pages: [Slide]
-    }
-
-    private var predictedLooks: [ActionRouter.OverrideLook] {
-        actionRouter?.predictedOverrideLooks(for: slide, contextID: contextID) ?? []
-    }
-
-    private var pagesStrip: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(pageLooks) { look in
-                Text("\(look.outputs): \(look.pages.count) pages")
-                    .font(.caption.weight(.semibold))
-                HStack(spacing: 6) {
-                    ForEach(Array(look.pages.enumerated()), id: \.element.id) { index, page in
-                        VStack(spacing: 2) {
-                            SlideThumbnailView(
-                                model: model, render: render,
-                                slide: page, presentation: presentation, theme: look.theme,
-                                arrangementId: nil, hideScopedBackgrounds: false, legibleText: false,
-                                contentStamp: "pages|\(slide.id)|\(look.id)|\(index)")
-                            .frame(width: 160, height: 90)
-                            .clipShape(RoundedRectangle.standard(CornerStandard.element))
-                            Text("Page \(index + 1)").font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(10)
-    }
-
-    private var predictedThemes: [Theme?] {
-        var themes: [Theme?] = [theme]
-        for override in actionRouter?.predictedOverrideThemes(for: slide, contextID: contextID) ?? [] {
-            themes.append(override)
-        }
-        return themes
-    }
+    private var predictedThemes: [Theme?] { [theme] }
 
     private var stepCount: Int {
 
@@ -1751,12 +1664,10 @@ struct SlideTile: View {
     private struct ClippedTextKey: Equatable {
         let slide: Slide
         let theme: Theme?
-
-        let looks: [String]
     }
 
     private var clippedTextKey: ClippedTextKey {
-        ClippedTextKey(slide: slide, theme: theme, looks: predictedLooks.map(\.id))
+        ClippedTextKey(slide: slide, theme: theme)
     }
 
     private var actionBadges: [GlyphKind] {

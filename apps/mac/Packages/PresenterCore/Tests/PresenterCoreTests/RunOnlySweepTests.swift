@@ -137,7 +137,7 @@ import Testing
         let sweep = try SourceSweep.app()
         let app = try #require(sweep.file("MxUSlidesApp.swift"))
         let placed: Set<String> = [
-            "\"main\"", "\"module\"", "\"serviceControls\"", "\"preview\"", "\"outputs\"", "\"engine\"",
+            "\"main\"", "\"module\"", "\"serviceControls\"", "\"preview\"", "\"outputs\"",
             "\"liveAssist\"",
         ]
         let scenePattern = /(?:Window|WindowGroup)\((?:"[^"]*",\s*)?id:\s*("[^"]+")/

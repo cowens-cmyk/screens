@@ -90,7 +90,6 @@ import Testing
             "func createEntity(in section: LibrarySection) -> String? {",
             "func createPresentation(named name: String) -> String? {",
             "func createConfidenceLayout(from template: ConfidenceLayoutTemplate) -> String? {",
-            "func createMultiView(",
             "func importLyrics(",
             "func createPlaylist(in section: LibrarySection) -> String? {",
         ] {

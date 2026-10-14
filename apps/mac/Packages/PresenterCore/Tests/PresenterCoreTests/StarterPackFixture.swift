@@ -1,4 +1,8 @@
 import Foundation
+@testable import PresenterCore
+
+// The four starter packs the app used to install, kept only as rich theme
+// fixtures (paging, thirds, animation steps) for the tests.
 
 public enum StarterPack: String, CaseIterable, Sendable {
     case cleanGeometric, editorialSerif, boldBlocks, digital

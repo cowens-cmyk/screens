@@ -1179,21 +1179,9 @@ struct LibrarySidebar: View {
                 } else if model.selectedSection == .confidence {
 
                     Menu {
-                        ForEach(ConfidenceLayoutTemplate.allCases, id: \.rawValue) { template in
+                        ForEach([ConfidenceLayoutTemplate.blank, .worship, .sermon], id: \.rawValue) { template in
                             Button(template.title) {
                                 fileNewEntry(model.createConfidenceLayout(from: template))
-                            }
-                        }
-
-                        Section("MultiView") {
-                            ForEach(MultiViewTemplate.allCases, id: \.rawValue) { template in
-                                Button(template.title) {
-                                    let sources = render.map(PreviewTargets.screens) ?? []
-                                    fileNewEntry(model.createMultiView(
-                                        from: template,
-                                        sources: sources.map { .init(screenId: $0.id, name: $0.name) }
-                                    ))
-                                }
                             }
                         }
                     } label: {
@@ -1300,9 +1288,7 @@ struct LibrarySidebar: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
-        panel.allowedContentTypes = model.selectedSection == .audio
-            ? [.audio]
-            : [.image, .movie, .video, .audio]
+        panel.allowedContentTypes = [.image, .movie, .video]
         panel.begin { response in
             guard response == .OK else { return }
             let urls = panel.urls
@@ -1347,9 +1333,6 @@ struct LibraryCommands: Commands {
             }
             .keyboardShortcut(command: .newService)
             .disabled(model == nil || runOnly)
-            Button("New Overlay") { createAndSelect(.overlays) }
-                .keyboardShortcut(command: .newOverlay)
-                .disabled(model == nil || runOnly)
             Button("New Theme") { createAndSelect(.themes) }
                 .keyboardShortcut(command: .newTheme)
                 .disabled(model == nil || runOnly)

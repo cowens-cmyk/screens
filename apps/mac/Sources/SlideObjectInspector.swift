@@ -67,9 +67,7 @@ struct SlideObjectInspector: View {
                 cueInspector()
             case .object:
 
-                if model.isMultiView {
-                    MultiViewTileInspector(model: model, appModel: model.appModel)
-                } else if let object = model.inspectedObject {
+                if let object = model.inspectedObject {
                     inspector(object)
                 } else {
 
@@ -128,19 +126,6 @@ struct SlideObjectInspector: View {
                 InspectorSection("Category") {
                     InspectorTextField("Name", text: slideNameBinding())
                     Text("Slides using this category take their text style and placement from the first text object, and render the other objects beneath their content.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                InspectorSection("Look") {
-                    InspectorPicker("Switch to", selection: lookBinding()) {
-                        Text("Don't change").tag("")
-                        Divider()
-                        ForEach(model.appModel.entries(of: .outputPreset), id: \.id) { entry in
-                            Text(entry.name).tag(entry.id)
-                        }
-                    }
-                    Text("Every slide in this category switches outputs to this Look when it goes live — e.g. Bible → your scripture lower third, Sermon Points → your points lower third. Give Lyrics your normal Look so it switches back.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -388,16 +373,6 @@ struct SlideObjectInspector: View {
         Binding(
             get: { model.currentSlide?.actions ?? [] },
             set: { model.setSlideActions($0) }
-        )
-    }
-
-    private func lookBinding() -> Binding<String> {
-        Binding(
-            get: { model.currentSlide?.lookPresetId ?? "" },
-            set: { value in
-                guard let id = model.currentSlide?.id else { return }
-                model.updateSlide(id) { $0.lookPresetId = value.isEmpty ? nil : value }
-            }
         )
     }
 

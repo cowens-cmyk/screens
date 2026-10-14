@@ -55,21 +55,27 @@ import Testing
         #expect(try TypedDocument<T>(data: saved).value == value)
     }
 
+    private static func service() -> Service {
+        Service(
+            id: "svc", name: "Sunday", serviceDate: "2026-09-22",
+            items: [ServiceItem(id: "item", itemKind: .presentation, name: "Deck", refId: "deck")])
+    }
+
     @Test func everyFixtureDecodesToTheValueItWasEncodedFrom() throws {
-        let decks = [Self.richDeck(), WelcomeDeck.makePresentation()]
-        for deck in decks { try encodeThenDecode(deck) }
+        try encodeThenDecode(Self.richDeck())
         for pack in StarterPack.allCases { try encodeThenDecode(pack.makeTheme()) }
+        for theme in BasicTemplates.themes() { try encodeThenDecode(theme) }
         for overlay in StarterPack.boldBlocks.makeOverlays() { try encodeThenDecode(overlay) }
-        try encodeThenDecode(WelcomeDeck.makeService(serviceDate: "2026-09-22"))
+        try encodeThenDecode(Self.service())
         try encodeThenDecode(Self.note())
     }
 
     @LibraryActor @Test func everyFixtureRoundTripsThroughTypedDocument() throws {
         try roundTrip(Self.richDeck())
-        try roundTrip(WelcomeDeck.makePresentation())
         for pack in StarterPack.allCases { try roundTrip(pack.makeTheme()) }
+        for theme in BasicTemplates.themes() { try roundTrip(theme) }
         for overlay in StarterPack.digital.makeOverlays() { try roundTrip(overlay) }
-        try roundTrip(WelcomeDeck.makeService(serviceDate: "2026-09-22"))
+        try roundTrip(Self.service())
         try roundTrip(Self.note())
     }
 

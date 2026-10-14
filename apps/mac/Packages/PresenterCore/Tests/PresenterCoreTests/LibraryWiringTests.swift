@@ -336,16 +336,6 @@ private func combo(_ id: String, _ name: String) -> ActionCombo {
             #expect(message == "u1|st1|presentation")
         }
     }
-
-    @Test func restoreWelcomeDeckFillsOnlyWhatIsMissing() async throws {
-        let root = makeRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let client = try await startedClient(root)
-        #expect(try await client.restoreWelcomeDeck(serviceDate: "2026-09-23").count == 2)
-        _ = try await client.modify(Presentation.self, id: WelcomeDeck.presentationID) { $0.name = "Mine now" }.value
-        #expect(try await client.restoreWelcomeDeck(serviceDate: "2026-09-24").isEmpty)
-        #expect(try await stored(Presentation.self, root, WelcomeDeck.presentationID).name == "Mine now")
-    }
 }
 
 @Suite struct LibraryWiringRouteTests {

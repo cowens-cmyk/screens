@@ -183,26 +183,6 @@ private func chordedInfo(maxKeyed: Bool = true) -> ConfidenceInfo {
     #expect(chorded?.chords.map(\.symbol) == ["Bb", "Eb"])
 }
 
-@Test func chordsTemplateShowsCurrentWithChordsAndNextFirstLineOnly() {
-    let layout = ConfidenceLayoutTemplate.currentOverNextChords.make(name: "Chords")
-    #expect(ConfidenceLayoutTemplate.workspaceStarters.contains(.currentOverNextChords))
-
-    let scene = ConfidenceSceneBuilder.scene(layout: layout, info: chordedInfo(), at: fixedDate)
-    let texts: [StyledText] = (scene.layers.first { $0.kind == .slide }?.items ?? []).compactMap {
-        if case .text(let styled) = $0.content { return styled }
-        return nil
-    }
-
-    let current = texts.first { $0.string.hasPrefix("Amazing grace") }
-    #expect(current?.chords.map(\.symbol) == ["A", "D"])
-    #expect(current?.autoShrink == true)
-
-    let next = texts.first { $0.string.hasPrefix("next") }
-    #expect(next?.string == "next one")
-    #expect(next?.chords.map(\.symbol) == ["G"])
-    #expect(next?.autoShrink == false)
-}
-
 @Test func confidenceLayoutRendersChordsInTheSlideKey() {
     var box = SlideObject(
         id: "box", objectKind: .text, name: "Current", text: "",

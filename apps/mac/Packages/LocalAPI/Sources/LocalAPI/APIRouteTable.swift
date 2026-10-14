@@ -24,22 +24,18 @@ public enum APIRouteTable {
         routes.append(APIRoute(
             "GET", "/v1/documents/{kind}/{id}", scope: .view,
             operationId: "getDocument",
-            summary: "Fetch a full document as schema JSON. Stream presets require edit access because they can contain ingest credentials.", tag: "Documents",
+            summary: "Fetch a full document as schema JSON.", tag: "Documents",
             responseSchema: .ref("Document")
         ) { context in
-            let kind = try context.documentKind()
-            guard kind != .streamPresets || context.scope.allows(.edit) else {
-                throw APIError.forbidden(.edit)
-            }
-            return .raw(try await bridge.documentJSON(
-                kind: kind, id: context.pathParameter("id")
+            .raw(try await bridge.documentJSON(
+                kind: context.documentKind(), id: context.pathParameter("id")
             ))
         })
 
         routes.append(APIRoute(
             "GET", "/v1/status", scope: .view,
             operationId: "getShowStatus",
-            summary: "Live show state: slide, layers, overlays, alert, next.", tag: "Show",
+            summary: "Live show state: slide, layers, alert, next.", tag: "Show",
             responseSchema: .ref("ShowStatus")
         ) { _ in
             .json(await bridge.showStatus())
@@ -54,14 +50,6 @@ public enum APIRouteTable {
         })
 
         routes.append(APIRoute(
-            "GET", "/v1/audio", scope: .view,
-            operationId: "getAudioStatus", summary: "Playing audio buses.", tag: "Audio",
-            responseSchema: .ref("AudioStatus")
-        ) { _ in
-            .json(await bridge.audioStatus())
-        })
-
-        routes.append(APIRoute(
             "GET", "/v1/transport", scope: .view,
             operationId: "getTransport", summary: "Playing videos with positions.", tag: "Transport",
             responseSchema: .array([.ref("TransportRow")])
@@ -71,7 +59,7 @@ public enum APIRouteTable {
 
         routes.append(APIRoute(
             "GET", "/v1/outputs", scope: .view,
-            operationId: "getOutputs", summary: "Screens and output presets.", tag: "Outputs",
+            operationId: "getOutputs", summary: "The Audience, Livestream and Stage screens.", tag: "Outputs",
             responseSchema: .ref("OutputsStatus")
         ) { _ in
             .json(await bridge.outputsStatus())
@@ -129,39 +117,6 @@ public enum APIRouteTable {
             responseSchema: .array([.ref("VideoInputStatus")])
         ) { _ in
             .json(await bridge.videoInputs())
-        })
-
-        routes.append(APIRoute(
-            "GET", "/v1/inputs/audio", scope: .view,
-            operationId: "listAudioInputs",
-            summary: "Named audio inputs with their mixer strip state (on air, gain, mute).",
-            tag: "Inputs",
-            responseSchema: .array([.ref("AudioInputStatus")])
-        ) { _ in
-            .json(await bridge.audioInputs())
-        })
-
-        routes.append(APIRoute(
-            "GET", "/v1/audio/mixes", scope: .view,
-            operationId: "listAudioMixes",
-            summary: "The room's mixes: in-app summing points with destination, fader, and mute.",
-            tag: "Inputs",
-            responseSchema: .array([.ref("AudioMixStatus")])
-        ) { _ in
-            .json(await bridge.audioMixes())
-        })
-
-        routes.append(APIRoute(
-            "POST", "/v1/inputs/audio/{id}/mixer", scope: .control,
-            operationId: "setMixerInput",
-            summary: "Change one audio input's mixer strip: on-air switch, gain, mute, lip-sync delay (ms). Absent fields don't change.",
-            tag: "Inputs",
-            requestSchema: .ref("MixerInputCommand"), responseSchema: .ref("OK")
-        ) { context in
-            let command = try context.decode(APIMixerInputCommand.self)
-            let id = try context.pathParameter("id")
-            try await bridge.setMixerInput(id: id, command: command)
-            return .ok
         })
 
         routes.append(APIRoute(
@@ -249,24 +204,6 @@ public enum APIRouteTable {
         })
 
         routes.append(APIRoute(
-            "POST", "/v1/overlays/{id}/fire", scope: .control,
-            operationId: "fireOverlay", summary: "Go live with an overlay.", tag: "Overlays",
-            responseSchema: .ref("OK")
-        ) { context in
-            try await bridge.fireOverlay(id: context.pathParameter("id"))
-            return .ok
-        })
-
-        routes.append(APIRoute(
-            "POST", "/v1/overlays/{id}/dismiss", scope: .control,
-            operationId: "dismissOverlay", summary: "Take an overlay down.", tag: "Overlays",
-            responseSchema: .ref("OK")
-        ) { context in
-            try await bridge.dismissOverlay(id: context.pathParameter("id"))
-            return .ok
-        })
-
-        routes.append(APIRoute(
             "POST", "/v1/alerts/fire", scope: .control,
             operationId: "fireAlert",
             summary: "Fire an alert preset (with token values) or an ad-hoc alert.",
@@ -299,49 +236,6 @@ public enum APIRouteTable {
         }
 
         routes.append(APIRoute(
-            "POST", "/v1/audio/playlists/{id}/fire", scope: .control,
-            operationId: "fireAudioPlaylist",
-            summary: "Fire a playlist onto its output target.", tag: "Audio",
-            requestSchema: .ref("AudioFireCommand"), responseSchema: .ref("OK")
-        ) { context in
-            let command = try context.decode(APIAudioFireCommand.self)
-            try await bridge.fireAudioPlaylist(
-                id: context.pathParameter("id"), startAtEntryId: command.startAtEntryId
-            )
-            return .ok
-        })
-
-        routes.append(APIRoute(
-            "POST", "/v1/audio/items/{id}/fire", scope: .control,
-            operationId: "fireAudioItem",
-            summary: "Play one audio library item (no playlist semantics).", tag: "Audio",
-            responseSchema: .ref("OK")
-        ) { context in
-            try await bridge.fireAudioItem(id: context.pathParameter("id"))
-            return .ok
-        })
-
-        routes.append(APIRoute(
-            "POST", "/v1/audio/stop", scope: .control,
-            operationId: "stopAudio",
-            summary: "Stop one bus by playlist or item id (body empty = all).", tag: "Audio",
-            requestSchema: .ref("AudioStopCommand"), responseSchema: .ref("OK")
-        ) { context in
-            try await bridge.stopAudio(context.decode(APIAudioStopCommand.self))
-            return .ok
-        })
-
-        routes.append(APIRoute(
-            "POST", "/v1/audio/transport", scope: .control,
-            operationId: "audioTransport",
-            summary: "Audio transport: playPause, next, previous, seek.", tag: "Audio",
-            requestSchema: .ref("AudioTransportCommand"), responseSchema: .ref("OK")
-        ) { context in
-            try await bridge.audioTransport(context.decode(APIAudioTransportCommand.self))
-            return .ok
-        })
-
-        routes.append(APIRoute(
             "POST", "/v1/transport/{id}", scope: .control,
             operationId: "mediaTransport",
             summary: "Video transport: pause, resume, toggle, reset, seek.", tag: "Transport",
@@ -351,17 +245,6 @@ public enum APIRouteTable {
                 id: context.pathParameter("id"),
                 command: context.decode(APIMediaTransportCommand.self)
             )
-            return .ok
-        })
-
-        routes.append(APIRoute(
-            "POST", "/v1/output-presets/{id}/activate", scope: .control,
-            operationId: "activateOutputPreset",
-            summary: "Activate an output preset ('none' deactivates).", tag: "Outputs",
-            responseSchema: .ref("OK")
-        ) { context in
-            let id = try context.pathParameter("id")
-            try await bridge.activateOutputPreset(id: id == "none" ? nil : id)
             return .ok
         })
 

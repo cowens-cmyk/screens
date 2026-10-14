@@ -113,14 +113,6 @@ struct KeyboardMapPane: View {
 
     private var generatedSections: [(title: String, footer: String?, rows: [GeneratedRowSpec])] {
         var sections: [(String, String?, [GeneratedRowSpec])] = []
-        let presets = model.entries(of: .outputPreset)
-        if !presets.isEmpty {
-            sections.append(("Looks", nil, presets.map {
-                GeneratedRowSpec(
-                    key: GeneratedKey(.outputPreset, $0.id),
-                    label: "Switch to \u{201C}\($0.name)\u{201D}")
-            }))
-        }
         if let timers = controls?.timers.timers, !timers.isEmpty {
             sections.append(("Timers", nil, timers.flatMap { timer in
                 [
@@ -136,18 +128,6 @@ struct KeyboardMapPane: View {
                 ]
             }))
         }
-        let overlays = model.entries(of: .overlay)
-        if !overlays.isEmpty {
-            sections.append((
-                "Overlays",
-                "Toggle: fires the overlay, or dismisses it when it's live.",
-                overlays.map {
-                    GeneratedRowSpec(
-                        key: GeneratedKey(.overlayToggle, $0.id),
-                        label: "Toggle \u{201C}\($0.name)\u{201D}")
-                }
-            ))
-        }
         if let screens = WindowBridge.previewScreens?(), !screens.isEmpty {
             sections.append(("Preview Windows", nil, screens.map {
                 GeneratedRowSpec(
@@ -155,16 +135,11 @@ struct KeyboardMapPane: View {
                     label: "Open Preview: \($0.name)")
             }))
         }
-        var settingsRows = SettingsCategory.allCases.map {
+        let settingsRows = SettingsCategory.allCases.map {
             GeneratedRowSpec(
                 key: GeneratedKey(.settingsPage, $0.rawValue),
                 label: "Open Settings \u{2023} \($0.title)")
         }
-        settingsRows.append(contentsOf: StreamRecordPane.Tab.allCases.map {
-            GeneratedRowSpec(
-                key: GeneratedKey(.settingsPage, "streamRecord/\($0.rawValue)"),
-                label: "Open Settings \u{2023} Stream & Record \u{2023} \($0.title)")
-        })
         sections.append(("Settings Pages", nil, settingsRows))
         return sections
     }

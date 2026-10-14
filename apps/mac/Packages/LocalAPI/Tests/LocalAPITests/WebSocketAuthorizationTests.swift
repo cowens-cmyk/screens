@@ -74,29 +74,6 @@ struct WebSocketAuthorizationTests {
         #expect(result["status"] as? Int == 403)
     }
 
-    @Test @MainActor func streamCredentialsRequireManageOverWebSocket() async throws {
-        for scope in APIScope.allCases {
-            let tokens = store()
-            let token = tokens.create(name: "Test", scope: scope).token
-            let bridge = FakeBridge()
-            bridge.documents["preset"] = Data(#"{"destinations":[{"streamKey":"test-credential"}]}"#.utf8)
-            let handler = APIWebSocketHandler(router: APIRouter(routes: APIRouteTable.build(bridge: bridge)),
-                                             events: APIEventBus(), token: token, tokens: tokens)
-            let (input, continuation) = AsyncStream<WSMessage>.makeStream()
-            defer { continuation.finish() }
-            var output = try await handler.makeMessages(for: input).makeAsyncIterator()
-            #expect(await output.next() != nil)
-            continuation.yield(.text(#"{"type":"command","method":"GET","path":"/v1/documents/stream-presets/preset"}"#))
-            guard case .text(let frame) = await output.next() else {
-                Issue.record("Expected a document response")
-                continue
-            }
-            let result = try #require(JSONSerialization.jsonObject(with: Data(frame.utf8)) as? [String: Any])
-            #expect(result["status"] as? Int == (scope == .edit ? 200 : 403))
-            #expect(frame.contains("test-credential") == (scope == .edit))
-        }
-    }
-
     @Test(arguments: [false, true])
     func revocationDuringCommandSuppressesResponse(fails: Bool) async throws {
         let tokens = store()

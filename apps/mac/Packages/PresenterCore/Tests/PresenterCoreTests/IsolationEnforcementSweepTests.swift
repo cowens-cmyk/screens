@@ -154,7 +154,7 @@ import Testing
             }
         }
         let stale = viewStoreExceptions.subtracting(excused)
-        #expect(scanned >= 25, "sweep should see the app's views and modules (\(scanned))")
+        #expect(scanned >= 20, "sweep should see the app's views and modules (\(scanned))")
         #expect(violations.isEmpty, "read the snapshot and tables, write through the client: \(violations)")
         #expect(stale.isEmpty, "exceptions that match nothing any more — delete them: \(stale)")
     }

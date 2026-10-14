@@ -28,11 +28,6 @@ import Testing
             .moves(["alertVisible"]),  
             .quiet("the linked-text clock re-applies the live scene; apply() writes state only on a change"),
         ],
-        "PerformanceHUD.swift": [.quiet("the debug HUD samples its own @State twice a second")],
-        "MediaPlaylistController.swift": [.quiet("the 2 Hz walk tick fires only when the item is due")],
-        "SignageController.swift": [.quiet("the 2 Hz loop tick advances only a loop that is due")],
-        "MediaSoak.swift": [.quiet("the soak harness's own readout")],
-        "AudioMixerModule.swift": [.moves(["displayLevels", "busLevels", "playerLevels", "outputLevels"])],  
         "MonitorsPanel.swift": [.quiet("the 4 Hz stream badge writes coverage only when it changes")],
         "StageDisplay.swift": [.quiet("the 4 Hz stage video badge writes its flag only when it changes")],
     ]
@@ -46,10 +41,6 @@ import Testing
         "animationPreviewTime": ("animationPreviewTime", /\banimationPreviewTime\b/, ["AnimationPreviewStrip"]),
         "elapsed": (".elapsed", /\w\.elapsed\b(?!\s*\()/, ["AudioScrubBar", "AudioTimecode", "TransportPill"]),
         "alertVisible": ("alertVisible", /\balertVisible\b/, []),
-        "displayLevels": ("displayLevels", /\.displayLevels\b/, ["AudioMixerModule"]),
-        "busLevels": ("busLevels", /\.busLevels\b/, ["AudioMixerModule"]),
-        "playerLevels": ("playerLevels", /\.playerLevels\b/, ["AudioMixerModule"]),
-        "outputLevels": ("outputLevels", /\.outputLevels\b/, ["AudioMixerModule"]),
     ]
 
     private let actionOpeners: [Regex<Substring>] = [

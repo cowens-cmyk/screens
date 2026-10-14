@@ -19,10 +19,8 @@ struct InspectorView: View {
                     case .playlist: EmptyView()
                     case .theme: Text("Themes are edited in the slide editor.")
                     case .service: Text("Services are edited in the Service planner.")
-                    case .overlay: Text("Overlays are edited in the slide editor.")
-                    case .outputPreset: Text("Looks are edited in Screen Configuration.")
-                    case .streamRecordPreset:
-                        Text("Stream & Record Presets are edited in the Stream & Record module.")
+                    case .overlay, .outputPreset, .streamRecordPreset:
+                        Text("This was used by a feature that has been removed.")
                     case .alertPreset: Text("Alerts are edited in the Service Controls panel.")
                     case .actionCombo:
                         Text("Macros run and edit in the Macros panel.")

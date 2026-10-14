@@ -79,7 +79,6 @@ import Testing
         "LocalAPIBridgeAdapter.swift update",
         "WorkspaceImport.swift run",
         "BackupTransfer.swift run",
-        "ServiceControls.swift init",  
 
         "AppModel.swift noteEditorSave",
         "AppModel.swift noteDecksRestyled",
@@ -113,14 +112,6 @@ import Testing
             found == kindWideBumps,
             "a one-document write lands through the one-change funnel (land / noteEditorSave), never a kind-wide bump: new \(found.subtracting(kindWideBumps).sorted()), gone \(kindWideBumps.subtracting(found).sorted())"
         )
-    }
-
-    @Test func recordingAdoptionBumpsMediaOnly() throws {
-        let lines = try lines(of: "ServiceControls.swift")
-        let adopt = try #require(lines.firstIndex { $0.contains("RecordingLibrary.adopt(") })
-        let body = lines[adopt..<min(lines.count, adopt + 20)].joined(separator: "\n")
-        #expect(body.contains("appModel.noteExternalMutation(of: .media)"))
-        #expect(!body.contains("noteExternalMutation()"))
     }
 
     @Test func connectivityPollThrottlesTheGrantCheck() throws {

@@ -114,66 +114,6 @@ private func strings(in scene: RenderScene, layer: LayerKind = .slide) -> [Strin
     #expect(shapes.count == 5, "five module boxes: timer, video, clock, current, next")
 }
 
-private func templateScene(_ template: ConfidenceLayoutTemplate) -> RenderScene {
-    ConfidenceSceneBuilder.scene(
-        layout: template.make(name: template.title), info: fixtureInfo(), at: fixedDate
-    )
-}
-
-private func shapeCount(in scene: RenderScene) -> Int {
-    (scene.layers.first { $0.kind == .slide }?.items ?? []).filter {
-        if case .shape = $0.content { return true }
-        return false
-    }.count
-}
-
-@Test func currentAndNextTemplateRendersItsModules() {
-    let reads = strings(in: templateScene(.currentAndNext))
-    for expected in ["current line", "next line", "17:26",
-                     "CURRENT SLIDE", "NEXT SLIDE", "TIME REMAINING", "CLOCK"] {
-        #expect(reads.contains(expected), "missing read '\(expected)'")
-    }
-    #expect(shapeCount(in: templateScene(.currentAndNext)) == 4,
-            "four module boxes: current, next, timer, clock")
-}
-
-@Test func timersTemplateRendersTimingOnly() {
-    let scene = templateScene(.timers)
-    let reads = strings(in: scene)
-    for expected in ["17:26", "Bumper  2:00",
-                     "TIME REMAINING", "VIDEO COUNTDOWN", "CLOCK"] {
-        #expect(reads.contains(expected), "missing read '\(expected)'")
-    }
-    #expect(!reads.contains("current line"), "a timers room never shows lyrics")
-    #expect(shapeCount(in: scene) == 3)
-}
-
-@Test func currentOverNextTemplateStacksWithClockOnTop() {
-    let scene = templateScene(.currentOverNext)
-    let reads = strings(in: scene)
-    for expected in ["current line", "next line", "CURRENT SLIDE", "NEXT SLIDE"] {
-        #expect(reads.contains(expected), "missing read '\(expected)'")
-    }
-
-    let items = scene.layers.first { $0.kind == .slide }?.items ?? []
-    func top(_ string: String) -> CGFloat? {
-        items.first {
-            if case .text(let styled) = $0.content { return styled.string == string }
-            return false
-        }?.frame.minY
-    }
-    let clockTop = items.compactMap { item -> CGFloat? in
-        guard case .text(let styled) = item.content,
-              styled.tabularFigures, styled.string != "17:26" else { return nil }
-        return item.frame.minY
-    }.min()
-    if let clockTop, let currentTop = top("current line"), let nextTop = top("next line") {
-        #expect(clockTop < currentTop && currentTop < nextTop)
-    } else {
-        Issue.record("expected clock, current, and next reads in the scene")
-    }
-}
-
 @Test func mediaWantsCollectsObjectsFillsAndLiveInputs() {
     var media = SlideObject(id: "m", objectKind: .media, name: "BG", text: "")
     media.mediaId = "media-1"

@@ -89,8 +89,6 @@ import Testing
             "func playlist(_ id: String) throws -> Playlist",
             "func overlay(_ id: String) -> Overlay?",
             "func alertPreset(_ id: String) throws -> AlertPreset",
-            "func streamPreset(_ id: String) throws -> StreamRecordPreset",
-            "func streamDestination(_ id: String) -> StreamDestination?",
             "func actionCombo(_ id: String) throws -> ActionCombo",
             "func scheduleTrigger(_ id: String) throws -> ScheduleTrigger",
             "var schedulerBoard: SchedulerBoard {",
@@ -98,7 +96,6 @@ import Testing
             "var serviceLinkRules: ServiceLinkRules {",
             "var effectPresetBoard: EffectPresetBoard {",
             "var animationPresetBoard: AnimationPresetBoard {",
-            "var signageBoard: SignageBoard {",
             "private func controlBoard(id: String, itemIDs: [String]) -> ControlBoard {",
             "func flaggedMediaCount() -> Int {",
             "func mediaSceneEffects(id: String)",
@@ -130,8 +127,6 @@ import Testing
         let startup = try body(of: "func runStartupCombos() async", in: router)
         #expect(startup.contains("model.resident.actionCombos.values"))
         #expect(startup.contains("await model.resident.ready([.actionCombo])"))
-        let predicted = try body(of: "private func predictedPresetID(", in: router)
-        #expect(predicted.contains("fillVersion(of: .actionCombo)"))
         #expect(!router.contains("library.open("), "router reads go through the tables")
     }
 
@@ -175,11 +170,9 @@ import Testing
         let alert = try body(of: "func fireAlert(", in: controls)
         #expect(alert.contains("appModel.resident.themes.fireRead(styling)"))
         #expect(alert.contains("await self?.appModel.themesFilled([styling])"))
-        let presets = try source("OutputPresetsController.swift")
-        let apply = try body(of: "func applyActivePreset()", in: presets)
-        #expect(apply.contains("appModel.resident.themes.fireRead(themeID)"))
-        #expect(apply.contains("await self?.appModel.themesFilled(waiting)"))
-        #expect(try body(of: "private func route(_ preset: OutputPreset)", in: presets).contains("\"presets.slideTheme.missing\""))
+        let stream = try source("StreamRouter.swift")
+        #expect(try body(of: "func noteLiveTheme(", in: stream).contains("await self?.appModel.themesFilled(needed)"),
+                "a stream design whose theme isn't in memory yet waits for the fill")
     }
 
     private func enclosingFunction(of marker: String, in text: String) throws -> String {

@@ -675,25 +675,6 @@ struct SlideEditorView: View {
                                 }
                             }
 
-                            let looks = actionRouter?.activeOverrideLooks() ?? []
-                            if !looks.isEmpty {
-                                Divider()
-                                ForEach(looks) { look in
-                                    let chosen = model.presentation.slides.first { $0.id == slide.id }?.overrideDesignName(forTheme: look.theme.id)
-                                    Menu("On \(look.theme.name)\(look.folder.map { " › \($0)" } ?? "") outputs") {
-                                        Toggle("Same as this slide", isOn: Binding(
-                                            get: { chosen == nil },
-                                            set: { _ in model.setOverrideDesign(nil, forTheme: look.theme.id, for: slide.id) }))
-                                        Divider()
-                                        ForEach(look.theme.slides ?? [], id: \.id) { design in
-                                            Toggle(design.name, isOn: Binding(
-                                                get: { chosen?.caseInsensitiveCompare(design.name) == .orderedSame },
-                                                set: { _ in model.setOverrideDesign(design.name, forTheme: look.theme.id, for: slide.id) }))
-                                        }
-                                    }
-                                }
-                            }
-
                             let others = model.otherThemeChoices
                             if !others.isEmpty {
                                 Divider()
@@ -1073,14 +1054,6 @@ struct SlideEditorView: View {
 
     private func editorToolbar(_ model: SlideEditorModel) -> some View {
         ViewThatFits(in: .horizontal) {
-            if model.isMultiView {
-
-                HStack(spacing: 12) {
-                    MultiViewToolbar(model: model)
-                    Spacer()
-                    undoRedoTools(model)
-                }
-            }
             HStack(spacing: 12) {
                 addObjectTools(model)
                 Spacer()

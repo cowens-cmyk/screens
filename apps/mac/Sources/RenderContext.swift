@@ -6,18 +6,12 @@ import PresenterCore
 import RenderEngine
 import SlideScene
 
-struct SignageFrame: Sendable, Equatable {
-    var engineID: String
-    var canvasSize: CGSize
-}
-
 @MainActor
 @Observable
 final class RenderContext {
     let compositor: Compositor
     let media: MediaEngine
     let outputs: OutputManager
-    let soak = MediaSoak()
     let sceneBox: Locked<RenderScene>
 
     let liveBox: Locked<RenderScene>
@@ -36,7 +30,6 @@ final class RenderContext {
 
     let previewLayoutsBox: Locked<[String: ConfidenceLayout]>
 
-    let signageBox: Locked<[UUID: SignageFrame]>
 
     @ObservationIgnored weak var canvasView: MetalSceneView?
 
@@ -161,7 +154,6 @@ final class RenderContext {
         self.confidenceLayoutsBox = Locked([:])
         self.stageBox = Locked(.initial)
         self.previewLayoutsBox = Locked([:])
-        self.signageBox = Locked([:])
         compositor.mediaSource = media
 
         outputs.sceneProvider = { [transitions, confidenceBox] in
@@ -178,13 +170,7 @@ final class RenderContext {
                 engine.scene(at: now), info: confidenceBox.value, at: now
             )
         }
-        outputs.signageSceneProvider = { [signageBox] screenID in
-            signageBox.value[screenID].map {
-                SignageSceneBuilder.scene(mediaID: $0.engineID, canvasSize: $0.canvasSize)
-            }
-        }
 
-        SyncTestPlayback.install(outputs: outputs, media: media)
         // Every stage screen: a playing video first, then a layout picked for
         // the screen, then the stage mode (see StageScenes for the order).
         outputs.confidenceSceneProvider = {

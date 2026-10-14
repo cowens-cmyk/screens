@@ -253,19 +253,6 @@ final class KeyInController {
         switch key.kind {
         case .combo:
             router.fire(comboID: key.id)
-        case .outputPreset:
-
-            var action = SlideAction(id: UUID().uuidString, kind: .switchOutputPreset)
-            action.presetId = key.id
-            router.execute([action])
-        case .overlayToggle:
-            if controls.state.liveOverlays.contains(where: { $0.id == key.id }) {
-                controls.dismissOverlay(id: key.id)
-            } else if let overlay = model.overlay(key.id) {
-                controls.fire(overlay: overlay)
-            } else {
-                DiagnosticsStore.shared.note("key.in.skipped", detail: "\(key.mapKey) missing")
-            }
         case .timerStart: controls.timers.start(id: key.id)
         case .timerPause: controls.timers.pause(id: key.id)
         case .timerReset: controls.timers.reset(id: key.id)
@@ -275,10 +262,7 @@ final class KeyInController {
     }
 
     private func openSettingsPage(_ id: String) {
-        if id.hasPrefix("streamRecord/") {
-            SettingsRouter.shared.openStreamRecord(
-                tab: id.hasSuffix("presets") ? .presets : .destinations)
-        } else if let category = SettingsCategory(rawValue: id) {
+        if let category = SettingsCategory(rawValue: id) {
             SettingsRouter.shared.pending = category
         } else {
             return DiagnosticsStore.shared.note("key.in.skipped", detail: "settings \(id)")

@@ -84,14 +84,6 @@ import Testing
     }
 
     @Test func theLaunchPathReadsResidentTables() throws {
-        let presets = try source("OutputPresetsController.swift")
-        let preset = try body(of: "func preset(_ id: String) -> OutputPreset?", in: presets)
-        #expect(preset.contains("appModel.resident.outputPresets.value(id)"))
-        #expect(!presets.contains("library."), "presets read the table and write through the client")
-        let apply = try body(of: "func applyActivePreset()", in: presets)
-        #expect(apply.contains("await table.ready()"), "an unresolved preset waits for the fill")
-        #expect(!apply.contains("Task.sleep"))
-
         let midi = try source("MIDIDeviceInventory.swift")
         let reload = try body(of: "func reload()", in: midi)
         #expect(reload.contains("table.values"))
@@ -112,7 +104,7 @@ import Testing
         let model = try source("AppModel.swift")
         let wait = try body(of: "func themesFilled(_ ids: [String]) async", in: model)
         #expect(wait.contains("await client.loadValues(Theme.self"))
-        for file in ["ServiceControls.swift", "OutputPresetsController.swift"] {
+        for file in ["ServiceControls.swift"] {
             #expect(try source(file).contains("appModel.resident.themes.fireRead("), "\(file)")
         }
     }

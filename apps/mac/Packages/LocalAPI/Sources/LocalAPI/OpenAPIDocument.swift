@@ -211,28 +211,6 @@ public enum OpenAPIDocument {
             "sourceId": str, "audioInputId": str,
             "delayFrames": int,
         ], required: ["id", "name"]),
-        "AudioInputStatus": obj([
-            "id": str, "name": str, "deviceUid": str,
-            "live": .object(["type": "boolean"]),
-            "enabled": .object(["type": "boolean"]),
-            "gain": num,
-            "muted": .object(["type": "boolean"]),
-            "mixId": str,
-            "delayMs": int,
-        ], required: ["id", "name", "live", "enabled", "gain", "muted"]),
-        "AudioMixStatus": obj([
-            "id": str, "name": str, "deviceUid": str,
-            "channelOffset": int,
-            "gain": num,
-            "muted": .object(["type": "boolean"]),
-            "outputIds": .object(["type": "array", "items": .object(["type": "string"])]),
-        ], required: ["id", "name", "channelOffset", "gain", "muted"]),
-        "MixerInputCommand": obj([
-            "enabled": .object(["type": "boolean"]),
-            "gain": num,
-            "muted": .object(["type": "boolean"]),
-            "delayMs": int,
-        ]),
         "MIDIDeviceStatus": obj([
             "id": str, "name": str,
             "enabled": .object(["type": "boolean"]),
@@ -246,16 +224,6 @@ public enum OpenAPIDocument {
         "MIDIDeviceEnableCommand": obj([
             "enabled": .object(["type": "boolean"])
         ], required: ["enabled"]),
-        "AudioStatus": obj([
-            "buses": .object([
-                "type": "array",
-                "items": obj([
-                    "playlistId": str, "audioItemId": str, "trackName": str,
-                    "playing": .object(["type": "boolean"]),
-                    "position": num, "duration": num,
-                ], required: ["playing"]),
-            ])
-        ], required: ["buses"]),
         "TransportRow": obj([
             "mediaId": str, "name": str, "layer": str,
             "playing": .object(["type": "boolean"]),
@@ -286,13 +254,7 @@ public enum OpenAPIDocument {
                     "outputs", "activeMasks",
                 ]),
             ]),
-            "presets": .object([
-                "type": "array",
-                "items": obj([
-                    "id": str, "name": str, "active": .object(["type": "boolean"]),
-                ], required: ["id", "name", "active"]),
-            ]),
-        ], required: ["screens", "presets"]),
+        ], required: ["screens"]),
         "FireSlideCommand": obj([
             "presentationId": str, "slideId": str, "slideIndex": int,
             "arrangementId": str, "serviceItemId": str, "occurrence": int,
@@ -306,9 +268,6 @@ public enum OpenAPIDocument {
             ]),
             "behavior": str, "target": str, "themeId": str,
         ]),
-        "AudioFireCommand": obj(["startAtEntryId": str]),
-        "AudioStopCommand": obj(["playlistId": str, "audioItemId": str]),
-        "AudioTransportCommand": obj(["action": str, "position": num], required: ["action"]),
         "MediaTransportCommand": obj(["action": str, "position": num], required: ["action"]),
         "AddServiceItemCommand": obj(["refId": str, "index": int], required: ["refId"]),
         "ServerInfo": obj([
@@ -339,7 +298,6 @@ public enum AsyncAPIDocument {
     static let payloadSchemas: [APITopic: (name: String, isList: Bool)] = [
         .show: ("ShowStatus", false),
         .timers: ("TimerStatus", true),
-        .audio: ("AudioStatus", false),
         .transport: ("TransportRow", true),
         .outputs: ("OutputsStatus", false),
         .library: ("LibrarySummary", false),

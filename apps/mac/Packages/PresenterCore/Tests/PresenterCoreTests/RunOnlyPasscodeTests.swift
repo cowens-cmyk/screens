@@ -59,7 +59,6 @@ struct RunOnlyPasscodeTests {
         }
         #expect(GeneratedKeyKind.combo.runsInRunOnly)
         #expect(GeneratedKeyKind.timerStart.runsInRunOnly)
-        #expect(!GeneratedKeyKind.outputPreset.runsInRunOnly)
-        #expect(!KeyBindingTarget.generated(GeneratedKey(.outputPreset, "p")).runsInRunOnly)
+        #expect(KeyBindingTarget.generated(GeneratedKey(.combo, "c")).runsInRunOnly)
     }
 }

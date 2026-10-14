@@ -31,7 +31,7 @@ import Testing
             }
         }
         #expect(violations.isEmpty, "ControlGroup is an NSSegmentedControl measured per layout proposal; use ToolbarCluster: \(violations)")
-        #expect(clusters >= 4, "the editor toolbar's four runs use ToolbarCluster (\(clusters))")
+        #expect(clusters >= 2, "the editor toolbar's runs use ToolbarCluster (\(clusters))")
     }
 
     @Test func toolbarTogglesUseButtonStyle() throws {

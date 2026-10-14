@@ -8,27 +8,23 @@ import SwiftUI
 final class ActionRouter {
     private unowned let model: AppModel
     private unowned let controls: ServiceControls
-    private unowned let presets: OutputPresetsController
+    private unowned let stream: StreamRouter
 
     private static let maxDepth = 4
 
     private var presentationFireDepth = 0
 
     init(
-        model: AppModel, controls: ServiceControls, presets: OutputPresetsController,
-        confidenceMonitor: ConfidenceMonitorController? = nil,
-        signage: SignageController? = nil
+        model: AppModel, controls: ServiceControls, stream: StreamRouter,
+        confidenceMonitor: ConfidenceMonitorController? = nil
     ) {
         self.model = model
         self.controls = controls
-        self.presets = presets
+        self.stream = stream
         self.confidenceMonitor = confidenceMonitor
-        self.signage = signage
     }
 
     private let confidenceMonitor: ConfidenceMonitorController?
-
-    private let signage: SignageController?
 
     var timerChoices: [(id: String, name: String)] {
         controls.timers.timers.map { ($0.id, $0.name) }
@@ -46,14 +42,7 @@ final class ActionRouter {
     }
 
     func noteLiveTheme(_ theme: Theme?, slide: Slide?) {
-        presets.noteLiveTheme(theme, slide: slide)
-    }
-
-    func applyPresetSwitches(for slide: Slide, contextID: String?, theme: Theme? = nil) {
-        guard let presetID = resolvedPresetID(for: slide, contextID: contextID, theme: theme),
-              presets.activePresetID != presetID
-        else { return }
-        presets.activate(presetID)
+        stream.noteLiveTheme(theme, slide: slide)
     }
 
     /// Runs the presentation type's default actions when a presentation of
@@ -80,19 +69,12 @@ final class ActionRouter {
         }
         guard !effective.isEmpty else { return }
         execute(
-            effective, depth: 0, visited: [], skippingPresetSwitches: true,
+            effective, depth: 0, visited: [],
             protected: protected)
     }
 
     private func mediaLayer(_ mediaID: String) -> LayerKind? {
         model.media(mediaID).map { SlideSceneBuilder.layerKind(CueMedia.dropped(for: $0).layer) }
-    }
-
-    func applyPresetSwitches(forMedia item: MediaItem, contextID: String?) {
-        guard let presetID = resolvedPresetID(actions: item.actions, contextID: contextID),
-              presets.activePresetID != presetID
-        else { return }
-        presets.activate(presetID)
     }
 
     func mediaDidFire(_ item: MediaItem, on layer: LayerKind) {
@@ -104,126 +86,8 @@ final class ActionRouter {
         }
         guard !effective.isEmpty else { return }
         execute(
-            effective, depth: 0, visited: [], skippingPresetSwitches: true,
+            effective, depth: 0, visited: [],
             protected: [layer])
-    }
-
-    private func resolvedPresetID(for slide: Slide, contextID: String?, theme: Theme? = nil) -> String? {
-        resolvedPresetID(actions: slide.actions, contextID: contextID, themeLook: themeLook(for: slide, theme: theme))
-    }
-
-    /// The Look the slide's theme category asks for (Bible → scripture lower
-    /// third). It beats the service item's preset; the slide's own Switch
-    /// Look action still beats both.
-    private func themeLook(for slide: Slide, theme: Theme?) -> String? {
-        guard let id = SlideSceneBuilder.themeSlide(for: slide, theme: theme)?.lookPresetId,
-              !id.isEmpty, presets.preset(id) != nil
-        else { return nil }
-        return id
-    }
-
-    private func resolvedPresetID(actions: [SlideAction]?, contextID: String?, themeLook: String? = nil) -> String? {
-        var result = themeLook ?? itemPresetID(contextID: contextID)
-        func scan(_ actions: [SlideAction], depth: Int, visited: Set<String>) {
-
-            for action in actions where !SlideSceneBuilder.waitsBeforeFiring(action) {
-                switch action.kind {
-                case .switchOutputPreset:
-                    if let id = action.presetId, !id.isEmpty, presets.preset(id) != nil {
-                        result = id
-                    }
-                case .fireCombo:
-                    guard let comboID = action.comboId,
-                          depth < Self.maxDepth, !visited.contains(comboID),
-                          let combo = try? model.actionCombo(comboID)
-                    else { continue }
-                    scan(combo.actions, depth: depth + 1, visited: visited.union([comboID]))
-                default:
-                    break
-                }
-            }
-        }
-        scan(actions ?? [], depth: 0, visited: [])
-        return result
-    }
-
-    private var chipRoutingCache: [String: (listVersion: Int, presetsVersion: Int, fills: Int, declared: String?)] = [:]
-
-    private var chipLooksCache: [String: (presetsVersion: Int, looks: [OutputPresetsController.SlideThemeLook])] = [:]
-
-    struct OverrideLook: Identifiable {
-        var id: String
-        var targetIds: [String]
-        var theme: Theme
-        var folder: String?
-    }
-
-    func activeOverrideLooks() -> [OverrideLook] {
-        guard let presetID = presets.activePresetID else { return [] }
-        return overrideLooks(forPreset: presetID)
-    }
-
-    func declaredPresetID(actions: [SlideAction]?) -> String? {
-        resolvedPresetID(actions: actions, contextID: nil)
-    }
-
-    func overrideLooks(forPreset presetID: String) -> [OverrideLook] {
-        guard let preset = presets.preset(presetID) else { return [] }
-        var looks: [OverrideLook] = []
-        for assignment in preset.assignments {
-            guard let themeID = assignment.slideThemeId, !themeID.isEmpty else { continue }
-            let key = OutputPresetsController.lookKey(
-                themeID: themeID, folder: assignment.slideThemeFolder, slideID: assignment.slideThemeSlideId)
-            if let index = looks.firstIndex(where: { $0.id == key }) {
-                looks[index].targetIds.append(assignment.targetId)
-                continue
-            }
-            guard let theme = model.theme(themeID) else { continue }
-            looks.append(OverrideLook(
-                id: key, targetIds: [assignment.targetId],
-                theme: theme.scoped(toSlideFolder: assignment.slideThemeFolder).scoped(toSlideID: assignment.slideThemeSlideId),
-                folder: (assignment.slideThemeFolder?.isEmpty ?? true) ? nil : assignment.slideThemeFolder))
-        }
-        return looks
-    }
-
-    func predictedOverrideThemes(for slide: Slide, contextID: String?) -> [Theme] {
-        guard let presetID = predictedPresetID(for: slide, contextID: contextID) else { return [] }
-        return overrideThemes(forPreset: presetID)
-    }
-
-    func predictedOverrideLooks(for slide: Slide, contextID: String?) -> [OverrideLook] {
-        guard let presetID = predictedPresetID(for: slide, contextID: contextID) else { return [] }
-        return overrideLooks(forPreset: presetID)
-    }
-
-    private func predictedPresetID(for slide: Slide, contextID: String?) -> String? {
-        let key = slide.id + "|" + (contextID ?? "")
-        let fills = model.fillVersion(of: .actionCombo) + model.fillVersion(of: .service)
-        let declared: String?
-        if let hit = chipRoutingCache[key],
-           hit.listVersion == model.listVersion, hit.presetsVersion == presets.version, hit.fills == fills {
-            declared = hit.declared
-        } else {
-            declared = resolvedPresetID(for: slide, contextID: contextID)
-            chipRoutingCache[key] = (model.listVersion, presets.version, fills, declared)
-        }
-        return declared ?? presets.activePresetID
-    }
-
-    func overrideThemes(forPreset presetID: String) -> [Theme] {
-        let looks: [OutputPresetsController.SlideThemeLook]
-        if let hit = chipLooksCache[presetID], hit.presetsVersion == presets.version {
-            looks = hit.looks
-        } else {
-            looks = presets.slideThemeLooks(presetID)
-            chipLooksCache[presetID] = (presets.version, looks)
-        }
-        return looks.compactMap {
-            model.theme($0.themeID)?
-                .scoped(toSlideFolder: $0.folder)
-                .scoped(toSlideID: $0.slideID)
-        }
     }
 
     func fire(comboID: String) {
@@ -256,25 +120,15 @@ final class ActionRouter {
         }
     }
 
-    private func itemPresetID(contextID: String?) -> String? {
-        guard let contextID,
-              let serviceID = model.currentServiceID,
-              let service = try? model.service(serviceID),
-              let item = service.items.first(where: { $0.id == contextID }),
-              let presetID = item.outputPresetId, !presetID.isEmpty
-        else { return nil }
-        return presetID
-    }
-
     private func execute(
         _ actions: [SlideAction], depth: Int, visited: Set<String>,
-        skippingPresetSwitches: Bool = false, protected: Set<LayerKind> = []
+        protected: Set<LayerKind> = []
     ) {
         let schedule = SlideSceneBuilder.delaySchedule(actions)
         for action in schedule.immediate {
             perform(
                 action, depth: depth, visited: visited,
-                skippingPresetSwitches: skippingPresetSwitches, protected: protected)
+                protected: protected)
         }
         for batch in schedule.delayed {
             scheduleDelayed(
@@ -336,14 +190,14 @@ final class ActionRouter {
 
     private func perform(
         _ action: SlideAction, depth: Int, visited: Set<String>,
-        skippingPresetSwitches: Bool = false, protected: Set<LayerKind> = []
+        protected: Set<LayerKind> = []
     ) {
-        performNow(action, depth: depth, visited: visited, skippingPresetSwitches: skippingPresetSwitches, protected: protected)
+        performNow(action, depth: depth, visited: visited, protected: protected)
     }
 
     private func performNow(
         _ action: SlideAction, depth: Int, visited: Set<String>,
-        skippingPresetSwitches: Bool, protected: Set<LayerKind>
+        protected: Set<LayerKind>
     ) {
         switch action.kind {
         case .clearLayer:
@@ -364,24 +218,6 @@ final class ActionRouter {
                     detail: protected.map(\.rawValue).sorted().joined(separator: ","))
             }
             controls.clearAll(protecting: protected, cancelsPendingActions: false)
-        case .clearAudio:
-            controls.clear(function: .audio)
-        case .clearSignage:
-            controls.clear(function: .signage)
-        case .switchOutputPreset:
-
-            guard !skippingPresetSwitches else { return }
-            guard let presetID = action.presetId, !presetID.isEmpty,
-                  presets.preset(presetID) != nil
-            else {
-                return miss(action, "presetId")
-            }
-
-            if presets.activePresetID != presetID {
-                controls.switchPreset(incomingOverrides: overrideThemes(forPreset: presetID)) { [weak self] in
-                    self?.presets.activate(presetID)
-                }
-            }
         case .fireMedia:
             guard let mediaID = action.mediaId,
                   let item = model.media(mediaID)
@@ -460,19 +296,7 @@ final class ActionRouter {
             }
             execute(
                 combo.actions, depth: depth + 1, visited: visited.union([comboID]),
-                skippingPresetSwitches: skippingPresetSwitches, protected: protected)
-        case .captureStart:
-            guard let presetID = action.capturePresetId, !presetID.isEmpty,
-                  (try? model.streamPreset(presetID)) != nil
-            else { return miss(action, "capturePresetId") }
-
-            controls.startCapture(presetID: presetID)
-        case .captureStop:
-            if let presetID = action.capturePresetId, !presetID.isEmpty {
-                controls.endAll(presetID: presetID)
-            } else {
-                controls.endAllCapture()
-            }
+                protected: protected)
         case .firePresentation:
             guard let presentationID = action.presentationId else {
                 return miss(action, "presentationId")
@@ -512,17 +336,6 @@ final class ActionRouter {
                 layoutID: action.confidenceLayoutId,
                 toScreen: action.confidenceScreenId.flatMap(UUID.init(uuidString:))
             )
-        case .fireOverlay:
-            guard let overlayID = action.overlayId,
-                  let overlay = model.overlay(overlayID)
-            else { return miss(action, "overlayId") }
-            controls.fire(overlay: overlay)
-        case .dismissOverlay:
-            if let overlayID = action.overlayId, !overlayID.isEmpty {
-                controls.dismissOverlay(id: overlayID)
-            } else {
-                controls.dismissAllOverlays()
-            }
         case .fireLiveInput:
             let layer = action.layer.flatMap(LayerKind.init(rawValue:)) ?? .videoInput
             if let itemID = action.liveInputId, !itemID.isEmpty {
@@ -538,47 +351,13 @@ final class ActionRouter {
             } else {
                 return miss(action, "liveInputId")
             }
-        case .enableAudioInput, .disableAudioInput:
-
-            guard let inputID = action.audioInputId, !inputID.isEmpty else {
-                return miss(action, "audioInputId")
-            }
-            if action.kind == .enableAudioInput {
-                controls.mixer.enableInput(id: inputID)
-            } else {
-                controls.mixer.disableInput(id: inputID)
-            }
-        case .setSignage:
-            guard let signage else { return miss(action, "signage") }
-            guard let channelID = action.signageId, !channelID.isEmpty else {
-                return miss(action, "signageId")
-            }
-
-            signage.assign(playlistID: action.playlistId, toSignage: channelID)
-        case .setScreenSource:
-            guard let signage else { return miss(action, "signage") }
-            guard let raw = action.screenId, let screenID = UUID(uuidString: raw) else {
-                return miss(action, "screenId")
-            }
-
-            signage.setSource(action.signageId, forScreen: screenID)
-        case .fireAudio:
-
-            guard let itemID = action.audioItemId, !itemID.isEmpty,
-                  let item = model.audio(itemID)
-            else { return miss(action, "audioItemId") }
-            controls.fire(audioItem: item, repeatOverride: action.audioRepeat)
-        case .fireAudioPlaylist:
-
-            guard let playlistID = action.playlistId, !playlistID.isEmpty,
-                  let playlist = try? model.playlist(playlistID),
-                  playlist.effectiveKind == .audio
-            else { return miss(action, "playlistId") }
-
-            controls.fire(
-                playlist: playlist, startAt: action.audioEntryId,
-                repeatOverride: action.audioRepeat
-            )
+        case .clearAudio, .clearSignage, .switchOutputPreset, .captureStart, .captureStop,
+             .fireOverlay, .dismissOverlay, .setSignage, .setScreenSource,
+             .enableAudioInput, .disableAudioInput, .fireAudio, .fireAudioPlaylist:
+            // Music, capture, Looks, overlays and signage were taken out of
+            // the app. Old slides and macros may still carry these; they do
+            // nothing now.
+            DiagnosticsStore.shared.note("actions.retired", detail: action.kind.rawValue)
         }
     }
 

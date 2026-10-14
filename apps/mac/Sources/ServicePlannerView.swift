@@ -423,8 +423,6 @@ struct RunOrderList: View {
                         mediaID: item.refId, state: mediaMenuState,
                         fallbackName: item.name
                     )
-                    Divider()
-                    outputPresetMenu(item)
                 } else if item.itemKind != .info {
 
                     Button("Rename…") {
@@ -433,7 +431,6 @@ struct RunOrderList: View {
                     }
                     if item.itemKind == .presentation {
                         arrangementMenu(item)
-                        outputPresetMenu(item)
 
                         Button("Apply Theme…") {
                             applyThemeTarget = ApplyThemeTarget(presentationID: item.refId, slideIDs: nil)
@@ -643,38 +640,6 @@ struct RunOrderList: View {
                                 model.setServiceItemArrangement(
                                     serviceID, itemID: item.id, arrangementID: arrangement.id
                                 )
-                            }
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func outputPresetMenu(_ item: ServiceItem) -> some View {
-        let presets = model.entries(of: .outputPreset)
-        if !presets.isEmpty {
-            Menu("Look") {
-                Toggle(
-                    "Keep Current Look",
-                    isOn: Binding(
-                        get: { item.outputPresetId?.isEmpty ?? true },
-                        set: { _ in
-                            model.setServiceItemOutputPreset(
-                                serviceID, itemID: item.id, presetID: nil)
-                        }
-                    )
-                )
-                Divider()
-                ForEach(presets, id: \.id) { preset in
-                    Toggle(
-                        preset.name,
-                        isOn: Binding(
-                            get: { item.outputPresetId == preset.id },
-                            set: { _ in
-                                model.setServiceItemOutputPreset(
-                                    serviceID, itemID: item.id, presetID: preset.id)
                             }
                         )
                     )

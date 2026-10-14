@@ -46,7 +46,6 @@ struct ActionListEditor: View {
 
     @Environment(\.actionRouter) private var router
     @State private var pickingMediaFor: String?
-    @State private var pickingAudioFor: String?
 
     @State private var placing: SlideAction?
 
@@ -87,17 +86,6 @@ struct ActionListEditor: View {
                     update(id) { $0.mediaId = entry.id }
                 }
                 pickingMediaFor = nil
-            }
-        }
-        .sheet(isPresented: Binding(
-            get: { pickingAudioFor != nil },
-            set: { if !$0 { pickingAudioFor = nil } }
-        )) {
-            LibraryPickerSheet(appModel: model, kind: .audio) { entry in
-                if let id = pickingAudioFor {
-                    update(id) { $0.audioItemId = entry.id }
-                }
-                pickingAudioFor = nil
             }
         }
     }
@@ -147,8 +135,7 @@ struct ActionListEditor: View {
             ActionParameterFields(
                 model: model, action: binding(for: action.id),
                 editingComboID: editingComboID,
-                pickMedia: { pickingMediaFor = action.id },
-                pickAudio: { pickingAudioFor = action.id }
+                pickMedia: { pickingMediaFor = action.id }
             )
         }
     }
@@ -160,11 +147,9 @@ struct ActionParameterFields: View {
 
     var editingComboID: String? = nil
     let pickMedia: () -> Void
-    let pickAudio: () -> Void
 
     @Environment(\.actionRouter) private var router
     @Environment(\.confidenceMonitor) private var confidenceMonitor
-    @Environment(\.signage) private var signage
 
     @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
 
@@ -188,13 +173,6 @@ struct ActionParameterFields: View {
 
                 ForEach(LayerKind.allCases.reversed(), id: \.rawValue) { layer in
                     Text(layer.displayName).tag(layer.rawValue)
-                }
-            }
-        case .switchOutputPreset:
-            Picker("Look", selection: stringBinding(action, \.presetId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(entries(of: .outputPreset), id: \.id) { entry in
-                    Text(entry.name).tag(entry.id)
                 }
             }
         case .fireMedia:
@@ -288,21 +266,6 @@ struct ActionParameterFields: View {
                 }
                 intField(action, "Velocity", \.midiValue, default: 127, range: 0...127)
             }
-        case .captureStart:
-            Picker("Preset", selection: stringBinding(action, \.capturePresetId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(entries(of: .streamRecordPreset), id: \.id) { entry in
-                    Text(entry.name).tag(entry.id)
-                }
-            }
-        case .captureStop:
-            Picker("Preset", selection: stringBinding(action, \.capturePresetId)) {
-
-                Text("All Capture").tag("")
-                ForEach(entries(of: .streamRecordPreset), id: \.id) { entry in
-                    Text(entry.name).tag(entry.id)
-                }
-            }
         case .firePresentation:
             Picker("Presentation", selection: stringBinding(action, \.presentationId)) {
                 Text("Choose\u{2026}").tag("")
@@ -340,21 +303,6 @@ struct ActionParameterFields: View {
                 Text("All Confidence Monitors").tag("")
                 ForEach(confidenceMonitor?.confidenceScreens ?? [], id: \.id) { screen in
                     Text(screen.name).tag(screen.id.uuidString)
-                }
-            }
-        case .fireOverlay:
-            Picker("Overlay", selection: stringBinding(action, \.overlayId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(entries(of: .overlay), id: \.id) { entry in
-                    Text(entry.name).tag(entry.id)
-                }
-            }
-        case .dismissOverlay:
-            Picker("Overlay", selection: stringBinding(action, \.overlayId)) {
-
-                Text("All Overlays").tag("")
-                ForEach(entries(of: .overlay), id: \.id) { entry in
-                    Text(entry.name).tag(entry.id)
                 }
             }
         case .fireLiveInput:
@@ -403,67 +351,14 @@ struct ActionParameterFields: View {
                     }
                 }
             }
-        case .setSignage:
-            Picker("Signage", selection: stringBinding(action, \.signageId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Text(channel.name).tag(channel.id)
-                }
-            }
-            Picker("Playlist", selection: stringBinding(action, \.playlistId)) {
-
-                Text("Choose\u{2026}").tag("")
-                ForEach(model.playlists(in: .media), id: \.id) { entry in
-                    Text(entry.name).tag(entry.id)
-                }
-            }
-        case .setScreenSource:
-            Picker("Screen", selection: stringBinding(action, \.screenId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(signage?.screens ?? [], id: \.id) { screen in
-                    Text(screen.name).tag(screen.id.uuidString)
-                }
-            }
-            Picker("Source", selection: stringBinding(action, \.signageId)) {
-
-                Text("Program").tag("")
-                ForEach(signage?.channels ?? [], id: \.id) { channel in
-                    Text("Signage — \(channel.name)").tag(channel.id)
-                }
-            }
-        case .enableAudioInput, .disableAudioInput:
-            Picker("Input", selection: stringBinding(action, \.audioInputId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(AudioInputInventory.shared.entries) { entry in
-                    Text(entry.name).tag(entry.id)
-                }
-            }
-        case .fireAudio:
-            LabeledContent("File") {
-                HStack(spacing: 4) {
-                    Button(entryName(action.audioItemId, missing: "Missing music")) {
-                        pickAudio()
-                    }
-                    if let id = action.audioItemId, !id.isEmpty {
-                        openInEditorButton(id, help: "Edit Music")
-                    }
-                }
-            }
-
-            Toggle("Repeat", isOn: Binding(
-                get: { action.audioRepeat ?? false },
-                set: { on in update(action.id) { $0.audioRepeat = on ? true : nil } }
-            ))
-        case .fireAudioPlaylist:
-            Picker("Playlist", selection: stringBinding(action, \.playlistId)) {
-                Text("Choose\u{2026}").tag("")
-                ForEach(model.playlists(in: .audio), id: \.id) { entry in
-                    Text(entry.name).tag(entry.id)
-                }
-            }
-            repeatPicker(action)
-        case .clearAll, .clearAudio, .clearSignage, .dismissAlert:
+        case .clearAll, .dismissAlert:
             EmptyView()
+        case .clearAudio, .clearSignage, .switchOutputPreset, .captureStart, .captureStop,
+             .fireOverlay, .dismissOverlay, .setSignage, .setScreenSource,
+             .enableAudioInput, .disableAudioInput, .fireAudio, .fireAudioPlaylist:
+            Text("This action no longer does anything. Remove it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -538,27 +433,6 @@ struct ActionParameterFields: View {
         .buttonStyle(.plain)
         .help(help)
     }
-
-    private func repeatPicker(_ action: SlideAction) -> some View {
-        Picker("Repeat", selection: Binding(
-            get: {
-                switch action.audioRepeat {
-                case true?: "on"
-                case false?: "off"
-                case nil: ""
-                }
-            },
-            set: { (token: String) in
-                update(action.id) {
-                    $0.audioRepeat = token.isEmpty ? nil : token == "on"
-                }
-            }
-        )) {
-            Text("Playlist Setting").tag("")
-            Text("On").tag("on")
-            Text("Off").tag("off")
-        }
-    }
 }
 
 private extension Int {
@@ -610,7 +484,6 @@ struct ActionPlacementSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.actionRouter) private var router
     @State private var pickingMedia = false
-    @State private var pickingAudio = false
 
     init(
         model: AppModel, editingComboID: String? = nil,
@@ -650,8 +523,7 @@ struct ActionPlacementSheet: View {
                     ActionParameterFields(
                         model: model, action: $draft,
                         editingComboID: editingComboID,
-                        pickMedia: { pickingMedia = true },
-                        pickAudio: { pickingAudio = true }
+                        pickMedia: { pickingMedia = true }
                     )
                 }
             }
@@ -676,12 +548,6 @@ struct ActionPlacementSheet: View {
                 pickingMedia = false
             }
         }
-        .sheet(isPresented: $pickingAudio) {
-            LibraryPickerSheet(appModel: model, kind: .audio) { entry in
-                draft.audioItemId = entry.id
-                pickingAudio = false
-            }
-        }
     }
 }
 
@@ -694,12 +560,9 @@ struct AddActionMenuItems: View {
 
     let add: (SlideAction) -> Void
 
-    @Environment(\.signage) private var signage
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.actionRouter) private var actionRouter
 
     var body: some View {
-        let presets = entries(of: .outputPreset)
         Menu("Livestream") {
             ForEach(ShowSetup.StreamMode.allCases) { mode in
                 Button(mode.title) { add(make(.setStreamMode) { $0.streamMode = mode.rawValue }) }
@@ -723,15 +586,6 @@ struct AddActionMenuItems: View {
                 }
             }
         }
-        Menu("Look") {
-            ForEach(presets, id: \.id) { preset in
-                Button(preset.name) {
-                    add(make(.switchOutputPreset) { $0.presetId = preset.id })
-                }
-            }
-            if !presets.isEmpty { Divider() }
-            Button("New Look\u{2026}") { openWindow(id: "outputs") }
-        }
         Menu("Clear") {
             Button("Clear All") { add(make(.clearAll)) }
             Divider()
@@ -741,27 +595,10 @@ struct AddActionMenuItems: View {
                     add(make(.clearLayer) { $0.layer = layer.rawValue })
                 }
             }
-            Divider()
-
-            Button("Clear Music") { add(make(.clearAudio)) }
-            Button("Clear Signage") { add(make(.clearSignage)) }
         }
         Button("Fire Media\u{2026}") { add(make(.fireMedia)) }
         Button("Fire Presentation") { add(make(.firePresentation)) }
 
-        let musicPlaylists = model.playlists(in: .audio)
-        Menu("Music") {
-            if !musicPlaylists.isEmpty {
-                Menu("Playlist") {
-                    ForEach(musicPlaylists, id: \.id) { playlist in
-                        Button(playlist.name) {
-                            add(make(.fireAudioPlaylist) { $0.playlistId = playlist.id })
-                        }
-                    }
-                }
-            }
-            Button("File\u{2026}") { add(make(.fireAudio)) }
-        }
         let alerts = entries(of: .alertPreset)
         Menu("Alert") {
             ForEach(alerts, id: \.id) { alert in
@@ -771,16 +608,6 @@ struct AddActionMenuItems: View {
             }
             if !alerts.isEmpty { Divider() }
             Button("Dismiss Alert") { add(make(.dismissAlert)) }
-        }
-        let overlays = entries(of: .overlay)
-        Menu("Overlay") {
-            ForEach(overlays, id: \.id) { overlay in
-                Button(overlay.name) {
-                    add(make(.fireOverlay) { $0.overlayId = overlay.id })
-                }
-            }
-            if !overlays.isEmpty { Divider() }
-            Button("Take Down Overlays") { add(make(.dismissOverlay)) }
         }
         let inputs = LiveInputCatalog.choices
         if !inputs.isEmpty {
@@ -792,21 +619,8 @@ struct AddActionMenuItems: View {
                 }
             }
         }
-        let audioInputs = AudioInputInventory.shared.entries
-        if !audioInputs.isEmpty {
-            Menu("Audio Input") {
-                ForEach(audioInputs) { entry in
-                    Button("\(entry.name) On") {
-                        add(make(.enableAudioInput) { $0.audioInputId = entry.id })
-                    }
-                    Button("\(entry.name) Off") {
-                        add(make(.disableAudioInput) { $0.audioInputId = entry.id })
-                    }
-                }
-            }
-        }
         let layouts = entries(of: .confidenceLayout)
-        Menu("Confidence Layout") {
+        Menu("Stage Layout") {
             Button("Built-in Layout") { add(make(.setConfidenceLayout)) }
             if !layouts.isEmpty { Divider() }
             ForEach(layouts, id: \.id) { layout in
@@ -816,50 +630,6 @@ struct AddActionMenuItems: View {
             }
         }
 
-        let channels = signage?.channels ?? []
-        if !channels.isEmpty {
-            let signagePlaylists = model.playlists(in: .media)
-            Menu("Signage") {
-                if !signagePlaylists.isEmpty {
-                    Menu("Set Content") {
-                        ForEach(channels, id: \.id) { channel in
-                            Menu(channel.name) {
-                                ForEach(signagePlaylists, id: \.id) { playlist in
-                                    Button(playlist.name) {
-                                        add(make(.setSignage) {
-                                            $0.signageId = channel.id
-                                            $0.playlistId = playlist.id
-                                        })
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                let screens = signage?.screens ?? []
-                if !screens.isEmpty {
-                    Menu("Screen Source") {
-                        ForEach(screens, id: \.id) { screen in
-                            Menu(screen.name) {
-                                Button("Program") {
-                                    add(make(.setScreenSource) {
-                                        $0.screenId = screen.id.uuidString
-                                    })
-                                }
-                                ForEach(channels, id: \.id) { channel in
-                                    Button("Signage — \(channel.name)") {
-                                        add(make(.setScreenSource) {
-                                            $0.screenId = screen.id.uuidString
-                                            $0.signageId = channel.id
-                                        })
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
         // One submenu per timer, then a way to make a new countdown, so any
         // slide can start, pause, reset or set a timer.
         if !timers.isEmpty || actionRouter != nil {
@@ -904,27 +674,6 @@ struct AddActionMenuItems: View {
                     }
                 }
             }
-        }
-        let capturePresets = entries(of: .streamRecordPreset)
-        Menu("Capture") {
-            if !capturePresets.isEmpty {
-                Menu("Start") {
-                    ForEach(capturePresets, id: \.id) { preset in
-                        Button(preset.name) {
-                            add(make(.captureStart) { $0.capturePresetId = preset.id })
-                        }
-                    }
-                }
-                Menu("Stop") {
-                    ForEach(capturePresets, id: \.id) { preset in
-                        Button(preset.name) {
-                            add(make(.captureStop) { $0.capturePresetId = preset.id })
-                        }
-                    }
-                }
-                Divider()
-            }
-            Button("Stop All Capture") { add(make(.captureStop)) }
         }
         Button("MIDI Out") { add(make(.midiOut)) }
     }

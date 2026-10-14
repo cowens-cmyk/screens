@@ -110,12 +110,16 @@ final class KeyboardControlTests: XCTestCase {
     }
 
     func testGeneratedKeyParsingRoundTrips() {
-        let key = GeneratedKey(.outputPreset, "preset-1")
-        XCTAssertEqual(key.mapKey, "preset.preset-1")
-        XCTAssertEqual(GeneratedKey.parse("preset.preset-1"), key)
+        let key = GeneratedKey(.timerStart, "timer-1")
+        XCTAssertEqual(key.mapKey, "timerstart.timer-1")
+        XCTAssertEqual(GeneratedKey.parse("timerstart.timer-1"), key)
         XCTAssertEqual(
-            GeneratedKey.parse("settings.streamRecord/presets"),
-            GeneratedKey(.settingsPage, "streamRecord/presets"))
+            GeneratedKey.parse("settings.midi"),
+            GeneratedKey(.settingsPage, "midi"))
+        // Looks and overlay toggles were removed; their old bindings no
+        // longer resolve to anything.
+        XCTAssertNil(GeneratedKey.parse("preset.preset-1"))
+        XCTAssertNil(GeneratedKey.parse("overlay.overlay-1"))
 
         XCTAssertNil(GeneratedKey.parse(KeyCommand.nextSlide.rawValue))
         XCTAssertNil(GeneratedKey.parse("dmx.fixture-9"))
@@ -124,10 +128,10 @@ final class KeyboardControlTests: XCTestCase {
     func testGeneratedScopesFollowTheirKind() {
         var map = KeyCommandMap()
 
-        map.setChord(KeyChord("f8"), for: GeneratedKey(.outputPreset, "sunday"))
+        map.setChord(KeyChord("f8"), for: GeneratedKey(.timerStart, "sunday"))
         XCTAssertEqual(
             map.resolve(chord: KeyChord("f8"), activeScopes: [.present]),
-            .generated(GeneratedKey(.outputPreset, "sunday")))
+            .generated(GeneratedKey(.timerStart, "sunday")))
         XCTAssertNil(map.resolve(chord: KeyChord("f8"), activeScopes: []))
 
         map.setChord(

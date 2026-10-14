@@ -48,12 +48,7 @@ struct ClearChip: View {
             HStack(spacing: 6) {
                 functionButton(.slides, key: "1")
                 functionButton(.media, key: "2")
-                functionButton(.overlays, key: "3")
-            }
-            HStack(spacing: 6) {
-                functionButton(.audio, key: "4")
-                functionButton(.alerts, key: "5")
-                functionButton(.signage, key: "6")
+                functionButton(.alerts, key: "3")
             }
             sectionLabel("Layers")
                 .padding(.top, 4)

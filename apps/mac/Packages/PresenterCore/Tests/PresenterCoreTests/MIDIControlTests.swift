@@ -61,20 +61,15 @@ import Testing
     #expect(map.note(for: .selectServiceItem) == 18)
     #expect(map.note(for: .selectMediaPlaylist) == 20)
     #expect(map.note(for: .triggerMedia) == 21)
-    #expect(map.note(for: .selectAudioPlaylist) == 22)
-    #expect(map.note(for: .triggerAudio) == 23)
-    #expect(map.note(for: .toggleOverlay) == 24)
-    #expect(map.note(for: .selectOverlayFolder) == 32)
 
     #expect(map.note(for: .selectActionComboFolder) == 31)
 
     #expect(map.note(for: .fireAlert) == 33)
-    #expect(map.note(for: .clearSignage) == 34)
 
     let notes = MIDICommand.allCases.map(\.defaultNote)
     #expect(Set(notes).count == notes.count)
 
-    #expect(MIDICommand.allCases.filter(\.usesVelocityIndex).count == 15)
+    #expect(MIDICommand.allCases.filter(\.usesVelocityIndex).count == 11)
 }
 
 @Test func deviceChannelFilterDefaultsToOmni() throws {

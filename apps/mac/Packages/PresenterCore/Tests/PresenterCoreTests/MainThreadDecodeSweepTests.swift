@@ -128,7 +128,7 @@ import Testing
             }
         }
         let stale = indexReadExceptions.map { "\($0.file) \($0.token)" }.filter { !matched.contains($0) }
-        #expect(scanned >= 25, "sweep should see the app's views and modules (\(scanned))")
+        #expect(scanned >= 20, "sweep should see the app's views and modules (\(scanned))")
         #expect(violations.isEmpty, "read the index through AppModel's read model: \(violations)")
         #expect(stale.isEmpty, "exceptions that match nothing any more — delete them: \(stale)")
     }

@@ -212,7 +212,6 @@ private struct WorkspaceOptionsView: View {
                 }
                 row("Media bin → Folders", scan.media, $options.media)
                 row("Themes", scan.themes, $options.themes)
-                row("Props → Overlays", scan.props, $options.overlays)
                 row("Messages → Alerts", scan.messages, $options.alerts)
                 row("Stage layouts → Confidence", scan.stageLayouts, $options.confidenceLayouts)
                 row("Macros → Action Combos", scan.macros, $options.combos)
@@ -223,16 +222,6 @@ private struct WorkspaceOptionsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .leading, spacing: 6) {
                 ImportOptionsColumnHeader(title: "Setup")
-                row("Screens & roles", scan.screens, $options.screens)
-                if options.screens, scan.screens > 0 {
-                    Group {
-                        row("Corrections & blends", nil, $options.screenCorrections)
-                        row("Multi-projector slices", nil, $options.screenSlices)
-                        row("Masks", nil, $options.screenMasks)
-                    }
-                    .padding(.leading, 18)
-                }
-                row("Looks", scan.looks, $options.looks)
                 row("Stage layout assignments", nil, $options.stageAssignments)
                 row("Timers", scan.timers, $options.timers)
                 row("Video inputs", scan.videoInputs, $options.videoInputs)

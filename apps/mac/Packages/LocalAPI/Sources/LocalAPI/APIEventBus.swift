@@ -3,7 +3,6 @@ import Foundation
 public enum APITopic: String, Codable, CaseIterable, Sendable {
     case show
     case timers
-    case audio
     case transport
     case outputs
     case library

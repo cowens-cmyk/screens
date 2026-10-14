@@ -19,7 +19,7 @@ final class LiveTranscriber {
     private var hubUID: String?
     private var tapToken: UUID?
     private var task: Task<Void, Never>?
-    private var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
+    private var continuation: AsyncStream<TappedBuffer>.Continuation?
 
     /// Every input Core Audio knows: built-in and USB mics, audio
     /// interfaces, Dante and aggregate devices.
@@ -38,14 +38,14 @@ final class LiveTranscriber {
             let hub = try AudioInputHubPool.shared.acquire(deviceUID: deviceUID)
             self.hub = hub
             hubUID = deviceUID
-            let (stream, continuation) = AsyncStream<AVAudioPCMBuffer>.makeStream(bufferingPolicy: .bufferingNewest(64))
+            let (stream, continuation) = AsyncStream<TappedBuffer>.makeStream(bufferingPolicy: .bufferingNewest(64))
             self.continuation = continuation
             let levels = LevelMeter { [weak self] level in
                 Task { @MainActor in self?.onLevel?(level) }
             }
             tapToken = hub.addTap(channels: channels) { buffer, _, _ in
                 levels.measure(buffer)
-                continuation.yield(buffer)
+                continuation.yield(TappedBuffer(buffer: buffer))
             }
             task = Task { [weak self] in await self?.run(buffers: stream) }
         } catch {
@@ -72,7 +72,7 @@ final class LiveTranscriber {
     }
 
     @available(macOS 26, *)
-    private func run(buffers: AsyncStream<AVAudioPCMBuffer>) async {
+    private func run(buffers: AsyncStream<TappedBuffer>) async {
         let transcriber = SpeechTranscriber(locale: Locale(identifier: "en-US"), preset: .progressiveTranscription)
         do {
             if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
@@ -96,7 +96,8 @@ final class LiveTranscriber {
                 } catch {}
             }
             var converter: AVAudioConverter?
-            for await buffer in buffers {
+            for await tapped in buffers {
+                let buffer = tapped.buffer
                 if Task.isCancelled { break }
                 if converter == nil || converter?.inputFormat != buffer.format {
                     converter = AVAudioConverter(from: buffer.format, to: format)
@@ -154,4 +155,10 @@ private final class LevelMeter: @unchecked Sendable {
         lock.unlock()
         if due { report(min(1, value)) }
     }
+}
+
+/// The tap hands each buffer over once and never touches it again, so it can
+/// cross to the transcriber's task.
+private struct TappedBuffer: @unchecked Sendable {
+    let buffer: AVAudioPCMBuffer
 }

@@ -9,7 +9,6 @@ public protocol LocalAPIBridge: AnyObject, Sendable {
     func documentJSON(kind: APIDocumentKind, id: String) async throws -> Data
     func showStatus() -> APIShowStatus
     func timers() -> [APITimerStatus]
-    func audioStatus() -> APIAudioStatus
     func transportRows() -> [APITransportRow]
     func outputsStatus() -> APIOutputsStatus
     func schedulerStatus() -> APISchedulerStatus
@@ -20,18 +19,11 @@ public protocol LocalAPIBridge: AnyObject, Sendable {
     func clear(_ command: APIClearCommand) throws
     func clearAll()
     func fireMedia(id: String) throws
-    func fireOverlay(id: String) throws
     func fireActionCombo(id: String) throws
-    func dismissOverlay(id: String) throws
     func fireAlert(_ command: APIFireAlertCommand) throws
     func dismissAlert()
     func timerAction(id: String, action: APITimerAction) throws
-    func fireAudioPlaylist(id: String, startAtEntryId: String?) throws
-    func fireAudioItem(id: String) throws
-    func stopAudio(_ command: APIAudioStopCommand) throws
-    func audioTransport(_ command: APIAudioTransportCommand) throws
     func mediaTransport(id: String, command: APIMediaTransportCommand) throws
-    func activateOutputPreset(id: String?) throws
 
     func selectService(id: String) throws
 
@@ -44,9 +36,6 @@ public protocol LocalAPIBridge: AnyObject, Sendable {
     func setMIDIDeviceEnabled(id: String, enabled: Bool) throws
 
     func videoInputs() -> [APIVideoInputStatus]
-    func audioInputs() -> [APIAudioInputStatus]
-    func audioMixes() -> [APIAudioMixStatus]
-    func setMixerInput(id: String, command: APIMixerInputCommand) throws
 
     func createDocument(kind: APIDocumentKind, body: Data) async throws -> String
     func updateDocument(kind: APIDocumentKind, id: String, body: Data) async throws

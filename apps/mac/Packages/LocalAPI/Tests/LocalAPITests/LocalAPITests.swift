@@ -126,9 +126,8 @@ final class FakeBridge: LocalAPIBridge {
     }
 
     func timers() -> [APITimerStatus] { [] }
-    func audioStatus() -> APIAudioStatus { APIAudioStatus(buses: []) }
     func transportRows() -> [APITransportRow] { [] }
-    func outputsStatus() -> APIOutputsStatus { APIOutputsStatus(screens: [], presets: []) }
+    func outputsStatus() -> APIOutputsStatus { APIOutputsStatus(screens: []) }
 
     func schedulerStatus() -> APISchedulerStatus {
         APISchedulerStatus(enabled: false, nextFire: nil, triggers: [])
@@ -149,28 +148,6 @@ final class FakeBridge: LocalAPIBridge {
             id: "vin-1", name: "Center Camera", kind: "camera",
             sourceId: "cam-uid", audioInputId: "ain-1"
         )]
-    }
-    func audioInputs() -> [APIAudioInputStatus] {
-        [APIAudioInputStatus(
-            id: "ain-1", name: "Board Feed", deviceUid: "usb-uid",
-            live: true, enabled: true, gain: 0.8, muted: false, mixId: "main"
-        )]
-    }
-    func audioMixes() -> [APIAudioMixStatus] {
-        [
-            APIAudioMixStatus(
-                id: "main", name: "Main", channelOffset: 0, gain: 1, muted: false),
-            APIAudioMixStatus(
-                id: "mix-b", name: "Broadcast", deviceUid: "dante-uid",
-                channelOffset: 2, gain: 0.9, muted: false),
-        ]
-    }
-    func setMixerInput(id: String, command: APIMixerInputCommand) throws {
-        guard id == "ain-1" else { throw APIError.notFound("No audio input '\(id)'.") }
-        calls.append(
-            "setMixerInput:\(id):\(command.enabled.map(String.init) ?? "-")"
-                + ":\(command.gain.map { String(format: "%.1f", $0) } ?? "-")"
-                + ":\(command.muted.map(String.init) ?? "-")")
     }
     func setSchedulerEnabled(_ enabled: Bool) { calls.append("setSchedulerEnabled:\(enabled)") }
     func setScheduleTriggerEnabled(id: String, enabled: Bool) throws {
@@ -206,8 +183,6 @@ final class FakeBridge: LocalAPIBridge {
 
     func clearAll() { calls.append("clearAll") }
     func fireMedia(id: String) throws { calls.append("fireMedia:\(id)") }
-    func fireOverlay(id: String) throws { calls.append("fireOverlay:\(id)") }
-    func dismissOverlay(id: String) throws { calls.append("dismissOverlay:\(id)") }
     func fireActionCombo(id: String) throws { calls.append("fireActionCombo:\(id)") }
 
     func fireAlert(_ command: APIFireAlertCommand) throws {
@@ -220,22 +195,8 @@ final class FakeBridge: LocalAPIBridge {
         calls.append("timer:\(id):\(action.rawValue)")
     }
 
-    func fireAudioPlaylist(id: String, startAtEntryId: String?) throws {
-        calls.append("firePlaylist:\(id)")
-    }
-
-    func fireAudioItem(id: String) throws { calls.append("fireAudioItem:\(id)") }
-    func stopAudio(_ command: APIAudioStopCommand) throws { calls.append("stopAudio") }
-    func audioTransport(_ command: APIAudioTransportCommand) throws {
-        calls.append("audioTransport:\(command.action)")
-    }
-
     func mediaTransport(id: String, command: APIMediaTransportCommand) throws {
         calls.append("mediaTransport:\(id):\(command.action)")
-    }
-
-    func activateOutputPreset(id: String?) throws {
-        calls.append("activatePreset:\(id ?? "none")")
     }
 
     func selectService(id: String) throws {
@@ -345,23 +306,6 @@ final class APIRouterTests: XCTestCase {
         XCTAssertEqual(bridge.calls, ["create:presentations"])
     }
 
-    func testStreamPresetCredentialsRequireManageAccess() async throws {
-        let (router, bridge) = makeRouter()
-        let body = Data(#"{"destinations":[{"streamKey":"test-only-key","url":"https://example.invalid/ingest?key=test"}]}"#.utf8)
-        bridge.documents["preset"] = body
-        let match = try XCTUnwrap(router.match(method: "GET", path: "/v1/documents/stream-presets/preset"))
-        for scope in [APIScope.view, .control] {
-            do {
-                _ = try await match.route.handler(APIRequestContext(pathParameters: match.parameters, scope: scope))
-                XCTFail("Read-only/operate clients must not receive stream credentials")
-            } catch let error as APIError {
-                XCTAssertEqual(error.status, 403)
-            }
-        }
-        let response = try await match.route.handler(APIRequestContext(pathParameters: match.parameters, scope: .edit))
-        XCTAssertEqual(response.body, body)
-    }
-
     func testUnknownDocumentKindIsBadRequest() async throws {
         let (router, _) = makeRouter()
         let match = try XCTUnwrap(router.match(method: "GET", path: "/v1/library/nonsense"))
@@ -375,9 +319,8 @@ final class APIRouterTests: XCTestCase {
         }
     }
 
-    func testInputsListAndMixerDispatch() async throws {
-
-        let (router, bridge) = makeRouter()
+    func testVideoInputsList() async throws {
+        let (router, _) = makeRouter()
         let video = try XCTUnwrap(router.match(method: "GET", path: "/v1/inputs/video"))
         let videoListed = try await video.route.handler(APIRequestContext(scope: .view))
         let videoInputs = try JSONDecoder().decode(
@@ -385,41 +328,28 @@ final class APIRouterTests: XCTestCase {
         XCTAssertEqual(videoInputs.first?.id, "vin-1")
         XCTAssertEqual(videoInputs.first?.kind, "camera")
         XCTAssertEqual(videoInputs.first?.audioInputId, "ain-1")
-
-        let audio = try XCTUnwrap(router.match(method: "GET", path: "/v1/inputs/audio"))
-        let audioListed = try await audio.route.handler(APIRequestContext(scope: .view))
-        let audioInputs = try JSONDecoder().decode(
-            [APIAudioInputStatus].self, from: audioListed.body)
-        XCTAssertEqual(audioInputs.first?.id, "ain-1")
-        XCTAssertEqual(audioInputs.first?.live, true)
-
-        let mixes = try XCTUnwrap(router.match(method: "GET", path: "/v1/audio/mixes"))
-        let mixesListed = try await mixes.route.handler(APIRequestContext(scope: .view))
-        let mixStatuses = try JSONDecoder().decode(
-            [APIAudioMixStatus].self, from: mixesListed.body)
-        XCTAssertEqual(mixStatuses.map(\.id), ["main", "mix-b"])
-        XCTAssertEqual(mixStatuses.last?.channelOffset, 2)
-
-        let mix = try XCTUnwrap(router.match(method: "POST", path: "/v1/inputs/audio/ain-1/mixer"))
-        let response = try await mix.route.handler(APIRequestContext(
-            pathParameters: mix.parameters,
-            body: Data(#"{"enabled":true,"gain":0.5}"#.utf8), scope: .control
-        ))
-        XCTAssertEqual(response.status, 200)
-        XCTAssertEqual(bridge.calls, ["setMixerInput:ain-1:true:0.5:-"])
     }
 
-    func testMixerUnknownInputIs404() async throws {
+    func testRemovedFeatureRoutesAreGone() async throws {
         let (router, _) = makeRouter()
-        let match = try XCTUnwrap(router.match(method: "POST", path: "/v1/inputs/audio/ghost/mixer"))
-        do {
-            _ = try await match.route.handler(APIRequestContext(
-                pathParameters: match.parameters,
-                body: Data(#"{"muted":true}"#.utf8), scope: .control
-            ))
-            XCTFail("Expected APIError")
-        } catch let error as APIError {
-            XCTAssertEqual(error.status, 404)
+        XCTAssertNil(router.match(method: "GET", path: "/v1/audio"))
+        XCTAssertNil(router.match(method: "GET", path: "/v1/inputs/audio"))
+        XCTAssertNil(router.match(method: "GET", path: "/v1/audio/mixes"))
+        XCTAssertNil(router.match(method: "POST", path: "/v1/inputs/audio/ain-1/mixer"))
+        XCTAssertNil(router.match(method: "POST", path: "/v1/audio/playlists/p1/fire"))
+        XCTAssertNil(router.match(method: "POST", path: "/v1/audio/stop"))
+        XCTAssertNil(router.match(method: "POST", path: "/v1/overlays/o1/fire"))
+        XCTAssertNil(router.match(method: "POST", path: "/v1/output-presets/p1/activate"))
+        for kind in ["audio", "overlays", "output-presets", "stream-presets"] {
+            let match = try XCTUnwrap(router.match(method: "GET", path: "/v1/library/\(kind)"))
+            do {
+                _ = try await match.route.handler(
+                    APIRequestContext(pathParameters: match.parameters, scope: .view)
+                )
+                XCTFail("\(kind) is no longer a document kind")
+            } catch let error as APIError {
+                XCTAssertEqual(error.status, 400)
+            }
         }
     }
 

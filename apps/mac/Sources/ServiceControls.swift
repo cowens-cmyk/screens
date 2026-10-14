@@ -24,10 +24,8 @@ final class ServiceControls {
 
     let media: MediaTransportController
 
-    let recording: RecordingController
-
-    let streaming: StreamingController
-
+    /// Plays a capture device's sound while its video input is on air. The
+    /// Mixer panel is gone; this keeps that audio path.
     let mixer: AudioMixerController
 
     private var liveMediaIDs: Set<String> = []
@@ -42,17 +40,16 @@ final class ServiceControls {
         self.timers = TimersController(render: render)
         self.timers.moveUndo = appModel.moveUndo
         self.media = MediaTransportController(appModel: appModel, render: render)
-        self.recording = RecordingController(render: render)
-        self.streaming = StreamingController(render: render)
         self.mixer = AudioMixerController(audio: audio)
 
         appModel.decks.onFillLanded = { [weak self] id in
             self?.presentationFillDidLand(id)
         }
 
+        ShowScreens.ensure(render: render)
         NDIScreenOutputs.shared.restore(render: render)
         DeckLinkScreenOutputs.shared.restore(render: render)
-        DeckLinkAutoSetup.shared.start(render: render)
+        DeckLinkAutoSetup.shared.start()
 
         VideoInputInventory.shared.warmUp(render: render)
 
@@ -60,37 +57,7 @@ final class ServiceControls {
 
         mixer.syncPlaythroughs()
 
-        recording.libraryAdoption = RecordingController.LibraryAdoption(
-            spoolFolder: RecordingLibrary.spoolDirectory(
-                libraryRoot: appModel.client.rootURL),
-            adopt: { [weak appModel] url, folder, exportFolder, startedAt, presetID in
-                guard let appModel else { return }
-                Task { @MainActor in
-                    do {
-                        _ = try await RecordingLibrary.adopt(
-                            fileURL: url, client: appModel.client,
-                            folder: folder, recordedAt: startedAt,
-                            presetId: presetID,
-                            alsoCopyTo: exportFolder.flatMap {
-                                $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true)
-                            })
-
-                        appModel.noteExternalMutation(of: .media)
-                    } catch {
-                        DiagnosticsStore.shared.note(
-                            "recording.adopt.failed",
-                            detail: "\(url.lastPathComponent): \(error.localizedDescription)")
-                    }
-                }
-            })
-
-        streaming.sourceResolver = { [weak self] preset in
-            guard let self else { return .unavailable("library unavailable") }
-            return self.resolveStreamSource(preset)
-        }
         audio.onTransportChanged = { [weak self] in self?.pushAudioVisibility() }
-        recording.onSessionsChanged = { [weak self] in self?.pushCaptureVisibility() }
-        streaming.onLiveChanged = { [weak self] in self?.pushCaptureVisibility() }
         VideoInputInventory.shared.onConnectedChanged = { [weak self] connected in
             self?.pushConnectedInputVisibility(connected)
         }
@@ -120,14 +87,6 @@ final class ServiceControls {
         render.confidenceInfo = info
     }
 
-    private func pushCaptureVisibility() {
-        let active = recording.anyRecording || streaming.live != nil
-        guard render.confidenceInfo.captureActive != active else { return }
-        var info = render.confidenceInfo
-        info.captureActive = active
-        render.confidenceInfo = info
-    }
-
     private func pushLiveInputVisibility(_ ids: Set<String>) {
         let sorted = ids.sorted()
         guard render.confidenceInfo.activeLiveInputIds != sorted else { return }
@@ -143,260 +102,6 @@ final class ServiceControls {
         render.confidenceInfo = info
     }
 
-    private func resolveStreamSource(_ preset: StreamRecordPreset) -> StreamingController.ResolvedSource {
-        switch resolveSourceItem(preset) {
-        case nil:
-            return .screen
-        case .failure(let problem):
-            return .unavailable(problem.reason)
-        case .success(let item):
-            return fileSource(item)
-        }
-    }
-
-    private func resolveSourceItem(_ preset: StreamRecordPreset) -> Result<MediaItem, StreamSourceProblem>? {
-        switch preset.sourceKind ?? .screen {
-        case .screen:
-            return nil
-        case .mediaItem:
-            guard let id = preset.sourceMediaId,
-                  let item = appModel.media(id) else {
-                return .failure(.init("media item not found in the library"))
-            }
-            return .success(item)
-        case .latestRecording:
-            let folder = preset.sourceFolder ?? RecordingLibrary.defaultFolder
-            let items = appModel.resident.media.values
-
-            let cutoff = preset.sourceMaxAgeHours.map {
-                Date().addingTimeInterval(-Double($0) * 3600)
-            }
-            if let item = RecordingLibrary.latestRecording(
-                in: items, folder: folder, notBefore: cutoff) {
-                return .success(item)
-            }
-            if cutoff != nil,
-               let stale = RecordingLibrary.latestRecording(in: items, folder: folder) {
-                return .failure(.init(
-                    "newest recording in \u{201C}\(folder)\u{201D} is "
-                        + Self.ageText(stale.recordedAt ?? 0)
-                        + " old — over the \(preset.sourceMaxAgeHours ?? 0)h limit"))
-            }
-            return .failure(.init("no finished recording in \u{201C}\(folder)\u{201D}"))
-        }
-    }
-
-    struct StreamSourceProblem: Error {
-        let reason: String
-        init(_ reason: String) { self.reason = reason }
-    }
-
-    private static func ageText(_ recordedAt: Double) -> String {
-        let hours = Int(Date().timeIntervalSince1970 - recordedAt) / 3600
-        if hours < 1 { return "under an hour" }
-        if hours < 48 { return "\(hours)h" }
-        return "\(hours / 24) days"
-    }
-
-    struct CaptureSourcePreview {
-        let text: String
-        let isProblem: Bool
-    }
-
-    func captureSourcePreview(presetID: String) -> CaptureSourcePreview? {
-        guard let preset = try? appModel.streamPreset(presetID) else { return nil }
-        return captureSourcePreview(preset: preset)
-    }
-
-    func captureSourcePreview(preset: StreamRecordPreset) -> CaptureSourcePreview? {
-
-        let destinations = resolvedDestinations(for: preset)
-        if let refusal = StreamDestinationReadiness.startRefusal(kind: preset.resolvedKind, destinations: destinations) {
-            return CaptureSourcePreview(text: refusal, isProblem: true)
-        }
-        let skipped = StreamDestinationReadiness.problems(destinations)
-        if !skipped.isEmpty {
-            return CaptureSourcePreview(
-                text: "Will skip \u{2014} " + skipped.joined(separator: " \u{B7} "),
-                isProblem: true)
-        }
-        switch resolveSourceItem(preset) {
-        case nil:
-            return nil
-        case .failure(let problem):
-            return CaptureSourcePreview(
-                text: "Won't go live: \(problem.reason)", isProblem: true)
-        case .success(let item):
-            if case .unavailable(let reason) = fileSource(item) {
-                return CaptureSourcePreview(
-                    text: "Won't go live: \(reason)", isProblem: true)
-            }
-            var text = "Restreams \u{201C}\(item.name)\u{201D}"
-            if let recordedAt = item.recordedAt {
-                text += " \u{B7} recorded \(Self.ageText(recordedAt)) ago"
-            }
-            return CaptureSourcePreview(text: text, isProblem: false)
-        }
-    }
-
-    struct CaptureRowDetail {
-        var streamsTo: String
-        var videoSource: String
-        var audioSource: String
-        var encoder: String
-        var recording: String
-        var warning: String?
-        var isRecordOnly: Bool
-    }
-
-    func captureRowDetail(presetID: String) -> CaptureRowDetail? {
-        guard let preset = try? appModel.streamPreset(presetID) else { return nil }
-        let destinations = resolvedDestinations(for: preset)
-        let names = destinations.map(\.name)
-        let video: String
-        switch preset.sourceKind ?? .screen {
-        case .screen:
-            let screen = preset.canvasScreenId.flatMap { id in
-                PreviewTargets.screens(render).first { $0.id == id }?.name
-            } ?? "Automatic"
-            video = "Screen \u{B7} \(screen)"
-        case .mediaItem:
-            video = "Media file \u{B7} " + (preset.sourceMediaId.flatMap { appModel.entry($0)?.name } ?? "none chosen")
-        case .latestRecording:
-            video = "Latest recording \u{B7} \(preset.sourceFolder ?? RecordingLibrary.defaultFolder)"
-        }
-        var audio = AudioSourceMenuItems.title(preset)
-        if preset.audioIncludesProgram == true, audio != "Program Audio" { audio += " + Program Audio" }
-        if (preset.sourceKind ?? .screen) != .screen { audio = "From the file" }
-        let width = preset.width ?? 1920, height = preset.height ?? 1080
-        var encoder = "\(min(width, height))p \u{B7} \(preset.frameRate ?? 30) fps"
-        if let kbps = preset.videoBitrateKbps { encoder += " \u{B7} \(kbps >= 1000 ? String(format: "%.1f", Double(kbps) / 1000) + " Mbps" : "\(kbps) kbps")" }
-        let recording: String
-        if preset.isRecordOnly || preset.recordWhileStreaming == true {
-            let folder = preset.recordLibraryFolder ?? RecordingLibrary.defaultFolder
-            recording = (preset.sourceKind ?? .screen) == .screen ? "\(folder) folder" : "not while restreaming"
-        } else {
-            recording = "Off"
-        }
-        return CaptureRowDetail(
-            streamsTo: preset.isRecordOnly ? "\u{2014}" : (names.isEmpty ? "no destinations selected" : names.joined(separator: ", ")),
-            videoSource: video,
-            audioSource: audio,
-            encoder: encoder,
-            recording: recording,
-            warning: captureSourcePreview(preset: preset).flatMap { $0.isProblem ? $0.text : nil },
-            isRecordOnly: preset.isRecordOnly)
-    }
-
-    private func fileSource(_ item: MediaItem) -> StreamingController.ResolvedSource {
-        guard item.mediaKind == .video else {
-            return .unavailable("\u{201C}\(item.name)\u{201D} isn't a video")
-        }
-        guard item.fileStatus == .ready else {
-            return .unavailable("\u{201C}\(item.name)\u{201D} isn't ready to play")
-        }
-        guard let url = blobs?.url(forHash: item.fileHash) else {
-            return .unavailable("\u{201C}\(item.name)\u{201D}: file isn't on this Mac")
-        }
-
-        let duration = item.durationSeconds.map { full in
-            max(0, min(item.outPoint ?? full, full) - max(item.inPoint ?? 0, 0))
-        }
-        return .file(
-            url: url, name: item.name,
-            inPoint: item.inPoint, outPoint: item.outPoint,
-            durationSeconds: duration)
-    }
-
-    enum CaptureMenuNode {
-        case preset(id: String, name: String, goesLive: Bool)
-        case folder(id: String, name: String, presets: [(id: String, name: String, goesLive: Bool)])
-    }
-
-    var captureMenuNodes: [CaptureMenuNode] {
-
-        let info = Dictionary(
-            appModel.streamPresets.compactMap { entry -> (String, (name: String, goesLive: Bool))? in
-                guard let preset = try? appModel.streamPreset(entry.id) else { return nil }
-                return (entry.id, (name: preset.name, goesLive: !preset.isRecordOnly))
-            },
-            uniquingKeysWith: { first, _ in first })
-        let board = appModel.streamBoard
-        return board.nodes.compactMap { nodeID in
-            if let folder = board.folder(id: nodeID) {
-                let presets = folder.itemIds.compactMap { id in
-                    info[id].map { (id: id, name: $0.name, goesLive: $0.goesLive) }
-                }
-                return presets.isEmpty
-                    ? nil
-                    : .folder(id: nodeID, name: folder.name, presets: presets)
-            }
-            return info[nodeID].map {
-                .preset(id: nodeID, name: $0.name, goesLive: $0.goesLive)
-            }
-        }
-    }
-
-    func startCapture(presetID: String) {
-        guard let preset = try? appModel.streamPreset(presetID) else { return }
-        startCapture(preset: preset)
-    }
-
-    func startCapture(preset: StreamRecordPreset) {
-        streaming.startCapture(
-            preset: preset,
-            destinations: resolvedDestinations(for: preset),
-            recording: recording)
-    }
-
-    func resolvedDestinations(for preset: StreamRecordPreset) -> [StreamPresetDestination] {
-        guard preset.resolvedKind == .stream else { return [] }
-        var out = preset.destinations
-        for id in preset.destinationIds ?? [] {
-            guard let destination = appModel.resolvedStreamDestination(id) else {
-                DiagnosticsStore.shared.note(
-                    "stream.destination.dangling",
-                    detail: "\(preset.name): destination \(id) no longer exists — skipped")
-                continue
-            }
-            out.append(StreamDestinationLibrary.sessionDestination(
-                destination, displayName: StreamDestinationLibrary.displayName(destination)))
-        }
-        return out
-    }
-
-    func startWouldReplace(presetID: String) -> String? {
-        guard let live = streaming.live else { return nil }
-        guard let target = try? appModel.streamPreset(presetID),
-              !target.isRecordOnly
-        else { return nil }
-        return live.presetName
-    }
-
-    func runningCount(presetID: String) -> Int {
-        var count = streaming.live?.presetID == presetID ? 1 : 0
-        count += recording.sessions.filter {
-            $0.presetID == presetID && $0.isRecording
-        }.count
-        return count
-    }
-
-    func endAllCapture() {
-        streaming.endStream()
-        for session in recording.sessions where session.isRecording {
-            recording.stop(session)
-        }
-    }
-
-    func endAll(presetID: String) {
-        if streaming.live?.presetID == presetID {
-            streaming.endStream()
-        }
-        for session in recording.sessions where session.presetID == presetID {
-            recording.stop(session)
-        }
-    }
-
     private(set) var liveContextID: String?
     private(set) var liveOccurrence: Int?
 
@@ -409,8 +114,6 @@ final class ServiceControls {
 
     weak var actionRouter: ActionRouter?
 
-    weak var signage: SignageController?
-
     weak var serviceTracking: ServiceTimingController?
 
     private(set) var mediaFireContexts: [String: String] = [:]
@@ -421,8 +124,7 @@ final class ServiceControls {
     ) {
 
         settlePending()
-        let incoming = actionRouter?.predictedOverrideThemes(for: slide, contextID: contextID) ?? Array(slideThemeOverrides.values)
-        let handoff = state.handoff(to: slide, incomingOverrides: incoming)
+        let handoff = state.handoff(to: slide, incomingOverrides: [])
         if handoff.wait > 0 {
             state.dismissLooks(handoff.leaving, atHostTime: CACurrentMediaTime())
             apply()
@@ -467,7 +169,6 @@ final class ServiceControls {
         if !deckWasLive {
             actionRouter?.presentationDidGoLive(presentation)
         }
-        actionRouter?.applyPresetSwitches(for: slide, contextID: contextID, theme: theme)
         actionRouter?.noteLiveTheme(theme, slide: slide)
 
         if let own = RenderContext.sceneTransition(from: slide.transition) {
@@ -539,36 +240,9 @@ final class ServiceControls {
 
     private var pendingHandoff: Task<Void, Never>?
 
-    private var pendingSwitch: (() -> Void)?
-
     private func settlePending() {
         pendingHandoff?.cancel()
         pendingHandoff = nil
-        if let activate = pendingSwitch {
-            pendingSwitch = nil
-            activate()
-        }
-    }
-
-    func switchPreset(incomingOverrides: [Theme], activate: @escaping () -> Void) {
-        settlePending()
-        let change = state.lookSwitch(to: incomingOverrides)
-        guard change.wait > 0 else {
-            activate()
-            return
-        }
-        state.dismissLooks(change.leaving, atHostTime: CACurrentMediaTime())
-        apply()
-        pendingSwitch = activate
-        pendingHandoff = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(change.wait))
-            guard let self, !Task.isCancelled else { return }
-            self.pendingHandoff = nil
-            if let activate = self.pendingSwitch {
-                self.pendingSwitch = nil
-                activate()
-            }
-        }
     }
 
     var slideAnimationStep: (consumed: Int, total: Int)? { state.slideAnimationStep }
@@ -1090,7 +764,6 @@ final class ServiceControls {
         } else {
             mediaFireContexts[mediaItem.id] = nil
         }
-        actionRouter?.applyPresetSwitches(forMedia: mediaItem, contextID: contextID)
 
         if let own = RenderContext.sceneTransition(from: mediaItem.transition) {
             render.nextLiveTransitions[layer] = own
@@ -1279,7 +952,6 @@ final class ServiceControls {
             refreshNextSlide()
         }
         if function == .audio { audio.stop() }
-        if function == .signage { signage?.clearAllChannels() }
         apply()
         if function == .alerts { syncFlashClock() }
     }
@@ -1309,18 +981,11 @@ final class ServiceControls {
         if layer == .alerts { syncFlashClock() }
     }
 
-    static let clearAllIncludesAudioKey = "serviceControls.clearAllIncludesAudio"
-
     func clearAll(protecting: Set<LayerKind> = [], cancelsPendingActions: Bool = true) {
         settlePending()
         if cancelsPendingActions { actionRouter?.cancelPendingDelayedActions() }
-        let includeAudio = UserDefaults.standard.object(
-            forKey: Self.clearAllIncludesAudioKey
-        ) as? Bool ?? true
-        state.clearAll(includingAudio: includeAudio, protecting: protecting)
-        if includeAudio { audio.stop() }
-
-        signage?.clearAllChannels()
+        state.clearAll(includingAudio: true, protecting: protecting)
+        audio.stop()
 
         if state.liveSlide == nil {
             liveContextID = nil
@@ -1340,7 +1005,7 @@ final class ServiceControls {
         case .overlays: !state.liveOverlays.isEmpty
         case .audio: !state.liveAudio.isEmpty
         case .alerts: state.liveAlert != nil
-        case .signage: signage?.hasAnyChannelContent ?? false
+        case .signage: false
         }
     }
 

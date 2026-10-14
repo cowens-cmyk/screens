@@ -167,7 +167,7 @@ struct ShowControlsPanel: View {
                     Image(systemName: "ellipsis.circle")
                 }
                 .buttonStyle(.plain)
-                .help("More controls — music, overlays, alerts, signage, outputs")
+                .help("More controls — alerts and stage layouts")
             }
             .padding(10)
             ScrollView {

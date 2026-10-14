@@ -55,8 +55,10 @@ enum LibrarySection: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Music and Overlays stay in the library's data so old services and
+    /// slides still open, but the sidebar no longer shows them.
     static var libraryTabs: [LibrarySection] {
-        allCases.filter { $0 != .services }
+        allCases.filter { $0 != .services && $0 != .audio && $0 != .overlays }
     }
 
     var systemImage: String {
@@ -375,7 +377,6 @@ final class AppModel {
         try migrateMediaObjectsToShapes(prepared, rootURL: root)
         try migrateAnimationVocabulary(prepared, rootURL: root)
         try migrateCrossfadeDefaults(prepared, rootURL: root)
-        migrateStreamDestinations(prepared)
         try backfillContentIndex(prepared, rootURL: root)
         try backfillCCLIIndex(prepared, rootURL: root)
         try seedBasics(prepared, rootURL: root)
@@ -426,10 +427,8 @@ final class AppModel {
     }
 
     private func warmSetupThemes() async {
-        await resident.outputPresets.ready()
-        let presetID = UserDefaults.standard.string(forKey: OutputPresetsController.activeKey)
-        let preset = presetID.flatMap { resident.outputPresets.value($0) }
-        await themesFilled(preset?.assignments.compactMap(\.slideThemeId) ?? [])
+        // Nothing to warm since Looks were removed; the stage keeps its
+        // place in the launch order.
     }
 
     private func warmLiveSetFilled() async {
@@ -441,26 +440,10 @@ final class AppModel {
 
     var welcomeShowing = false
 
-    func restoreGettingStarted() {
-        Task {
-            do {
-                try await client.restoreWelcomeDeck(serviceDate: Self.isoDate(.now))
-                currentServiceID = WelcomeDeck.serviceID
-                selectedSection = .presentations
-                selectedEntryID = WelcomeDeck.presentationID
-            } catch {
-                DiagnosticsStore.shared.note("onboarding.restoreFailed", detail: "\(error)")
-            }
-        }
-    }
-
-    func finishOnboarding(includeGettingStarted: Bool) {
-        if includeGettingStarted {
-            restoreGettingStarted()
-        }
+    func finishOnboarding() {
         Library.markOnboarded(rootURL: client.rootURL)
         needsOnboarding = false
-        DiagnosticsStore.shared.note("onboarding.finished", detail: "gettingStarted=\(includeGettingStarted)")
+        DiagnosticsStore.shared.note("onboarding.finished", detail: "")
     }
 
     @LibraryActor private static func migrateSongsToLyricsFolder(_ prepared: Library, rootURL: URL) throws {
@@ -496,13 +479,6 @@ final class AppModel {
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }
         try prepared.normalizeAnimationVocabulary()
         FileManager.default.createFile(atPath: marker.path, contents: nil)
-    }
-
-    @LibraryActor private static func migrateStreamDestinations(_ prepared: Library) {
-        guard let result = try? prepared.migrateStreamDestinations() else { return }
-        for sentence in result.dropped {
-            DiagnosticsStore.shared.note("stream.destination.migrationDropped", detail: sentence)
-        }
     }
 
     @LibraryActor private static func seedUsageHistory(_ prepared: Library, rootURL: URL) throws {
@@ -964,16 +940,6 @@ final class AppModel {
     }
 
     @discardableResult
-    func createMultiView(
-        from template: MultiViewTemplate, sources: [MultiViewTemplate.Source]
-    ) -> String? {
-
-        let layout = template.make(name: template.title, sources: sources)
-        createInDrive(layout)
-        return layout.id
-    }
-
-    @discardableResult
     func createLayout(_ layout: ConfidenceLayout, besideID: String) -> String? {
         createBeside(layout, original: besideID)
         return layout.id
@@ -1309,13 +1275,6 @@ final class AppModel {
         updateService(serviceID) {
             guard let index = $0.items.firstIndex(where: { $0.id == itemID }) else { return }
             $0.items[index].arrangementId = arrangementID
-        }
-    }
-
-    func setServiceItemOutputPreset(_ serviceID: String, itemID: String, presetID: String?) {
-        updateService(serviceID) {
-            guard let index = $0.items.firstIndex(where: { $0.id == itemID }) else { return }
-            $0.items[index].outputPresetId = presetID
         }
     }
 
@@ -2341,89 +2300,6 @@ final class AppModel {
         )
     }
 
-    var streamPresets: [LibraryIndex.Entry] {
-        _ = kindVersions[.streamRecordPreset]
-        return entries(of: .streamRecordPreset)
-    }
-
-    func streamPreset(_ id: String) throws -> StreamRecordPreset {
-        try Self.resident(resident.streamPresets.value(id), kind: .streamRecordPreset, id: id)
-    }
-
-    @discardableResult
-    func createStreamPreset(name: String) -> String? {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let id = UUID().uuidString
-        client.create(StreamRecordPreset(id: id, name: trimmed, destinations: []))
-        return id
-    }
-
-    func updateStreamPreset(_ id: String, _ mutate: @escaping @Sendable (inout StreamRecordPreset) -> Void) {
-        let before = try? streamPreset(id)
-        modify(StreamRecordPreset.self, id: id, mutate)
-        guard let value = try? streamPreset(id) else { return }
-
-        guard let before, before != value else { return }
-        let apply: (StreamRecordPreset) -> Bool = { [weak self] snapshot in
-            guard let self, (libraryEntry(id)) != nil else { return false }
-            updateStreamPreset(id) { $0 = snapshot }
-            return true
-        }
-        moveUndo.registerEdit(
-            key: "streamPreset:\(id)", label: "Edit Stream Preset",
-            undo: { apply(before) }, redo: { apply(value) }
-        )
-    }
-
-    func deleteStreamPreset(_ id: String) {
-        client.delete(kind: .streamRecordPreset, id: id)
-    }
-
-    var streamDestinations: [LibraryIndex.Entry] {
-        _ = kindVersions[.streamDestination]
-        return entries(of: .streamDestination)
-    }
-
-    func streamDestination(_ id: String) -> StreamDestination? {
-        resident.streamDestinations.value(id)
-    }
-
-    var allStreamDestinations: [StreamDestination] {
-        streamDestinations.compactMap { streamDestination($0.id) }
-    }
-
-    func resolvedStreamDestination(_ id: String) -> StreamDestination? {
-        streamDestination(id)
-    }
-
-    func saveStreamDestination(_ destination: StreamDestination) {
-        if indexEntry(destination.id) != nil || streamDestination(destination.id) != nil {
-            modify(StreamDestination.self, id: destination.id) { $0 = destination }
-        } else {
-            client.create(destination)
-        }
-    }
-
-    func updateStreamDestination(_ id: String, _ mutate: @escaping @Sendable (inout StreamDestination) -> Void) {
-        modify(StreamDestination.self, id: id, mutate)
-    }
-
-    func deleteStreamDestination(_ id: String) {
-        client.delete(kind: .streamDestination, id: id)
-        for presetID in presetsUsingStreamDestination(id) {
-            updateStreamPreset(presetID) { $0.destinationIds?.removeAll { $0 == id } }
-        }
-    }
-
-    func presetsUsingStreamDestination(_ id: String) -> [String] {
-        streamPresets.compactMap { entry in
-            guard let preset = try? streamPreset(entry.id),
-                  preset.destinationIds?.contains(id) == true else { return nil }
-            return entry.id
-        }
-    }
-
     var actionCombos: [LibraryIndex.Entry] {
         listedSnapshot.entries(of: .actionCombo)
     }
@@ -2785,27 +2661,12 @@ final class AppModel {
         }
     }
 
-    var signageBoard: SignageBoard {
-        resident.signageBoards.value(SignageBoard.wellKnownID)
-            ?? SignageBoard(id: SignageBoard.wellKnownID, signages: [])
-    }
-
-    func updateSignageBoard(_ mutate: @escaping @Sendable (inout SignageBoard) -> Void) {
-        updateWellKnown(
-            SignageBoard.self, id: SignageBoard.wellKnownID, failure: "signageBoard.saveFailed",
-            orMake: { SignageBoard(id: SignageBoard.wellKnownID, signages: []) }, mutate)
-    }
-
     var comboBoard: ControlBoard {
         controlBoard(id: ControlBoard.comboBoardID, itemIDs: boardItemIDs(of: .actionCombo))
     }
 
     var alertBoard: ControlBoard {
         controlBoard(id: ControlBoard.alertBoardID, itemIDs: boardItemIDs(of: .alertPreset))
-    }
-
-    var streamBoard: ControlBoard {
-        controlBoard(id: ControlBoard.streamBoardID, itemIDs: boardItemIDs(of: .streamRecordPreset))
     }
 
     func updateComboBoard(_ mutate: @escaping @Sendable (inout ControlBoard) -> Void) {
@@ -2816,11 +2677,6 @@ final class AppModel {
     func updateAlertBoard(_ mutate: @escaping @Sendable (inout ControlBoard) -> Void) {
         updateControlBoard(
             id: ControlBoard.alertBoardID, itemIDs: boardItemIDs(of: .alertPreset), mutate)
-    }
-
-    func updateStreamBoard(_ mutate: @escaping @Sendable (inout ControlBoard) -> Void) {
-        updateControlBoard(
-            id: ControlBoard.streamBoardID, itemIDs: boardItemIDs(of: .streamRecordPreset), mutate)
     }
 
     private func boardItemIDs(of kind: DocumentKind) -> [String] {

@@ -304,7 +304,7 @@ final class PresentLayoutController {
             id: UUID().uuidString,
             name: "Layout",
             selectedModule: defaults.string(forKey: "serviceControls.module")
-                ?? ServiceControlsModule.audio.rawValue,
+                ?? ServiceControlsModule.timers.rawValue,
             poppedOut: poppedOut.map { module in
                 PresentLayout.PoppedModule(
                     module: module.rawValue,

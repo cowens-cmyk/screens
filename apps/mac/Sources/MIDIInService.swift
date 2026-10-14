@@ -109,8 +109,6 @@ final class MIDIInController {
 
     private var selectedServiceItemID: String?
     private var selectedMediaPlaylistID: String?
-    private var selectedAudioPlaylistID: String?
-    private var selectedOverlayFolder: String?
     private var selectedComboFolderID: String?
 
     func attach() {
@@ -147,14 +145,8 @@ final class MIDIInController {
             controls.clear(function: .slides)
         case .clearMedia:
             controls.clear(function: .media)
-        case .clearOverlays:
-            controls.clear(function: .overlays)
-        case .clearAudio:
-            controls.clear(function: .audio)
         case .clearAlerts:
             controls.clear(function: .alerts)
-        case .clearSignage:
-            controls.clear(function: .signage)
         case .videoGoToBeginning:
             for row in controls.media.rows { controls.media.resetToStart(row.id) }
         case .videoPlayPause:
@@ -231,33 +223,6 @@ final class MIDIInController {
                 return miss(command, "mediaId")
             }
             controls.fire(mediaItem: item)
-        case .selectAudioPlaylist:
-            let playlists = model.playlists(in: .audio)
-            guard playlists.indices.contains(index) else { return miss(command, "index \(index)") }
-            selectedAudioPlaylistID = playlists[index].id
-        case .triggerAudio:
-            guard let playlistID = selectedAudioPlaylistID,
-                  let playlist = try? model.playlist(playlistID)
-            else { return miss(command, "no playlist selected") }
-            guard playlist.entries.indices.contains(index) else {
-                return miss(command, "index \(index)")
-            }
-            controls.fire(playlist: playlist, startAt: playlist.entries[index].id)
-        case .toggleOverlay:
-            let overlays = overlayEntries()
-            guard overlays.indices.contains(index) else { return miss(command, "index \(index)") }
-            let id = overlays[index].id
-            if controls.state.liveOverlays.contains(where: { $0.id == id }) {
-                controls.dismissOverlay(id: id)
-            } else if let overlay = model.overlay(id) {
-                controls.fire(overlay: overlay)
-            } else {
-                miss(command, "overlayId")
-            }
-        case .selectOverlayFolder:
-            let folders = model.folders(in: .overlays)
-            guard folders.indices.contains(index) else { return miss(command, "index \(index)") }
-            selectedOverlayFolder = folders[index]
         case .fireAlert:
             let presets = model.entries(of: .alertPreset)
             guard presets.indices.contains(index) else { return miss(command, "index \(index)") }
@@ -310,14 +275,6 @@ final class MIDIInController {
               let presentation = model.presentation(item.refId)
         else { return nil }
         return (item, presentation)
-    }
-
-    private func overlayEntries() -> [LibraryIndex.Entry] {
-        if let folder = selectedOverlayFolder {
-            model.entries(of: .overlay, subkind: folder)
-        } else {
-            model.entries(of: .overlay)
-        }
     }
 
     private func miss(_ command: MIDICommand, _ detail: String) {

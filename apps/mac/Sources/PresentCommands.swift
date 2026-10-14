@@ -12,14 +12,8 @@ struct PresentCommands: Commands {
                 .keyboardShortcut(command: .clearSlides)
             Button("Clear Media") { controls?.clear(function: .media) }
                 .keyboardShortcut(command: .clearMedia)
-            Button("Clear Overlays") { controls?.clear(function: .overlays) }
-                .keyboardShortcut(command: .clearOverlays)
-            Button("Clear Music") { controls?.clear(function: .audio) }
-                .keyboardShortcut(command: .clearAudio)
             Button("Clear Alerts") { controls?.clear(function: .alerts) }
                 .keyboardShortcut(command: .clearAlerts)
-            Button("Clear Signage") { controls?.clear(function: .signage) }
-                .keyboardShortcut(command: .clearSignage)
             Divider()
             Menu("Clear Layer") {
 

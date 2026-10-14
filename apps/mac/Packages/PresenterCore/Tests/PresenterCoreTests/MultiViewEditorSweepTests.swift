@@ -35,13 +35,6 @@ import Testing
         #expect(body.contains("let next = transform(tree)") && body.contains("layout.multiView = next"))
         #expect(body.contains("layout.regenerateMultiViewObjects(context: context)"), "tree and objects land as ONE undoable change, never apart")
     }
-
-    @Test func theMultiViewToolbarReplacesTheObjectTools() throws {
-        let editor = try source("SlideEditorView.swift")
-        let start = try #require(editor.range(of: "private func editorToolbar("))
-        let body = editor[start.upperBound...].prefix(900)
-        #expect(body.contains("if model.isMultiView {") && body.contains("MultiViewToolbar(model: model)"))
-    }
 }
 
 extension MultiViewEditorSweepTests {
@@ -61,16 +54,6 @@ extension MultiViewEditorSweepTests {
     }
 }
 
-extension MultiViewEditorSweepTests {
-
-    @Test func newMultiViewsAreFiledLikeAnyNewItem() throws {
-        let app = try source("AppModel.swift")
-        let start = try #require(app.range(of: "func createMultiView("))
-        let body = app[start.upperBound...].prefix(700)
-        #expect(body.contains("createInDrive(layout)") && !body.contains("layout.folder ="))
-    }
-}
-
 @Suite struct AutomaticTimerCopySweepTests {
     @Test func noPickerStillSaysPrimaryTimer() throws {
         let sources = URL(fileURLWithPath: #filePath)
@@ -78,7 +61,7 @@ extension MultiViewEditorSweepTests {
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources", isDirectory: true)
         var offered = 0
-        for file in ["SlideObjectInspector.swift", "MultiViewEditorViews.swift"] {
+        for file in ["SlideObjectInspector.swift"] {
             let text = try String(contentsOf: sources.appendingPathComponent(file), encoding: .utf8)
             #expect(!text.contains("\"Primary Timer\""))
             offered += text.components(separatedBy: "Text(AutomaticTimer.title)").count - 1
@@ -87,7 +70,7 @@ extension MultiViewEditorSweepTests {
                     == text.components(separatedBy: ".help(AutomaticTimer.help)").count,
                 "\(file): every picker that offers it explains it")
         }
-        #expect(offered == 3)
+        #expect(offered == 2)
     }
 }
 
@@ -97,7 +80,7 @@ extension MultiViewEditorSweepTests {
     @Test func theTileContextIsBuiltOncePerTreeNotPerBodyPass() throws {
         let model = try source("SlideEditorModel.swift")
         #expect(model.components(separatedBy: "makeMultiViewContext(for:").count - 1 == 2, "the snapshot and updateMultiView — nowhere else")
-        for file in ["MultiViewEditorViews.swift", "EditorInteractionView.swift"] {
+        for file in ["EditorInteractionView.swift"] {
             #expect(!(try source(file)).contains("makeMultiViewContext"))
         }
     }

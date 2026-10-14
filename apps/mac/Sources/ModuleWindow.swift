@@ -5,7 +5,6 @@ struct ModuleWindowView: View {
     let module: ServiceControlsModule
     let model: AppModel
     let controls: ServiceControls?
-    let presets: OutputPresetsController?
     let layout: PresentLayoutController?
 
     @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
@@ -23,16 +22,10 @@ struct ModuleWindowView: View {
                             .padding(.top, 40)
                     } else if let controls {
                         switch module {
-                        case .audio: AudioModule(model: model, controls: controls)
-                        case .mixer: AudioMixerModule(model: model, controls: controls)
-                        case .media: MediaPlaylistsModule(model: model, controls: controls)
                         case .timers: TimersModule(model: model, controls: controls)
-                        case .tracking: ServiceTrackingModule(model: model, controls: controls)
                         case .alerts: AlertsModule(model: model, controls: controls)
-                        case .overlays: OverlaysModule(model: model, controls: controls)
                         case .combos: ActionCombosModule(model: model, controls: controls)
                         case .confidence: ConfidenceModule(model: model, controls: controls)
-                        case .outputs: OutputsModule(model: model, controls: controls, presets: presets)
                         }
                     }
                 }
@@ -72,14 +65,13 @@ struct ModuleWindowView: View {
 struct ServiceControlsWindowView: View {
     let model: AppModel
     let controls: ServiceControls?
-    let presets: OutputPresetsController?
     let layout: PresentLayoutController?
 
     @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        ServiceControlsPanel(model: model, controls: controls, presets: presets, layout: layout)
+        ServiceControlsPanel(model: model, controls: controls, layout: layout)
             .frame(minWidth: 300, minHeight: 320)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.basePlane)

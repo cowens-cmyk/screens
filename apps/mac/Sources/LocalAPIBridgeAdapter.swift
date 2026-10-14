@@ -8,19 +8,17 @@ import SlideScene
 final class AppAPIBridge: LocalAPIBridge {
     private let appModel: AppModel
     private let controls: ServiceControls
-    private let outputPresets: OutputPresetsController
     private let render: RenderContext
 
     private weak var scheduler: SchedulerController?
 
     init(
         appModel: AppModel, controls: ServiceControls,
-        outputPresets: OutputPresetsController, render: RenderContext,
+        render: RenderContext,
         scheduler: SchedulerController?
     ) {
         self.appModel = appModel
         self.controls = controls
-        self.outputPresets = outputPresets
         self.render = render
         self.scheduler = scheduler
     }
@@ -45,12 +43,8 @@ final class AppAPIBridge: LocalAPIBridge {
         case .services: .service
         case .themes: .theme
         case .media: .media
-        case .audio: .audio
         case .playlists: .playlist
-        case .overlays: .overlay
         case .alertPresets: .alertPreset
-        case .outputPresets: .outputPreset
-        case .streamPresets: .streamRecordPreset
         case .actionCombos: .actionCombo
         case .scheduleTriggers: .scheduleTrigger
         case .confidenceLayouts: .confidenceLayout
@@ -82,17 +76,14 @@ final class AppAPIBridge: LocalAPIBridge {
         case .service: try await encode(Service.self, id: id)
         case .theme: try await encode(Theme.self, id: id)
         case .media: try await encode(MediaItem.self, id: id)
-        case .audio: try await encode(AudioItem.self, id: id)
         case .playlist: try await encode(Playlist.self, id: id)
-        case .overlay: try await encode(Overlay.self, id: id)
-        case .outputPreset: try await encode(OutputPreset.self, id: id)
         case .alertPreset: try await encode(AlertPreset.self, id: id)
-        case .streamRecordPreset: try await encode(StreamRecordPreset.self, id: id)
         case .actionCombo: try await encode(ActionCombo.self, id: id)
         case .scheduleTrigger: try await encode(ScheduleTrigger.self, id: id)
         case .confidenceLayout: try await encode(ConfidenceLayout.self, id: id)
 
-        case .midiDevice, .streamDestination, .schedulerBoard, .controlBoard, .groupPalette,
+        case .audio, .overlay, .outputPreset, .streamRecordPreset,
+            .midiDevice, .streamDestination, .schedulerBoard, .controlBoard, .groupPalette,
             .signageBoard, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .note, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: throw APIError.notFound("Unknown document kind.")
         }
     }
@@ -222,19 +213,6 @@ final class AppAPIBridge: LocalAPIBridge {
         }
     }
 
-    func audioStatus() -> APIAudioStatus {
-        APIAudioStatus(buses: controls.audio.players.map { player in
-            APIAudioStatus.Bus(
-                playlistId: player.playlistID,
-                audioItemId: player.singleItemID,
-                trackName: player.currentTrackName,
-                playing: player.isPlaying,
-                position: player.elapsed,
-                duration: player.duration
-            )
-        })
-    }
-
     func transportRows() -> [APITransportRow] {
         let now = Date()
         return controls.media.rows.map { row in
@@ -280,13 +258,7 @@ final class AppAPIBridge: LocalAPIBridge {
                 activeMasks: outputs.activeMasks(forScreen: screen.id).map(\.name)
             )
         }
-        let presets = outputPresets.presets.map { entry in
-            APIOutputsStatus.Preset(
-                id: entry.id, name: entry.name,
-                active: entry.id == outputPresets.activePresetID
-            )
-        }
-        return APIOutputsStatus(screens: screens, presets: presets)
+        return APIOutputsStatus(screens: screens)
     }
 
     private struct FirePosition {
@@ -562,17 +534,6 @@ final class AppAPIBridge: LocalAPIBridge {
         router.fire(comboID: id)
     }
 
-    func fireOverlay(id: String) throws {
-        guard let overlay = appModel.overlay(id) else {
-            throw APIError.notFound("No overlay '\(id)'.")
-        }
-        controls.fire(overlay: overlay)
-    }
-
-    func dismissOverlay(id: String) throws {
-        controls.dismissOverlay(id: id)
-    }
-
     func fireAlert(_ command: APIFireAlertCommand) throws {
         if let presetId = command.presetId {
             guard let preset = try? appModel.alertPreset(presetId)
@@ -618,53 +579,6 @@ final class AppAPIBridge: LocalAPIBridge {
         }
     }
 
-    func fireAudioPlaylist(id: String, startAtEntryId: String?) throws {
-        guard let playlist = try? appModel.playlist(id) else {
-            throw APIError.notFound("No playlist '\(id)'.")
-        }
-        controls.fire(playlist: playlist, startAt: startAtEntryId)
-    }
-
-    func fireAudioItem(id: String) throws {
-        guard let item = appModel.audio(id) else {
-            throw APIError.notFound("No audio item '\(id)'.")
-        }
-        controls.fire(audioItem: item)
-    }
-
-    func stopAudio(_ command: APIAudioStopCommand) throws {
-        if let playlistId = command.playlistId {
-            controls.stopAudio(playlistID: playlistId)
-        } else if let audioItemId = command.audioItemId {
-            controls.stopAudio(audioItemID: audioItemId)
-        } else {
-            controls.clear(function: .audio)
-        }
-    }
-
-    func audioTransport(_ command: APIAudioTransportCommand) throws {
-
-        guard let player = controls.audio.players.first(where: \.isPlaying)
-            ?? controls.audio.players.first
-        else {
-            throw APIError.badRequest("Nothing is on the Audio function.")
-        }
-        switch command.action {
-        case "playPause": player.togglePlayPause()
-        case "next": player.next()
-        case "previous": player.previous()
-        case "seek":
-            guard let position = command.position else {
-                throw APIError.badRequest("'seek' needs 'position' (seconds).")
-            }
-            player.seek(to: position)
-        default:
-            throw APIError.badRequest(
-                "Unknown action '\(command.action)'. Actions: playPause, next, previous, seek."
-            )
-        }
-    }
-
     func mediaTransport(id: String, command: APIMediaTransportCommand) throws {
         guard let row = controls.media.rows.first(where: { $0.id == id }) else {
             throw APIError.notFound("No playing video '\(id)'. GET /v1/transport lists them.")
@@ -688,13 +602,6 @@ final class AppAPIBridge: LocalAPIBridge {
                 "Unknown action '\(command.action)'. Actions: toggle, pause, resume, reset, seek."
             )
         }
-    }
-
-    func activateOutputPreset(id: String?) throws {
-        if let id, outputPresets.preset(id) == nil {
-            throw APIError.notFound("No output preset '\(id)'.")
-        }
-        outputPresets.activate(id)
     }
 
     func selectService(id: String) throws {
@@ -792,78 +699,19 @@ final class AppAPIBridge: LocalAPIBridge {
         }
     }
 
-    func audioInputs() -> [APIAudioInputStatus] {
-        let mixer = controls.mixer
-        return AudioInputInventory.shared.entries.map { entry in
-            APIAudioInputStatus(
-                id: entry.id,
-                name: entry.name,
-                deviceUid: entry.uid,
-                live: mixer.isLive(input: entry.id),
-                enabled: mixer.isManuallyEnabled(input: entry.id),
-                gain: Double(mixer.gain(forInput: entry.id)),
-                muted: mixer.isMuted(input: entry.id),
-                mixId: mixer.mixId(forInput: entry.id),
-                delayMs: entry.delayMs
-            )
-        }
-    }
-
-    func audioMixes() -> [APIAudioMixStatus] {
-        let audio = controls.audio
-        return audio.mixes.entries.map { mix in
-            APIAudioMixStatus(
-                id: mix.id,
-                name: mix.name,
-                deviceUid: mix.outputIds.first.flatMap {
-                    AudioOutputInventory.shared.entry(id: $0)?.deviceUID
-                },
-                channelOffset: mix.outputIds.first.flatMap {
-                    AudioOutputInventory.shared.entry(id: $0)?.channelOffset
-                } ?? 0,
-                gain: Double(audio.mixGain(mix.id)),
-                muted: audio.mixMuted(mix.id),
-                outputIds: mix.outputIds
-            )
-        }
-    }
-
-    func setMixerInput(id: String, command: APIMixerInputCommand) throws {
-        let id = try Self.validatedID(id)
-        let mixer = controls.mixer
-        guard AudioInputInventory.shared.entry(id: id) != nil else {
-            throw APIError.notFound("No audio input '\(id)'. GET /v1/inputs/audio lists them.")
-        }
-        if let gain = command.gain {
-            mixer.setGain(Float(gain), forInput: id)
-        }
-        if let muted = command.muted {
-            mixer.setMuted(muted, forInput: id)
-        }
-        if let enabled = command.enabled {
-            mixer.setManuallyEnabled(enabled, forInput: id)
-        }
-        if let delayMs = command.delayMs {
-            AudioInputInventory.shared.setDelay(id: id, milliseconds: delayMs)
-        }
-    }
-
     func createDocument(kind: APIDocumentKind, body: Data) async throws -> String {
         switch Self.documentKind(kind) {
         case .presentation: try await create(Presentation.self, body: body)
         case .service: try await create(Service.self, body: body)
         case .theme: try await create(Theme.self, body: body)
         case .media: try await create(MediaItem.self, body: body)
-        case .audio: try await create(AudioItem.self, body: body)
         case .playlist: try await create(Playlist.self, body: body)
-        case .overlay: try await create(Overlay.self, body: body)
-        case .outputPreset: try await create(OutputPreset.self, body: body)
         case .alertPreset: try await create(AlertPreset.self, body: body)
-        case .streamRecordPreset: try await create(StreamRecordPreset.self, body: body)
         case .actionCombo: try await create(ActionCombo.self, body: body)
         case .scheduleTrigger: try await create(ScheduleTrigger.self, body: body)
         case .confidenceLayout: try await create(ConfidenceLayout.self, body: body)
-        case .midiDevice, .streamDestination, .schedulerBoard, .controlBoard, .groupPalette,
+        case .audio, .overlay, .outputPreset, .streamRecordPreset,
+            .midiDevice, .streamDestination, .schedulerBoard, .controlBoard, .groupPalette,
             .signageBoard, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .note, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: throw APIError.notFound("Unknown document kind.")
         }
     }
@@ -874,16 +722,13 @@ final class AppAPIBridge: LocalAPIBridge {
         case .service: try await update(Service.self, id: id, body: body)
         case .theme: try await update(Theme.self, id: id, body: body)
         case .media: try await update(MediaItem.self, id: id, body: body)
-        case .audio: try await update(AudioItem.self, id: id, body: body)
         case .playlist: try await update(Playlist.self, id: id, body: body)
-        case .overlay: try await update(Overlay.self, id: id, body: body)
-        case .outputPreset: try await update(OutputPreset.self, id: id, body: body)
         case .alertPreset: try await update(AlertPreset.self, id: id, body: body)
-        case .streamRecordPreset: try await update(StreamRecordPreset.self, id: id, body: body)
         case .actionCombo: try await update(ActionCombo.self, id: id, body: body)
         case .scheduleTrigger: try await update(ScheduleTrigger.self, id: id, body: body)
         case .confidenceLayout: try await update(ConfidenceLayout.self, id: id, body: body)
-        case .midiDevice, .streamDestination, .schedulerBoard, .controlBoard, .groupPalette,
+        case .audio, .overlay, .outputPreset, .streamRecordPreset,
+            .midiDevice, .streamDestination, .schedulerBoard, .controlBoard, .groupPalette,
             .signageBoard, .effectPresetBoard, .animationPresetBoard, .importLedger, .serviceLinkRules, .note, .stationSettings, .slideBuildingSettings, .font, .workspaceSettings: throw APIError.notFound("Unknown document kind.")
         }
     }

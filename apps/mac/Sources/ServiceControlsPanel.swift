@@ -5,17 +5,15 @@ import SwiftUI
 struct ServiceControlsPanel: View {
     let model: AppModel
     let controls: ServiceControls?
-    let presets: OutputPresetsController?
     let layout: PresentLayoutController?
 
-    @AppStorage("serviceControls.module") private var moduleRaw = ServiceControlsModule.audio.rawValue
+    @AppStorage("serviceControls.module") private var moduleRaw = ServiceControlsModule.timers.rawValue
 
     @AppStorage("serviceControls.moduleOrder") private var moduleOrderRaw = ""
     @AppStorage("serviceControls.hiddenModules") private var hiddenModulesRaw = ""
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.runOnly) private var runOnly
-    @Environment(\.signage) private var signage
 
     private var orderedModules: [ServiceControlsModule] {
         TabRowLogic.mergedOrder(
@@ -54,7 +52,7 @@ struct ServiceControlsPanel: View {
     }
 
     private var selectedModule: ServiceControlsModule? {
-        let stored = ServiceControlsModule(rawValue: moduleRaw) ?? .audio
+        let stored = ServiceControlsModule(rawValue: moduleRaw) ?? .timers
         if !isPopped(stored),
            enabledModules.contains(stored) || (volunteerModules == nil && moduleActivity(stored) != nil) {
             return stored
@@ -120,16 +118,10 @@ struct ServiceControlsPanel: View {
         _ module: ServiceControlsModule, controls: ServiceControls
     ) -> some View {
         switch module {
-        case .audio: AudioModule(model: model, controls: controls)
-        case .mixer: AudioMixerModule(model: model, controls: controls)
-        case .media: MediaPlaylistsModule(model: model, controls: controls)
         case .timers: TimersModule(model: model, controls: controls)
-        case .tracking: ServiceTrackingModule(model: model, controls: controls)
         case .alerts: AlertsModule(model: model, controls: controls)
-        case .overlays: OverlaysModule(model: model, controls: controls)
         case .combos: ActionCombosModule(model: model, controls: controls)
         case .confidence: ConfidenceModule(model: model, controls: controls)
-        case .outputs: OutputsModule(model: model, controls: controls, presets: presets)
         }
     }
 
@@ -226,32 +218,16 @@ struct ServiceControlsPanel: View {
     private func moduleActivity(_ module: ServiceControlsModule) -> Color? {
         guard let controls else { return nil }
         switch module {
-        case .audio:
-            return controls.state.liveAudio.isEmpty ? nil : .green
-        case .mixer:
-
-            return controls.mixer.anyInputLive ? .green : nil
-        case .media:
-
-            return signage?.isAnyScreenLive == true ? .green : nil
         case .timers:
             return controls.timers.timers.contains(where: \.isLive) ? .green : nil
-        case .tracking:
-            return controls.timers.snapshot(id: ServiceTrackingTimers.id(.item, .remaining))?.isRunning == true ? .green : nil
         case .alerts:
             return controls.state.liveAlert == nil ? nil : .orange
-        case .overlays:
-            return controls.state.liveOverlays.isEmpty ? nil : .green
         case .combos:
 
             return nil
         case .confidence:
 
             return controls.state.liveAlert?.showsOnConfidence == true ? .orange : nil
-        case .outputs:
-
-            let outputs = controls.render.outputs
-            return outputs.displays.contains { outputs.isLive($0.uuid) } ? .green : nil
         }
     }
 }

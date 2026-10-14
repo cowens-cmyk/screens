@@ -67,7 +67,7 @@ struct MxUSlidesApp: App {
 
     @State private var controls: ServiceControls?
 
-    @State private var outputPresets: OutputPresetsController?
+    @State private var streamRouter: StreamRouter?
 
     @State private var presentLayout = PresentLayoutController()
 
@@ -82,10 +82,6 @@ struct MxUSlidesApp: App {
     @State private var midiIn: MIDIInController?
 
     @State private var keyIn: KeyInController?
-
-    @State private var signage: SignageController?
-
-    @State private var mediaPlaylists: MediaPlaylistController?
 
     @State private var serviceTracking: ServiceTimingController?
 
@@ -122,23 +118,15 @@ struct MxUSlidesApp: App {
         _appModel = State(initialValue: model)
         if let render {
             let controls = ServiceControls(appModel: model, render: render)
-            let presets = OutputPresetsController(
+            let stream = StreamRouter(
                 appModel: model, outputs: render.outputs, controls: controls
             )
             let confidence = ConfidenceMonitorController(
                 appModel: model, render: render, controls: controls
             )
-
-            let signageController = SignageController(appModel: model, render: render)
-
-            controls.signage = signageController
-            let mediaPlaylistController = MediaPlaylistController(
-                appModel: model, controls: controls
-            )
-            _mediaPlaylists = State(initialValue: mediaPlaylistController)
             let router = ActionRouter(
-                model: model, controls: controls, presets: presets,
-                confidenceMonitor: confidence, signage: signageController
+                model: model, controls: controls, stream: stream,
+                confidenceMonitor: confidence
             )
             controls.actionRouter = router
             _actionRouter = State(initialValue: router)
@@ -147,12 +135,11 @@ struct MxUSlidesApp: App {
                 model: model, controls: controls, router: router
             )
             _scheduler = State(initialValue: schedulerController)
-            _signage = State(initialValue: signageController)
             _controls = State(initialValue: controls)
-            _outputPresets = State(initialValue: presets)
+            _streamRouter = State(initialValue: stream)
             let api = LocalAPIController(
                 appModel: model, controls: controls,
-                outputPresets: presets, render: render,
+                render: render,
                 scheduler: schedulerController
             )
             _localAPI = State(initialValue: api)
@@ -196,14 +183,12 @@ struct MxUSlidesApp: App {
 
                 ShellView(
                     model: appModel, render: renderContext,
-                    controls: controls, presets: outputPresets,
+                    controls: controls,
                     layout: presentLayout
                 )
                 .environment(\.actionRouter, actionRouter)
                 .environment(\.scheduler, scheduler)
                 .environment(\.confidenceMonitor, confidenceMonitor)
-                .environment(\.signage, signage)
-                .environment(\.mediaPlaylists, mediaPlaylists)
 
                 .overlay(alignment: .bottom) {
                     GoToSlideHUD(keyIn: keyIn).padding(.bottom, 48)
@@ -212,8 +197,7 @@ struct MxUSlidesApp: App {
 
                 .sheet(isPresented: $showWelcome) {
                     OnboardingView(
-                        model: appModel, render: renderContext,
-                        importWorkspace: welcomeImportAction
+                        model: appModel, importWorkspace: welcomeImportAction
                     ) { showWelcome = false }
                 }
                 .onChange(of: showWelcome) { appModel.welcomeShowing = showWelcome }
@@ -231,7 +215,6 @@ struct MxUSlidesApp: App {
                         showFeedback = true
                     }
                 }
-                .task { openEngineWindowIfSoaking() }
                 .task { await actionRouter?.runStartupCombos() }
                 .task { await scheduler?.start() }
             } else {
@@ -267,11 +250,9 @@ struct MxUSlidesApp: App {
             if let appModel, let module {
                 ModuleWindowView(
                     module: module, model: appModel,
-                    controls: controls, presets: outputPresets, layout: presentLayout
+                    controls: controls, layout: presentLayout
                 )
                 .environment(\.confidenceMonitor, confidenceMonitor)
-                .environment(\.signage, signage)
-                .environment(\.mediaPlaylists, mediaPlaylists)
             }
         }
         .defaultSize(width: 360, height: 460)
@@ -280,11 +261,9 @@ struct MxUSlidesApp: App {
             if let appModel {
                 ServiceControlsWindowView(
                     model: appModel, controls: controls,
-                    presets: outputPresets, layout: presentLayout
+                    layout: presentLayout
                 )
                 .environment(\.confidenceMonitor, confidenceMonitor)
-                .environment(\.signage, signage)
-                .environment(\.mediaPlaylists, mediaPlaylists)
                 .environment(\.actionRouter, actionRouter)
                 .environment(\.scheduler, scheduler)
             }
@@ -306,9 +285,8 @@ struct MxUSlidesApp: App {
                 RunOnlyLockedPlaceholder(surface: "Screen Configuration")
                     .background(NonRestorableWindow())
             } else {
-                OutputsWindow(render: renderContext, presets: outputPresets)
+                OutputsWindow(render: renderContext)
                     .background(NonRestorableWindow())
-                    .environment(\.signage, signage)
             }
         }
         .defaultSize(width: 780, height: 540)
@@ -318,21 +296,6 @@ struct MxUSlidesApp: App {
         }
         .defaultSize(width: 400, height: 600)
         .keyboardShortcut("l", modifiers: [.command, .option])
-
-        Window("Engine", id: "engine") {
-            if presentLayout.runOnly {
-                RunOnlyLockedPlaceholder(surface: "The Engine rig")
-                    .background(NonRestorableWindow())
-            } else if let renderContext {
-                ContentView(render: renderContext, presets: outputPresets)
-                    .background(NonRestorableWindow())
-                    .task { await AutoSoak.runIfRequested(render: renderContext) }
-            } else {
-                Text("Metal is not available on this machine.")
-                    .padding(40)
-            }
-        }
-        .commandsRemoved()
     }
 
     @Environment(\.openWindow) private var openWindow
@@ -346,7 +309,7 @@ struct MxUSlidesApp: App {
             { host in
                 WorkspaceImportRunner(
                     model: appModel, render: renderContext, controls: controls,
-                    confidenceMonitor: confidenceMonitor, presets: outputPresets,
+                    confidenceMonitor: confidenceMonitor,
                     inlineHost: host
                 ).present()
             }
@@ -355,9 +318,4 @@ struct MxUSlidesApp: App {
         }
     }
 
-    private func openEngineWindowIfSoaking() {
-        if CommandLine.arguments.contains("--soak-minutes") {
-            openWindow(id: "engine")
-        }
-    }
 }

@@ -17,14 +17,12 @@ enum AppMode: String, CaseIterable {
 
 enum EditContext: String, CaseIterable {
     case slides
-    case overlays
     case themes
     case confidence
 
     var title: String {
         switch self {
         case .slides: "Slides"
-        case .overlays: "Overlays"
         case .themes: "Themes"
         case .confidence: "Confidence"
         }
@@ -33,7 +31,6 @@ enum EditContext: String, CaseIterable {
     var section: LibrarySection {
         switch self {
         case .slides: .presentations
-        case .overlays: .overlays
         case .themes: .themes
         case .confidence: .confidence
         }
@@ -42,7 +39,6 @@ enum EditContext: String, CaseIterable {
     init?(section: LibrarySection) {
         switch section {
         case .presentations: self = .slides
-        case .overlays: self = .overlays
         case .themes: self = .themes
         case .confidence: self = .confidence
         default: return nil
@@ -264,7 +260,6 @@ struct ShellView: View {
     @FocusedValue(\.presentScripture) private var presentScripture
     @FocusedValue(\.presentPoints) private var presentPoints
     @FocusedValue(\.presentSongSearch) private var presentSongSearch
-    let presets: OutputPresetsController?
     let layout: PresentLayoutController?
 
     @Environment(\.openWindow) private var openWindow
@@ -278,7 +273,7 @@ struct ShellView: View {
             MenuAction("workspaceImport") {
                 WorkspaceImportRunner(
                     model: model, render: render, controls: controls,
-                    confidenceMonitor: confidenceMonitor, presets: presets
+                    confidenceMonitor: confidenceMonitor
                 ).present()
             }
         } else {
@@ -336,7 +331,6 @@ struct ShellView: View {
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
 
-    @AppStorage("diagnostics.performanceHUD") private var performanceHUD = false
     @AppStorage("shell.sidebarVisible") private var sidebarVisible = true
     @AppStorage("shell.sidebarSplit") private var splitFraction = 0.42
     @AppStorage("shell.sidebarWidth") private var sidebarWidth = 272.0
@@ -512,7 +506,6 @@ struct ShellView: View {
                             .padding(.trailing, 10)
                     }
 
-                    BroadcastStatusChip(controls: controls)
 
                     ClearChip(controls: controls)
                         .padding(.leading, 8)
@@ -1417,14 +1410,6 @@ struct ShellView: View {
                     .padding(.bottom, 14)
             }
         }
-
-        .overlay(alignment: .bottomLeading) {
-            if performanceHUD, let controls, let render {
-                PerformanceHUD(render: render, media: controls.media)
-                    .padding(.leading, 14)
-                    .padding(.bottom, 60)
-            }
-        }
     }
 
     private var presentFooter: some View {
@@ -1500,8 +1485,6 @@ struct ShellView: View {
             Toggle("Readable Text", isOn: $legibleText)
             Toggle("Backgrounds Only on Declaring Slide", isOn: $hideScopedBackgrounds)
             Toggle("Transparency Grid", isOn: $transparencyGrid)
-            Divider()
-            Toggle("Performance HUD", isOn: $performanceHUD)
         }
 
         .toggleStyle(InspectorToggleStyle())

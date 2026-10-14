@@ -25,7 +25,6 @@ struct AppSettingsView: View {
     @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
-    @AppStorage(ServiceControls.clearAllIncludesAudioKey) private var clearAllIncludesAudio = true
     @AppStorage(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
 
     @State private var category: SettingsCategory = .appearance
@@ -37,10 +36,7 @@ struct AppSettingsView: View {
                 .frame(width: 176)
             Divider()
 
-            if query.isEmpty, category == .streamRecord, let model, let controls {
-                StreamRecordPane(model: model, controls: controls)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if query.isEmpty {
+            if query.isEmpty {
                 SettingsCategoryPane(
                     category: category,
                     rows: allRows.filter { $0.category == category },
@@ -180,7 +176,7 @@ struct AppSettingsView: View {
                     if !matches.isEmpty {
                         Section(entry.title) {
                             ForEach(matches) { spec in
-                                if spec.stacked || spec.id == "streamRecord.pane" {
+                                if spec.stacked {
                                     LabeledContent {
                                         Button("Show") { query = ""; category = entry }
                                     } label: {
@@ -292,13 +288,6 @@ struct AppSettingsView: View {
                 control: AnyView(Toggle("", isOn: $hideScopedBackgrounds).settingsToggle())
             ),
             SettingsRowSpec(
-                id: "present.clearAllAudio", category: .present,
-                title: "Clear All includes Music",
-                caption: "Off protects walk-in music from the panic clear.",
-                keywords: "clear all audio panic walk-in music",
-                control: AnyView(Toggle("", isOn: $clearAllIncludesAudio).settingsToggle())
-            ),
-            SettingsRowSpec(
                 id: "present.nextSkipsBlanks", category: .present,
                 title: "Confidence NEXT skips blank slides",
                 caption: "Blank slides parked as clears are ignored — NEXT shows the first upcoming slide that has text.",
@@ -336,18 +325,15 @@ struct AppSettingsView: View {
                 })
             ))
         }
-        rows.append(contentsOf: groupsRows)
-        rows.append(contentsOf: audioRows)
         rows.append(
             SettingsRowSpec(
                 id: "screens.configuration", category: .screens,
                 title: "Screen Configuration",
-                caption: "Screens, output backing, presets, and layer routing.",
-                keywords: "outputs displays routing presets placeholder ndi",
+                caption: "The Audience, Livestream and Stage screens: which output carries each one, and its resolution.",
+                keywords: "outputs displays screens audience livestream stage decklink ndi resolution 4k alpha key",
                 control: AnyView(OpenScreenConfigurationButton())
             )
         )
-        rows.append(contentsOf: streamRecordRows)
         rows.append(SettingsRowSpec(
             id: "avInputs.cameras", category: .avInputs,
             title: "Video inputs",
@@ -359,16 +345,8 @@ struct AppSettingsView: View {
         rows.append(SettingsRowSpec(
             id: "avInputs.audio", category: .avInputs,
             title: "Audio inputs",
-            caption: "Interfaces and board feeds — each picks its device and channels, routes to a mix, and can stream, record, or go on air from the Mixer.",
-            keywords: "audio input microphone interface usb board mix feed sound stream record source channels",
-            control: AnyView(EmptyView()),
-            stacked: true
-        ))
-        rows.append(SettingsRowSpec(
-            id: "avInputs.outputs", category: .avInputs,
-            title: "Audio outputs",
-            caption: "The output patch bay — named outputs assigned to a device and stereo pair. Mixes send to outputs in the Mixer; hardware lives only here.",
-            keywords: "audio output speaker device dante interface patch stereo pair mix send",
+            caption: "Interfaces and board feeds — each picks its device and channels. Live Assist listens to one of these.",
+            keywords: "audio input microphone interface usb board feed sound source channels live assist",
             control: AnyView(EmptyView()),
             stacked: true
         ))
@@ -391,8 +369,8 @@ struct AppSettingsView: View {
         rows.append(SettingsRowSpec(
             id: "midi.map", category: .midi,
             title: "MIDI input map",
-            caption: "What incoming notes trigger — clears, slides, videos, overlays, media, music, timers, alerts, macros. ProPresenter's stock numbers out of the box; every assignment is editable.",
-            keywords: "midi input map note trigger command clear slide advance timer combo channel propresenter overlay prop playlist media audio music alert message select index",
+            caption: "What incoming notes trigger — clears, slides, videos, media, timers, alerts, macros. ProPresenter's stock numbers out of the box; every assignment is editable.",
+            keywords: "midi input map note trigger command clear slide advance timer combo channel propresenter playlist media alert message select index",
             control: AnyView(MIDIMapManager())
         ))
 
@@ -408,18 +386,18 @@ struct AppSettingsView: View {
                 id: "show.screens", category: .showSetup,
                 title: "Screens",
                 caption: nil,
-                keywords: "audience livestream stream stage display confidence screen monitor lower third transparent full screen key",
+                keywords: "audience livestream stream stage display confidence screen monitor output decklink ndi resolution 4k 1080p alpha key lower third transparent full screen",
                 control: AnyView(ShowSetupForm(controls: controls)),
                 stacked: true
             ))
         }
-        if let controls {
+        if controls != nil {
             rows.append(SettingsRowSpec(
                 id: "show.decklink", category: .showSetup,
                 title: "Blackmagic DeckLink",
                 caption: nil,
                 keywords: "decklink blackmagic sdi ultrastudio desktop video output card 8k duo quad",
-                control: AnyView(DeckLinkSetupForm(render: controls.render)),
+                control: AnyView(DeckLinkSetupForm()),
                 stacked: true
             ))
         }
@@ -443,8 +421,8 @@ struct AppSettingsView: View {
             rows.append(SettingsRowSpec(
                 id: "present.types", category: .present,
                 title: "Presentation types",
-                caption: "Default actions for each type of presentation, run when one goes live — stage layout, timers, output looks.",
-                keywords: "presentation type category sermon worship bible announcement default action stage layout timer look preset",
+                caption: "Default actions for each type of presentation, run when one goes live — stage layout and timers.",
+                keywords: "presentation type category sermon worship bible announcement default action stage layout timer",
                 control: AnyView(PresentationTypeRulesForm(model: model)),
                 stacked: true
             ))
@@ -467,31 +445,6 @@ struct AppSettingsView: View {
         ))
         rows.append(contentsOf: apiRows)
         return rows
-    }
-
-    private var groupsRows: [SettingsRowSpec] {
-        guard let model else { return [] }
-        return [
-            SettingsRowSpec(
-                id: "groups.palette", category: .groups,
-                title: "Groups",
-                caption: "Song section labels and their colors — pills in the slide grid and arrangements wear these. A section wears its named group's color wherever it appears; \"Pre-Chorus\" and \"PreChorus\" count as the same name.",
-                keywords: "group section verse chorus bridge color label pill arrangement palette propresenter",
-                control: AnyView(EmptyView())
-            ),
-        ]
-    }
-
-    private var streamRecordRows: [SettingsRowSpec] {
-        [
-            SettingsRowSpec(
-                id: "streamRecord.pane", category: .streamRecord,
-                title: "Stream & Record",
-                caption: "Destinations are the places you can stream to; presets say which ones, what streams, and what records.",
-                keywords: "stream record preset destination rtmp rtmps srt hls youtube facebook key bitrate go live sunday record only visibility",
-                control: AnyView(Button("Show") { query = ""; category = .streamRecord })
-            ),
-        ]
     }
 
     private var apiRows: [SettingsRowSpec] {
@@ -536,48 +489,7 @@ struct AppSettingsView: View {
         ]
     }
 
-    private var audioRows: [SettingsRowSpec] {
-        guard let audio = controls?.audio else { return [] }
-        return [
-            SettingsRowSpec(
-                id: "audio.fadeEnabled", category: .audio,
-                title: "Fade in and out",
-                caption: "Play, pause, and Clear Music ease over the fade time — every bus.",
-                keywords: "audio fade transport ease",
-                control: AnyView(
-                    Toggle("", isOn: Binding(
-                        get: { audio.fadeEnabled },
-                        set: { audio.fadeEnabled = $0 }
-                    ))
-                    .settingsToggle()
-                )
-            ),
-            SettingsRowSpec(
-                id: "audio.fadeSeconds", category: .audio,
-                title: "Fade time",
-                caption: nil,
-                keywords: "audio fade seconds duration",
-                control: AnyView(
-                    HStack(spacing: 8) {
-                        Slider(
-                            value: Binding(
-                                get: { audio.fadeSeconds },
-                                set: { audio.fadeSeconds = $0 }
-                            ),
-                            in: 0 ... 5, step: 0.25
-                        )
-                        .controlSize(.small)
-                        .frame(width: 140)
-                        .disabled(!audio.fadeEnabled)
-                        Text("\(audio.fadeSeconds.formatted())s")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 34, alignment: .trailing)
-                    }
-                )
-            ),
-        ]
-    }
+
 }
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
@@ -586,15 +498,11 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case showSetup
     case present
 
-    case groups
-    case audio
-
     case avInputs
     case midi
 
     case keyboard
     case screens
-    case streamRecord
     case bible
     case planningCenter
     case api
@@ -606,13 +514,10 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .appearance: "Appearance"
         case .showSetup: "Show Setup"
         case .present: "Present"
-        case .groups: "Groups"
-        case .audio: "Music"
         case .avInputs: "Audio/Video Inputs"
         case .midi: "MIDI"
         case .keyboard: "Keyboard"
-        case .screens: "Screen Outputs"
-        case .streamRecord: "Stream & Record"
+        case .screens: "Screens"
         case .bible: "Bible"
         case .planningCenter: "Planning Center"
 
@@ -625,13 +530,10 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .appearance: "circle.lefthalf.filled"
         case .showSetup: "rectangle.3.group"
         case .present: "play.rectangle"
-        case .groups: "tag"
-        case .audio: "speaker.wave.2"
         case .avInputs: "camera"
         case .midi: "pianokeys"
         case .keyboard: "keyboard"
         case .screens: "display"
-        case .streamRecord: "record.circle"
         case .bible: "book"
         case .planningCenter: "calendar.badge.clock"
         case .api: "network"
@@ -644,16 +546,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 final class SettingsRouter {
     static let shared = SettingsRouter()
     var pending: SettingsCategory?
-
-    var pendingStreamTab: StreamRecordPane.Tab?
-    var pendingStreamPresetID: String?
     private init() {}
-
-    func openStreamRecord(tab: StreamRecordPane.Tab, presetID: String? = nil) {
-        pendingStreamTab = tab
-        pendingStreamPresetID = presetID
-        pending = .streamRecord
-    }
 }
 
 struct SettingsRowSpec: Identifiable {
