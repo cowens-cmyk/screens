@@ -79,6 +79,7 @@ import Testing
         "LocalAPIBridgeAdapter.swift update",
         "WorkspaceImport.swift run",
         "BackupTransfer.swift run",
+        "ShareTransfer.swift importFile",
 
         "AppModel.swift noteEditorSave",
         "AppModel.swift noteDecksRestyled",

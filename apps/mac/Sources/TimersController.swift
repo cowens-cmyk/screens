@@ -16,6 +16,7 @@ final class TimersController {
     init(render: RenderContext) {
         self.render = render
         restore()
+        Self.current = self
         restoreBoard()
         push()
     }
@@ -352,41 +353,66 @@ final class TimersController {
     private static let defaultsKey = "serviceControls.timers"
 
     private func save() {
-        let configs = timers.filter { !Self.isPermanent($0.id) }.map { timer in
-            let wall = timer.targetTime.map {
-                Calendar.current.dateComponents([.hour, .minute], from: $0)
-            }
-            return PersistedTimer(
-                id: timer.id, name: timer.name,
-                mode: Self.modeKey(timer.mode),
-                durationSeconds: timer.durationSeconds,
-                hour: wall?.hour, minute: wall?.minute,
-                warnings: timer.warnings == TimerWarning.defaults ? nil : timer.warnings,
-                keepsCountingAfterZero: timer.keepsCountingAfterZero == false ? false : nil
-            )
-        }
+        let configs = timers.filter { !Self.isPermanent($0.id) }.map(Self.config)
         if let data = try? JSONEncoder().encode(configs) {
             UserDefaults.standard.set(data, forKey: Self.defaultsKey)
         }
+    }
+
+    private static func config(_ timer: TimerSnapshot) -> PersistedTimer {
+        let wall = timer.targetTime.map {
+            Calendar.current.dateComponents([.hour, .minute], from: $0)
+        }
+        return PersistedTimer(
+            id: timer.id, name: timer.name,
+            mode: modeKey(timer.mode),
+            durationSeconds: timer.durationSeconds,
+            hour: wall?.hour, minute: wall?.minute,
+            warnings: timer.warnings == TimerWarning.defaults ? nil : timer.warnings,
+            keepsCountingAfterZero: timer.keepsCountingAfterZero == false ? false : nil
+        )
+    }
+
+    private static func snapshot(_ config: PersistedTimer) -> TimerSnapshot? {
+        guard let mode = mode(forKey: config.mode) else { return nil }
+        return TimerSnapshot(
+            id: config.id, name: config.name, mode: mode,
+            durationSeconds: config.durationSeconds,
+            targetTime: config.hour.map {
+                nextOccurrence(hour: $0, minute: config.minute ?? 0)
+            },
+            armedAt: config.hour != nil ? Date() : nil,
+            warnings: config.warnings ?? TimerWarning.defaults,
+            keepsCountingAfterZero: config.keepsCountingAfterZero
+        )
     }
 
     private func restore() {
         guard let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
               let configs = try? JSONDecoder().decode([PersistedTimer].self, from: data)
         else { return }
-        timers = configs.compactMap { config in
-            guard let mode = Self.mode(forKey: config.mode) else { return nil }
-            return TimerSnapshot(
-                id: config.id, name: config.name, mode: mode,
-                durationSeconds: config.durationSeconds,
-                targetTime: config.hour.map {
-                    Self.nextOccurrence(hour: $0, minute: config.minute ?? 0)
-                },
-                armedAt: config.hour != nil ? Date() : nil,
-                warnings: config.warnings ?? TimerWarning.defaults,
-                keepsCountingAfterZero: config.keepsCountingAfterZero
-            )
-        }
+        timers = configs.compactMap(Self.snapshot)
+    }
+
+    /// The live timers, for exports and imports made outside the controls.
+    static weak var current: TimersController?
+
+    /// The timers with these ids, for a presentation export.
+    func sharedConfigs(ids: Set<String>) -> Data? {
+        let picked = timers.filter { ids.contains($0.id) && !Self.isPermanent($0.id) }.map(Self.config)
+        return picked.isEmpty ? nil : try? JSONEncoder().encode(picked)
+    }
+
+    /// Adds an import's timers that this Mac doesn't have yet.
+    @discardableResult
+    func adoptShared(_ data: Data) -> Int {
+        guard let configs = try? JSONDecoder().decode([PersistedTimer].self, from: data) else { return 0 }
+        let added = configs.compactMap(Self.snapshot).filter { new in !timers.contains { $0.id == new.id } }
+        guard !added.isEmpty else { return 0 }
+        timers.append(contentsOf: added)
+        reconcileBoard()
+        push()
+        return added.count
     }
 
     private static let boardKey = "serviceControls.timerBoard"

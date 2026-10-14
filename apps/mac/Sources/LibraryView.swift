@@ -994,6 +994,11 @@ struct LibrarySidebar: View {
             Button("Add to Service") { model.addToCurrentService(entry) }
             Divider()
         }
+        if entry.kind == .presentation || entry.kind == .theme {
+            Button("Export…") {
+                ShareTransferRunner(model: model).presentExport(kind: entry.kind, id: entry.id, name: entry.name)
+            }
+        }
         if entry.kind == .presentation, !runOnly {
             Button("Add Scripture…") {
                 slideTarget = SlideTarget.library(entry.id, model: model)
@@ -1378,6 +1383,26 @@ struct LibraryCommands: Commands {
             Button("Import Chord Chart…") { importDocuments(chordChartsOnly: true) }
                 .disabled(model == nil || runOnly)
             Divider()
+            Menu("Import") {
+                Button("Theme…") { importShared() }
+                Button("Presentation…") { importShared() }
+            }
+            .disabled(model == nil || runOnly)
+            Menu("Export") {
+                Button(exportPresentationLabel) { exportPresentation() }
+                    .disabled(model.flatMap { SlideTarget.current(model: $0, editor: slideEditor) } == nil)
+                Menu("Theme") {
+                    ForEach(model?.entries(of: .theme).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } ?? [], id: \.id) { theme in
+                        Button(theme.name) {
+                            if let model {
+                                ShareTransferRunner(model: model).presentExport(kind: .theme, id: theme.id, name: theme.name)
+                            }
+                        }
+                    }
+                }
+            }
+            .disabled(model == nil || runOnly)
+            Divider()
             Button("Export Library Backup…") { exportBackup() }
                 .disabled(model == nil || runOnly)
             Button("Import Library Backup…") { importBackup() }
@@ -1567,6 +1592,20 @@ struct LibraryCommands: Commands {
         }
 
         activity.finish(summaryLines: summaryLines, warnings: warnings)
+    }
+
+    private var exportPresentationLabel: String {
+        guard let model, let target = SlideTarget.current(model: model, editor: slideEditor) else { return "Presentation…" }
+        return "Presentation “\(target.name)”…"
+    }
+
+    private func exportPresentation() {
+        guard let model, let target = SlideTarget.current(model: model, editor: slideEditor) else { return }
+        ShareTransferRunner(model: model).presentExport(kind: .presentation, id: target.presentationID, name: target.name)
+    }
+
+    private func importShared() {
+        if let model { ShareTransferRunner(model: model).presentImport() }
     }
 
     private func exportBackup() {
