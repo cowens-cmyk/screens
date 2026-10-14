@@ -178,7 +178,7 @@ struct MxUSlidesApp: App {
                     ProgressView()
                     Text("Opening the library…").font(.callout).foregroundStyle(.secondary)
                 }
-                .frame(minWidth: 1280, minHeight: 640)
+                .frame(minWidth: 1000, minHeight: 600)
             } else if let appModel {
 
                 ShellView(
@@ -193,7 +193,7 @@ struct MxUSlidesApp: App {
                 .overlay(alignment: .bottom) {
                     GoToSlideHUD(keyIn: keyIn).padding(.bottom, 48)
                 }
-                .frame(minWidth: 1280, minHeight: 640)
+                .frame(minWidth: 1000, minHeight: 600)
 
                 .sheet(isPresented: $showWelcome) {
                     OnboardingView(

@@ -10,18 +10,32 @@ struct MonitorsPanel: View {
     @Bindable private var setup = ShowSetup.shared
     @Environment(\.openSettings) private var openSettings
 
+    /// Each preview's height, so all three monitors and their switches fit
+    /// the column at any window size.
+    @State private var previewHeight: CGFloat = 180
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                monitor("Audience", target: audienceTarget) { target in
-                    LiveSceneView(render: render, screenTargetID: target)
+        GeometryReader { geo in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    monitor("Audience", target: audienceTarget) { target in
+                        LiveSceneView(render: render, screenTargetID: target)
+                    }
+                    streamMonitor
+                    stageMonitor
                 }
-                streamMonitor
-                stageMonitor
+                .padding(12)
             }
-            .padding(12)
+            .scrollContentBackground(.hidden)
+            .onAppear { fit(geo.size.height) }
+            .onChange(of: geo.size.height) { _, height in fit(height) }
         }
-        .scrollContentBackground(.hidden)
+    }
+
+    /// Titles, the two switches, spacing and padding take about 150 pt; the
+    /// rest is shared by the three previews.
+    private func fit(_ height: CGFloat) {
+        previewHeight = max(48, (height - 150) / 3)
     }
 
     // MARK: Targets (Settings › Show Setup, else a sensible guess)
@@ -42,7 +56,7 @@ struct MonitorsPanel: View {
             if let target {
                 content(target)
                     .aspectRatio(PreviewTargets.aspect(of: target, render: render), contentMode: .fit)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: previewHeight)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
                     .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
             } else {
@@ -64,7 +78,7 @@ struct MonitorsPanel: View {
                 LiveSceneView(render: render, screenTargetID: stageTarget)
                     .modifier(PreviewedLayoutKeeper(target: stageTarget))
                     .aspectRatio(PreviewTargets.aspect(of: stageTarget, render: render), contentMode: .fit)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: previewHeight)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
                     .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
             } else {
@@ -98,7 +112,7 @@ struct MonitorsPanel: View {
                         provider: render.outputs.previewProvider(for: streamTarget))
                 }
                 .aspectRatio(PreviewTargets.aspect(of: streamTarget, render: render), contentMode: .fit)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: previewHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
                 Picker("", selection: $setup.streamMode) {

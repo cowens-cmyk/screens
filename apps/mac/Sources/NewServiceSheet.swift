@@ -27,7 +27,7 @@ struct NewServiceSheet: View {
                 }
             }
             .formStyle(.grouped)
-            Text("Add songs, scripture, presentations, videos and headers with the + Add menu, or drag them in from the library.")
+            Text("Add songs, scripture, presentations, videos and headers with Add Item at the bottom of the service, or drag them in from the library.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Spacer()
@@ -65,43 +65,6 @@ struct NewServiceSheet: View {
         model.createInDrive(service)
         dismiss()
         onCreated(service.id)
-    }
-}
-
-/// "+ Add" for the open service: anything from the library, or a header.
-struct AddToServiceMenu: View {
-    let model: AppModel
-    let serviceID: String
-
-    @State private var picking = false
-    @State private var namingHeader = false
-    @State private var headerName = ""
-
-    var body: some View {
-        Menu {
-            Button("Presentation, Song or Video…") { picking = true }
-            Button("Header…") { headerName = ""; namingHeader = true }
-        } label: {
-            Label("Add", systemImage: "plus")
-                .font(.caption.weight(.medium))
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .fixedSize()
-        .help("Add to this service — or drag items in from the library")
-        .sheet(isPresented: $picking) {
-            LibraryPickerSheet(appModel: model, kinds: [.presentation, .media]) { entry in
-                model.addServiceItem(serviceID, refID: entry.id)
-            }
-        }
-        .alert("New Header", isPresented: $namingHeader) {
-            TextField("Name", text: $headerName)
-            Button("Add") {
-                let trimmed = headerName.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty { model.addServiceHeader(serviceID, name: trimmed) }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
     }
 }
 

@@ -401,7 +401,7 @@ struct ShellView: View {
         HStack(spacing: 0) {
             if sidebarVisible {
                 sidebar
-                    .frame(width: draftSidebarWidth ?? sidebarWidth)
+                    .frame(width: effectiveSidebarWidth)
                     .overlay(alignment: .trailing) { widthGrip }
                     .transition(.move(edge: .leading))
             }
@@ -409,7 +409,7 @@ struct ShellView: View {
 
             if railVisible {
                 rightRail
-                    .frame(width: draftRightRailWidth ?? rightRailWidth)
+                    .frame(width: effectiveRailWidth)
                     .overlay(alignment: .leading) { rightRailWidthGrip }
                     .padding([.trailing, .top, .bottom], CornerStandard.panelInset)
             }
@@ -422,13 +422,13 @@ struct ShellView: View {
                 .padding(
                     .leading,
                     sidebarVisible
-                        ? (draftSidebarWidth ?? sidebarWidth) + CornerStandard.panelInset
+                        ? effectiveSidebarWidth + CornerStandard.panelInset
                         : 0
                 )
                 .padding(
                     .trailing,
                     railVisible
-                        ? (draftRightRailWidth ?? rightRailWidth) + CornerStandard.panelInset
+                        ? effectiveRailWidth + CornerStandard.panelInset
                         : 0
                 )
         }
@@ -448,8 +448,8 @@ struct ShellView: View {
             // Centered over the slides, not the window, so it never runs
             // into the chips beside the sidebar or the buttons over the rail.
             .frame(maxWidth: .infinity)
-            .padding(.leading, sidebarVisible ? (draftSidebarWidth ?? sidebarWidth) + 220 : 260)
-            .padding(.trailing, railVisible ? (draftRightRailWidth ?? rightRailWidth) + 140 : 140)
+            .padding(.leading, (sidebarVisible ? effectiveSidebarWidth : 120) + (centerWidth > 1050 ? 220 : 60))
+            .padding(.trailing, (railVisible ? effectiveRailWidth : 0) + (compactTopBar ? 170 : 300))
         }
         .overlay(alignment: .topLeading) {
             HStack(spacing: 6) {
@@ -465,7 +465,7 @@ struct ShellView: View {
                             .lineLimit(1)
                     }
                     presentViewMenu
-                    if centerWidth > 900 { transitionChips }
+                    if centerWidth > 1050 { transitionChips }
                 }
             }
             .frame(height: Self.headerHeight)
@@ -475,10 +475,10 @@ struct ShellView: View {
             if mode == .present, sidebarVisible {
                 HStack(spacing: 6) {
                     presentViewMenu
-                    if centerWidth > 900 { transitionChips }
+                    if centerWidth > 1050 { transitionChips }
                 }
                 .frame(height: Self.headerHeight)
-                .padding(.leading, (draftSidebarWidth ?? sidebarWidth) + 16)
+                .padding(.leading, effectiveSidebarWidth + 16)
             }
         }
 
@@ -487,15 +487,44 @@ struct ShellView: View {
 
                 HStack(spacing: 0) {
 
-                    if layout?.runOnly != true {
+                    if layout?.runOnly != true, compactTopBar {
+                        // Narrow windows: the builders and editors share one menu.
+                        Menu {
+                            Button("Song Search…") { presentSongSearch?() }
+                            Button("Scripture…") { presentScripture?() }
+                            Button("Point Slides…") { presentPoints?() }
+                            Divider()
+                            Menu("Theme Editor") {
+                                ForEach(model.entries(of: .theme), id: \.id) { theme in
+                                    Button(theme.name) {
+                                        model.openInEditor(entryID: theme.id)
+                                        modeRaw = AppMode.edit.rawValue
+                                    }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "plus.rectangle.on.rectangle")
+                                .font(.system(size: 13, weight: .medium))
+                                .frame(width: 28, height: 26)
+                                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                        .menuStyle(.button)
+                        .buttonStyle(.plain)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help("Songs, scripture, points and the theme editor")
+                        .padding(.trailing, 6)
+                        StageEditorButton(model: model)
+                            .padding(.trailing, 6)
+                        SermonMicButton()
+                            .padding(.trailing, 6)
+                    } else if layout?.runOnly != true {
                         ThemeEditorMenu(model: model, modeRaw: $modeRaw)
                             .padding(.trailing, 6)
                         StageEditorButton(model: model)
                             .padding(.trailing, 6)
-                    }
-                    SermonMicButton()
-                        .padding(.trailing, 6)
-                    if layout?.runOnly != true {
+                        SermonMicButton()
+                            .padding(.trailing, 6)
                         TopBarAddButton(title: "Songs", systemImage: "music.note", action: presentSongSearch)
                             .help("Song Search — import a song and arrangement from Planning Center (⌘⇧L)")
                             .padding(.trailing, 6)
@@ -505,15 +534,17 @@ struct ShellView: View {
                             .help("Add sermon point slides (⌘⇧P)")
                             .padding(.leading, 6)
                             .padding(.trailing, 10)
+                    } else {
+                        SermonMicButton()
+                            .padding(.trailing, 6)
                     }
-
 
                     ClearChip(controls: controls)
                         .padding(.leading, 8)
                     Spacer()
                         .frame(
                             width: railVisible
-                                ? (draftRightRailWidth ?? rightRailWidth) + CornerStandard.panelInset + 16
+                                ? effectiveRailWidth + CornerStandard.panelInset + 16
                                 : 16
                         )
                 }
@@ -708,14 +739,7 @@ struct ShellView: View {
 
                 VStack(spacing: 0) {
 
-                    HStack {
-                        Spacer()
-                        Text("Service Flow")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 10)
-                    .frame(height: 36)
+                    Color.clear.frame(height: 36)
                     serviceHeader
                     Divider()
                     serviceSection
@@ -811,9 +835,6 @@ struct ShellView: View {
                     }
                     .buttonStyle(.plain)
                     .help("New service")
-                    if let serviceID = model.currentServiceID {
-                        AddToServiceMenu(model: model, serviceID: serviceID)
-                    }
                 }
                 Spacer(minLength: 0)
                 if let label = serviceDateLabel {
@@ -909,6 +930,7 @@ struct ShellView: View {
                 Text(serviceName)
                     .font(.caption)
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 7, weight: .semibold))
             }
@@ -918,7 +940,8 @@ struct ShellView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .fixedSize()
+        .fixedSize(horizontal: false, vertical: true)
+        .layoutPriority(-1)
         .popover(isPresented: $servicePickerOpen, arrowEdge: .bottom) {
             servicePickerPopup
         }
@@ -1442,10 +1465,27 @@ struct ShellView: View {
             }
     }
 
+    /// The sidebar and right column give way on smaller windows, so the
+    /// slides always keep most of the room.
+    /// Below this the top bar folds its builder buttons into one menu.
+    private var compactTopBar: Bool { centerWidth < 900 }
+
+    private var effectiveSidebarWidth: CGFloat {
+        let wanted = CGFloat(draftSidebarWidth ?? sidebarWidth)
+        guard shellWidth > 0 else { return wanted }
+        return min(wanted, max(200, shellWidth * 0.24))
+    }
+
+    private var effectiveRailWidth: CGFloat {
+        let wanted = CGFloat(draftRightRailWidth ?? rightRailWidth)
+        guard shellWidth > 0 else { return wanted }
+        return min(wanted, max(220, shellWidth * 0.26))
+    }
+
     private var centerWidth: CGFloat {
         shellWidth
-            - (sidebarVisible ? (draftSidebarWidth ?? sidebarWidth) : 0)
-            - (railVisible ? (draftRightRailWidth ?? rightRailWidth) + CornerStandard.panelInset : 0)
+            - (sidebarVisible ? effectiveSidebarWidth : 0)
+            - (railVisible ? effectiveRailWidth + CornerStandard.panelInset : 0)
     }
 
     private var showTransitionSliders: Bool { centerWidth > 950 }
