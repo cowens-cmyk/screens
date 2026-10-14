@@ -17,10 +17,7 @@ struct MonitorsPanel: View {
                     LiveSceneView(render: render, screenTargetID: target)
                 }
                 streamMonitor
-                monitor("Stage", target: stageTarget) { target in
-                    LiveSceneView(render: render, screenTargetID: target)
-                        .modifier(PreviewedLayoutKeeper(target: target))
-                }
+                stageMonitor
             }
             .padding(12)
         }
@@ -29,30 +26,10 @@ struct MonitorsPanel: View {
 
     // MARK: Targets (Settings › Show Setup, else a sensible guess)
 
-    private var screens: [(id: String, name: String)] { PreviewTargets.screens(render) }
-
-    private func named(_ words: [String]) -> String? {
-        screens.first { screen in words.contains { screen.name.lowercased().contains($0) } }?.id
-    }
-
-    private var stageTarget: String? {
-        if screens.contains(where: { $0.id == setup.stageTarget }) { return setup.stageTarget }
-        if let confidence = render.outputs.placeholderScreens.first(where: {
-            render.outputs.role(forScreen: $0.id) == .confidence
-        }) { return confidence.id.uuidString }
-        return named(["stage", "confidence"])
-    }
-
-    private var streamTarget: String? {
-        if screens.contains(where: { $0.id == setup.streamTarget }) { return setup.streamTarget }
-        return named(["stream", "live", "broadcast", "lower"])
-    }
-
-    private var audienceTarget: String? {
-        if screens.contains(where: { $0.id == setup.audienceTarget }) { return setup.audienceTarget }
-        let taken = Set([stageTarget, streamTarget].compactMap { $0 })
-        return named(["audience", "main", "front", "projector"]) ?? screens.first { !taken.contains($0.id) }?.id
-    }
+    private var targets: ShowTargets { ShowTargets(setup: setup, render: render) }
+    private var stageTarget: String? { targets.stage }
+    private var streamTarget: String? { targets.stream }
+    private var audienceTarget: String? { targets.audience }
 
     // MARK: Monitors
 
@@ -71,6 +48,35 @@ struct MonitorsPanel: View {
             } else {
                 placeholder("Choose the \(title.lowercased()) screen in Settings › Show Setup")
             }
+        }
+    }
+
+    /// The stage display follows its mode; a playing video takes it over.
+    @ViewBuilder
+    private var stageMonitor: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Stage").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Spacer()
+                StageVideoBadge(render: render)
+            }
+            if let stageTarget {
+                LiveSceneView(render: render, screenTargetID: stageTarget)
+                    .modifier(PreviewedLayoutKeeper(target: stageTarget))
+                    .aspectRatio(PreviewTargets.aspect(of: stageTarget, render: render), contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
+            } else {
+                placeholder("Choose the stage screen in Settings › Show Setup")
+            }
+            Picker("", selection: $setup.stageMode) {
+                ForEach(ShowSetup.StageMode.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+            .help("Worship: lyrics, next slide, clock and key. Message: sermon timer, clock, slide and notes. Mirror: what the audience sees. A playing video shows on the stage with the time left.")
         }
     }
 

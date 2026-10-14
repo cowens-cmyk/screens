@@ -492,6 +492,12 @@ struct ShellView: View {
 
                 HStack(spacing: 0) {
 
+                    if layout?.runOnly != true {
+                        ThemeEditorMenu(model: model, modeRaw: $modeRaw)
+                            .padding(.trailing, 6)
+                        StageEditorButton(model: model)
+                            .padding(.trailing, 6)
+                    }
                     SermonMicButton()
                         .padding(.trailing, 6)
                     if layout?.runOnly != true {
@@ -1806,5 +1812,38 @@ struct SermonMicButton: View {
         }
         .buttonStyle(.plain)
         .help(on ? "Stop listening to the sermon" : "Listen to the sermon — transcribe it and catch every Bible reference")
+    }
+}
+
+/// Top-bar theme editor: pick a theme and it opens in the editor.
+struct ThemeEditorMenu: View {
+    let model: AppModel
+    @Binding var modeRaw: String
+
+    var body: some View {
+        Menu {
+            ForEach(model.entries(of: .theme), id: \.id) { theme in
+                Button(theme.name) { open(theme.id) }
+            }
+            Divider()
+            Button("New Theme") {
+                if let id = model.createEntity(in: .themes) { open(id) }
+            }
+        } label: {
+            Image(systemName: "paintpalette")
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 28, height: 26)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Theme editor")
+    }
+
+    private func open(_ id: String) {
+        model.openInEditor(entryID: id)
+        modeRaw = AppMode.edit.rawValue
     }
 }

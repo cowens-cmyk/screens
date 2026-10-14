@@ -48,6 +48,10 @@ public struct TimerWarning: Codable, Sendable, Equatable, Identifiable {
 
     public static let amberHex = "#FFB826FF"
     public static let redHex = "#FF4739FF"
+
+    /// Ink for a countdown that has run past zero. It outranks every warning
+    /// level and the text's own colour, so "over time" always reads the same.
+    public static let overtimeHex = "#FF3B30FF"
     public static let defaults = [
         TimerWarning(remainingSeconds: 30, colorHex: amberHex),
         TimerWarning(remainingSeconds: 0, colorHex: redHex),
@@ -84,6 +88,20 @@ public struct TimerSnapshot: Sendable, Equatable, Identifiable {
         !isRunning && banked == 0 && durationSeconds == 0 && (mode != .countdownToTime || targetTime == nil)
     }
 
+    /// Whether the timer is past its zero: a countdown counting on into
+    /// negative time, or a count-up beyond its limit.
+    public func isOvertime(at date: Date) -> Bool {
+        guard !isIdle, let remaining = remaining(at: date) else { return false }
+        return remaining < 0
+    }
+
+    /// The colour the time should read in: overtime red first, then the
+    /// active warning level, else nil (the caller's normal colour).
+    public func inkHex(at date: Date) -> String? {
+        if isOvertime(at: date) { return TimerWarning.overtimeHex }
+        return activeWarning(at: date)?.colorHex
+    }
+
     public func activeWarning(at date: Date) -> TimerWarning? {
         guard !isIdle, let remaining = remaining(at: date) else { return nil }
         return warnings
@@ -92,6 +110,7 @@ public struct TimerSnapshot: Sendable, Equatable, Identifiable {
     }
 
     public func urgency(at date: Date) -> Urgency {
+        if isOvertime(at: date) { return .overrun }
         guard let warning = activeWarning(at: date) else { return .normal }
         return warning.remainingSeconds <= 0 ? .overrun : .warning
     }
@@ -115,6 +134,13 @@ public struct TimerSnapshot: Sendable, Equatable, Identifiable {
 
     public var warnings: [TimerWarning]
 
+    /// nil or true: a countdown keeps running past zero into negative time.
+    /// false: it holds at 0:00. Optional so timers saved before the option
+    /// existed keep counting.
+    public var keepsCountingAfterZero: Bool?
+
+    public var countsPastZero: Bool { keepsCountingAfterZero != false }
+
     public init(
         id: String = UUID().uuidString,
         name: String,
@@ -125,7 +151,8 @@ public struct TimerSnapshot: Sendable, Equatable, Identifiable {
         durationSeconds: TimeInterval = 0,
         targetTime: Date? = nil,
         armedAt: Date? = nil,
-        warnings: [TimerWarning] = TimerWarning.defaults
+        warnings: [TimerWarning] = TimerWarning.defaults,
+        keepsCountingAfterZero: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -137,6 +164,7 @@ public struct TimerSnapshot: Sendable, Equatable, Identifiable {
         self.targetTime = targetTime
         self.armedAt = armedAt
         self.warnings = warnings
+        self.keepsCountingAfterZero = keepsCountingAfterZero
     }
 
     public var isLive: Bool {
@@ -147,12 +175,16 @@ public struct TimerSnapshot: Sendable, Equatable, Identifiable {
         banked + (isRunning ? max(0, date.timeIntervalSince(runningSince ?? date)) : 0)
     }
 
+    /// Seconds to show. Countdowns go negative past zero (the display then
+    /// counts up with a leading minus) unless the timer is set to hold at zero.
     public func value(at date: Date) -> TimeInterval {
+        let raw: TimeInterval
         switch mode {
-        case .countUp: elapsed(at: date)
-        case .countdown: durationSeconds - elapsed(at: date)
-        case .countdownToTime: (targetTime ?? date).timeIntervalSince(date)
+        case .countUp: return elapsed(at: date)
+        case .countdown: raw = durationSeconds - elapsed(at: date)
+        case .countdownToTime: raw = (targetTime ?? date).timeIntervalSince(date)
         }
+        return countsPastZero ? raw : max(0, raw)
     }
 
     public func displayString(at date: Date) -> String {

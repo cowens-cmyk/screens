@@ -5,11 +5,20 @@ import PresenterCore
 import SlideScene
 import SwiftUI
 
+/// Keeps the stage (confidence) screens' scenes.
+///
+/// The rule: the stage mode (Worship, Message, Mirror in Show Setup) decides
+/// what every stage screen shows. A layout picked for a screen — by a slide's
+/// stage layout, a Set Stage Layout action, or the screen's own menu — shows
+/// instead, until the stage mode is changed again; changing the mode clears
+/// those picks. A playing foreground video takes over all of it until the
+/// video ends or is cleared.
 @MainActor
 @Observable
 final class ConfidenceMonitorController {
     static let assignmentsKey = "confidence.screenLayouts"
 
+    /// Layouts picked per screen; they override the stage mode.
     private(set) var assignments: [UUID: String] = [:]
 
     private(set) var previewLayoutChoices: [PreviewTargetLogic.Choice] = []
@@ -29,6 +38,22 @@ final class ConfidenceMonitorController {
         restore()
         refresh()
         armMutationWatch()
+        armStageWatch()
+        // Setting the mode, even to the one already showing, drops the
+        // per-screen picks so the mode shows at once.
+        let earlier = ShowSetup.shared.onStageChange
+        ShowSetup.shared.onStageChange = { [weak self] in
+            earlier?()
+            self?.stageModeSet()
+        }
+    }
+
+    private func stageModeSet() {
+        if !assignments.isEmpty {
+            assignments.removeAll()
+            persist()
+        }
+        refresh()
     }
 
     var confidenceScreens: [(id: UUID, name: String)] {
@@ -93,13 +118,50 @@ final class ConfidenceMonitorController {
             }
         }
         render.confidenceLayoutsBox.value = layouts
+        let modeLayout = refreshStagePlan()
         var wants: [String: Bool?] = [:]
-        for layout in layouts.values {
+        for layout in layouts.values + [modeLayout].compactMap({ $0 }) {
             wants.merge(SlideSceneBuilder.mediaWants(for: layout.objects)) { first, _ in first }
         }
         controls?.setConfidenceMediaWants(wants)
         if pruned { persist() }
         refreshPreviews()
+    }
+
+    /// Copies the stage mode's layout (or the audience screen, for Mirror)
+    /// to the render thread. Returns the mode's layout, if it has one.
+    @discardableResult
+    private func refreshStagePlan() -> ConfidenceLayout? {
+        let setup = ShowSetup.shared
+        let source: StageSource
+        var modeLayout: ConfidenceLayout?
+        switch setup.stageMode {
+        case .mirror:
+            source = .mirror
+        case .worship, .message:
+            let id = StageLayouts.id(for: setup.stageMode)
+            let layout = appModel.resident.confidenceLayouts.value(id) ?? StageLayouts.fallback(for: id)
+            modeLayout = layout
+            source = .layout(layout)
+        }
+        let audience = ShowTargets.mirrorSource(setup: setup, render: render)
+            .map { render.outputs.previewProvider(for: $0) }
+        render.stageBox.value = StagePlan(source: source, audience: audience)
+        return modeLayout
+    }
+
+    /// Re-plans when the audience screen (the one Mirror shows) changes.
+    private func armStageWatch() {
+        withObservationTracking {
+            _ = ShowTargets.mirrorSource(setup: ShowSetup.shared, render: render)
+            _ = render.outputs.screenRoles
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.refreshStagePlan()
+                self.armStageWatch()
+            }
+        }
     }
 
     private func refreshPreviews() {

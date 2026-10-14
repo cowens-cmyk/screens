@@ -297,6 +297,7 @@ final class AppModel {
     init() {
         let located = Self.libraryRoot()
         let root = located.url
+        Self.startFreshOnce(libraryRoot: root)
         client = LibraryClient(rootURL: root)
 
         resident = ResidentLibrary(source: client.residentFillSource, epochs: kindVersions, fills: tableFills)
@@ -321,6 +322,25 @@ final class AppModel {
                 self?.libraryOpenError = error.localizedDescription
                 DiagnosticsStore.shared.note("library.openFailed", detail: "\(error)")
             }
+        }
+    }
+
+    private static let freshStartKey = "library.freshStart.v1"
+
+    /// Screens 0.4 starts every library over with only the basics: the old
+    /// library (starter packs, ProPresenter imports, everything) goes to the
+    /// Trash once, so it can still be recovered from there.
+    private static func startFreshOnce(libraryRoot root: URL) {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: freshStartKey) else { return }
+        defaults.set(true, forKey: freshStartKey)
+        guard FileManager.default.fileExists(atPath: root.path) else { return }
+        do {
+            var trashed: NSURL?
+            try FileManager.default.trashItem(at: root, resultingItemURL: &trashed)
+            DiagnosticsStore.shared.note("library.freshStart", detail: "old library moved to \(trashed?.path ?? "Trash")")
+        } catch {
+            DiagnosticsStore.shared.note("library.freshStart.failed", detail: "\(error)")
         }
     }
 
@@ -358,14 +378,13 @@ final class AppModel {
         migrateStreamDestinations(prepared)
         try backfillContentIndex(prepared, rootURL: root)
         try backfillCCLIIndex(prepared, rootURL: root)
-        try seedConfidenceStarters(prepared, rootURL: root)
-        try seedChordsStarter(prepared, rootURL: root)
-        try seedStarterPacks(prepared, rootURL: root)
+        try seedBasics(prepared, rootURL: root)
         try seedUsageHistory(prepared, rootURL: root)
     }
 
     private func libraryOpened(rootURL root: URL) {
         noteLibraryWideMutation()
+        adoptBasicThemesAsDefaults()
 
         sweepMediaPosters()
         needsOnboarding = Library.needsOnboarding(rootURL: root, snapshot: client.snapshot)
@@ -377,6 +396,23 @@ final class AppModel {
         let work = readyWork
         readyWork = []
         for item in work { item() }
+    }
+
+    /// New songs, scripture and points use the basic themes until someone
+    /// picks others.
+    private func adoptBasicThemesAsDefaults() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await resident.ready([.slideBuildingSettings])
+            let current = slideBuilding
+            guard current.lyricsImportThemeId == nil, current.scriptureThemeId == nil, current.pointsThemeId == nil
+            else { return }
+            updateSlideBuilding { settings in
+                settings.lyricsImportThemeId = BasicTemplates.worshipThemeID
+                settings.scriptureThemeId = BasicTemplates.scriptureThemeID
+                settings.pointsThemeId = BasicTemplates.pointsThemeID
+            }
+        }
     }
 
     private func warmResidency() async {
@@ -476,78 +512,20 @@ final class AppModel {
         FileManager.default.createFile(atPath: marker.path, contents: nil)
     }
 
-    @LibraryActor private static func seedConfidenceStarters(_ prepared: Library, rootURL: URL) throws {
-        let marker = rootURL.appendingPathComponent(".seeded-confidence-starters-v1")
+    /// The Worship, Scripture and Points themes (each tied to its own lower
+    /// third) and the Worship and Message stage layouts.
+    @LibraryActor private static func seedBasics(_ prepared: Library, rootURL: URL) throws {
+        let marker = rootURL.appendingPathComponent(".seeded-basics-v1")
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }
         defer { FileManager.default.createFile(atPath: marker.path, contents: nil) }
-        guard try prepared.store.ids(of: .confidenceLayout).isEmpty else { return }
-        for template in ConfidenceLayoutTemplate.workspaceStarters {
-            try prepared.create(template.make(name: template.starterName))
-        }
-    }
-
-    @LibraryActor private static func seedStarterPacks(_ prepared: Library, rootURL: URL) throws {
-
-        let earlier = (1...19).map { rootURL.appendingPathComponent(".seeded-starter-packs-v\($0)") }
-        let recent = (20...22).map { rootURL.appendingPathComponent(".seeded-starter-packs-v\($0)") }
-        let marker = rootURL.appendingPathComponent(".seeded-starter-packs-v23")
-        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
-        defer { FileManager.default.createFile(atPath: marker.path, contents: nil) }
-        let repairV1 = earlier.contains { FileManager.default.fileExists(atPath: $0.path) }
-        let gentleRepair = recent.contains { FileManager.default.fileExists(atPath: $0.path) }
         let themes = Set(try prepared.store.ids(of: .theme))
-        let overlays = Set(try prepared.store.ids(of: .overlay))
-        for pack in StarterPack.allCases {
-            let theme = pack.makeTheme()
-            if !themes.contains(theme.id) {
-
-                try prepared.create(theme, seed: .init(id: theme.id))
-            } else if repairV1 {
-                let document = try prepared.open(Theme.self, id: theme.id)
-                _ = try document.update { $0.slides = theme.slides }
-                try prepared.save(document)
-            } else if gentleRepair {
-                let document = try prepared.open(Theme.self, id: theme.id)
-                let repaired = pack.pagingThirds(pack.addingLyricsDesigns(
-                    to: (document.value.slides ?? []).filter { !StarterPack.isGenericPlaceholder($0) }))
-                if repaired != document.value.slides {
-                    _ = try document.update { $0.slides = repaired }
-                    try prepared.save(document)
-                }
-            }
-            if repairV1 {
-                for id in pack.retiredThemeIDs where themes.contains(id) {
-                    try prepared.delete(kind: .theme, id: id)
-                }
-            }
-            for overlay in pack.makeOverlays() {
-                if !overlays.contains(overlay.id) {
-                    try prepared.create(overlay, seed: .init(id: overlay.id))
-                } else if repairV1 {
-                    let document = try prepared.open(Overlay.self, id: overlay.id)
-                    _ = try document.update {
-                        $0.name = overlay.name; $0.folder = overlay.folder
-                        $0.objects = overlay.objects; $0.animationOrder = overlay.animationOrder
-                    }
-                    try prepared.save(document)
-                }
-            }
-            if repairV1 {
-                for item in StarterPack.retiredOverlayItems where overlays.contains(pack.overlayID(item)) {
-                    try prepared.delete(kind: .overlay, id: pack.overlayID(item))
-                }
-            }
+        for theme in BasicTemplates.themes() where !themes.contains(theme.id) {
+            try prepared.create(theme, seed: .init(id: theme.id))
         }
-    }
-
-    @LibraryActor private static func seedChordsStarter(_ prepared: Library, rootURL: URL) throws {
-        let marker = rootURL.appendingPathComponent(".seeded-confidence-starters-v2")
-        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
-        defer { FileManager.default.createFile(atPath: marker.path, contents: nil) }
-        let template = ConfidenceLayoutTemplate.currentOverNextChords
-        let existing = try prepared.index.entries(of: .confidenceLayout).map(\.name)
-        guard !existing.contains(template.starterName) else { return }
-        try prepared.create(template.make(name: template.starterName))
+        let layouts = Set(try prepared.store.ids(of: .confidenceLayout))
+        for layout in BasicTemplates.stageLayouts() where !layouts.contains(layout.id) {
+            try prepared.create(layout, seed: .init(id: layout.id))
+        }
     }
 
     @LibraryActor private static func backfillContentIndex(_ prepared: Library, rootURL: URL) throws {

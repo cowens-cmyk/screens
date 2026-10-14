@@ -66,30 +66,50 @@ final class TimersController {
         addCountdown(name: name, seconds: TimeInterval(minutes * 60))
     }
 
-    func addCountdown(name: String = "Countdown", seconds: TimeInterval) {
-        timers.append(TimerSnapshot(
-            name: name, mode: .countdown, durationSeconds: max(0, seconds)
-        ))
+    @discardableResult
+    func addCountdown(
+        name: String = "Countdown", seconds: TimeInterval, keepsCountingAfterZero: Bool = true
+    ) -> String {
+        let timer = TimerSnapshot(
+            name: name, mode: .countdown, durationSeconds: max(0, seconds),
+            keepsCountingAfterZero: keepsCountingAfterZero ? nil : false
+        )
+        timers.append(timer)
         reconcileBoard()
         push()
+        return timer.id
     }
 
-    func addCountdownToTime(name: String? = nil, hour: Int, minute: Int) {
+    @discardableResult
+    func addCountdownToTime(
+        name: String? = nil, hour: Int, minute: Int, keepsCountingAfterZero: Bool = true
+    ) -> String {
         let target = Self.nextOccurrence(hour: hour, minute: minute)
-        timers.append(TimerSnapshot(
+        let timer = TimerSnapshot(
             name: name ?? "Until \(Self.wallLabel(hour: hour, minute: minute))",
-            mode: .countdownToTime, targetTime: target, armedAt: Date()
-        ))
+            mode: .countdownToTime, targetTime: target, armedAt: Date(),
+            keepsCountingAfterZero: keepsCountingAfterZero ? nil : false
+        )
+        timers.append(timer)
         reconcileBoard()
         push()
+        return timer.id
     }
 
-    func addCountUp(name: String = "Count Up", limitSeconds: TimeInterval = 0) {
-        timers.append(TimerSnapshot(
+    /// Whether a countdown runs on into negative time or holds at 0:00.
+    func setKeepsCountingAfterZero(id: String, _ on: Bool) {
+        mutate(id) { $0.keepsCountingAfterZero = on ? nil : false }
+    }
+
+    @discardableResult
+    func addCountUp(name: String = "Count Up", limitSeconds: TimeInterval = 0) -> String {
+        let timer = TimerSnapshot(
             name: name, mode: .countUp, durationSeconds: max(0, limitSeconds)
-        ))
+        )
+        timers.append(timer)
         reconcileBoard()
         push()
+        return timer.id
     }
 
     func setLimit(id: String, seconds: TimeInterval) {
@@ -323,6 +343,10 @@ final class TimersController {
         var minute: Int?
 
         var warnings: [TimerWarning]?
+
+        /// nil = keep counting past zero (the default, and every timer saved
+        /// before the option existed).
+        var keepsCountingAfterZero: Bool?
     }
 
     private static let defaultsKey = "serviceControls.timers"
@@ -337,7 +361,8 @@ final class TimersController {
                 mode: Self.modeKey(timer.mode),
                 durationSeconds: timer.durationSeconds,
                 hour: wall?.hour, minute: wall?.minute,
-                warnings: timer.warnings == TimerWarning.defaults ? nil : timer.warnings
+                warnings: timer.warnings == TimerWarning.defaults ? nil : timer.warnings,
+                keepsCountingAfterZero: timer.keepsCountingAfterZero == false ? false : nil
             )
         }
         if let data = try? JSONEncoder().encode(configs) {
@@ -358,7 +383,8 @@ final class TimersController {
                     Self.nextOccurrence(hour: $0, minute: config.minute ?? 0)
                 },
                 armedAt: config.hour != nil ? Date() : nil,
-                warnings: config.warnings ?? TimerWarning.defaults
+                warnings: config.warnings ?? TimerWarning.defaults,
+                keepsCountingAfterZero: config.keepsCountingAfterZero
             )
         }
     }

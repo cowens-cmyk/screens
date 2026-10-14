@@ -16,7 +16,7 @@ extension SlideActionKind {
         case .timerStart: "Start Timer"
         case .timerPause: "Pause Timer"
         case .timerReset: "Reset Timer"
-        case .timerConfigure: "Configure Timer"
+        case .timerConfigure: "Set Timer"
         case .midiOut: "MIDI Out"
         case .fireCombo: "Run Macro"
         case .captureStart: "Start Capture"
@@ -696,6 +696,7 @@ struct AddActionMenuItems: View {
 
     @Environment(\.signage) private var signage
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.actionRouter) private var actionRouter
 
     var body: some View {
         let presets = entries(of: .outputPreset)
@@ -859,20 +860,36 @@ struct AddActionMenuItems: View {
                 }
             }
         }
-        if !timers.isEmpty {
+        // One submenu per timer, then a way to make a new countdown, so any
+        // slide can start, pause, reset or set a timer.
+        if !timers.isEmpty || actionRouter != nil {
             Menu("Timer") {
-                timerOps("Start", .timerStart)
-                timerOps("Pause", .timerPause)
-                timerOps("Reset", .timerReset)
-
-                Menu("Configure") {
-                    ForEach(timers, id: \.id) { timer in
-                        Button(timer.name) {
-                            add(make(.timerConfigure) {
-                                $0.timerId = timer.id
-                                $0.timerMode = .countdown
-                                $0.timerDurationSeconds = 300
-                            })
+                ForEach(timers, id: \.id) { timer in
+                    Menu(timer.name) {
+                        Button("Start") { add(make(.timerStart) { $0.timerId = timer.id }) }
+                        Button("Pause") { add(make(.timerPause) { $0.timerId = timer.id }) }
+                        Button("Reset") { add(make(.timerReset) { $0.timerId = timer.id }) }
+                        Menu("Set To") {
+                            ForEach(Self.timerMinuteChoices, id: \.self) { minutes in
+                                Button("\(minutes):00 Countdown") {
+                                    add(make(.timerConfigure) {
+                                        $0.timerId = timer.id
+                                        $0.timerMode = .countdown
+                                        $0.timerDurationSeconds = TimeInterval(minutes * 60)
+                                    })
+                                }
+                            }
+                        }
+                    }
+                }
+                if let actionRouter {
+                    if !timers.isEmpty { Divider() }
+                    Menu("New Timer") {
+                        ForEach(Self.timerMinuteChoices, id: \.self) { minutes in
+                            Button("\(minutes):00 Countdown") {
+                                let id = actionRouter.addCountdownTimer(minutes: minutes)
+                                add(make(.timerStart) { $0.timerId = id })
+                            }
                         }
                     }
                 }
@@ -912,16 +929,7 @@ struct AddActionMenuItems: View {
         Button("MIDI Out") { add(make(.midiOut)) }
     }
 
-    @ViewBuilder
-    private func timerOps(_ label: String, _ kind: SlideActionKind) -> some View {
-        Menu(label) {
-            ForEach(timers, id: \.id) { timer in
-                Button(timer.name) {
-                    add(make(kind) { $0.timerId = timer.id })
-                }
-            }
-        }
-    }
+    private static let timerMinuteChoices = [1, 2, 3, 5, 10, 15, 20, 30, 45, 60]
 
     private func make(
         _ kind: SlideActionKind, _ fill: (inout SlideAction) -> Void = { _ in }

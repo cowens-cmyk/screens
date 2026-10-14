@@ -34,6 +34,7 @@ import Testing
         "MediaSoak.swift": [.quiet("the soak harness's own readout")],
         "AudioMixerModule.swift": [.moves(["displayLevels", "busLevels", "playerLevels", "outputLevels"])],  
         "MonitorsPanel.swift": [.quiet("the 4 Hz stream badge writes coverage only when it changes")],
+        "StageDisplay.swift": [.quiet("the 4 Hz stage video badge writes its flag only when it changes")],
     ]
 
     private let readers: [String: (hint: String, pattern: Regex<Substring>, views: Set<String>)] = [

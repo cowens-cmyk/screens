@@ -8,14 +8,7 @@ struct TimersModule: View {
 
     @Environment(\.runOnly) private var runOnly
 
-    @State private var showingTargetPicker = false
-    @State private var showingCustomCountdown = false
-    @State private var pickerHour12 = 11
-    @State private var pickerMinute = 0
-    @State private var pickerIsPM = false
-    @State private var editHours = 0
-    @State private var editMinutes = 10
-    @State private var editSeconds = 0
+    @State private var newTimerMode: NewTimerForm.Mode?
     @State private var expandedTimers: Set<String> = []
 
     @State private var editingFolders: Set<String> = []
@@ -48,6 +41,9 @@ struct TimersModule: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 2)
+            }
+            if !runOnly, !searching {
+                newTimerButton
             }
             if searching, !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
                 let ids = station.board.filteredTimerIDs(matching: searchQuery) {
@@ -95,12 +91,36 @@ struct TimersModule: View {
                 }
             }
         }
-        .popover(isPresented: $showingTargetPicker, arrowEdge: .bottom) {
-            targetPickerContent(station)
+        .popover(isPresented: Binding(
+            get: { newTimerMode != nil },
+            set: { if !$0 { newTimerMode = nil } }
+        ), arrowEdge: .bottom) {
+            NewTimerForm(station: station, initialMode: newTimerMode ?? .countdown) {
+                newTimerMode = nil
+            }
         }
-        .popover(isPresented: $showingCustomCountdown, arrowEdge: .bottom) {
-            customCountdownContent(station)
+    }
+
+    /// Always-visible way in, so making a timer doesn't depend on finding
+    /// the header's plus menu.
+    private var newTimerButton: some View {
+        Button {
+            newTimerMode = .countdown
+        } label: {
+            Label("New Timer", systemImage: "plus")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .background(
+            Color.primary.opacity(0.03),
+            in: RoundedRectangle.standard(CornerStandard.element)
+        )
+        .help("Make a countdown, countdown to a time, or count-up timer")
     }
 
     @ViewBuilder
@@ -199,9 +219,11 @@ struct TimersModule: View {
         _ folder: TimerBoard.Folder, members: [TimerSnapshot], at date: Date
     ) -> some View {
         let featured = TimerBoard.featured(in: members, at: date)
-        let tint: Color = TimerBoard.rollupWarning(of: members, at: date)
-            .map(Self.warningColor)
-            ?? (members.contains(where: \.isLive) ? .green : .secondary)
+        let tint: Color = members.contains(where: { $0.isOvertime(at: date) })
+            ? Self.overtimeColor
+            : TimerBoard.rollupWarning(of: members, at: date)
+                .map(Self.warningColor)
+                ?? (members.contains(where: \.isLive) ? .green : .secondary)
         return HStack(spacing: 6) {
             Image(systemName: "chevron.right")
                 .font(.system(size: 7, weight: .semibold))
@@ -256,29 +278,15 @@ struct TimersModule: View {
 
     private func addTimerMenu(_ station: TimersController) -> some View {
         Menu {
+            Button("New Timer…") { newTimerMode = .countdown }
             Section("Countdown") {
                 ForEach([5, 10, 15, 20, 30, 45, 60], id: \.self) { minutes in
                     Button("\(minutes) minutes") {
                         station.addCountdown(minutes: minutes)
                     }
                 }
-                Button("Custom…") {
-                    editHours = 0
-                    editMinutes = 10
-                    editSeconds = 0
-                    showingCustomCountdown = true
-                }
             }
-            Button("Countdown to Time…") {
-
-                let parts = Calendar.current.dateComponents([.hour, .minute], from: Date())
-                let minute = (parts.minute ?? 0) < 30 ? 30 : 0
-                let hour24 = minute == 0 ? ((parts.hour ?? 0) + 1) % 24 : (parts.hour ?? 0)
-                pickerHour12 = hour24 % 12 == 0 ? 12 : hour24 % 12
-                pickerMinute = minute
-                pickerIsPM = hour24 >= 12
-                showingTargetPicker = true
-            }
+            Button("Countdown to Time…") { newTimerMode = .countdownToTime }
             Button("Count Up Timer") { station.addCountUp() }
             Divider()
             Button("New Folder") { station.addFolder() }
@@ -291,29 +299,6 @@ struct TimersModule: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Add a timer — it shows on the confidence layout")
-    }
-
-    private func customCountdownContent(_ station: TimersController) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Countdown length")
-                .font(.caption.weight(.medium))
-            HStack(spacing: 4) {
-                timeField("HH", value: $editHours, max: 99)
-                Text(":").foregroundStyle(.secondary)
-                timeField("MM", value: $editMinutes, max: 59)
-                Text(":").foregroundStyle(.secondary)
-                timeField("SS", value: $editSeconds, max: 59)
-            }
-            Button("Add Timer") {
-                station.addCountdown(
-                    seconds: TimeInterval(editHours * 3600 + editMinutes * 60 + editSeconds)
-                )
-                showingCustomCountdown = false
-            }
-            .controlSize(.small)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
     }
 
     private func locked(_ timerID: String) -> Bool {
@@ -365,6 +350,19 @@ struct TimersModule: View {
         .contextMenu {
             if !locked(timer.id) {
                 Button(expanded ? "Collapse" : "Edit…") { toggleExpanded(timer.id) }
+                if timer.mode != .countdownToTime {
+                    Button(timer.isRunning ? "Pause" : "Start") { station.toggle(id: timer.id) }
+                }
+                Button(timer.mode == .countdownToTime ? "Re-arm" : "Reset") {
+                    station.reset(id: timer.id)
+                }
+                if timer.mode != .countUp {
+                    Toggle("Keep Counting After Zero", isOn: Binding(
+                        get: { timer.countsPastZero },
+                        set: { station.setKeepsCountingAfterZero(id: timer.id, $0) }
+                    ))
+                }
+                Divider()
                 if timer.mode == .countdown {
                     Picker("Duration", selection: Binding(
                         get: { Int(timer.durationSeconds / 60) },
@@ -396,8 +394,10 @@ struct TimersModule: View {
     ) -> some View {
 
         let idle = ServiceTrackingTimers.isPermanent(timer.id) && timer.isIdle
-        let tint: Color = idle ? .secondary : timer.activeWarning(at: date).map(Self.warningColor)
-            ?? (timer.isLive ? .green : .secondary)
+        let tint: Color = idle ? .secondary
+            : timer.isOvertime(at: date) ? Self.overtimeColor
+            : timer.activeWarning(at: date).map(Self.warningColor)
+                ?? (timer.isLive ? .green : .secondary)
         return VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right")
@@ -460,31 +460,137 @@ struct TimersModule: View {
             : (standard + [current]).sorted()
     }
 
-    private func timeField(_ label: String, value: Binding<Int>, max: Int) -> some View {
-        TimerTimeField(label: label, value: value, max: max)
-    }
-
     static func warningColor(_ warning: TimerWarning) -> Color {
         guard let c = ColorHex.color(warning.colorHex) else { return .orange }
         return Color(red: c.red, green: c.green, blue: c.blue, opacity: c.alpha)
     }
 
-    private func targetPickerContent(_ station: TimersController) -> some View {
+    /// The same red the stage display uses for time past zero.
+    static let overtimeColor = Color(red: 1, green: 59.0 / 255, blue: 48.0 / 255)
+}
+
+/// The New Timer popover: name, kind, length (or wall-clock time) and
+/// whether a countdown runs on past zero.
+struct NewTimerForm: View {
+    enum Mode: String, CaseIterable, Identifiable {
+        case countdown, countdownToTime, countUp
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .countdown: "Countdown"
+            case .countdownToTime: "Countdown to Time"
+            case .countUp: "Count Up"
+            }
+        }
+    }
+
+    let station: TimersController
+    let initialMode: Mode
+    let done: () -> Void
+
+    @State private var name = ""
+    @State private var mode: Mode = .countdown
+    @State private var hours = 0
+    @State private var minutes = 5
+    @State private var seconds = 0
+    @State private var hour12 = 11
+    @State private var minute = 0
+    @State private var isPM = false
+    @State private var keepCounting = true
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Countdown to")
-                .font(.caption.weight(.medium))
-            WallClockFields(hour12: $pickerHour12, minute: $pickerMinute, isPM: $pickerIsPM)
-            Button("Add Timer") {
-                station.addCountdownToTime(
-                    hour: (pickerHour12 % 12) + (pickerIsPM ? 12 : 0),
-                    minute: pickerMinute
-                )
-                showingTargetPicker = false
+            Text("New Timer")
+                .font(.caption.weight(.semibold))
+            TextField("Name", text: $name, prompt: Text(defaultName))
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .frame(width: 200)
+            Picker("Type", selection: $mode) {
+                ForEach(Mode.allCases) { Text($0.title).tag($0) }
             }
             .controlSize(.small)
+            .frame(width: 220)
+            switch mode {
+            case .countdown, .countUp:
+                HStack(spacing: 3) {
+                    Text(mode == .countdown ? "Length" : "Limit")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .leading)
+                    TimerTimeField(label: "HH", value: $hours, max: 99, onCommit: create)
+                    Text(":").font(.caption).foregroundStyle(.tertiary)
+                    TimerTimeField(label: "MM", value: $minutes, max: 59, onCommit: create)
+                    Text(":").font(.caption).foregroundStyle(.tertiary)
+                    TimerTimeField(label: "SS", value: $seconds, max: 59, onCommit: create)
+                }
+            case .countdownToTime:
+                HStack(spacing: 3) {
+                    Text("Until")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .leading)
+                    WallClockFields(hour12: $hour12, minute: $minute, isPM: $isPM, onCommit: create)
+                }
+            }
+            if mode == .countUp {
+                Text("A limit of 0:00 runs until paused.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Toggle("Keep counting after zero", isOn: $keepCounting)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                    .font(.caption)
+                    .help("On: runs on in red as -0:01, -0:02… Off: stops at 0:00")
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", action: done)
+                    .controlSize(.small)
+                Button("Add Timer", action: create)
+                    .controlSize(.small)
+                    .keyboardShortcut(.defaultAction)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+        .task {
+            mode = initialMode
+            let parts = Calendar.current.dateComponents([.hour, .minute], from: Date())
+            let nextMinute = (parts.minute ?? 0) < 30 ? 30 : 0
+            let hour24 = nextMinute == 0 ? ((parts.hour ?? 0) + 1) % 24 : (parts.hour ?? 0)
+            hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12
+            minute = nextMinute
+            isPM = hour24 >= 12
+        }
+    }
+
+    private var hour24: Int { (hour12 % 12) + (isPM ? 12 : 0) }
+
+    private var defaultName: String {
+        switch mode {
+        case .countdown: "Countdown"
+        case .countdownToTime: "Until \(TimersController.wallLabel(hour: hour24, minute: minute))"
+        case .countUp: "Count Up"
+        }
+    }
+
+    private func create() {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let title = trimmed.isEmpty ? defaultName : trimmed
+        let total = TimeInterval(hours * 3600 + minutes * 60 + seconds)
+        switch mode {
+        case .countdown:
+            station.addCountdown(name: title, seconds: total, keepsCountingAfterZero: keepCounting)
+        case .countdownToTime:
+            station.addCountdownToTime(
+                name: title, hour: hour24, minute: minute, keepsCountingAfterZero: keepCounting
+            )
+        case .countUp:
+            station.addCountUp(name: title, limitSeconds: total)
+        }
+        done()
     }
 }
 
@@ -626,6 +732,17 @@ struct TimerInlineEditor: View {
                         Spacer(minLength: 4)
                     }
                 }
+            }
+
+            if timer.mode != .countUp {
+                Toggle("Keep counting after zero", isOn: Binding(
+                    get: { timer.countsPastZero },
+                    set: { station.setKeepsCountingAfterZero(id: timer.id, $0) }
+                ))
+                .toggleStyle(.checkbox)
+                .controlSize(.mini)
+                .font(.caption)
+                .help("On: runs on in red as -0:01, -0:02… Off: stops at 0:00")
             }
 
             if timer.mode != .countUp || timer.durationSeconds > 0 {

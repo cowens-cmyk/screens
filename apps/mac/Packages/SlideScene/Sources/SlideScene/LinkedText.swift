@@ -108,6 +108,11 @@ public enum LinkedText {
     public static func warningColorHex(
         for link: TextLink, info: ConfidenceInfo, at date: Date
     ) -> String? {
+        if link.source == .timer, let timer = timer(for: link, in: info),
+           timer.isOvertime(at: date) {
+            // Over time is red even when the box opts out of warning levels.
+            return TimerWarning.overtimeHex
+        }
         guard link.usesWarningColor != false else { return nil }
         switch link.source {
         case .timer:

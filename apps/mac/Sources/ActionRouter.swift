@@ -34,6 +34,13 @@ final class ActionRouter {
         controls.timers.timers.map { ($0.id, $0.name) }
     }
 
+    /// Makes a countdown from the Add Action menu so a slide can start a
+    /// timer that doesn't exist yet. Returns its id for the new action.
+    @discardableResult
+    func addCountdownTimer(minutes: Int) -> String {
+        controls.timers.addCountdown(name: "Countdown \(minutes):00", seconds: TimeInterval(minutes * 60))
+    }
+
     var confidenceScreenChoices: [(id: String, name: String)] {
         (confidenceMonitor?.confidenceScreens ?? []).map { ($0.id.uuidString, $0.name) }
     }

@@ -30,6 +30,10 @@ final class RenderContext {
 
     let confidenceLayoutsBox: Locked<[UUID: ConfidenceLayout]>
 
+    /// The stage mode's scene source and the audience screen to mirror; kept
+    /// by ConfidenceMonitorController.
+    let stageBox: Locked<StagePlan>
+
     let previewLayoutsBox: Locked<[String: ConfidenceLayout]>
 
     let signageBox: Locked<[UUID: SignageFrame]>
@@ -155,6 +159,7 @@ final class RenderContext {
         self.liveBox = Locked(initialLive)
         self.confidenceBox = Locked(ConfidenceInfo())
         self.confidenceLayoutsBox = Locked([:])
+        self.stageBox = Locked(.initial)
         self.previewLayoutsBox = Locked([:])
         self.signageBox = Locked([:])
         compositor.mediaSource = media
@@ -180,13 +185,20 @@ final class RenderContext {
         }
 
         SyncTestPlayback.install(outputs: outputs, media: media)
-        outputs.confidenceSceneProvider = { [confidenceBox, confidenceLayoutsBox] screenID in
+        // Every stage screen: a playing video first, then a layout picked for
+        // the screen, then the stage mode (see StageScenes for the order).
+        outputs.confidenceSceneProvider = {
+            [confidenceBox, confidenceLayoutsBox, stageBox, transitions] screenID in
             let info = confidenceBox.value
-            if let layout = confidenceLayoutsBox.value[screenID] {
-                return ConfidenceSceneBuilder.scene(layout: layout, info: info, at: Date())
+            let now = Date()
+            let plan = stageBox.value
+            return StageScenes.scene(
+                override: confidenceLayoutsBox.value[screenID], source: plan.source,
+                info: info, at: now
+            ) {
+                if let audience = plan.audience { return audience() }
+                return VisibilityRules.filteredScene(transitions.scene(at: now), info: info, at: now)
             }
-
-            return ConfidenceSceneBuilder.scene(info: info, at: Date())
         }
 
         restorePlaceholderScreens()
