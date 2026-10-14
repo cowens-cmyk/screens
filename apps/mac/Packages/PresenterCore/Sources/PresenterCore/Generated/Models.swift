@@ -2504,8 +2504,9 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
     public var scriptureThemeId: String?
     public var presentationTypeRules: [PresentationTypeRule]?
     public var pointsThemeId: String?
+    public var sermonThemeId: String?
 
-    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil) {
+    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil) {
         self.id = id
         self.designMap = designMap
         self.messageNotesThemeId = messageNotesThemeId
@@ -2513,6 +2514,7 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
         self.scriptureThemeId = scriptureThemeId
         self.presentationTypeRules = presentationTypeRules
         self.pointsThemeId = pointsThemeId
+        self.sermonThemeId = sermonThemeId
     }
 }
 

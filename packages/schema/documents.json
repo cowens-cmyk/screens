@@ -4601,6 +4601,11 @@
           "name": "pointsThemeId",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "sermonThemeId",
+          "type": "string",
+          "optional": true
         }
       ]
     },

@@ -3920,6 +3920,9 @@
         },
         "pointsThemeId": {
           "type": "string"
+        },
+        "sermonThemeId": {
+          "type": "string"
         }
       },
       "required": [

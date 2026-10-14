@@ -411,6 +411,14 @@ struct AppSettingsView: View {
         ))
         if let model {
             rows.append(SettingsRowSpec(
+                id: "bible.sermon", category: .bible,
+                title: "Sermon import",
+                caption: "Claude reads the week's notes (PDF or Pages) and builds the message slides with the series theme.",
+                keywords: "sermon notes import claude anthropic api key series theme message slides pdf pages",
+                control: AnyView(SermonImportSettingsForm(model: model)),
+                stacked: true
+            ))
+            rows.append(SettingsRowSpec(
                 id: "bible.themes", category: .bible,
                 title: "Scripture and points themes",
                 caption: "Used by the Scripture and Points buttons in the top bar.",

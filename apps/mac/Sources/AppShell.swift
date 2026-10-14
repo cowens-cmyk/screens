@@ -261,6 +261,7 @@ struct ShellView: View {
     @State private var creatingService = false
     @FocusedValue(\.presentPoints) private var presentPoints
     @FocusedValue(\.presentSongSearch) private var presentSongSearch
+    @FocusedValue(\.presentSermonImport) private var presentSermonImport
     let layout: PresentLayoutController?
 
     @Environment(\.openWindow) private var openWindow
@@ -493,6 +494,7 @@ struct ShellView: View {
                             Button("Song Search…") { presentSongSearch?() }
                             Button("Scripture…") { presentScripture?() }
                             Button("Point Slides…") { presentPoints?() }
+                            Button("Import Sermon…") { presentSermonImport?() }
                             Divider()
                             Menu("Theme Editor") {
                                 ForEach(model.entries(of: .theme), id: \.id) { theme in
@@ -532,6 +534,9 @@ struct ShellView: View {
                             .help("Add scripture slides (⌘⇧B)")
                         TopBarAddButton(title: "Points", systemImage: "list.bullet.rectangle", action: presentPoints)
                             .help("Add sermon point slides (⌘⇧P)")
+                            .padding(.leading, 6)
+                        TopBarAddButton(title: "Sermon", systemImage: "doc.text.magnifyingglass", action: presentSermonImport)
+                            .help("Import the week's sermon notes (⌘⇧I)")
                             .padding(.leading, 6)
                             .padding(.trailing, 10)
                     } else {
@@ -1739,6 +1744,7 @@ extension FocusedValues {
     @Entry var presentScripture: MenuAction?
     @Entry var presentPoints: MenuAction?
     @Entry var presentSongSearch: MenuAction?
+    @Entry var presentSermonImport: MenuAction?
 
     @Entry var presentNewSlide: MenuAction?
 
