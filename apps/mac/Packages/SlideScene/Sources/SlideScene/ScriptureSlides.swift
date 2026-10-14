@@ -5,7 +5,7 @@ import RenderEngine
 
 /// Turns a fetched passage into slides laid out by the theme's "Bible" slide.
 /// Text is measured against that slide's real placeholder (font, size,
-/// insets, shrink limit), so a slide only ends where the next verse wouldn't
+/// insets) at full size, so a slide only ends where the next verse wouldn't
 /// fit, and the next slide begins with that verse.
 public enum ScriptureSlideBuilder {
 
@@ -51,7 +51,10 @@ public enum ScriptureSlideBuilder {
             let assignments = SlideSceneBuilder.placeholderAssignments(for: candidate, in: template)
             let item = SlideSceneBuilder.renderItem(
                 for: candidate[0], theme: theme, placeholder: assignments[candidate[0].id], in: canvasSize)
-            guard case .text(let styled) = item.content else { return true }
+            guard case .text(var styled) = item.content else { return true }
+            // Measure at the theme's full size, never shrunk: scripture stays
+            // the same size on every slide and a long passage gets more slides.
+            styled.autoShrink = false
             return !TextRasterizer.overflows(styled, sceneFrame: item.frame.size)
         }
 

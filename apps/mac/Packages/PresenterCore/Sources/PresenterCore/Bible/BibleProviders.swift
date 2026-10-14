@@ -24,6 +24,13 @@ public struct BiblePassage: Hashable, Sendable {
     public var translation: BibleTranslation
     public var verses: [BibleVerse]
     public var copyright: String?
+
+    public init(reference: BibleReference, translation: BibleTranslation, verses: [BibleVerse], copyright: String? = nil) {
+        self.reference = reference
+        self.translation = translation
+        self.verses = verses
+        self.copyright = copyright
+    }
 }
 
 public enum BibleError: LocalizedError, Equatable {
