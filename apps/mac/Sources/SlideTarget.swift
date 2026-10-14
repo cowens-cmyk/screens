@@ -57,6 +57,7 @@ struct PointSlidesSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var addToTarget = true
+    @State private var addToService = true
 
     static let themeSlideName = "Sermon Points"
 
@@ -87,6 +88,9 @@ struct PointSlidesSheet: View {
                 }
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
             DestinationPicker(target: target, addToTarget: $addToTarget)
+            if !(addToTarget && target != nil) {
+                AddToCurrentServiceToggle(model: model, isOn: $addToService)
+            }
             HStack {
                 LyricsThemeChooser(appModel: model, render: render, themeId: model.slideBuildingBinding(\.pointsThemeId))
                 Spacer()
@@ -120,6 +124,7 @@ struct PointSlidesSheet: View {
             themeId: themeId, folder: model.newPlacement.folder(for: .presentation), slides: slides)
         presentation.category = PresentationTypes.sermon
         model.createInDrive(presentation)
+        AddToCurrentServiceToggle.add(presentation.id, model: model, if: addToService)
         dismiss()
         onCreated(presentation.id)
     }

@@ -258,6 +258,7 @@ struct ShellView: View {
     let controls: ServiceControls?
 
     @FocusedValue(\.presentScripture) private var presentScripture
+    @State private var creatingService = false
     @FocusedValue(\.presentPoints) private var presentPoints
     @FocusedValue(\.presentSongSearch) private var presentSongSearch
     let layout: PresentLayoutController?
@@ -802,6 +803,18 @@ struct ShellView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 serviceMenu
+                if !isRunOnly {
+                    Button {
+                        creatingService = true
+                    } label: {
+                        Image(systemName: "plus.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .help("New service")
+                    if let serviceID = model.currentServiceID {
+                        AddToServiceMenu(model: model, serviceID: serviceID)
+                    }
+                }
                 Spacer(minLength: 0)
                 if let label = serviceDateLabel {
                     if !isRunOnly {
@@ -835,6 +848,12 @@ struct ShellView: View {
         }
         .padding(.horizontal, 10)
         .padding(.bottom, 6)
+        .sheet(isPresented: $creatingService) {
+            NewServiceSheet(model: model) { id in
+                model.currentServiceID = id
+                serviceItemID = nil
+            }
+        }
         .popover(
             isPresented: Binding(
                 get: { editingServiceDateID != nil && !isRunOnly },
@@ -972,11 +991,8 @@ struct ShellView: View {
             if !isRunOnly {
                 Divider()
                 VStack(spacing: 1) {
-                    servicePickerAction("New Service") {
-                        if let id = model.createEntity(in: .services) {
-                            model.currentServiceID = id
-                            serviceItemID = nil
-                        }
+                    servicePickerAction("New Service…") {
+                        creatingService = true
                     }
                 }
                 .padding(6)

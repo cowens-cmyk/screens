@@ -20,6 +20,7 @@ struct SongSearchSheet: View {
     @State private var existingID: String?
     @State private var searching = false
     @State private var error: String?
+    @State private var addToService = true
 
     private var client: PCOClient { PlanningCenterSync.shared.client }
     private var arrangement: PCOClient.Arrangement? { arrangements.first { $0.id == selectedArrangementID } }
@@ -40,6 +41,7 @@ struct SongSearchSheet: View {
             }
             .frame(height: 340)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            AddToCurrentServiceToggle(model: model, isOn: $addToService)
             HStack {
                 LyricsThemeChooser(appModel: model, render: render, themeId: model.slideBuildingBinding(\.lyricsImportThemeId))
                 Spacer()
@@ -198,6 +200,7 @@ struct SongSearchSheet: View {
         else { return }
         presentation.folder = model.newPlacement.folder(for: .presentation)
         model.createInDrive(presentation)
+        AddToCurrentServiceToggle.add(presentation.id, model: model, if: addToService)
         dismiss()
         onCreated(presentation.id)
     }

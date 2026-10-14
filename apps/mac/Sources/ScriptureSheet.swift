@@ -20,6 +20,7 @@ struct ScriptureSheet: View {
     @State private var error: String?
     @State private var loading = false
     @State private var addToTarget = true
+    @State private var addToService = true
 
     /// The scripture template, or the target presentation's own theme.
     private var themeId: String {
@@ -64,6 +65,9 @@ struct ScriptureSheet: View {
                 .frame(minHeight: 260)
 
             DestinationPicker(target: target, addToTarget: $addToTarget)
+            if !(addToTarget && target != nil) {
+                AddToCurrentServiceToggle(model: model, isOn: $addToService)
+            }
 
             if !settings.hasAnyKey {
                 Text("Add an API.Bible or ESV key in Settings › Bible to look up passages.")
@@ -160,6 +164,7 @@ struct ScriptureSheet: View {
         }
         presentation.folder = model.newPlacement.folder(for: .presentation)
         model.createInDrive(presentation)
+        AddToCurrentServiceToggle.add(presentation.id, model: model, if: addToService)
         dismiss()
         onCreated(presentation.id)
     }
