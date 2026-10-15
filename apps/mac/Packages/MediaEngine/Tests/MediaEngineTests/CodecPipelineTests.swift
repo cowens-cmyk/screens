@@ -55,15 +55,21 @@ final class CodecPipelineTests: XCTestCase {
         return url
     }
 
-    private func decodeFirstSurface(url: URL, hasAlpha: Bool) async throws -> MediaSurface {
+    private func decodeFirstSurface(url: URL, expectedAlpha: Bool? = nil, hasAlpha: Bool? = nil) async throws -> MediaSurface {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw MediaEngineError.noVideoTrack(url)
         }
-        let media = PreparedMedia(
-            url: url, duration: 0, frameDuration: 1.0 / 30.0,
-            naturalSize: .zero, hasAlpha: hasAlpha, asset: asset
-        )
+        let media: PreparedMedia
+        if let expectedAlpha {
+            let engine = try MediaEngine(device: XCTUnwrap(MTLCreateSystemDefaultDevice()))
+            media = try await engine.prepare(url: url)
+            XCTAssertEqual(media.hasAlpha, expectedAlpha, "prepare must detect the encoded alpha channel")
+        } else {
+            media = PreparedMedia(
+                url: url, duration: 0, frameDuration: 1.0 / 30.0,
+                naturalSize: .zero, hasAlpha: hasAlpha ?? false, asset: asset)
+        }
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(
             track: track,
@@ -147,7 +153,7 @@ final class CodecPipelineTests: XCTestCase {
             context.fill(CGRect(x: 80, y: 45, width: 160, height: 90))
         }
 
-        let surface = try await decodeFirstSurface(url: url, hasAlpha: true)
+        let surface = try await decodeFirstSurface(url: url, expectedAlpha: true)
         guard case .bgra = surface else {
             return XCTFail("\(codec.rawValue) must decode onto the BGRA alpha path")
         }

@@ -28,7 +28,7 @@ private func discontinuities(in buffer: AVAudioPCMBuffer, threshold: Float = 0.0
     return count
 }
 
-@Test func crossfadeAdvanceRendersCleanSamples() throws {
+@Test func crossfadeAdvanceRendersCleanSamples() async throws {
 
     let first = try tone(seconds: 4, hertz: 440, rate: 44_100, name: "a441")
     let second = try tone(seconds: 4, hertz: 330, rate: 44_100, name: "b441")
@@ -41,9 +41,19 @@ private func discontinuities(in buffer: AVAudioPCMBuffer, threshold: Float = 0.0
     try engine.play(url: second, crossfade: 1.0)
     let during = try engine.renderOfflineForTests(frames: 96_000) 
     #expect(discontinuities(in: during) == 0, "crossfade handoff is clean")
+    #expect(during.frameLength == 96_000, "the entire handoff was rendered")
+    #expect(rms(in: during) > 0.1, "a silent handoff is not clean playback")
+
+    // Ramps use the host clock even when the engine renders offline.
+    try await Task.sleep(for: .milliseconds(1_100))
+    let tail = try engine.renderOfflineForTests(frames: 24_000)
+    #expect(tail.frameLength == 24_000)
+    #expect(rms(in: tail) > 0.3, "the incoming deck remains audible after the ramp")
+    #expect(abs(dominantHertz(in: tail, first: 24_000) - 330) < 5,
+            "the completed handoff plays the incoming tone")
 }
 
-@Test func sameFileCrossfadeRendersCleanSamples() throws {
+@Test func sameFileCrossfadeRendersCleanSamples() async throws {
 
     let only = try tone(seconds: 4, hertz: 440, rate: 44_100, name: "dup441")
     let engine = AudioEngine()
@@ -53,6 +63,24 @@ private func discontinuities(in buffer: AVAudioPCMBuffer, threshold: Float = 0.0
     try engine.play(url: only, crossfade: 1.0)
     let during = try engine.renderOfflineForTests(frames: 96_000)
     #expect(discontinuities(in: during) == 0, "same-file handoff is clean")
+    #expect(during.frameLength == 96_000, "the entire handoff was rendered")
+    #expect(rms(in: during) > 0.1, "a silent handoff is not clean playback")
+
+    // Ramps use the host clock even when the engine renders offline.
+    try await Task.sleep(for: .milliseconds(1_100))
+    let tail = try engine.renderOfflineForTests(frames: 24_000)
+    #expect(tail.frameLength == 24_000)
+    #expect(rms(in: tail) > 0.3, "the incoming deck remains audible after the ramp")
+    #expect(abs(dominantHertz(in: tail, first: 24_000) - 440) < 5,
+            "the completed handoff plays the incoming tone")
+}
+
+private func rms(in buffer: AVAudioPCMBuffer) -> Double {
+    guard let data = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
+    let energy = (0..<Int(buffer.frameLength)).reduce(0.0) { sum, index in
+        sum + Double(data[index]) * Double(data[index])
+    }
+    return sqrt(energy / Double(buffer.frameLength))
 }
 
 private func dominantHertz(in buffer: AVAudioPCMBuffer, first frames: Int) -> Double {

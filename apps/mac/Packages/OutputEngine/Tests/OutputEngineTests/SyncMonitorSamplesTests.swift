@@ -93,7 +93,7 @@ final class SyncMonitorSamplesTests: XCTestCase {
         XCTAssertEqual(SyncMonitorSamples.renderSize(width: 1920, height: 1080).width, 960)
         XCTAssertEqual(SyncMonitorSamples.renderSize(width: 1920, height: 1080).height, 540)
         XCTAssertEqual(SyncMonitorSamples.renderSize(width: 1280, height: 480).height, 480)
-        XCTAssertEqual(SyncMonitorSamples.heldFrames(framesPerSecond: 30), Int((SyncMonitorSamples.lag * 30).rounded(.up)) + 8)
+        XCTAssertEqual(SyncMonitorSamples.heldFrames(framesPerSecond: 30), 16)
     }
 
     func testAMirrorWhoseConsumerHoldsFramesKeepsDelivering() throws {

@@ -26,3 +26,19 @@ private func scene(_ items: [(LayerKind, RenderItem)], hidden: Set<LayerKind> = 
     #expect(StreamCoverage.classify(scene([(.videos, video)], hidden: [.videos])) == .transparent,
             "a layer the Look turns off doesn't reach the stream")
 }
+
+@Test func solidCoverageIncludesTheExactEightyFivePercentBoundary() {
+    var target = RenderScene(canvasSize: CGSize(width: 100, height: 100))
+    target.addItem(RenderItem(id: "fill", frame: CGRect(x: 0, y: 0, width: 85, height: 100),
+                              content: .solid(.white)), to: .slide)
+    #expect(StreamCoverage.classify(target) == .fullScreen)
+}
+
+@Test func faintVisibleItemsStillCountAsStreamCoverage() {
+    var item = RenderItem(id: "fill", frame: CGRect(x: 0, y: 0, width: 100, height: 100),
+                          content: .solid(.white))
+    item.opacity = 0.25
+    #expect(StreamCoverage.classify(scene([(.slide, item)])) == .lowerThird)
+    item.opacity = 0.01
+    #expect(StreamCoverage.classify(scene([(.slide, item)])) == .transparent)
+}

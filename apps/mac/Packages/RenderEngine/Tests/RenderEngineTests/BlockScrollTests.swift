@@ -35,6 +35,10 @@ final class BlockScrollTests: XCTestCase {
 
     func testFinitePassesRestOrLeaveOnlyWhenAnchored() {
         var scroll = SceneBlockScroll(axis: .up, speed: 50, passes: 1)
+        XCTAssertEqual(BlockScrollRoll.pose(scroll, elapsed: 2, passLength: 100, restOffset: 60, anchored: true), .gone)
+        var resting = scroll
+        resting.restAtEnd = true
+        XCTAssertEqual(BlockScrollRoll.pose(resting, elapsed: 2, passLength: 100, restOffset: 60, anchored: true), .offset(60))
         XCTAssertEqual(BlockScrollRoll.pose(scroll, elapsed: 5, passLength: 100, restOffset: 60, anchored: true), .gone)
         scroll.restAtEnd = true
         XCTAssertEqual(BlockScrollRoll.pose(scroll, elapsed: 5, passLength: 100, restOffset: 60, anchored: true), .offset(60))

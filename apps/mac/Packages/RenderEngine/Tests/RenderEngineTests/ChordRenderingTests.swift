@@ -199,7 +199,7 @@ final class ChordRenderingTests: XCTestCase {
         XCTAssertTrue(foundRed, "the chord row must wear the chord color")
     }
 
-    func testAdjacentChordsNeverOverlap() {
+    func testAdjacentChordsNeverOverlap() throws {
 
         let text = StyledText(
             string: "go", fontSize: 200, alignment: .left,
@@ -208,7 +208,13 @@ final class ChordRenderingTests: XCTestCase {
                 ChordRun(line: 0, column: 0, symbol: "Cadd9"),
             ]
         )
-        let chorded = TextRasterizer.chordedLayout(for: text, sceneWidth: 1900, fontScale: 1)!
-        XCTAssertEqual(chorded.rows[0].chords.count, 2)
+        // TextEditLayout exposes the same placements used by drawChords.
+        let layout = TextEditLayout(text: text, sceneFrame: CGSize(width: 1900, height: 1080))
+        XCTAssertEqual(layout.chords.count, 2)
+        let first = try XCTUnwrap(layout.chords.first)
+        let second = try XCTUnwrap(layout.chords.last)
+        XCTAssertGreaterThan(first.rect.width, 0)
+        XCTAssertGreaterThan(second.rect.width, 0)
+        XCTAssertGreaterThan(second.rect.minX, first.rect.maxX, "adjacent chords have a visible gap")
     }
 }

@@ -55,9 +55,10 @@ import Testing
     let receiver = DeckLinkInputSource.Receiver(onFrame: nil)
     let width = 4
     let height = 2
-    // 2vuy: Cb Y0 Cr Y1. Video-range white (235) and black (16), neutral chroma.
+    // BT.709 video-range red (Y=63, Cb=102, Cr=240) and black.
+    // Non-neutral chroma distinguishes BGRA from RGBA and 709 from 601/2020.
     var bytes = [UInt8]()
-    for _ in 0..<height { bytes += [128, 235, 128, 235, 128, 16, 128, 16] }
+    for _ in 0..<height { bytes += [102, 63, 240, 63, 128, 16, 128, 16] }
     bytes.withUnsafeBufferPointer { pointer in
         var frame = DLKInputFrame()
         frame.bytes = pointer.baseAddress
@@ -74,6 +75,9 @@ import Testing
     CVPixelBufferLockBaseAddress(buffer, .readOnly)
     defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
     let pixels = CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self)
-    #expect(Array(UnsafeBufferPointer(start: pixels, count: 4)) == [255, 255, 255, 255])
+    #expect(pixels[0] <= 2)
+    #expect(pixels[1] <= 2)
+    #expect(pixels[2] >= 253)
+    #expect(pixels[3] == 255)
     #expect(Array(UnsafeBufferPointer(start: pixels + 8, count: 4)) == [0, 0, 0, 255])
 }

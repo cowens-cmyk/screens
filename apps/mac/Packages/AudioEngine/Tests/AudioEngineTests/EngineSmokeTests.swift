@@ -31,7 +31,8 @@ private func toneFile(seconds: Double, hertz: Double, name: String) throws -> UR
     return url
 }
 
-@Test func naturalEndFiresAndCrossfadeHandsOff() async throws {
+@Test(.enabled(if: hasAudioOutputDevice(), "No default audio output device"))
+func naturalEndFiresAndCrossfadeHandsOff() async throws {
     let short = try toneFile(seconds: 0.4, hertz: 440, name: "short")
     let long = try toneFile(seconds: 4, hertz: 550, name: "long")
     let engine = AudioEngine()
@@ -40,11 +41,7 @@ private func toneFile(seconds: Double, hertz: Double, name: String) throws -> UR
     let ended = Flag()
     engine.onTrackPlayedToEnd = { ended.raise() }
 
-    do {
-        try engine.play(url: short)
-    } catch {
-        return 
-    }
+    try engine.play(url: short)
     #expect(engine.isPlaying)
     #expect(engine.position?.duration ?? 0 > 0.3)
 
@@ -74,16 +71,13 @@ private func toneFile(seconds: Double, hertz: Double, name: String) throws -> UR
     #expect(engine.position == nil)
 }
 
-@Test func seekJumpsAndPreservesTransportState() async throws {
+@Test(.enabled(if: hasAudioOutputDevice(), "No default audio output device"))
+func seekJumpsAndPreservesTransportState() async throws {
     let long = try toneFile(seconds: 4, hertz: 550, name: "seek-long")
     let engine = AudioEngine()
     engine.masterVolume = 0
 
-    do {
-        try engine.play(url: long)
-    } catch {
-        return 
-    }
+    try engine.play(url: long)
 
     engine.seek(to: 2.5)
     #expect(engine.isPlaying, "seek keeps a playing track playing")
@@ -104,17 +98,14 @@ private func toneFile(seconds: Double, hertz: Double, name: String) throws -> UR
     engine.stop()
 }
 
-@Test func trimWindowCapsScheduleAndSurvivesSeek() async throws {
+@Test(.enabled(if: hasAudioOutputDevice(), "No default audio output device"))
+func trimWindowCapsScheduleAndSurvivesSeek() async throws {
     let tone = try toneFile(seconds: 2, hertz: 440, name: "trim")
     let engine = AudioEngine()
     engine.masterVolume = 0
     let ended = Flag()
     engine.onTrackPlayedToEnd = { ended.raise() }
-    do {
-        try engine.play(url: tone, trimStart: 0.5, trimEnd: 0.9)
-    } catch {
-        return 
-    }
+    try engine.play(url: tone, trimStart: 0.5, trimEnd: 0.9)
 
     #expect(abs((engine.position?.duration ?? 0) - 0.9) < 0.05)
     #expect((engine.position?.elapsed ?? 0) >= 0.45)

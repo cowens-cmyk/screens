@@ -63,7 +63,7 @@ final class EffectChainTests: XCTestCase {
         XCTAssertEqual(center.x, center.y, accuracy: 0.02, "saturation 0 = gray (r == g)")
         XCTAssertEqual(center.y, center.z, accuracy: 0.02, "…and g == b")
         XCTAssertGreaterThan(center.x, 0.0, "brightness floor did not crush to black")
-        XCTAssertLessThan(center.x, 0.22, "red's linear luma (~0.21) minus brightness")
+        XCTAssertLessThan(center.x, 0.05, "red's linear luma (~0.21) minus brightness")
     }
 
     func testAdjustmentLayerProcessesOnlyItsRegion() throws {
@@ -123,7 +123,7 @@ final class EffectChainTests: XCTestCase {
         )
         let frame = try compositor.renderFrame(scene: scene, width: 192, height: 108)
         XCTAssertGreaterThan(pixel(frame, x: 96, y: 54).x, 0.8, "inside the matte")
-        XCTAssertEqual(pixel(frame, x: 175, y: 54).x, 0, accuracy: 0.02,
+        XCTAssertEqual(pixel(frame, x: 150, y: 54).x, 0, accuracy: 0.02,
                        "effects run BEFORE the mask — nothing escapes the matte")
     }
 }

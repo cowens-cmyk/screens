@@ -75,7 +75,7 @@ final class NDILoopbackTests: XCTestCase {
         XCTAssertGreaterThan(sender.sent, 0)
     }
 
-    func testInputRecoversWhenTheSourceReturns() throws {
+    func testInputRehuntsADifferentSourceMatchingTheFragment() throws {
         let library = try loadedLibrary()
         let sourceName = "MxU Rehunt \(ProcessInfo.processInfo.processIdentifier)"
         nonisolated(unsafe) let buffer = try makeBlueBuffer(width: 320, height: 180)
@@ -92,8 +92,8 @@ final class NDILoopbackTests: XCTestCase {
             return thread
         }
 
-        var sender: NDISender? = try XCTUnwrap(NDISender(library: library, name: sourceName))
-        _ = pump(sender!)
+        var sender: NDISender? = try XCTUnwrap(NDISender(library: library, name: sourceName + " Original"))
+        var originalPump: Thread? = pump(sender!)
 
         let input = NDIInputSource(
             library: library, sourceNameContaining: sourceName,
@@ -112,15 +112,28 @@ final class NDILoopbackTests: XCTestCase {
         XCTAssertTrue(waitForFrames(deadline: 15), "never connected the first time")
 
         pumping.withLock { $0 = false }
+        let stoppedDeadline = Date().addingTimeInterval(3)
+        while originalPump?.isFinished == false, Date() < stoppedDeadline { Thread.sleep(forTimeInterval: 0.01) }
+        XCTAssertEqual(originalPump?.isFinished, true, "old sender must stop before replacement starts")
+        originalPump = nil
         sender = nil
-        Thread.sleep(forTimeInterval: 4)
         input.clearLatestFrameForTesting()
 
         pumping.withLock { $0 = true }
-        sender = try XCTUnwrap(NDISender(library: library, name: sourceName))
+        sender = try XCTUnwrap(NDISender(library: library, name: sourceName + " Replacement"))
         _ = pump(sender!)
         defer { pumping.withLock { $0 = false } }
 
-        XCTAssertTrue(waitForFrames(deadline: 30), "input never re-hunted the returned source")
+        let deadline = Date().addingTimeInterval(15)
+        var foundReplacement = false
+        while Date() < deadline {
+            if case .receiving(let name) = input.state,
+               name.contains(sourceName + " Replacement"), input.latestFrame() != nil {
+                foundReplacement = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        XCTAssertTrue(foundReplacement, "a receiver connected to Original cannot auto-reconnect to Replacement; rehunt is required")
     }
 }

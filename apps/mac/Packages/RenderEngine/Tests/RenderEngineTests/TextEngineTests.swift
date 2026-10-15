@@ -502,14 +502,15 @@ final class TextEngineTests: XCTestCase {
             SceneGradientStop(color: .white, position: 0),
             SceneGradientStop(color: SceneColor(red: 0.5, green: 0.5, blue: 0.5), position: 1),
         ])
-        var plain = text
         text.outline = TextOutline(color: SceneColor(red: 1, green: 0, blue: 0), width: 4)
-        text.shadow = TextShadow(color: .black, blurRadius: 8, offsetX: 0, offsetY: 6)
-        plain.outline = nil
-        plain.shadow = nil
+        text.shadow = TextShadow(color: SceneColor(red: 0, green: 0, blue: 1), blurRadius: 8, offsetX: 0, offsetY: 20)
         let styled = try renderText(text)
-        let bare = try renderText(plain)
-        XCTAssertNotEqual(styled.data, bare.data, "outline + shadow must still apply over a fill")
+        var noShadow = text
+        noShadow.shadow = nil
+        var noOutline = text
+        noOutline.outline = nil
+        XCTAssertNotEqual(styled.data, try renderText(noShadow).data, "shadow contributes independently of outline")
+        XCTAssertNotEqual(styled.data, try renderText(noOutline).data, "outline contributes independently of shadow")
         XCTAssertNotNil(inkBounds(styled))
     }
 

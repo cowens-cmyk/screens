@@ -46,16 +46,20 @@ final class LiveInputDelayTests: XCTestCase {
     }
 
     func testSameInstanceRePullDoesNotAdvanceTheRing() throws {
-
         let delay = LiveInputDelay()
-        delay.setDelay(id: "cam", frames: 1)
+        delay.setDelay(id: "cam", frames: 2)
         let first = try makeFrame(fill: 10)
         let second = try makeFrame(fill: 20)
+        let third = try makeFrame(fill: 30)
+        let fourth = try makeFrame(fill: 40)
         _ = delay.delayed(first, id: "cam")
-        _ = delay.delayed(first, id: "cam")
-        _ = delay.delayed(first, id: "cam")
-        XCTAssertEqual(try firstByte(delay.delayed(second, id: "cam")), 10,
-                       "re-pulls of one source frame count once")
+        _ = delay.delayed(second, id: "cam")
+        for _ in 0..<4 {
+            XCTAssertEqual(try firstByte(delay.delayed(second, id: "cam")), 10,
+                           "re-pulling the newest frame must not evict the oldest")
+        }
+        XCTAssertEqual(try firstByte(delay.delayed(third, id: "cam")), 10)
+        XCTAssertEqual(try firstByte(delay.delayed(fourth, id: "cam")), 20)
     }
 
     func testHeldFramesAreCopiesNotTheSourceBuffers() throws {

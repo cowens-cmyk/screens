@@ -33,7 +33,7 @@ final class CaptureFormatChoiceTests: XCTestCase {
 
     func testRatesPastSixtyAndOtherSizesAreIgnored() {
         let active = hd(0, [30])
-        let uhd = Candidate(index: 1, width: 3840, height: 2160, subtype: yuv, frameRates: [60])
+        let uhd = Candidate(index: 1, width: 3840, height: 2160, subtype: yuv, frameRates: [29.97, 60])
         let choice = CaptureFormatChoice.best(among: [active, uhd, hd(2, [120])], active: active)
         XCTAssertEqual(choice, CaptureFormatChoice(index: 0, frameRate: 30))
     }

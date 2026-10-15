@@ -48,8 +48,9 @@ final class TransportTrackingTests: XCTestCase {
     func testALoopCrossingItsSeamStillTracks() {
         let held = state(position: 29.9, at: anchor, looping: true)
 
-        let later = anchor + 0.2
-        XCTAssertTrue(held.tracks(state(position: 0.12, at: later, looping: true), at: later))
+        let later = anchor + 0.05
+        // Projected 29.95 and observed 0.05 straddle the loop seam.
+        XCTAssertTrue(held.tracks(state(position: 0.05, at: later, looping: true), at: later))
         XCTAssertFalse(held.tracks(state(position: 15, at: later, looping: true), at: later))
     }
 }

@@ -49,13 +49,22 @@ final class ObjectMaskTests: XCTestCase {
 
     func testMaskInKeepsPixelsInsideTheMatte() throws {
         let compositor = try makeCompositor()
-        let frame = try compositor.renderFrame(scene: scene(mode: false), width: 192, height: 108)
+        var target = scene(mode: false)
+        // The subject covers only the right half of the ellipse, leaving a
+        // matte-only region that must stay black even though the matte is green.
+        for layer in target.layers.indices {
+            for item in target.layers[layer].items.indices where target.layers[layer].items[item].id == "subject" {
+                target.layers[layer].items[item].frame = CGRect(x: 48, y: 0, width: 144, height: 108)
+            }
+        }
+        let frame = try compositor.renderFrame(scene: target, width: 192, height: 108)
         let inside = pixel(frame, x: 56, y: 54) 
         XCTAssertEqual(inside.x, 1, accuracy: 0.02, "inside the matte: subject shows")
         XCTAssertEqual(inside.y, 1, accuracy: 0.02, "…and it is the SUBJECT's white, not the matte's green")
+        XCTAssertEqual(inside.z, 1, accuracy: 0.02, "subject is white, not green")
         let outside = pixel(frame, x: 160, y: 54) 
         XCTAssertEqual(outside.x, 0, accuracy: 0.02, "outside the matte: masked away")
-        let matteOnly = pixel(frame, x: 20, y: 18) 
+        let matteOnly = pixel(frame, x: 30, y: 54)
         XCTAssertEqual(matteOnly.y, 0, accuracy: 0.02, "the matte never draws its own green")
     }
 

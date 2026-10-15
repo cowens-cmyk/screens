@@ -22,7 +22,7 @@ final class OutputAdjustTests: XCTestCase {
     }
 
     private func renderWhite(
-        adjustments: OutputAdjustments?, width: Int = 192, height: Int = 108
+        adjustments: OutputAdjustments?, width: Int = 192, height: Int = 108, color: SceneColor = .white
     ) throws -> RenderedFrame {
         let compositor = try makeCompositor()
         var scene = RenderScene(canvasSize: CGSize(width: width, height: height))
@@ -31,7 +31,7 @@ final class OutputAdjustTests: XCTestCase {
             RenderItem(
                 id: "fill",
                 frame: CGRect(x: 0, y: 0, width: width, height: height),
-                content: .solid(.white)
+                content: .solid(color)
             ),
             to: .slide
         )
@@ -344,9 +344,10 @@ final class OutputAdjustTests: XCTestCase {
         XCTAssertEqual(trimmed.z, 0, accuracy: 0.02, "blue gain -1 = channel off")
 
         adjustments = OutputAdjustments()
-        adjustments.gamma = 1  
-        frame = try renderWhite(adjustments: adjustments)
-        XCTAssertEqual(pixel(frame, x: 96, y: 54).x, 1, accuracy: 0.02)
+        adjustments.gamma = 1
+        frame = try renderWhite(adjustments: adjustments, color: SceneColor(red: 0.5, green: 0.5, blue: 0.5))
+        // sRGB 0.5 is linear 0.214041; gamma +1 takes its square root.
+        XCTAssertEqual(pixel(frame, x: 96, y: 54).x, 0.462646, accuracy: 0.01)
     }
 
     func testCornerPinLeavesProjectorBlackOutsideTheQuad() throws {

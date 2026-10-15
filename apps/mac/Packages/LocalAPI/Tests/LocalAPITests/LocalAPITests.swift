@@ -154,23 +154,28 @@ final class FakeBridge: LocalAPIBridge {
         calls.append("setScheduleTriggerEnabled:\(id):\(enabled)")
     }
 
-    var coldDecks: Set<String> = []
+    var entered: XCTestExpectation?
+    var release: CheckedContinuation<Void, Never>?
+    var firedCommand: APIFireSlideCommand?
+
+    private func suspendIfRequested() async {
+        guard let entered else { return }
+        await withCheckedContinuation { continuation in
+            release = continuation
+            entered.fulfill()
+        }
+    }
 
     var advanceError = false
 
     func fireSlide(_ command: APIFireSlideCommand) async throws {
-        if let id = command.presentationId, coldDecks.contains(id) {
-            await Task.yield()
-            coldDecks.remove(id)
-        }
+        firedCommand = command
+        await suspendIfRequested()
         calls.append("fireSlide:\(command.presentationId ?? command.serviceItemId ?? "?")")
     }
 
     func advance(steps: Int, settled: Bool) async throws {
-        if coldDecks.contains("advance") {
-            await Task.yield()
-            coldDecks.remove("advance")
-        }
+        await suspendIfRequested()
         if advanceError {
             throw APIError.badRequest("Already at the end of the service.")
         }
@@ -256,31 +261,51 @@ final class APIRouterTests: XCTestCase {
         XCTAssertEqual(bridge.calls.last, "advance:1:settled")
     }
 
-    func testSlideFireIntoAColdDeckFiresAfterTheFill() async throws {
+    func testSlideRouteAwaitsBridgeCompletionAndDecodesTheCommand() async throws {
         let (router, bridge) = makeRouter()
-        bridge.coldDecks = ["p9"]
+        let entered = expectation(description: "bridge entered")
+        bridge.entered = entered
+        let completed = expectation(description: "response cannot precede bridge completion")
+        completed.isInverted = true
         let match = try XCTUnwrap(router.match(method: "POST", path: "/v1/show/slide"))
-        let context = APIRequestContext(body: Data(#"{"presentationId":"p9","slideIndex":0}"#.utf8), scope: .control)
-        let response = try await match.route.handler(context)
+        let request = Task {
+            let response = try await match.route.handler(APIRequestContext(
+                body: Data(#"{"presentationId":"p9","slideIndex":7}"#.utf8), scope: .control))
+            completed.fulfill()
+            return response
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        await fulfillment(of: [completed], timeout: 0.05)
+        XCTAssertEqual(bridge.firedCommand?.presentationId, "p9")
+        XCTAssertEqual(bridge.firedCommand?.slideIndex, 7)
+        XCTAssertTrue(bridge.calls.isEmpty)
+        bridge.release?.resume()
+        bridge.release = nil
+        let response = try await request.value
         XCTAssertEqual(response.status, 200)
         XCTAssertEqual(bridge.calls, ["fireSlide:p9"])
-        XCTAssertTrue(bridge.coldDecks.isEmpty)
     }
 
-    func testAdvanceIntoAColdWalkRunsAfterTheFillAndItsErrorReachesTheCaller() async throws {
+    func testAdvanceRouteAwaitsBridgeAndPropagatesItsError() async throws {
         let (router, bridge) = makeRouter()
-        bridge.coldDecks = ["advance"]
-        let match = try XCTUnwrap(router.match(method: "POST", path: "/v1/show/advance"))
-        let response = try await match.route.handler(APIRequestContext(body: Data(#"{"steps":1}"#.utf8), scope: .control))
-        XCTAssertEqual(response.status, 200)
-        XCTAssertEqual(bridge.calls, ["advance:1"])
-        XCTAssertTrue(bridge.coldDecks.isEmpty)
-
-        bridge.coldDecks = ["advance"]
+        let entered = expectation(description: "bridge entered")
+        bridge.entered = entered
         bridge.advanceError = true
+        let completed = expectation(description: "response waits for the bridge error")
+        completed.isInverted = true
+        let match = try XCTUnwrap(router.match(method: "POST", path: "/v1/show/advance"))
+        let request = Task {
+            defer { completed.fulfill() }
+            return try await match.route.handler(APIRequestContext(
+                body: Data(#"{"steps":1}"#.utf8), scope: .control))
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        await fulfillment(of: [completed], timeout: 0.05)
+        bridge.release?.resume()
+        bridge.release = nil
         do {
-            _ = try await match.route.handler(APIRequestContext(body: Data(#"{"steps":1}"#.utf8), scope: .control))
-            XCTFail("the advance's error reaches the caller after the fill")
+            _ = try await request.value
+            XCTFail("the bridge error must reach the caller")
         } catch let error as APIError {
             XCTAssertEqual(error.status, 400)
         }

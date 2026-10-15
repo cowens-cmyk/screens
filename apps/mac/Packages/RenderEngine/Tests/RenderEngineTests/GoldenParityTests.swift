@@ -21,21 +21,28 @@ final class GoldenParityTests: XCTestCase {
         return out
     }
 
-    func testEditorCanvasAndOutputPixelsAreIdentical() throws {
+    func testOffscreenAndPresentationPathsPreserveScenePixels() throws {
         let compositor = try makeCompositor()
         let scene = RenderScene.sampleLyricScene()
-
-        let editorCanvas = try compositor.renderFrame(scene: scene, width: 1920, height: 1080)
-        let outputWindow = try compositor.renderFrame(scene: scene, width: 1920, height: 1080)
-
-        XCTAssertEqual(editorCanvas.data, outputWindow.data,
-                       "Editor canvas and output must be byte-for-byte identical")
-
+        let expected = try compositor.renderFrame(scene: scene, width: 960, height: 540)
+        func texture() throws -> MTLTexture {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: Compositor.pixelFormat, width: 960, height: 540, mipmapped: false)
+            descriptor.storageMode = .shared
+            descriptor.usage = [.renderTarget, .shaderRead]
+            return try XCTUnwrap(compositor.device.makeTexture(descriptor: descriptor))
+        }
+        let rendered = try texture()
+        compositor.render(scene: scene, into: rendered, at: 0)
+        XCTAssertEqual(try compositor.readback(texture: rendered).data, expected.data)
+        let presented = try texture()
+        compositor.present(texture: rendered, into: presented)
+        XCTAssertEqual(try compositor.readback(texture: presented).data, expected.data,
+                       "the presentation blit preserves the rendered scene")
         var withoutText = scene
         withoutText.setLayerHidden(true, kind: .slide)
-        let bare = try compositor.renderFrame(scene: withoutText, width: 1920, height: 1080)
-        XCTAssertNotEqual(editorCanvas.data, bare.data,
-                          "The text layer must contribute rendered pixels")
+        let bare = try compositor.renderFrame(scene: withoutText, width: 960, height: 540)
+        XCTAssertNotEqual(expected.data, bare.data, "text contributes pixels")
     }
 
     func testParityHoldsAcrossEngineRestart() throws {

@@ -18,9 +18,11 @@ import Testing
             mode("1080p29.97", duration: 1001, scale: 30000),
             mode("1080p30", duration: 1000, scale: 30000),
         ]
-        let match = DeckLinkDisplayMode.bestMatch(
-            width: 1920, height: 1080, framesPerSecond: 30, in: modes)
-        #expect(match?.name == "1080p29.97")
+        for ordering in [modes, Array(modes.reversed())] {
+            let match = DeckLinkDisplayMode.bestMatch(
+                width: 1920, height: 1080, framesPerSecond: 30, in: ordering)
+            #expect(match?.name == "1080p29.97")
+        }
     }
 
     @Test func fractionalSiblingFillsInWhenExactIsAbsent() {

@@ -61,10 +61,19 @@ final class OutputMaskRoutingTests: XCTestCase {
         let screen = try XCTUnwrap(
             outputs.addPlaceholderScreen(name: "Main", width: 192, height: 108))
         let column = OutputMask(name: "Column", pathData: band, alwaysOn: true)
-        outputs.setMasks([column], forScreen: screen.id)
+        let preset = OutputMask(name: "Preset", pathData: "M 0 0 L 0.1 0 L 0.1 1 L 0 1 Z", alwaysOn: false)
+        outputs.setMasks([column, preset], forScreen: screen.id)
         let first = try XCTUnwrap(screen.outputMask)
-        outputs.setActiveMaskIDs([], forScreen: screen.id)  
-        XCTAssertTrue(screen.outputMask === first, "unchanged active set keeps its raster")
+        // The cache retains one raster per slice; a second screen keeps the
+        // original fingerprint alive while the first screen changes presets.
+        let other = try XCTUnwrap(outputs.addPlaceholderScreen(name: "Other", width: 192, height: 108))
+        outputs.setMasks([column, preset], forScreen: other.id)
+        XCTAssertTrue(other.outputMask === first)
+        outputs.setActiveMaskIDs([preset.id], forScreen: screen.id)
+        let combined = try XCTUnwrap(screen.outputMask)
+        XCTAssertFalse(combined === first, "changing the active set selects a different raster")
+        outputs.setActiveMaskIDs([], forScreen: screen.id)
+        XCTAssertTrue(screen.outputMask === first, "returning to the first set reuses its cached raster")
     }
 
     func testMasksPersistViaConfigurationHookAndCleanUpOnRemoval() throws {

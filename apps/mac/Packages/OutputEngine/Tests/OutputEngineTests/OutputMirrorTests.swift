@@ -81,11 +81,11 @@ final class OutputMirrorTests: XCTestCase {
             provider: { scene },
             sink: { _, _ in expectation.fulfill() }
         ))
-        mirror.start()
+        mirror.startWithoutTimerForTesting()
         defer { mirror.stop() }
         mirror.tick(at: 0)
         wait(for: [expectation], timeout: 5)
-        XCTAssertGreaterThanOrEqual(mirror.framesDelivered, 1)
+        XCTAssertEqual(mirror.framesDelivered, 1)
     }
 
     func testAdjustmentsReachTheFeedAndInvalidateTheStaticResend() throws {
@@ -197,7 +197,6 @@ final class OutputMirrorTests: XCTestCase {
     }
 
     func testStaticSceneConvertsOnceThenResends() throws {
-        try XCTSkipIf(isVirtualMachine(), "a virtual machine has no real-time cadence: the resend count only holds on a real Mac")
 
         let compositor = try makeCompositor()
         let threeDeliveries = expectation(description: "three deliveries")
@@ -215,22 +214,23 @@ final class OutputMirrorTests: XCTestCase {
                 if count <= 3 { threeDeliveries.fulfill() }
             }
         ))
-        mirror.start()
+        mirror.startWithoutTimerForTesting()
         defer { mirror.stop() }
 
-        mirror.tick(at: 0)
-        let firstConverted = expectation(description: "first frame converted")
-        DispatchQueue.global().async {
-            while delivered.withLock({ $0.isEmpty }) { usleep(10_000) }
-            firstConverted.fulfill()
+        for tick in 0..<3 {
+            mirror.tick(at: Double(tick))
+            let deadline = Date().addingTimeInterval(5)
+            while (mirror.framesDelivered < tick + 1 || delivered.value.count < tick + 1), Date() < deadline {
+                usleep(1_000)
+            }
+            XCTAssertEqual(mirror.framesDelivered, tick + 1)
+            XCTAssertEqual(delivered.value.count, tick + 1)
         }
-        wait(for: [firstConverted], timeout: 5)
-        mirror.tick(at: 1)
-        mirror.tick(at: 2)
         wait(for: [threeDeliveries], timeout: 5)
 
         let buffers = delivered.value
         XCTAssertEqual(mirror.framesDelivered, 3, "resends count as delivered — cadence holds")
+        guard buffers.count == 3 else { return XCTFail("expected exactly three buffers") }
         XCTAssertTrue(buffers[1] === buffers[0], "second delivery reuses the converted buffer")
         XCTAssertTrue(buffers[2] === buffers[0], "third delivery reuses the converted buffer")
     }
@@ -272,23 +272,26 @@ final class OutputMirrorTests: XCTestCase {
     }
 
     func testStoppedMirrorStopsDelivering() throws {
+        let unexpected = expectation(description: "stopped mirror must not deliver")
+        unexpected.isInverted = true
         let compositor = try makeCompositor()
         let scene = solidWhiteScene(canvas: CGSize(width: 160, height: 90))
+        let providerCalls = Locked(0)
         let mirror = try XCTUnwrap(OutputMirror(
             compositor: compositor, width: 160, height: 90, framesPerSecond: 30,
-            provider: { scene },
-            sink: { _, _ in }
+            provider: {
+                providerCalls.withLock { $0 += 1 }
+                return scene
+            },
+            sink: { _, _ in unexpected.fulfill() }
         ))
 
+        mirror.startWithoutTimerForTesting()
+        mirror.stop()
         mirror.tick(at: 0)
+        XCTAssertEqual(providerCalls.value, 0, "a stopped tick must not request a scene")
+        wait(for: [unexpected], timeout: 0.5)
         XCTAssertEqual(mirror.framesDelivered, 0)
         XCTAssertEqual(mirror.framesDropped, 0)
     }
-}
-
-private func isVirtualMachine() -> Bool {
-    var present: Int32 = 0
-    var size = MemoryLayout<Int32>.size
-    let read = sysctlbyname("kern.hv_vmm_present", &present, &size, nil, 0)
-    return read == 0 && present != 0
 }

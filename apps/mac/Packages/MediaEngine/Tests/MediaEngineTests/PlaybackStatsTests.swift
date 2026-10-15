@@ -36,16 +36,19 @@ final class PlaybackStatsTests: XCTestCase {
 
         stats.recordFrame(at: 1 * frameDuration, frameDuration: frameDuration, loopDuration: duration)
         XCTAssertEqual(stats.framesDropped, 1, "the seam is exactly where seamlessness must be measured")
+        XCTAssertEqual(stats.framesDroppedAtSeam, 1)
     }
 
     func testAggregation() {
         var a = PlaybackStats()
         var b = PlaybackStats()
-        a.recordFrame(at: 0, frameDuration: frameDuration, loopDuration: nil)
-        a.recordFrame(at: 2 * frameDuration, frameDuration: frameDuration, loopDuration: nil)
-        b.recordFrame(at: 0, frameDuration: frameDuration, loopDuration: nil)
+        a.recordFrame(at: 29 * frameDuration, frameDuration: frameDuration, loopDuration: 1)
+        a.recordFrame(at: frameDuration, frameDuration: frameDuration, loopDuration: 1)
+        b.recordFrame(at: 29 * frameDuration, frameDuration: frameDuration, loopDuration: 1)
+        b.recordFrame(at: 2 * frameDuration, frameDuration: frameDuration, loopDuration: 1)
         let sum = a + b
-        XCTAssertEqual(sum.framesDisplayed, 3)
-        XCTAssertEqual(sum.framesDropped, 1)
+        XCTAssertEqual(sum.framesDisplayed, 4)
+        XCTAssertEqual(sum.framesDropped, 3)
+        XCTAssertEqual(sum.framesDroppedAtSeam, 3, "seam drops from both players are summed")
     }
 }

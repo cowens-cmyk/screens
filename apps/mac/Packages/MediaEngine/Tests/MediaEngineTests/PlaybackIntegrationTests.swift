@@ -69,10 +69,12 @@ final class PlaybackIntegrationTests: XCTestCase {
 
         let ready = await engine.preroll(media, id: "next", loop: false)
         XCTAssertTrue(ready, "pre-roll must reach ready-to-play")
-        XCTAssertEqual(engine.stats(for: "next")?.framesDisplayed, 0, "pre-roll must not go to glass")
+        XCTAssertFalse(try XCTUnwrap(engine.transport(id: "next")).isPlaying)
+        defer { engine.stopAll() }
 
         engine.start(id: "next")
-        let deadline = Date(timeIntervalSinceNow: 5)
+        XCTAssertTrue(try XCTUnwrap(engine.transport(id: "next")).isPlaying, "start must release the paused transport")
+        let deadline = Date(timeIntervalSinceNow: 0.5)
         var framesDisplayed = 0
         while Date() < deadline {
             _ = engine.surface(for: "next", hostTime: CACurrentMediaTime())
