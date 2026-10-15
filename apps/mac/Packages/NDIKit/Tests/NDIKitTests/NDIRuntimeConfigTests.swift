@@ -30,6 +30,17 @@ final class NDIRuntimeConfigTests: XCTestCase {
         XCTAssertEqual(written, NDIRuntimeConfig.configJSON(allowedAdapterIPs: ["192.168.4.9"]))
     }
 
+    func testAdoptReplacesAnExistingConfigDirectory() {
+        let old = "/tmp/ndi-config-old"
+        let new = URL(fileURLWithPath: "/tmp/ndi-config-new", isDirectory: true)
+        setenv("NDI_CONFIG_DIR", old, 1)
+        defer { unsetenv("NDI_CONFIG_DIR") }
+
+        NDIRuntimeConfig.adopt(directory: new)
+
+        XCTAssertEqual(String(cString: getenv("NDI_CONFIG_DIR")), new.path)
+    }
+
     func testAdapterListIsLoopbackFreeAndAddressed() {
 
         for adapter in NDIAdapterList.current() {
