@@ -17,6 +17,8 @@ public final class MediaFileSource: @unchecked Sendable {
     private let running = Locked(false)
     private let endedOnce = Locked(false)
     private let reader = Locked<AVAssetReader?>(nil)
+    private let videoRead = Locked(())
+    private let audioRead = Locked(())
 
     private let videoOut = Locked<AVAssetReaderTrackOutput?>(nil)
     private let audioOut = Locked<AVAssetReaderAudioMixOutput?>(nil)
@@ -57,9 +59,23 @@ public final class MediaFileSource: @unchecked Sendable {
     }
 
     public func stop() {
+        endedOnce.value = true
         running.value = false
-        endedOnce.value = true  
-        reader.withLock { $0?.cancelReading() }
+        // AVAssetReader forbids cancelling while either output is mid-read, so wait for both
+        // reads off the caller's thread: a read can block until the other output drains.
+        DispatchQueue.global(qos: .utility).async { [self] in
+            videoRead.withLock { _ in
+                audioRead.withLock { _ in reader.withLock { $0?.cancelReading() } }
+            }
+        }
+    }
+
+    // Each output has its own lock so the two pumps never wait on each other's decode.
+    private func nextSample(from output: AVAssetReaderOutput, guardedBy read: Locked<Void>) -> CMSampleBuffer? {
+        read.withLock { _ in
+            guard running.value else { return nil }
+            return output.copyNextSampleBuffer()
+        }
     }
 
     private func end(_ reason: String?) {
@@ -132,11 +148,15 @@ public final class MediaFileSource: @unchecked Sendable {
             }
         }
 
-        guard assetReader.startReading() else {
+        let started = reader.withLock { reader in
+            guard running.value else { return false }
+            reader = assetReader
+            return assetReader.startReading()
+        }
+        guard started else {
             end("decode failed to start: \(assetReader.error?.localizedDescription ?? "unknown")")
             return
         }
-        reader.value = assetReader
         videoOut.value = videoOutput
         audioOut.value = audioOutput
         guard running.value else { return }
@@ -153,7 +173,7 @@ public final class MediaFileSource: @unchecked Sendable {
 
     private func pumpVideo(anchor: Double, base: Double) async {
         guard let output = videoOut.value, let reader = reader.value else { return }
-        while running.value, let sample = output.copyNextSampleBuffer() {
+        while let sample = nextSample(from: output, guardedBy: videoRead) {
             guard let imageBuffer = CMSampleBufferGetImageBuffer(sample) else { continue }
             let pts = CMSampleBufferGetPresentationTimeStamp(sample).seconds
             let target = anchor + max(0, pts - base)
@@ -182,7 +202,7 @@ public final class MediaFileSource: @unchecked Sendable {
         guard let output = audioOut.value,
               let format = AVAudioFormat(
                   standardFormatWithSampleRate: 48_000, channels: 2) else { return }
-        while running.value, let sample = output.copyNextSampleBuffer() {
+        while let sample = nextSample(from: output, guardedBy: audioRead) {
             let frames = CMSampleBufferGetNumSamples(sample)
             guard frames > 0,
                   let pcm = AVAudioPCMBuffer(

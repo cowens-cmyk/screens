@@ -103,6 +103,19 @@ public enum MediaAuthoring {
         var audioWritten = 0
         for frame in 0..<frameCount {
 
+            // The writer interleaves the two tracks and can hold the video input until the
+            // audio runs further ahead than the frame being written. Waiting for video alone
+            // then never ends, so feed audio for as long as it is the input being asked for.
+            if let audioInput, let monoAudio {
+                let step = Int(audioSampleRate) / Int(framesPerSecond)
+                while !input.isReadyForMoreMediaData, audioInput.isReadyForMoreMediaData,
+                      audioWritten < monoAudio.count, writer.status == .writing {
+                    let upTo = min(monoAudio.count, audioWritten + step)
+                    try await append(
+                        monoAudio, from: audioWritten, upTo: upTo, to: audioInput, writer: writer)
+                    audioWritten = upTo
+                }
+            }
             try await waitUntilReady(input, writer: writer, codec: codec)
             guard let pool = adaptor.pixelBufferPool else {
                 throw MediaEngineError.authoringFailed("no pixel buffer pool (\(codec.rawValue))")

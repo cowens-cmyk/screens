@@ -11,10 +11,21 @@ import Testing
     }
 
     private func packageFiles(named name: String) -> [URL] {
-        let all = FileManager.default.enumerator(
-            at: packages, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-        )?.compactMap { $0 as? URL } ?? []
-        return all.filter { $0.lastPathComponent == name && !$0.path.contains("/automerge-swift/") }
+        guard let all = FileManager.default.enumerator(
+            at: packages, includingPropertiesForKeys: nil
+        ) else { return [] }
+        var files: [URL] = []
+        for case let file as URL in all {
+            // .skipsHiddenFiles also skips worktrees beneath hidden ancestors such as .claude.
+            if file.lastPathComponent.hasPrefix(".") {
+                all.skipDescendants()
+                continue
+            }
+            if file.lastPathComponent == name && !file.path.contains("/automerge-swift/") {
+                files.append(file)
+            }
+        }
+        return files
     }
 
     private func vendoredSource(_ file: String) throws -> String {
