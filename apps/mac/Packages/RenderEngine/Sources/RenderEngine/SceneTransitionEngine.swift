@@ -174,8 +174,12 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             let oldItems = previous.layers.first { $0.kind == kind }?.items ?? []
             let newItems = scene.layers[index].items
 
-            let oldKeys = Set(oldItems.map(membershipKey))
-            let newKeys = Set(newItems.map(membershipKey))
+            // Text that is identical on both slides (same words, style and
+            // place, such as a passage's reference across its slides) holds
+            // still instead of dissolving into itself.
+            let steady = steadyText(old: oldItems, new: newItems)
+            let oldKeys = Set(oldItems.map(membershipKey)).union(steady.arriving)
+            let newKeys = Set(newItems.map(membershipKey)).union(steady.leaving)
 
             let leaving = oldItems.filter { !newKeys.contains(membershipKey($0)) }
                 .map { item in
@@ -237,6 +241,30 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             }
         }
         return scene
+    }
+
+    /// Keys of text items on the incoming slide that match an outgoing text
+    /// item in everything but id, and the keys of those outgoing items.
+    static func steadyText(old: [RenderItem], new: [RenderItem]) -> (arriving: Set<String>, leaving: Set<String>) {
+        let oldKeys = Set(old.map(membershipKey))
+        var unmatched = old.filter { item in
+            if case .text = item.content { return !new.contains { $0.id == item.id } }
+            return false
+        }
+        var arriving = Set<String>(), leaving = Set<String>()
+        for item in new where !oldKeys.contains(membershipKey(item)) {
+            guard case .text = item.content else { continue }
+            if let index = unmatched.firstIndex(where: { candidate in
+                var same = candidate
+                same.id = item.id
+                return same == item
+            }) {
+                arriving.insert(membershipKey(item))
+                leaving.insert(membershipKey(unmatched[index]))
+                unmatched.remove(at: index)
+            }
+        }
+        return (arriving, leaving)
     }
 
     private static func faded(_ items: [RenderItem], to opacity: Double) -> [RenderItem] {

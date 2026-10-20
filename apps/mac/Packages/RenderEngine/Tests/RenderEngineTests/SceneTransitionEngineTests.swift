@@ -41,6 +41,45 @@ final class SceneTransitionEngineTests: XCTestCase {
         XCTAssertEqual(items.filter { $0.id == "stay" }.count, 1, "no colliding twins")
     }
 
+    func testIdenticalTextHoldsStillWhileChangedTextDissolves() {
+        func slide(verseID: String, verse: String, referenceID: String) -> RenderScene {
+            var scene = RenderScene(canvasSize: CGSize(width: 192, height: 108))
+            scene.addItem(RenderItem(
+                id: verseID, frame: CGRect(x: 0, y: 0, width: 100, height: 60),
+                content: .text(StyledText(string: verse, fontSize: 24))), to: .slide)
+            scene.addItem(RenderItem(
+                id: referenceID, frame: CGRect(x: 0, y: 80, width: 100, height: 20),
+                content: .text(StyledText(string: "Genesis 28:1–22 ESV", fontSize: 18))), to: .slide)
+            return scene
+        }
+        let items = SceneTransitionEngine.composite(
+            previous: slide(verseID: "v1", verse: "In the beginning", referenceID: "r1"),
+            target: slide(verseID: "v2", verse: "And the earth", referenceID: "r2"),
+            transition: SceneTransition(kind: .dissolve, duration: 1),
+            progress: 0.25, layers: [.slide]
+        ).layers.first { $0.kind == .slide }!.items
+
+        XCTAssertEqual(items.first { $0.id == "r2" }?.opacity ?? -1, 1, accuracy: 0.001, "the reference doesn't fade")
+        XCTAssertNil(items.first { $0.id.hasPrefix("r1") }, "and isn't drawn twice")
+        XCTAssertEqual(items.first { $0.id == "v2" }?.opacity ?? -1, 0.25, accuracy: 0.001)
+        XCTAssertEqual(items.first { $0.id == "v1::leaving" }?.opacity ?? -1, 0.75, accuracy: 0.001)
+    }
+
+    func testTextThatMovesStillDissolves() {
+        var old = RenderScene(canvasSize: CGSize(width: 192, height: 108))
+        old.addItem(RenderItem(id: "a", frame: CGRect(x: 0, y: 0, width: 50, height: 20),
+                               content: .text(StyledText(string: "Same", fontSize: 18))), to: .slide)
+        var new = RenderScene(canvasSize: CGSize(width: 192, height: 108))
+        new.addItem(RenderItem(id: "b", frame: CGRect(x: 0, y: 40, width: 50, height: 20),
+                               content: .text(StyledText(string: "Same", fontSize: 18))), to: .slide)
+        let items = SceneTransitionEngine.composite(
+            previous: old, target: new, transition: SceneTransition(kind: .dissolve, duration: 1),
+            progress: 0.25, layers: [.slide]
+        ).layers.first { $0.kind == .slide }!.items
+        XCTAssertEqual(items.first { $0.id == "b" }?.opacity ?? -1, 0.25, accuracy: 0.001)
+        XCTAssertNotNil(items.first { $0.id == "a::leaving" })
+    }
+
     func testFadeShowsOldThenPlateThenNew() {
         let transition = SceneTransition(kind: .fade(.black), duration: 1)
         let early = SceneTransitionEngine.composite(

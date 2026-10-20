@@ -82,6 +82,14 @@ public enum ScriptureText {
     }
 }
 
+public extension BiblePassage {
+    /// The whole passage by its first and last verse ("Genesis 28:1–22"),
+    /// even when it was asked for as a chapter.
+    var versesReference: String {
+        ScripturePage(text: "", verses: verses, continuesVerse: false).reference(book: reference.book)
+    }
+}
+
 /// One slide's worth of scripture.
 public struct ScripturePage: Hashable, Sendable {
     public var text: String

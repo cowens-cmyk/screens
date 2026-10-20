@@ -29,9 +29,10 @@ public enum ScriptureSlideBuilder {
         let book = passage.reference.book
         let abbreviation = passage.translation.abbreviation
 
-        func referenceLine(_ page: ScripturePage) -> String {
-            "\(page.reference(book: book)) \(abbreviation)"
-        }
+        // Every slide shows the whole passage's reference, so it reads the
+        // same throughout (and holds still while the verses change).
+        let wholeReference = "\(passage.versesReference) \(abbreviation)"
+        func referenceLine(_ page: ScripturePage) -> String { wholeReference }
         func objects(text: String, reference: String) -> [SlideObject] {
             if separateReference {
                 return [
@@ -45,8 +46,7 @@ public enum ScriptureSlideBuilder {
         }
         func fits(_ text: String) -> Bool {
             guard let template else { return text.count <= 280 }
-            // Measure with the longest reference this passage could show.
-            let reference = "\(passage.reference.display) \(abbreviation)"
+            let reference = wholeReference
             let candidate = objects(text: text, reference: reference)
             let assignments = SlideSceneBuilder.placeholderAssignments(for: candidate, in: template)
             let item = SlideSceneBuilder.renderItem(

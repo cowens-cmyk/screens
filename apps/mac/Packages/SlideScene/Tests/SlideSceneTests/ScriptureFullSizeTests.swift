@@ -24,6 +24,9 @@ import Testing
 
     let slides = ScriptureSlideBuilder.slides(for: passage, format: ScriptureFormat(), theme: theme)
     #expect(slides.count > 3)
+    // Every slide names the whole passage, not just the verses on it.
+    #expect(slides.allSatisfy { $0.objects.last?.text == "Genesis 28:1–16 ESV" })
+    #expect(slides.first?.name != slides.last?.name, "slide names still say which verses they hold")
     for slide in slides {
         let verse = try #require(slide.objects.first)
         let assignments = SlideSceneBuilder.placeholderAssignments(for: slide.objects, in: design)
