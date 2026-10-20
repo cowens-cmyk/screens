@@ -1,9 +1,8 @@
 import PresenterCore
 import SwiftUI
 
-/// Find a song in the Planning Center library (where MultiTracks and
-/// SongSelect charts already live), pick the arrangement the band plays,
-/// and bring it in with its sections, chords, key and song order.
+/// Find a song in Shepherd's song library, pick the arrangement the band
+/// plays, and bring it in with its sections, chords, key and song order.
 struct SongSearchSheet: View {
     let model: AppModel
     let render: RenderContext?
@@ -11,9 +10,11 @@ struct SongSearchSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
-    @State private var songs: [PCOClient.Song] = []
-    @State private var selectedSong: PCOClient.Song?
-    @State private var arrangements: [PCOClient.Arrangement] = []
+    @State private var songs: [ShepherdClient.SongSummary] = []
+    @State private var selectedSong: ShepherdClient.SongSummary?
+    /// The chosen song with lyrics, charts, keys and arrangements.
+    @State private var detail: ShepherdClient.SongDetail?
+    @State private var arrangements: [ShepherdClient.SongArrangement] = []
     @State private var selectedArrangementID: String?
     @State private var keys: [String] = []
     @State private var playingKey = ""
@@ -22,14 +23,16 @@ struct SongSearchSheet: View {
     @State private var error: String?
     @State private var addToService = true
 
-    private var client: PCOClient { PlanningCenterSync.shared.client }
-    private var arrangement: PCOClient.Arrangement? { arrangements.first { $0.id == selectedArrangementID } }
+    private var sync: ShepherdSync { ShepherdSync.shared }
+    private var client: ShepherdClient { sync.client }
+    private var arrangement: ShepherdClient.SongArrangement? { arrangements.first { $0.id == selectedArrangementID } }
+    private var canImport: Bool { detail != nil && SongImport.hasText(song: detail, arrangement: arrangement) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Song Search").font(.headline)
-            if !client.isConfigured {
-                Text("Add your Planning Center token in Settings › Planning Center to search your song library.")
+            if !sync.isConfigured {
+                Text("Add your Shepherd key in Settings › Shepherd to search the song library.")
                     .foregroundStyle(.orange)
             }
             TextField("Search by title or CCLI number", text: $query)
@@ -50,11 +53,11 @@ struct SongSearchSheet: View {
                     Button("Open Library Copy") { dismiss(); onCreated(existingID) }
                     Button("Replace Library Copy") { replace(existingID) }
                         .help("Re-import this song into the copy you already have — services using it keep it")
-                        .disabled(arrangement == nil || !hasText(arrangement))
+                        .disabled(!canImport)
                 }
                 Button(existingID == nil ? "Import Song" : "Import Again", action: importSong)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(arrangement == nil || !hasText(arrangement))
+                    .disabled(!canImport)
             }
         }
         .padding(16)
@@ -89,33 +92,35 @@ struct SongSearchSheet: View {
             ContentUnavailableView("Choose a Song", systemImage: "music.note.list")
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Picker("Arrangement", selection: $selectedArrangementID) {
-                    ForEach(arrangements, id: \.id) { arrangement in
-                        Text(label(arrangement)).tag(Optional(arrangement.id))
+                if !arrangements.isEmpty {
+                    Picker("Arrangement", selection: $selectedArrangementID) {
+                        ForEach(arrangements, id: \.id) { arrangement in
+                            Text(label(arrangement)).tag(Optional(arrangement.id))
+                        }
                     }
                 }
-                .onChange(of: selectedArrangementID) { _, _ in Task { await loadKeys() } }
                 if !keys.isEmpty {
                     Picker("Key", selection: $playingKey) {
                         Text("Chart key").tag("")
                         ForEach(keys, id: \.self) { Text($0).tag($0) }
                     }
                 }
-                if let arrangement {
-                    if !arrangement.sequence.isEmpty {
-                        Text("Order: " + arrangement.sequence.joined(separator: " → "))
+                if let detail {
+                    let order = arrangement?.sequence.isEmpty == false ? arrangement!.sequence : detail.sequence
+                    if !order.isEmpty {
+                        Text("Order: " + order.joined(separator: " → "))
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     ScrollView {
-                        Text(preview(arrangement))
+                        Text(preview(detail))
                             .font(.callout.monospaced())
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
                     }
                     .padding(8)
                     .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
-                    if !hasText(arrangement) {
-                        Text("This arrangement has no lyrics or chord chart in Planning Center.")
+                    if !canImport {
+                        Text("No lyrics or chord chart came back. The Shepherd key needs the songs:lyrics scope, or this song has no lyrics in Shepherd yet.")
                             .font(.caption).foregroundStyle(.orange)
                     }
                 }
@@ -126,32 +131,26 @@ struct SongSearchSheet: View {
         }
     }
 
-    private func label(_ arrangement: PCOClient.Arrangement) -> String {
+    private func label(_ arrangement: ShepherdClient.SongArrangement) -> String {
         var parts = [arrangement.name.isEmpty ? "Arrangement" : arrangement.name]
-        if let key = arrangement.chordChartKey, !key.isEmpty { parts.append(key) }
-        if let bpm = arrangement.bpm { parts.append("\(Int(bpm)) BPM") }
+        if let tempo = arrangement.tempo { parts.append("\(Int(tempo)) BPM") }
         return parts.joined(separator: " · ")
     }
 
-    private func hasText(_ arrangement: PCOClient.Arrangement?) -> Bool {
-        guard let arrangement else { return false }
-        return !(arrangement.chordChart ?? arrangement.lyrics ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !(arrangement.lyrics ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func preview(_ arrangement: PCOClient.Arrangement) -> String {
-        let chart = arrangement.chordChart ?? ""
-        let text = chart.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (arrangement.lyrics ?? "") : chart
-        return text.replacingOccurrences(of: "COLUMN_BREAK", with: "").replacingOccurrences(of: "PAGE_BREAK", with: "")
+    private func preview(_ song: ShepherdClient.SongDetail) -> String {
+        let chart = [arrangement?.chordChart, song.chordChart]
+            .compactMap { $0 }.first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return chart ?? song.lyrics ?? ""
     }
 
     private func search() async {
         try? await Task.sleep(for: .milliseconds(300))
-        guard !Task.isCancelled, client.isConfigured else { return }
+        guard !Task.isCancelled, sync.isConfigured,
+              !query.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         searching = true
         defer { searching = false }
         do {
-            songs = try await client.searchSongs(query)
+            songs = try await client.searchSongs(query).filter { $0.archived != true }
             error = nil
         } catch {
             if !Task.isCancelled { self.error = error.localizedDescription }
@@ -160,33 +159,32 @@ struct SongSearchSheet: View {
 
     private func loadArrangements() async {
         guard let song = selectedSong else { return }
+        detail = nil
         arrangements = []
         selectedArrangementID = nil
         keys = []
         playingKey = ""
         existingID = await libraryCopy(of: song)
         do {
-            arrangements = try await client.arrangements(songID: song.id)
+            let loaded = try await client.song(id: song.id)
+            detail = loaded
+            arrangements = loaded.arrangements
             selectedArrangementID = arrangements.first?.id
-            await loadKeys()
+            keys = loaded.keys.map(\.key)
+            playingKey = loaded.defaultKey ?? keys.first ?? ""
+            error = nil
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    private func loadKeys() async {
-        guard let song = selectedSong, let arrangement else { return }
-        keys = (try? await client.keys(songID: song.id, arrangementID: arrangement.id)) ?? []
-        playingKey = keys.first ?? ""
-    }
-
-    private func libraryCopy(of song: PCOClient.Song) async -> String? {
+    private func libraryCopy(of song: ShepherdClient.SongSummary) async -> String? {
         let candidates = ((try? await model.client.presentationMatchKeys()) ?? []).map {
             ServiceLinkLogic.Candidate(id: $0.id, name: $0.name, ccliNumber: $0.ccliNumber, ccliSongTitle: $0.ccliTitle)
         }
         var probe = ServiceItem(id: "", itemKind: .info, name: song.title, refId: "")
         probe.mxuSongTitle = song.title
-        probe.mxuCcliNumber = song.ccliNumber
+        probe.mxuCcliNumber = song.ccliNumber.flatMap(Int.init)
         if case .link(_, let id) = ServiceLinkLogic.resolve(
             item: probe, serviceTypeName: nil, rules: ServiceLinkRules(id: "", rules: []), candidates: candidates) {
             return id
@@ -195,9 +193,9 @@ struct SongSearchSheet: View {
     }
 
     private func built() -> Presentation? {
-        guard let song = selectedSong, let arrangement else { return nil }
-        return PlanningCenterSync.importSong(
-            title: song.title, song: song, arrangement: arrangement,
+        guard let detail else { return nil }
+        return SongImport.presentation(
+            song: detail, arrangement: arrangement,
             playingKey: playingKey.isEmpty ? nil : playingKey,
             themeId: model.slideBuilding.lyricsImportThemeId ?? "")
     }
@@ -221,15 +219,12 @@ struct SongSearchSheet: View {
     }
 
     private func importSong() {
-        guard let song = selectedSong, let arrangement,
-              var presentation = PlanningCenterSync.importSong(
-                  title: song.title, song: song, arrangement: arrangement,
-                  playingKey: playingKey.isEmpty ? nil : playingKey,
-                  themeId: model.slideBuilding.lyricsImportThemeId ?? "")
-        else { return }
+        guard var presentation = built() else { return }
         presentation.folder = model.newPlacement.folder(for: .presentation)
         model.createInDrive(presentation)
         AddToCurrentServiceToggle.add(presentation.id, model: model, if: addToService)
+        // Link it to any Shepherd service that flagged this song.
+        Task { await ShepherdSync.shared.relinkFlaggedSongs() }
         dismiss()
         onCreated(presentation.id)
     }

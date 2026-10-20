@@ -436,14 +436,6 @@ struct AppSettingsView: View {
             ))
         }
         rows.append(SettingsRowSpec(
-            id: "pco.sync", category: .planningCenter,
-            title: "Planning Center",
-            caption: "Upcoming plans become services and stay updated — songs, keys, arrangements and order.",
-            keywords: "planning center pco services plan sync song key arrangement token import month",
-            control: AnyView(PlanningCenterSettingsForm()),
-            stacked: true
-        ))
-        rows.append(SettingsRowSpec(
             id: "shepherd.sync", category: .planningCenter,
             title: "Shepherd",
             caption: "Upcoming Sunday plans from Shepherd become services. Songs link to presentations already in the library; any without one are flagged No slides.",
@@ -535,7 +527,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .keyboard: "Keyboard"
         case .screens: "Screens"
         case .bible: "Bible"
-        case .planningCenter: "Planning Center"
+        case .planningCenter: "Shepherd"
 
         case .api: "Network & API"
         }

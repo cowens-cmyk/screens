@@ -4,7 +4,7 @@ import PresenterCore
 import SwiftUI
 
 /// Loads upcoming Sunday plans from Shepherd as Screens services and checks
-/// again every few minutes, like the Planning Center sync. Songs link only
+/// again every few minutes. Songs link only
 /// to presentations already in the library; a song with none stays in the
 /// service flagged "No slides" until one is imported.
 @MainActor
@@ -154,6 +154,13 @@ final class ShepherdSync {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    /// After a song is imported: re-read plans that flagged songs, once the
+    /// new presentation is in the library index.
+    func relinkFlaggedSongs() async {
+        try? await Task.sleep(for: .seconds(1))
+        await sync()
     }
 
     // MARK: Helpers

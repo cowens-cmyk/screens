@@ -51,7 +51,7 @@ struct NewServiceSheet: View {
     private func create() {
         var items: [ServiceItem] = []
         if !copyFrom.isEmpty, let source = try? model.service(copyFrom) {
-            // Same order and links; a copy is local, not tied to Planning Center.
+            // Same order and links; a copy is local, not tied to Shepherd.
             items = source.items.map { item in
                 var copy = ServiceItem(id: UUID().uuidString, itemKind: item.itemKind, name: item.name, refId: item.refId)
                 copy.arrangementId = item.arrangementId

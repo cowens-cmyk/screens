@@ -184,6 +184,27 @@ struct ShepherdTests {
         ])
     }
 
+    @Test func songSearchDecodesTheListAndSendsTheQuery() async throws {
+        let list = """
+        {"songs": [{"id": "5e3b…", "title": "Living Hope", "author": "Phil Wickham, Brian Johnson",
+          "ccli_number": "7106807", "copyright": "2017", "themes": ["Hope"], "default_key": "C",
+          "tempo": 72, "time_signature": "4/4", "sequence": [], "archived": false, "keys": [],
+          "arrangements": [], "media_links": [], "updated_at": "2026-10-14T19:02:11Z"}],
+         "next_offset": null}
+        """
+        let client = shepherdClient([ShepherdReply(body: list)])
+        defer { client.session.invalidateAndCancel() }
+        let songs = try await client.searchSongs("  hope ")
+        #expect(songs.map(\.title) == ["Living Hope"])
+        #expect(songs.first?.ccliNumber == "7106807" && songs.first?.defaultKey == "C")
+        let url = try #require(ShepherdURLProtocol.state.snapshot().requests.first?.url)
+        #expect(url.path == "/api/v1/services/songs")
+        #expect(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems == [
+            URLQueryItem(name: "q", value: "hope"),
+            URLQueryItem(name: "limit", value: "50"),
+        ])
+    }
+
     @Test func planDetailDecodesExample() async throws {
         let client = shepherdClient([ShepherdReply(body: String(decoding: try shepherdDetailData(), as: UTF8.self))])
         defer { client.session.invalidateAndCancel() }

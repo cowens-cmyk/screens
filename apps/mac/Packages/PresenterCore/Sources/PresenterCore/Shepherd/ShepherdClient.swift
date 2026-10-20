@@ -140,6 +140,21 @@ public struct ShepherdClient: Sendable {
         public var files: [File]
     }
 
+    /// A song as `GET /services/songs` lists it: no lyrics or files.
+    public struct SongSummary: Codable, Hashable, Sendable, Identifiable {
+        public var id: String
+        public var title: String
+        public var author: String?
+        public var ccliNumber: String?
+        public var defaultKey: String?
+        public var archived: Bool?
+    }
+
+    struct SongPage: Codable, Hashable, Sendable {
+        var songs: [SongSummary]
+        var nextOffset: Int?
+    }
+
     public struct SongKey: Codable, Hashable, Sendable {
         public var key: String
         public var description: String?
@@ -177,6 +192,17 @@ public struct ShepherdClient: Sendable {
 
     public func plan(id: String) async throws -> PlanDetail {
         try await get("services/plans/\(try checkedID(id))")
+    }
+
+    /// Songs matching a title, author, CCLI number or theme (and lyrics, with
+    /// the songs:lyrics scope), sorted by title.
+    public func searchSongs(_ query: String, limit: Int = 50) async throws -> [SongSummary] {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let page: SongPage = try await get("services/songs", query: [
+            URLQueryItem(name: "q", value: text),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ])
+        return page.songs
     }
 
     public func song(id: String) async throws -> SongDetail {

@@ -528,7 +528,7 @@ struct ShellView: View {
                         SermonMicButton()
                             .padding(.trailing, 6)
                         TopBarAddButton(title: "Songs", systemImage: "music.note", action: presentSongSearch)
-                            .help("Song Search — import a song and arrangement from Planning Center (⌘⇧L)")
+                            .help("Song Search — import a song and arrangement from Shepherd (⌘⇧L)")
                             .padding(.trailing, 6)
                         TopBarAddButton(title: "Scripture", systemImage: "book", action: presentScripture)
                             .help("Add scripture slides (⌘⇧B)")
