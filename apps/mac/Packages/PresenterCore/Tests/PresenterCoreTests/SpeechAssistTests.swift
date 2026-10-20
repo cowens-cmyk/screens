@@ -53,10 +53,30 @@ import Testing
 }
 
 @Test func aNumberThatIsBothAChapterAndAVerseIsAmbiguous() {
-    let detection = SpokenReference.detections(in: "look at John 11").first
-    #expect(detection?.reference.display == "John 11")
-    #expect(detection?.alternatives.map(\.display) == ["John 1:1"])
+    let detection = SpokenReference.detections(in: "look at Romans 11").first
+    #expect(detection?.ambiguous == true)
+    #expect(Set(([detection?.reference] + (detection?.alternatives ?? [])).compactMap { $0?.display })
+        == ["Romans 11", "Romans 1:1"])
     #expect(SpokenReference.detections(in: "John 3").first?.ambiguous == false, "one digit can't be split")
+}
+
+// Both readings are kept; the most likely goes first and is shown.
+@Test func theLikelyReadingComesFirst() {
+    func first(_ text: String, recent: [BibleReference] = []) -> String? {
+        SpokenReference.detections(in: text, recent: recent).first?.reference.display
+    }
+    #expect(first("Romans 11") == "Romans 1:1", "verses are cited far more than whole chapters")
+    #expect(first("Romans chapter 11") == "Romans 11", "saying chapter settles it")
+    #expect(first("open your Bibles to Romans 11") == "Romans 11", "so does telling people where to turn")
+    #expect(first("Psalm 23") == "Psalms 23", "a chapter people name on its own")
+    #expect(first("Hebrews 11") == "Hebrews 11")
+    let john1 = BibleReference(book: BibleReference.book(named: "John")!, chapter: 1)
+    #expect(first("John 11", recent: [john1]) == "John 1:1", "already in John 1")
+    #expect(first("we were in John 1 and now John 11") == "John 1", "the earlier mention steers the later one")
+    #expect(SpokenReference.detections(in: "we were in John 1 and now John 11").last?.reference.display == "John 1:1")
+    #expect(SpokenReference.detections(in: "Romans 11").first?.alternatives.map(\.display) == ["Romans 11"])
+    #expect(first("John chapter three sixteen") == "John 3:16")
+    #expect(first("John chapter 3 verse 16") == "John 3:16")
 }
 
 @Test func colonsAndPeriodsFromTheRecognizerAreRead() {

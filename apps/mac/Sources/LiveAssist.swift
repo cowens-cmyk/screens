@@ -181,12 +181,12 @@ final class LiveAssist {
     }
 
     private func spotScripture(in text: String) {
-        for detection in SpokenReference.detections(in: text)
+        for detection in SpokenReference.detections(in: text, recent: detected.map(\.reference))
         where !detected.contains(where: { $0.reference == detection.reference }) {
             detected.insert(detection, at: 0)
-            // Only a reference that can be read one way goes up on its own;
-            // "John 11" (chapter 11, or 1:1?) waits for someone to pick.
-            let shows = mode == .sermon && showsAutomatically && !detection.ambiguous
+            // The likely reading goes up; any other reading of the same words
+            // ("John 11" heard as 1:1) is loaded too, one click away.
+            let shows = mode == .sermon && showsAutomatically
             Task { await prepare(detection.reference, thenShow: shows) }
             for alternative in detection.alternatives {
                 Task { await prepare(alternative, thenShow: false) }
@@ -461,12 +461,15 @@ struct SermonPanel: View {
                                 }
                             }
                             .controlSize(.small)
-                            .help("Show \(reference.display)")
+                            .fontWeight(reference == detection.reference ? .semibold : .regular)
+                            .help(reference == detection.reference
+                                  ? "Most likely reading — shown automatically"
+                                  : "Show \(reference.display) instead")
                         }
                         Spacer()
                     }
                     if detection.ambiguous {
-                        Text("Heard two ways — pick the one that was meant.")
+                        Text("Could also be \(detection.alternatives.map(\.display).joined(separator: " or ")). Click it if that's what was meant.")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                 }

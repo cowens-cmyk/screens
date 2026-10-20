@@ -21,7 +21,11 @@ public enum SpokenReference {
         detections(in: transcript).map(\.reference)
     }
 
-    public static func detections(in transcript: String) -> [SpokenDetection] {
+    static let chapterMarker = "§chapter"
+
+    /// `recent` is what this sermon has mentioned so far, newest first; it
+    /// helps pick between two readings of the same words.
+    public static func detections(in transcript: String, recent: [BibleReference] = []) -> [SpokenDetection] {
         let words = normalize(transcript).split(separator: " ").map(String.init)
         var found: [SpokenDetection] = []
         var index = 0
@@ -30,13 +34,20 @@ public enum SpokenReference {
                 index += 1
                 continue
             }
-            let next = index + length
+            var next = index + length
+            var saidChapter = next < words.count && words[next] == chapterMarker
+            if saidChapter { next += 1 }
+            // "Turn to Genesis 32", "open your Bibles to Romans 12": announcing
+            // where to turn names the chapter.
+            let lead = words[max(0, index - 5)..<index]
+            if lead.contains(where: { ["turn", "turning", "open", "opening", "flip"].contains($0) }) { saidChapter = true }
             // A book name only counts with a number right after it, so
             // "mark my words" or "the book of Acts" never match.
-            guard next < words.count, let detection = detection(book: book, numbers: words[next]) else {
+            guard next < words.count, var detection = detection(book: book, numbers: words[next]) else {
                 index = next
                 continue
             }
+            detection = likely(detection, saidChapter: saidChapter, recent: recent + found.map(\.reference))
             if !found.contains(where: { $0.reference == detection.reference }) { found.append(detection) }
             index = next + 1
         }
@@ -107,6 +118,37 @@ public enum SpokenReference {
         return SpokenDetection(reference: chapter, alternatives: split.map { [$0] } ?? [])
     }
 
+    /// Puts the most likely reading first. Saying "chapter" settles it; then
+    /// a chapter already mentioned in this sermon; then chapters people cite
+    /// whole (Psalm 23, Romans 8); otherwise chapter and verse, which sermons
+    /// cite far more often than whole chapters.
+    static func likely(_ detection: SpokenDetection, saidChapter: Bool, recent: [BibleReference]) -> SpokenDetection {
+        guard detection.ambiguous else { return detection }
+        let readings = [detection.reference] + detection.alternatives
+        guard let whole = readings.first(where: { $0.startVerse == nil }),
+              let verse = readings.first(where: { $0.startVerse != nil })
+        else { return detection }
+        func pick(_ chosen: BibleReference) -> SpokenDetection {
+            SpokenDetection(reference: chosen, alternatives: readings.filter { $0 != chosen })
+        }
+        if saidChapter { return pick(whole) }
+        let sameBook = recent.filter { $0.book == whole.book }
+        if sameBook.contains(where: { $0.chapter == verse.chapter }) { return pick(verse) }
+        if sameBook.contains(where: { $0.chapter == whole.chapter }) { return pick(whole) }
+        if wellKnownChapters[whole.book.code]?.contains(whole.chapter) == true { return pick(whole) }
+        return pick(verse)
+    }
+
+    /// Chapters often named on their own in a sermon.
+    static let wellKnownChapters: [String: Set<Int>] = [
+        "GEN": [12, 15, 22, 37, 50], "EXO": [14, 20], "JOS": [24], "1SA": [17], "2SA": [11],
+        "1KI": [18, 19], "JOB": [38], "PSA": [19, 22, 23, 27, 37, 46, 51, 63, 84, 90, 91, 103, 119, 121, 139, 150],
+        "PRO": [31], "ISA": [40, 53, 55], "JER": [29], "EZK": [37], "DAN": [3, 6],
+        "MAT": [11, 13, 18, 25, 28], "MRK": [16], "LUK": [10, 15, 24], "JHN": [10, 11, 14, 15, 17, 20, 21],
+        "ACT": [10, 15, 17], "ROM": [12], "1CO": [12, 13, 15], "2CO": [12], "HEB": [11, 12],
+        "REV": [12, 21, 22],
+    ]
+
     /// "316" → 3:16, "11910" → 119:10: the longest leading chapter that
     /// exists, with the rest as a verse. No part may start with a zero.
     static func splitChapterVerse(_ digits: String, book: BibleBook) -> (chapter: Int, verse: Int)? {
@@ -138,6 +180,8 @@ public enum SpokenReference {
             let word = words[index]
             switch word {
             case "chapter", "chapters":
+                // Kept as a marker: "John chapter 11" is the chapter, never 1:1.
+                output.append(chapterMarker)
                 index += 1
                 continue
             case "verse", "verses", "vs", "v":
@@ -162,11 +206,13 @@ public enum SpokenReference {
                 break
             }
             // "John 3 16" — a chapter directly followed by a verse number.
+            let beforeNumber = output.count >= 2 && output[output.count - 2] == chapterMarker
+                ? Array(output.dropLast(2)) + [output[output.count - 1]] : output
             if let number = Int(word), let last = output.last, Int(last) != nil,
-               output.count >= 2, number > 0,
-               BibleReference.book(named: output[output.count - 2]) != nil
-                || (output.count >= 3 && BibleReference.book(
-                    named: output[output.count - 3] + " " + output[output.count - 2]) != nil) {
+               beforeNumber.count >= 2, number > 0,
+               BibleReference.book(named: beforeNumber[beforeNumber.count - 2]) != nil
+                || (beforeNumber.count >= 3 && BibleReference.book(
+                    named: beforeNumber[beforeNumber.count - 3] + " " + beforeNumber[beforeNumber.count - 2]) != nil) {
                 output[output.count - 1] = "\(last):\(number)"
                 index += 1
                 continue
