@@ -27,7 +27,7 @@ struct AppSettingsView: View {
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
     @AppStorage(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
 
-    @State private var category: SettingsCategory = .appearance
+    @State private var category: SettingsCategory = .present
     @State private var query = ""
 
     var body: some View {
@@ -129,7 +129,9 @@ struct AppSettingsView: View {
                     .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
             )
             .padding(.bottom, 10)
-            ForEach(SettingsCategory.allCases) { entry in
+            // Only categories with something in them (Appearance is gone:
+            // Screens is always dark).
+            ForEach(SettingsCategory.allCases.filter { entry in allRows.contains { $0.category == entry } }) { entry in
                 navRow(entry)
             }
             Spacer()
@@ -204,20 +206,6 @@ struct AppSettingsView: View {
 
     private var allRows: [SettingsRowSpec] {
         var rows: [SettingsRowSpec] = [
-            SettingsRowSpec(
-                id: "appearance.scheme", category: .appearance,
-                title: "Appearance",
-                caption: "One scheme across Present and Edit; dark is the booth default.",
-                keywords: "theme dark light system color scheme",
-                control: AnyView(
-                    Picker("", selection: $appearanceRaw) {
-                        ForEach(AppAppearance.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
-                )
-            ),
             SettingsRowSpec(
                 id: "present.mediaTransition", category: .present,
                 title: "Media transition",

@@ -12,12 +12,10 @@ enum AppAppearance: String, CaseIterable {
         }
     }
 
+    /// Screens is always dark: it runs in a dark booth, and every window,
+    /// sheet and menu matches. The stored choice is ignored.
     var colorScheme: ColorScheme? {
-        switch self {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
-        }
+        .dark
     }
 }
 
@@ -42,6 +40,11 @@ enum WindowBridge {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Dark everywhere, including AppKit menus, alerts and panels.
+        MainActor.assumeIsolated { NSApp.appearance = NSAppearance(named: .darkAqua) }
+    }
+
     /// Double-clicked .screenstheme / .screenspres files import themselves.
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated { ShareOpenQueue.open(urls) }

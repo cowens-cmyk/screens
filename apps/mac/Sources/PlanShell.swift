@@ -47,6 +47,7 @@ struct PlanShell: View {
             .inspectorColumnWidth(min: 240, ideal: 320, max: 520)
         }
         .toolbar { toolbar }
+        .preferredColorScheme(.dark)
         .sheet(item: Binding(get: { messagePlanID.map(IdentifiedID.init) }, set: { messagePlanID = $0?.id })) { plan in
             PlanMessageSheet(model: model, planID: plan.id)
         }
