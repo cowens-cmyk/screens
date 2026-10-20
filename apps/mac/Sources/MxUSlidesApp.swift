@@ -187,7 +187,7 @@ struct MxUSlidesApp: App {
                 .frame(minWidth: 1000, minHeight: 600)
             } else if let appModel {
 
-                ShellView(
+                PlanShell(
                     model: appModel, render: renderContext,
                     controls: controls,
                     layout: presentLayout
@@ -228,7 +228,7 @@ struct MxUSlidesApp: App {
                     .padding(40)
             }
         }
-        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unified)
         .defaultSize(width: 1480, height: 900)
         .commands {
             LibraryCommands()

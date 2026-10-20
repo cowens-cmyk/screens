@@ -338,6 +338,12 @@ struct RunOrderList: View {
     @ViewBuilder
     private func itemRow(_ item: ServiceItem, order: [String], changed: Bool) -> some View {
         HStack(spacing: 8) {
+            // An item's color, like a header's, shows as a stripe at its edge.
+            if let tint = item.colorHex.flatMap(ColorHex.color) {
+                Capsule()
+                    .fill(Color(red: tint.red, green: tint.green, blue: tint.blue))
+                    .frame(width: 3, height: 16)
+            }
 
             Text(displayName(item))
                 .lineLimit(1)
@@ -429,6 +435,8 @@ struct RunOrderList: View {
                     }
                     Divider()
                 }
+                headerColorMenu(item)
+                Divider()
 
                 if item.itemKind == .media {
 

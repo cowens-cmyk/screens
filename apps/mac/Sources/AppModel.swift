@@ -327,7 +327,8 @@ final class AppModel {
         }
     }
 
-    private static let freshStartKey = "library.freshStart.v1"
+    /// v2: the plans-first rebuild starts every library over again.
+    private static let freshStartKey = "library.freshStart.v2"
 
     /// Screens 0.4 starts every library over with only the basics: the old
     /// library (starter packs, ProPresenter imports, everything) goes to the
