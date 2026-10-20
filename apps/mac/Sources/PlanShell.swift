@@ -26,6 +26,7 @@ struct PlanShell: View {
     @State private var songSlideEditor = false
     @State private var messagePlanID: String?
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var mode: AppMode { AppMode(rawValue: modeRaw) ?? .present }
     private var runOnly: Bool { layout?.runOnly ?? false }
@@ -38,20 +39,27 @@ struct PlanShell: View {
             // The library inside needs 272 to lay out; narrower clips it.
             sidebar
                 .frame(minWidth: 272, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .background(HopeStyle.panel)
                 .clipped()
                 .navigationSplitViewColumnWidth(min: 272, ideal: 290, max: 380)
         } content: {
             planColumn
-                .scrollContentBackground(.hidden)
                 .frame(minWidth: 230, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .background(HopeStyle.panel)
                 .clipped()
                 .navigationSplitViewColumnWidth(min: 230, ideal: 290, max: 420)
         } detail: {
             center
                 .frame(minWidth: 280, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .background(HopeStyle.stage)
+                .background(Color(nsColor: .underPageBackgroundColor))
+                .animation(HopeMotion.ui(reduced: reduceMotion), value: modeRaw)
+                // Present's controls float over the slides on glass.
+                .overlay(alignment: .bottom) {
+                    if mode == .present, let controls {
+                        PresentControlBar(controls: controls)
+                            .padding(.bottom, 18)
+                            // Rises from the bottom edge and leaves the same way.
+                            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
                 // The screens column is the detail's inspector, as split views expect.
                 .inspector(isPresented: $screensShown) {
                     Group {
@@ -114,7 +122,6 @@ struct PlanShell: View {
                 }
             }
             .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
             .frame(maxHeight: .infinity)
 
             if !runOnly {
@@ -379,7 +386,7 @@ struct PlanShell: View {
                 Label("Screen Setup", systemImage: "display.2")
             }
             .help("Which screen is which: audience, livestream, stage")
-            Button { screensShown.toggle() } label: {
+            Button { withAnimation(HopeMotion.ui(reduced: reduceMotion)) { screensShown.toggle() } } label: {
                 Label("Screens", systemImage: "sidebar.right")
             }
             .help("Show or hide the screen previews")

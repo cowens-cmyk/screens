@@ -128,6 +128,7 @@ final class KeyInController {
     private var goToExpiry: Task<Void, Never>?
 
     init(model: AppModel, controls: ServiceControls, router: ActionRouter, bridge: AppAPIBridge) {
+        defer { Self.current = self }
         self.model = model
         self.controls = controls
         self.router = router
@@ -223,6 +224,12 @@ final class KeyInController {
         }
         return false
     }
+
+    /// The live controller, for on-screen buttons that act like their keys.
+    static weak var current: KeyInController?
+
+    /// Runs a command as if its key were pressed.
+    func perform(_ command: KeyCommand) { execute(command) }
 
     private func execute(_ command: KeyCommand) {
         DiagnosticsStore.shared.note("key.in", detail: command.rawValue)

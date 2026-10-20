@@ -49,7 +49,7 @@ struct MonitorsPanel: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .background(HopeStyle.stage)
+
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             let rounded = (width / 4).rounded(.down) * 4
             if abs(rounded - columnWidth) >= 4 { columnWidth = rounded }
@@ -306,10 +306,21 @@ struct ScreenLabel: View {
     let color: Color
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 7, height: 7)
-                .shadow(color: color.opacity(0.8), radius: 3)
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.primary.opacity(0.85))
+        Label {
+            Text(title).font(.subheadline.weight(.semibold))
+        } icon: {
+            Image(systemName: Self.symbol(for: title))
+                .foregroundStyle(color)
+        }
+    }
+
+    /// Each role's SF Symbol, like an Apple app's sidebar.
+    static func symbol(for title: String) -> String {
+        switch title {
+        case "Audience": "person.3.fill"
+        case "Livestream": "dot.radiowaves.left.and.right"
+        case "Stage": "music.mic"
+        default: "display"
         }
     }
 }
@@ -318,6 +329,7 @@ extension View {
     /// A screen preview's Liquid Glass card, faintly tinted with its role.
     func screenCard(_ color: Color) -> some View {
         padding(10)
-            .glassEffect(.regular.tint(color.opacity(0.12)), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.06)))
     }
 }
