@@ -55,17 +55,15 @@ struct PlanShell: View {
                 .background(Color(nsColor: .underPageBackgroundColor))
                 .animation(HopeMotion.ui(reduced: reduceMotion), value: modeRaw)
                 .animation(HopeMotion.ui(reduced: reduceMotion), value: itemID)
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { detailWidth = $0 }
-                // Saved live inputs wait for the microphone answer; Screens
-                // never raises the prompt by itself (see AudioInputInventory).
-                .overlay(alignment: .top) {
-                    if AudioInputInventory.shared.needsMicrophoneAccess {
-                        MicrophoneAccessBanner()
-                            .padding(.top, 12)
-                            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                // Edit folds the plans away so the slide canvas gets the room;
+                // Present and Schedule bring them back.
+                .onChange(of: modeRaw, initial: true) {
+                    let wanted: NavigationSplitViewVisibility = mode == .edit ? .doubleColumn : .all
+                    if columns != wanted {
+                        withAnimation(HopeMotion.ui(reduced: reduceMotion)) { columns = wanted }
                     }
                 }
-                .animation(HopeMotion.ui(reduced: reduceMotion), value: AudioInputInventory.shared.needsMicrophoneAccess)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { detailWidth = $0 }
                 // Present's controls float over the slides on glass.
                 .overlay(alignment: .bottom) {
                     if mode == .present, let controls {
@@ -76,7 +74,11 @@ struct PlanShell: View {
                     }
                 }
                 // The screens column is the detail's inspector, as split views expect.
-                .inspector(isPresented: $screensShown) {
+                .inspector(isPresented: Binding(
+                    // Edit gives the editor the room; Present and Schedule show the screens.
+                    get: { screensShown && mode != .edit },
+                    // Hiding it for Edit isn't the person turning it off.
+                    set: { if mode != .edit { screensShown = $0 } })) {
                     Group {
                         if let render { MonitorsPanel(render: render, liveKey: controls?.liveSlideID) } else { Color.clear }
                     }
@@ -142,6 +144,15 @@ struct PlanShell: View {
             }
             .listStyle(.sidebar)
             .frame(maxHeight: .infinity)
+
+            // Saved live inputs wait for the microphone answer; Screens never
+            // raises the prompt by itself (see AudioInputInventory).
+            if AudioInputInventory.shared.needsMicrophoneAccess {
+                MicrophoneAccessBanner()
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
+            }
 
             if !runOnly {
                 Divider()
@@ -476,17 +487,12 @@ struct IdentifiedID: Identifiable, Hashable {
 /// lands on a launch that's still setting up its audio devices.
 private struct MicrophoneAccessBanner: View {
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "mic.fill").foregroundStyle(HopeStyle.amber)
-            Text("Microphone access needed")
-                .font(.callout)
-            Button("Allow") { AudioInputInventory.shared.requestMicrophoneAccess() }
-                .buttonStyle(.glassProminent)
-                .tint(HopeStyle.blue)
-                .controlSize(.small)
+        Button { AudioInputInventory.shared.requestMicrophoneAccess() } label: {
+            Label("Allow Microphone Access", systemImage: "mic.fill")
+                .frame(maxWidth: .infinity)
         }
-        .padding(.leading, 14).padding(.trailing, 8).padding(.vertical, 6)
-        .glassEffect(.regular, in: Capsule())
-        .fixedSize()
+        .buttonStyle(.glass)
+        .tint(nil)
+        .help("Live audio inputs are waiting for microphone access")
     }
 }
