@@ -35,13 +35,16 @@ struct PlanShell: View {
         // content that reports its own changing minimum size makes the split
         // view re-run constraints forever, and AppKit then ends the app.
         NavigationSplitView(columnVisibility: $columns) {
+            // The library inside needs 272 to lay out; narrower clips it.
             sidebar
-                .frame(minWidth: 200, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 340)
+                .frame(minWidth: 272, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .clipped()
+                .navigationSplitViewColumnWidth(min: 272, ideal: 290, max: 380)
         } content: {
             planColumn
-                .frame(minWidth: 220, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 290, max: 420)
+                .frame(minWidth: 230, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .clipped()
+                .navigationSplitViewColumnWidth(min: 230, ideal: 290, max: 420)
         } detail: {
             center
                 .frame(minWidth: 280, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
@@ -50,8 +53,11 @@ struct PlanShell: View {
                     Group {
                         if let render { MonitorsPanel(render: render) } else { Color.clear }
                     }
-                    .frame(minWidth: 220, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                    .inspectorColumnWidth(min: 220, ideal: 300, max: 520)
+                    // The livestream switch (Lower Third, Full Screen,
+                    // Transparent) needs about 300 across.
+                    .frame(minWidth: 300, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    .clipped()
+                    .inspectorColumnWidth(min: 300, ideal: 330, max: 520)
                 }
         }
         .toolbar { toolbar }
@@ -68,7 +74,13 @@ struct PlanShell: View {
         }
         .onChange(of: model.currentServiceID) { _, _ in itemID = nil }
         .onChange(of: itemID) { _, _ in songSlideEditor = false }
-        .task { await model.resident.ready([.service]) }
+        .task {
+            await model.resident.ready([.service])
+            // A plan remembered from a library that's since been wiped.
+            if let id = model.currentServiceID, model.resident.services.value(id) == nil {
+                model.currentServiceID = nil
+            }
+        }
     }
 
     // MARK: Sidebar — plans, then the library
@@ -224,7 +236,7 @@ struct PlanShell: View {
 
     @ViewBuilder
     private var planColumn: some View {
-        if let planID = model.currentServiceID {
+        if let planID = model.currentServiceID, model.resident.services.value(planID) != nil {
             RunOrderList(
                 model: model, controls: controls, serviceID: planID, render: render,
                 selectedItemID: $itemID)
