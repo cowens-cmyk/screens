@@ -6,6 +6,9 @@ import SwiftUI
 /// Next and Back act exactly like the arrow keys.
 struct PresentControlBar: View {
     let controls: ServiceControls
+    var showsStatus = true
+    @State private var nextTaps = 0
+    @State private var backTaps = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var live: (title: String, detail: String)? {
@@ -15,12 +18,10 @@ struct PresentControlBar: View {
     }
 
     var body: some View {
-        // The whole bar where it fits; just the buttons in a narrow window.
-        ViewThatFits(in: .horizontal) {
-            bar(showsStatus: true)
-            bar(showsStatus: false)
-        }
-        .padding(.horizontal, 16)
+        // The whole bar where it fits; just the buttons in a narrow window
+        // (the window measures the room and says which).
+        bar(showsStatus: showsStatus)
+            .padding(.horizontal, 16)
         .animation(HopeMotion.ui(reduced: reduceMotion), value: live?.title)
     }
 
@@ -28,16 +29,24 @@ struct PresentControlBar: View {
         GlassEffectContainer(spacing: 10) {
             HStack(spacing: 10) {
                 if showsStatus { status }
-                Button { KeyInController.current?.perform(.previousSlide) } label: {
+                Button {
+                    backTaps += 1
+                    KeyInController.current?.perform(.previousSlide)
+                } label: {
                     Image(systemName: "chevron.left").font(.title3.weight(.semibold)).frame(width: 30, height: 30)
+                        .symbolEffect(.bounce.down, options: .speed(1.4), value: backTaps)
                 }
                 .buttonStyle(.glass)
                 .buttonBorderShape(.circle)
                 .tint(nil)
                 .help("Back (←)")
 
-                Button { KeyInController.current?.perform(.nextSlide) } label: {
+                Button {
+                    nextTaps += 1
+                    KeyInController.current?.perform(.nextSlide)
+                } label: {
                     Image(systemName: "chevron.right").font(.title3.weight(.semibold)).frame(width: 44, height: 30)
+                        .symbolEffect(.bounce.down, options: .speed(1.4), value: nextTaps)
                 }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.capsule)

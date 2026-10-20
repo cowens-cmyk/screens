@@ -88,12 +88,12 @@ struct ItemKindBadge: View {
 }
 
 /// Motion, after Apple's fluid-interface guidance: springs, which can be
-/// grabbed and reversed mid-flight and always start from what's on screen.
-/// Critically damped by default (no bounce); with Reduce Motion, a short
-/// cross-fade instead.
+/// grabbed and reversed mid-flight and always start from what's on screen,
+/// with a subtle settle (a touch of overshoot) everywhere things change.
+/// With Reduce Motion, a short cross-fade instead.
 enum HopeMotion {
-    /// Everyday UI: settles cleanly in about a third of a second.
-    static let ui = Animation.spring(response: 0.32, dampingFraction: 1.0)
+    /// Everyday UI: about a third of a second, with a slight bounce.
+    static let ui = Animation.spring(response: 0.35, dampingFraction: 0.82)
     /// Only for motion a gesture threw: a little overshoot.
     static let flick = Animation.spring(response: 0.35, dampingFraction: 0.8)
     static let fade = Animation.easeOut(duration: 0.15)

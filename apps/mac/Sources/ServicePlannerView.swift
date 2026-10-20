@@ -4,6 +4,7 @@ import SwiftUI
 
 struct RunOrderList: View {
     let model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var controls: ServiceControls?
     let serviceID: String
 
@@ -64,6 +65,7 @@ struct RunOrderList: View {
             let changed = model.versionChangedItemIDs(serviceID)
             VStack(spacing: 0) {
                 runOrderList(service: service, visible: visible, order: order, changed: changed)
+                    .animation(HopeMotion.ui(reduced: reduceMotion), value: order)
                 if !runOnly {
                     Divider()
                     addBar

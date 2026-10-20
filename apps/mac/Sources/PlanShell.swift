@@ -25,6 +25,9 @@ struct PlanShell: View {
     /// Songs open in the song editor; this switches to the slide editor.
     @State private var songSlideEditor = false
     @State private var messagePlanID: String?
+    /// The slide area's width, measured, so the control bar picks its full
+    /// or compact form from a settled number rather than while laying out.
+    @State private var detailWidth: CGFloat = 0
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -51,10 +54,12 @@ struct PlanShell: View {
                 .frame(minWidth: 280, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .background(Color(nsColor: .underPageBackgroundColor))
                 .animation(HopeMotion.ui(reduced: reduceMotion), value: modeRaw)
+                .animation(HopeMotion.ui(reduced: reduceMotion), value: itemID)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { detailWidth = $0 }
                 // Present's controls float over the slides on glass.
                 .overlay(alignment: .bottom) {
                     if mode == .present, let controls {
-                        PresentControlBar(controls: controls)
+                        PresentControlBar(controls: controls, showsStatus: detailWidth > 560)
                             .padding(.bottom, 18)
                             // Rises from the bottom edge and leaves the same way.
                             .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
@@ -85,6 +90,7 @@ struct PlanShell: View {
             guard case .success(let urls) = result else { return }
             Task { await addMedia(urls) }
         }
+        .animation(HopeMotion.ui(reduced: reduceMotion), value: model.currentServiceID)
         .onChange(of: model.currentServiceID) { _, _ in itemID = nil }
         .onChange(of: itemID) { _, _ in songSlideEditor = false }
         .task {
@@ -126,7 +132,7 @@ struct PlanShell: View {
 
             if !runOnly {
                 Divider()
-                DisclosureGroup(isExpanded: $libraryShown) {
+                DisclosureGroup(isExpanded: $libraryShown.animation(HopeMotion.ui(reduced: reduceMotion))) {
                     LibrarySidebar(model: model, render: render, layout: layout, controls: controls)
                         .frame(height: 300)
                 } label: {

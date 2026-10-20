@@ -15,6 +15,7 @@ struct MonitorsPanel: View {
     /// Screens hidden from this column, by target id ("" separated by
     /// newlines). Kept per Mac: it's only about this window.
     @AppStorage("monitors.hidden") private var hiddenList = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The column's width, measured outside the scroll view: previews get an
     /// exact size from it, so their embedded views never resize while the
@@ -48,6 +49,7 @@ struct MonitorsPanel: View {
                 .padding(12)
             }
             .scrollContentBackground(.hidden)
+            .animation(HopeMotion.ui(reduced: reduceMotion), value: hiddenList)
         }
 
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
