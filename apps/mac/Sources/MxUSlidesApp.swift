@@ -213,6 +213,10 @@ struct MxUSlidesApp: App {
                 }
                 .onChange(of: showWelcome) { appModel.welcomeShowing = showWelcome }
                 .task {
+                    // Sheets wait until the window has laid out once: one
+                    // presented during the split view's first layout loops
+                    // AppKit's constraint pass until it kills the app.
+                    try? await Task.sleep(for: .seconds(1))
                     if appModel.needsOnboarding && !presentLayout.runOnly {
                         showWelcome = true
                     }
@@ -221,8 +225,9 @@ struct MxUSlidesApp: App {
                 .sheet(isPresented: $showFeedback) {
                     FeedbackView(model: appModel) { showFeedback = false }
                 }
-                .onChange(of: FeedbackController.shared.lastRunCrashed, initial: true) { _, crashed in
-                    if crashed && !showWelcome && !presentLayout.runOnly {
+                .task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if FeedbackController.shared.lastRunCrashed && !showWelcome && !presentLayout.runOnly {
                         showFeedback = true
                     }
                 }

@@ -31,20 +31,27 @@ struct PlanShell: View {
     private var runOnly: Bool { layout?.runOnly ?? false }
 
     var body: some View {
+        // Every column gets a fixed minimum and is free to shrink inside it:
+        // content that reports its own changing minimum size makes the split
+        // view re-run constraints forever, and AppKit then ends the app.
         NavigationSplitView(columnVisibility: $columns) {
             sidebar
-                .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
+                .frame(minWidth: 200, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 340)
         } content: {
             planColumn
-                .navigationSplitViewColumnWidth(min: 240, ideal: 290, max: 420)
+                .frame(minWidth: 220, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 290, max: 420)
         } detail: {
             center
+                .frame(minWidth: 280, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         }
         .inspector(isPresented: $screensShown) {
             Group {
                 if let render { MonitorsPanel(render: render) } else { Color.clear }
             }
-            .inspectorColumnWidth(min: 240, ideal: 320, max: 520)
+            .frame(minWidth: 220, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+            .inspectorColumnWidth(min: 220, ideal: 300, max: 520)
         }
         .toolbar { toolbar }
         .preferredColorScheme(.dark)

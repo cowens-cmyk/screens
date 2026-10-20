@@ -16,6 +16,11 @@ struct MonitorsPanel: View {
     /// newlines). Kept per Mac: it's only about this window.
     @AppStorage("monitors.hidden") private var hiddenList = ""
 
+    /// The column's width, measured outside the scroll view: previews get an
+    /// exact size from it, so their embedded views never resize while the
+    /// split view measures them (that loop ends the app).
+    @State private var columnWidth: CGFloat = 280
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -44,6 +49,19 @@ struct MonitorsPanel: View {
             }
             .scrollContentBackground(.hidden)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            let rounded = (width / 4).rounded(.down) * 4
+            if abs(rounded - columnWidth) >= 4 { columnWidth = rounded }
+        }
+    }
+
+    /// A preview's exact size: the column's width (less padding) at the
+    /// screen's shape, no taller than `previewHeight`.
+    private func previewSize(_ target: String) -> CGSize {
+        let aspect = max(PreviewTargets.aspect(of: target, render: render), 0.1)
+        let width = max(columnWidth - 24, 80)
+        let height = min(width / aspect, previewHeight)
+        return CGSize(width: (height * aspect).rounded(), height: height.rounded())
     }
 
     // MARK: Which screens show
@@ -131,8 +149,8 @@ struct MonitorsPanel: View {
             Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             if let target {
                 content(target)
-                    .aspectRatio(PreviewTargets.aspect(of: target, render: render), contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: previewHeight)
+                    .frame(width: previewSize(target).width, height: previewSize(target).height)
+                    .frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
                     .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
             } else {
@@ -153,8 +171,8 @@ struct MonitorsPanel: View {
             if let stageTarget {
                 LiveSceneView(render: render, screenTargetID: stageTarget)
                     .modifier(PreviewedLayoutKeeper(target: stageTarget))
-                    .aspectRatio(PreviewTargets.aspect(of: stageTarget, render: render), contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: previewHeight)
+                    .frame(width: previewSize(stageTarget).width, height: previewSize(stageTarget).height)
+                    .frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
                     .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
             } else {
@@ -187,8 +205,8 @@ struct MonitorsPanel: View {
                         compositor: render.compositor,
                         provider: render.outputs.previewProvider(for: streamTarget))
                 }
-                .aspectRatio(PreviewTargets.aspect(of: streamTarget, render: render), contentMode: .fit)
-                .frame(maxWidth: .infinity, maxHeight: previewHeight)
+                .frame(width: previewSize(streamTarget).width, height: previewSize(streamTarget).height)
+                .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
                 Picker("", selection: $setup.streamMode) {
