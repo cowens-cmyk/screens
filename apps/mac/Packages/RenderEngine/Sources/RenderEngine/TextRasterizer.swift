@@ -25,6 +25,75 @@ public enum TextRasterizer {
 
     private static let fitCache = Locked<[FitKey: Double]>([:])
 
+    /// One laid-out line: where it sits in the text (paragraph, and its
+    /// characters within it), what it says, and where it lands in the box.
+    public struct LaidOutLine: Hashable, Sendable {
+        public var paragraph: Int
+        public var column: Int
+        public var length: Int
+        public var text: String
+        public var origin: CGPoint
+        public var fontScale: Double
+    }
+
+    private struct LineKey: Hashable {
+        let text: StyledText
+        let widthMilli: Int
+        let heightMilli: Int
+    }
+
+    private static let lineCache = Locked<[LineKey: [LaidOutLine]]>([:])
+
+    /// The lines as they will be drawn in a box this size, or nil for text
+    /// laid out some other way (chords, ink fills, line bands, paths,
+    /// tickers, scrolling), where lines can't be told apart reliably.
+    public static func laidOutLines(for text: StyledText, sceneFrame: CGSize) -> [LaidOutLine]? {
+        guard !text.string.isEmpty, sceneFrame.width > 0, sceneFrame.height > 0, text.fontSize > 0,
+              text.fill == nil, text.lineFill == nil, text.pathData == nil,
+              text.tickerSpeed == 0, text.scroll == nil, text.chords.isEmpty
+        else { return nil }
+        let key = LineKey(text: text, widthMilli: Int(sceneFrame.width * 1000), heightMilli: Int(sceneFrame.height * 1000))
+        if let cached = lineCache.value[key] { return cached }
+
+        let fontScale = fittedFontScale(for: text, sceneFrame: sceneFrame)
+        let layout = frameLayout(
+            for: text, width: sceneFrame.width, height: sceneFrame.height,
+            scale: 1, fontScale: fontScale, colorSpace: nil)
+        guard layout.chorded == nil, let ctLines = CTFrameGetLines(layout.frame) as? [CTLine] else { return nil }
+        var origins = [CGPoint](repeating: .zero, count: ctLines.count)
+        CTFrameGetLineOrigins(layout.frame, CFRange(location: 0, length: 0), &origins)
+
+        let paragraphs = text.string.components(separatedBy: "\n")
+        var starts: [Int] = []
+        var running = 0
+        for paragraph in paragraphs {
+            starts.append(running)
+            running += (paragraph as NSString).length + 1
+        }
+        var lines: [LaidOutLine] = []
+        for (line, origin) in zip(ctLines, origins) {
+            let range = CTLineGetStringRange(line)
+            guard let index = starts.lastIndex(where: { $0 <= range.location }) else { continue }
+            let paragraph = paragraphs[index] as NSString
+            let start = range.location - starts[index]
+            let length = min(range.length, paragraph.length - start)
+            guard start >= 0, length >= 0 else { continue }
+            let piece = paragraph.substring(with: NSRange(location: start, length: length))
+            // Runs count Characters, not UTF-16 units.
+            let column = paragraph.substring(to: start).count
+            lines.append(LaidOutLine(
+                paragraph: index, column: column, length: piece.count,
+                text: piece.trimmingCharacters(in: .whitespacesAndNewlines),
+                origin: CGPoint(x: layout.frameRect.minX + origin.x, y: layout.frameRect.minY + origin.y),
+                fontScale: fontScale))
+        }
+        lineCache.withLock { cache in
+            if cache.count >= 256 { cache.removeAll(keepingCapacity: true) }
+            cache[key] = lines
+        }
+        return lines
+    }
+
     static func fittedFontScale(for text: StyledText, sceneFrame: CGSize) -> Double {
         guard text.autoShrink, !text.string.isEmpty,
               sceneFrame.width > 0, sceneFrame.height > 0,

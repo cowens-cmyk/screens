@@ -80,6 +80,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
 
     public func push(_ scene: RenderScene, transitionFor: (LayerKind) -> SceneTransition?) {
         state.withLock { s in
+            let scene = Self.settled(scene, after: s.target)
             let changed = Self.changedLayers(from: s.target, to: scene)
 
             guard !changed.isEmpty else {
@@ -178,8 +179,15 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             // place, such as a passage's reference across its slides) holds
             // still instead of dissolving into itself.
             let steady = steadyText(old: oldItems, new: newItems)
+            // A box whose words partly change: its unchanged lines hold and
+            // only the changed lines cross over.
+            let reworded = transition.kind == .cut ? [] : rewordedText(
+                old: oldItems.filter { !steady.leaving.contains(membershipKey($0)) },
+                new: newItems.filter { !steady.arriving.contains(membershipKey($0)) })
             let oldKeys = Set(oldItems.map(membershipKey)).union(steady.arriving)
+                .union(reworded.map { membershipKey($0.new) })
             let newKeys = Set(newItems.map(membershipKey)).union(steady.leaving)
+                .union(reworded.map { membershipKey($0.old) })
 
             let leaving = oldItems.filter { !newKeys.contains(membershipKey($0)) }
                 .map { item in
@@ -205,7 +213,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             case .dissolve:
                 scene.layers[index].items =
                     (holdsUnder ? leaving : faded(leaving, to: 1 - progress))
-                    + arrivingFaded(newItems, to: progress)
+                    + lineDissolved(arrivingFaded(newItems, to: progress), reworded, progress: progress)
             case .fade(let plate):
 
                 let firstHalf = progress < 0.5
@@ -225,12 +233,14 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                 let swell = (1 - abs(progress * 2 - 1)) * 60
                 scene.layers[index].items =
                     blurred(holdsUnder ? leaving : faded(leaving, to: 1 - progress), radius: swell)
-                    + blurred(arrivingFaded(newItems, to: progress), radius: swell)
+                    + lineDissolved(arrivingFaded(newItems, to: progress), reworded, progress: progress)
             case .filmBurn:
 
                 let peak = 1 - abs(progress * 2 - 1)
                 let leaving = burned(faded(leaving, to: 1 - progress), amount: peak, phase: progress)
-                let arriving = burned(arrivingFaded(newItems, to: progress), amount: peak, phase: progress)
+                let arriving = burned(
+                    lineDissolved(arrivingFaded(newItems, to: progress), reworded, progress: progress),
+                    amount: peak, phase: progress)
                 var items = leaving + arriving
                 items.append(RenderItem(
                     id: "transition-plate-\(kind.rawValue)",
@@ -243,8 +253,35 @@ public final class SceneTransitionEngine: @unchecked Sendable {
         return scene
     }
 
+    /// An item without its timing: when its slide fired and its build
+    /// steps differ slide to slide even when it looks exactly the same.
+    static func untimed(_ item: RenderItem) -> RenderItem {
+        var copy = item
+        copy.animationSteps = []
+        copy.animationContext = nil
+        copy.tickerAnchorHostTime = nil
+        return copy
+    }
+
+    /// The same text box with the same look, whatever it says.
+    private static func sameBox(_ old: RenderItem, _ new: RenderItem) -> Bool {
+        guard case .text(var oldText) = old.content, case .text(let newText) = new.content else { return false }
+        oldText.string = newText.string
+        oldText.styleRuns = newText.styleRuns
+        var probe = untimed(old)
+        probe.id = new.id
+        probe.content = .text(oldText)
+        return probe == untimed(new)
+    }
+
+    private static func sameLook(_ old: RenderItem, _ new: RenderItem) -> Bool {
+        var probe = untimed(old)
+        probe.id = new.id
+        return probe == untimed(new)
+    }
+
     /// Keys of text items on the incoming slide that match an outgoing text
-    /// item in everything but id, and the keys of those outgoing items.
+    /// item in everything but id and timing, and the keys of those outgoing items.
     static func steadyText(old: [RenderItem], new: [RenderItem]) -> (arriving: Set<String>, leaving: Set<String>) {
         let oldKeys = Set(old.map(membershipKey))
         var unmatched = old.filter { item in
@@ -254,17 +291,135 @@ public final class SceneTransitionEngine: @unchecked Sendable {
         var arriving = Set<String>(), leaving = Set<String>()
         for item in new where !oldKeys.contains(membershipKey(item)) {
             guard case .text = item.content else { continue }
-            if let index = unmatched.firstIndex(where: { candidate in
-                var same = candidate
-                same.id = item.id
-                return same == item
-            }) {
+            if let index = unmatched.firstIndex(where: { sameLook($0, item) }) {
                 arriving.insert(membershipKey(item))
                 leaving.insert(membershipKey(unmatched[index]))
                 unmatched.remove(at: index)
             }
         }
         return (arriving, leaving)
+    }
+
+    /// A text box on both slides whose words changed, with which of its
+    /// lines read the same in the same place on both.
+    struct Reworded {
+        var old: RenderItem
+        var new: RenderItem
+        var oldSteady: [TextRasterizer.LaidOutLine]
+        var newSteady: [TextRasterizer.LaidOutLine]
+        var oldChanged: [TextRasterizer.LaidOutLine]
+        var newChanged: [TextRasterizer.LaidOutLine]
+    }
+
+    static func rewordedText(old: [RenderItem], new: [RenderItem]) -> [Reworded] {
+        let oldIDs = Set(old.map(\.id))
+        var pool = old.filter { item in
+            if case .text = item.content { return !new.contains { $0.id == item.id } }
+            return false
+        }
+        var result: [Reworded] = []
+        for item in new where !oldIDs.contains(item.id) {
+            guard case .text(let newText) = item.content,
+                  let index = pool.firstIndex(where: { sameBox($0, item) }),
+                  case .text(let oldText) = pool[index].content,
+                  let oldLines = TextRasterizer.laidOutLines(for: oldText, sceneFrame: pool[index].frame.size),
+                  let newLines = TextRasterizer.laidOutLines(for: newText, sceneFrame: item.frame.size)
+            else { continue }
+            var unmatchedOld = oldLines
+            var newSteady: [TextRasterizer.LaidOutLine] = [], oldSteady: [TextRasterizer.LaidOutLine] = []
+            var newChanged: [TextRasterizer.LaidOutLine] = []
+            for line in newLines {
+                if !line.text.isEmpty, let match = unmatchedOld.firstIndex(where: {
+                    $0.text == line.text && $0.fontScale == line.fontScale
+                        && abs($0.origin.x - line.origin.x) < 0.5 && abs($0.origin.y - line.origin.y) < 0.5
+                }) {
+                    newSteady.append(line)
+                    oldSteady.append(unmatchedOld.remove(at: match))
+                } else {
+                    newChanged.append(line)
+                }
+            }
+            guard !newSteady.isEmpty else { continue }
+            result.append(Reworded(
+                old: pool[index], new: item, oldSteady: oldSteady, newSteady: newSteady,
+                oldChanged: unmatchedOld, newChanged: newChanged))
+            pool.remove(at: index)
+        }
+        return result
+    }
+
+    /// Replaces each reworded box with its steady lines at full strength,
+    /// its new lines fading in and its old lines fading out, all drawn from
+    /// the same layout so nothing shifts.
+    static func lineDissolved(_ items: [RenderItem], _ reworded: [Reworded], progress: Double) -> [RenderItem] {
+        guard !reworded.isEmpty else { return items }
+        let byID = Dictionary(reworded.map { ($0.new.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var result: [RenderItem] = []
+        for item in items {
+            guard let pair = byID[item.id] else {
+                result.append(item)
+                continue
+            }
+            var steady = pair.new
+            steady.content = hiding(pair.newChanged, in: pair.new.content)
+            var arriving = pair.new
+            arriving.id += "::changed"
+            arriving.opacity *= progress
+            arriving.content = hiding(pair.newSteady, in: pair.new.content)
+            var leaving = pair.old
+            leaving.id += "::leaving"
+            leaving.opacity *= 1 - progress
+            leaving.content = hiding(pair.oldSteady, in: pair.old.content)
+            result += [leaving, steady, arriving]
+        }
+        return result
+    }
+
+    private static func hiding(_ lines: [TextRasterizer.LaidOutLine], in content: ItemContent) -> ItemContent {
+        guard case .text(var text) = content else { return content }
+        for line in lines where line.length > 0 {
+            text.styleRuns.append(StyleRun(line: line.paragraph, column: line.column, length: line.length, hidden: true))
+        }
+        return .text(text)
+    }
+
+    /// The incoming scene, with text that carries over from the outgoing one
+    /// keeping its timing, so a theme's build-in doesn't replay on words
+    /// already on screen.
+    static func settled(_ scene: RenderScene, after previous: RenderScene) -> RenderScene {
+        var scene = scene
+        for index in scene.layers.indices {
+            let kind = scene.layers[index].kind
+            let oldItems = previous.layers.first { $0.kind == kind }?.items ?? []
+            let newItems = scene.layers[index].items
+            let oldIDs = Set(oldItems.map(\.id))
+            var pool = oldItems.filter { item in
+                if case .text = item.content { return !newItems.contains { $0.id == item.id } }
+                return false
+            }
+            for itemIndex in newItems.indices where !oldIDs.contains(newItems[itemIndex].id) {
+                let item = newItems[itemIndex]
+                guard case .text = item.content,
+                      let match = pool.firstIndex(where: { sameLook($0, item) })
+                        ?? pool.firstIndex(where: { sameBox($0, item) })
+                else { continue }
+                let old = pool.remove(at: match)
+                guard sameLook(old, item) || hasSteadyLine(old, item) else { continue }
+                scene.layers[index].items[itemIndex].animationSteps = old.animationSteps
+                // Carried-over text stays up: the outgoing slide's exit or
+                // dismiss never applies to it.
+                var context = old.animationContext
+                context?.exitHostTime = nil
+                context?.dismissHostTime = nil
+                scene.layers[index].items[itemIndex].animationContext = context
+                scene.layers[index].items[itemIndex].tickerAnchorHostTime = old.tickerAnchorHostTime
+            }
+        }
+        return scene
+    }
+
+    private static func hasSteadyLine(_ old: RenderItem, _ new: RenderItem) -> Bool {
+        !rewordedText(old: [old], new: [new]).isEmpty
     }
 
     private static func faded(_ items: [RenderItem], to opacity: Double) -> [RenderItem] {

@@ -80,6 +80,75 @@ final class SceneTransitionEngineTests: XCTestCase {
         XCTAssertNotNil(items.first { $0.id == "a::leaving" })
     }
 
+    private func textScene(_ items: [(id: String, text: String, y: Double)], fired: Double) -> RenderScene {
+        var scene = RenderScene(canvasSize: CGSize(width: 1920, height: 1080))
+        for item in items {
+            var render = RenderItem(
+                id: item.id, frame: CGRect(x: 100, y: item.y, width: 1600, height: 300),
+                content: .text(StyledText(string: item.text, fontSize: 60)))
+            // Live slides carry when they fired; the same words must still match.
+            render.tickerAnchorHostTime = fired
+            render.animationContext = AnimationContext(anchorHostTime: fired, clickHostTimes: [])
+            scene.addItem(render, to: .slide)
+        }
+        return scene
+    }
+
+    func testLiveTimingDoesNotStopIdenticalTextHoldingStill() {
+        let old = textScene([("r1", "Genesis 28:1–22 ESV", 800)], fired: 10)
+        let new = textScene([("r2", "Genesis 28:1–22 ESV", 800)], fired: 20)
+        let items = SceneTransitionEngine.composite(
+            previous: old, target: SceneTransitionEngine.settled(new, after: old),
+            transition: SceneTransition(kind: .dissolve, duration: 1), progress: 0.25, layers: [.slide]
+        ).layers.first { $0.kind == .slide }!.items
+        XCTAssertEqual(items.map(\.id), ["r2"], "one steady copy, nothing leaving")
+        XCTAssertEqual(items[0].opacity, 1, accuracy: 0.001)
+        XCTAssertEqual(items[0].animationContext?.anchorHostTime, 10, "keeps the timing it was shown with")
+    }
+
+    func testOnlyChangedLinesCrossOver() {
+        let old = textScene([("a", "Amazing grace how sweet the sound\nThat saved a wretch like me", 100)], fired: 1)
+        let new = textScene([("b", "Amazing grace how sweet the sound\nI once was lost but now am found", 100)], fired: 2)
+        let items = SceneTransitionEngine.composite(
+            previous: old, target: new,
+            transition: SceneTransition(kind: .dissolve, duration: 1), progress: 0.25, layers: [.slide]
+        ).layers.first { $0.kind == .slide }!.items
+
+        func hiddenParagraphs(_ id: String) -> Set<Int> {
+            guard case .text(let text) = items.first(where: { $0.id == id })?.content else { return [-1] }
+            return Set(text.styleRuns.filter { $0.hidden == true }.map(\.line))
+        }
+        XCTAssertEqual(items.first { $0.id == "b" }?.opacity ?? -1, 1, accuracy: 0.001)
+        XCTAssertEqual(hiddenParagraphs("b"), [1], "the steady copy draws only the unchanged first line")
+        XCTAssertEqual(items.first { $0.id == "b::changed" }?.opacity ?? -1, 0.25, accuracy: 0.001)
+        XCTAssertEqual(hiddenParagraphs("b::changed"), [0], "the new second line fades in alone")
+        XCTAssertEqual(items.first { $0.id == "a::leaving" }?.opacity ?? -1, 0.75, accuracy: 0.001)
+        XCTAssertEqual(hiddenParagraphs("a::leaving"), [0], "and the old second line fades out alone")
+    }
+
+    func testTextThatMovesAsAWholeStillDissolves() {
+        let old = textScene([("a", "Line one\nLine two", 100)], fired: 1)
+        // A third line re-centres the block, so no line stays where it was.
+        let new = textScene([("b", "Line one\nLine two\nLine three", 100)], fired: 2)
+        let items = SceneTransitionEngine.composite(
+            previous: old, target: new,
+            transition: SceneTransition(kind: .dissolve, duration: 1), progress: 0.25, layers: [.slide]
+        ).layers.first { $0.kind == .slide }!.items
+        XCTAssertNil(items.first { $0.id == "b::changed" })
+        XCTAssertEqual(items.first { $0.id == "b" }?.opacity ?? -1, 0.25, accuracy: 0.001)
+    }
+
+    func testCarriedTextIgnoresTheOutgoingExit() {
+        var old = textScene([("r1", "Genesis 28", 800)], fired: 10)
+        let slide = old.layers.firstIndex { $0.kind == .slide }!
+        old.layers[slide].items[0].animationContext?.exitHostTime = 12
+        let new = textScene([("r2", "Genesis 28", 800)], fired: 20)
+        let settled = SceneTransitionEngine.settled(new, after: old)
+        let item = settled.layers.first { $0.kind == .slide }!.items[0]
+        XCTAssertEqual(item.animationContext?.anchorHostTime, 10)
+        XCTAssertNil(item.animationContext?.exitHostTime)
+    }
+
     func testFadeShowsOldThenPlateThenNew() {
         let transition = SceneTransition(kind: .fade(.black), duration: 1)
         let early = SceneTransitionEngine.composite(
