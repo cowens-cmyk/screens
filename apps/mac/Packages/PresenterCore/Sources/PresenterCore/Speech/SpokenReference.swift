@@ -1,42 +1,135 @@
 import Foundation
 
+/// A reference heard in speech, and any other way the same words could be
+/// read. Recognizers write "John one one" and "John eleven" the same way
+/// ("John 11"), so a bare number that is both a chapter and a chapter:verse
+/// is ambiguous and waits for someone to pick.
+public struct SpokenDetection: Hashable, Sendable {
+    public var reference: BibleReference
+    public var alternatives: [BibleReference]
+    public var ambiguous: Bool { !alternatives.isEmpty }
+}
+
 /// Finds Bible references in live speech: "turn to Genesis 32", "John
 /// chapter three verse sixteen", "first Corinthians thirteen four through
-/// seven", "Psalm 23:1".
+/// seven", "Psalm 23:1". Every reference is checked against the book's real
+/// chapters, so "John 316" (how recognizers write "John three sixteen")
+/// becomes John 3:16 and never a chapter that doesn't exist.
 public enum SpokenReference {
 
     public static func references(in transcript: String) -> [BibleReference] {
+        detections(in: transcript).map(\.reference)
+    }
+
+    public static func detections(in transcript: String) -> [SpokenDetection] {
         let words = normalize(transcript).split(separator: " ").map(String.init)
-        var found: [BibleReference] = []
-        for start in words.indices {
-            let rest = words[start...].joined(separator: " ")
-            guard startsWithBook(rest) else { continue }
-            let window = words[start..<min(words.count, start + 6)].joined(separator: " ")
-            guard let reference = BibleReference.parse(window) else { continue }
-            // "1 John 3" also starts a match at "John 3"; keep the longer one.
-            if let last = found.last, last.chapter == reference.chapter,
-               last.book.name.hasSuffix(reference.book.name) {
+        var found: [SpokenDetection] = []
+        var index = 0
+        while index < words.count {
+            guard let (book, length) = spokenBook(in: words, at: index) else {
+                index += 1
                 continue
             }
-            if !found.contains(reference) { found.append(reference) }
+            let next = index + length
+            // A book name only counts with a number right after it, so
+            // "mark my words" or "the book of Acts" never match.
+            guard next < words.count, let detection = detection(book: book, numbers: words[next]) else {
+                index = next
+                continue
+            }
+            if !found.contains(where: { $0.reference == detection.reference }) { found.append(detection) }
+            index = next + 1
         }
         return found
     }
 
-    private static func startsWithBook(_ text: String) -> Bool {
-        let lowered = text.lowercased()
-        return BibleReference.books.contains { book in
-            ([book.name] + book.aliases).contains {
-                lowered.hasPrefix($0.lowercased() + " ") || lowered.hasPrefix($0.lowercased().replacingOccurrences(of: " ", with: "") + " ")
-            }
+    /// The longest book name starting at `index` ("1 John" before "John").
+    private static func spokenBook(in words: [String], at index: Int) -> (BibleBook, Int)? {
+        for length in stride(from: min(3, words.count - index), through: 1, by: -1) {
+            let name = words[index..<index + length].joined(separator: " ")
+            if let book = spokenNames[name] { return (book, length) }
         }
+        return nil
+    }
+
+    /// Full names and the longer aliases. Short abbreviations ("Is", "Am",
+    /// "Ex") are left out: in speech they're ordinary words.
+    private static let spokenNames: [String: BibleBook] = {
+        var table: [String: BibleBook] = [:]
+        for book in BibleReference.books {
+            let names = [book.name] + book.aliases.filter { $0.count >= 5 && !$0.contains(".") }
+            for name in names { table[name.lowercased()] = book }
+        }
+        if let revelation = BibleReference.book(named: "Revelation") { table["revelations"] = revelation }
+        if let psalms = BibleReference.book(named: "Psalms") { table["psalm"] = psalms }
+        return table
+    }()
+
+    private static let numbers = try! NSRegularExpression(pattern: #"^(\d+)(?::(\d+))?(?:-(\d+)(?::(\d+))?)?$"#)
+
+    /// Reads "3:16", "3:16-18", "3:16-4:2", "23" or "316" after a book.
+    static func detection(book: BibleBook, numbers text: String) -> SpokenDetection? {
+        guard let match = numbers.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+        func group(_ index: Int) -> String? {
+            Range(match.range(at: index), in: text).map { String(text[$0]) }
+        }
+        guard let first = group(1), let firstNumber = Int(first) else { return nil }
+        let verse = group(2).flatMap(Int.init)
+        let endA = group(3).flatMap(Int.init)
+        let endB = group(4).flatMap(Int.init)
+
+        func valid(_ reference: BibleReference) -> BibleReference? {
+            book.isValid(reference) ? reference : nil
+        }
+        func range(chapter: Int, verse: Int) -> BibleReference {
+            if let endA, let endB {
+                return BibleReference(book: book, chapter: chapter, startVerse: verse, endChapter: endA, endVerse: endB)
+            }
+            if let endA, endA > verse {
+                return BibleReference(book: book, chapter: chapter, startVerse: verse, endVerse: endA)
+            }
+            return BibleReference(book: book, chapter: chapter, startVerse: verse)
+        }
+
+        if let verse {
+            return valid(range(chapter: firstNumber, verse: verse)).map { SpokenDetection(reference: $0, alternatives: []) }
+        }
+        // "Jude 5" is verse 5: these books have one chapter.
+        if book.chapterCount == 1 {
+            return valid(range(chapter: 1, verse: firstNumber)).map { SpokenDetection(reference: $0, alternatives: []) }
+        }
+        let split = splitChapterVerse(first, book: book).flatMap { valid(range(chapter: $0.chapter, verse: $0.verse)) }
+        guard firstNumber <= book.chapterCount else {
+            // No such chapter, so the digits ran together: "316" is 3:16.
+            return split.map { SpokenDetection(reference: $0, alternatives: []) }
+        }
+        guard let chapter = valid(BibleReference(book: book, chapter: firstNumber)) else { return nil }
+        return SpokenDetection(reference: chapter, alternatives: split.map { [$0] } ?? [])
+    }
+
+    /// "316" → 3:16, "11910" → 119:10: the longest leading chapter that
+    /// exists, with the rest as a verse. No part may start with a zero.
+    static func splitChapterVerse(_ digits: String, book: BibleBook) -> (chapter: Int, verse: Int)? {
+        guard digits.count >= 2, digits.allSatisfy(\.isNumber) else { return nil }
+        for length in stride(from: min(3, digits.count - 1), through: 1, by: -1) {
+            let chapterText = digits.prefix(length), verseText = digits.dropFirst(length)
+            guard chapterText.first != "0", verseText.first != "0",
+                  let chapter = Int(chapterText), let verse = Int(verseText),
+                  (1...book.chapterCount).contains(chapter), (1...176).contains(verse)
+            else { continue }
+            return (chapter, verse)
+        }
+        return nil
     }
 
     /// Spoken numbers to digits and "chapter X verse Y" to "X:Y".
     public static func normalize(_ text: String) -> String {
         var words = text.lowercased()
             .replacingOccurrences(of: "[,;!?]", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"(\d)\s*:\s*(\d)"#, with: "$1:$2", options: .regularExpression)
+            .replacingOccurrences(of: #"(\d)\.(\d)"#, with: "$1:$2", options: .regularExpression)
             .replacingOccurrences(of: #"(\d)\.(\s|$)"#, with: "$1$2", options: .regularExpression)
+            .replacingOccurrences(of: #"(\d)\s*[–—-]\s*(\d)"#, with: "$1-$2", options: .regularExpression)
             .split(whereSeparator: \.isWhitespace).map(String.init)
         words = mergeNumberWords(words)
         var output: [String] = []

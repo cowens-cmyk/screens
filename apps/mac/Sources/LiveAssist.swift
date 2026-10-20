@@ -65,7 +65,8 @@ final class LiveAssist {
     private(set) var status = "Off"
     private(set) var transcript = ""
     private(set) var lastDecision: LyricFollower.Decision?
-    private(set) var detected: [BibleReference] = []
+    /// References heard, newest first; an ambiguous one lists its other readings.
+    private(set) var detected: [SpokenDetection] = []
     private(set) var pausedUntil: Date?
 
     private let transcriber = LiveTranscriber()
@@ -180,9 +181,16 @@ final class LiveAssist {
     }
 
     private func spotScripture(in text: String) {
-        for reference in SpokenReference.references(in: text) where !detected.contains(reference) {
-            detected.insert(reference, at: 0)
-            Task { await prepare(reference, thenShow: mode == .sermon && showsAutomatically) }
+        for detection in SpokenReference.detections(in: text)
+        where !detected.contains(where: { $0.reference == detection.reference }) {
+            detected.insert(detection, at: 0)
+            // Only a reference that can be read one way goes up on its own;
+            // "John 11" (chapter 11, or 1:1?) waits for someone to pick.
+            let shows = mode == .sermon && showsAutomatically && !detection.ambiguous
+            Task { await prepare(detection.reference, thenShow: shows) }
+            for alternative in detection.alternatives {
+                Task { await prepare(alternative, thenShow: false) }
+            }
         }
         if detected.count > 20 { detected.removeLast(detected.count - 20) }
     }
@@ -312,15 +320,17 @@ struct LiveAssistView: View {
                     Text("When the pastor says “turn to Genesis 32”, it appears here.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                ForEach(assist.detected, id: \.self) { reference in
+                ForEach(assist.detected, id: \.self) { detection in
                     HStack {
-                        Text(reference.display)
-                        Spacer()
-                        Button("Show") {
-                            Task {
-                                do { try await assist.show(reference) } catch { self.error = error.localizedDescription }
+                        ForEach([detection.reference] + detection.alternatives, id: \.self) { reference in
+                            if reference != detection.reference { Text("or").foregroundStyle(.secondary) }
+                            Button(reference.display) {
+                                Task {
+                                    do { try await assist.show(reference) } catch { self.error = error.localizedDescription }
+                                }
                             }
                         }
+                        Spacer()
                     }
                 }
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
@@ -431,20 +441,34 @@ struct SermonPanel: View {
                 Text("When a reference is said (“turn to Genesis 32”), it appears here, ready to show.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
-            ForEach(assist.detected, id: \.self) { reference in
-                HStack {
-                    Text(reference.display).font(.callout)
-                    if assist.prepared[reference.display] != nil {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
-                            .help("Ready")
-                    }
-                    Spacer()
-                    Button("Show") {
-                        Task {
-                            do { try await assist.show(reference) } catch { self.error = error.localizedDescription }
+            ForEach(assist.detected, id: \.self) { detection in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        ForEach([detection.reference] + detection.alternatives, id: \.self) { reference in
+                            if reference != detection.reference {
+                                Text("or").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Button {
+                                Task {
+                                    do { try await assist.show(reference) } catch { self.error = error.localizedDescription }
+                                }
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Text(reference.display)
+                                    if assist.prepared[reference.display] != nil {
+                                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                    }
+                                }
+                            }
+                            .controlSize(.small)
+                            .help("Show \(reference.display)")
                         }
+                        Spacer()
                     }
-                    .controlSize(.small)
+                    if detection.ambiguous {
+                        Text("Heard two ways — pick the one that was meant.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
             }
             if let error { Text(error).font(.caption).foregroundStyle(.red) }

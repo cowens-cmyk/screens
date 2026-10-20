@@ -39,3 +39,47 @@ import Testing
     let decision = follower.decision(current: 3)
     #expect(decision?.slideIndex == 1 && decision?.reason == .jump)
 }
+
+// Recognizers run spoken numbers together ("John three sixteen" → "John 316",
+// "John one one" → "John 11"); every reading must be a real chapter and verse.
+@Test func runTogetherNumbersSplitIntoChapterAndVerse() {
+    func heard(_ text: String) -> [String] { SpokenReference.references(in: text).map(\.display) }
+    #expect(heard("turn with me to John 316") == ["John 3:16"])
+    #expect(heard("John three sixteen") == ["John 3:16"])
+    #expect(heard("Romans 828 says") == ["Romans 8:28"])
+    #expect(heard("Psalm 11910") == ["Psalms 119:10"])
+    #expect(heard("Psalm 2316") == ["Psalms 23:16"])
+    #expect(heard("John 22") == ["John 2:2"], "John has 21 chapters, so 22 can only be 2:2")
+}
+
+@Test func aNumberThatIsBothAChapterAndAVerseIsAmbiguous() {
+    let detection = SpokenReference.detections(in: "look at John 11").first
+    #expect(detection?.reference.display == "John 11")
+    #expect(detection?.alternatives.map(\.display) == ["John 1:1"])
+    #expect(SpokenReference.detections(in: "John 3").first?.ambiguous == false, "one digit can't be split")
+}
+
+@Test func colonsAndPeriodsFromTheRecognizerAreRead() {
+    func heard(_ text: String) -> [SpokenDetection] { SpokenReference.detections(in: text) }
+    #expect(heard("John 1:1").map(\.reference.display) == ["John 1:1"])
+    #expect(heard("John 1:1").first?.ambiguous == false)
+    #expect(heard("John 1: 1 says").map(\.reference.display) == ["John 1:1"])
+    #expect(heard("John 3.16").map(\.reference.display) == ["John 3:16"])
+    #expect(heard("John 3:16-18").map(\.reference.display) == ["John 3:16–18"])
+    #expect(heard("John 3:16 through 18").map(\.reference.display) == ["John 3:16–18"])
+}
+
+@Test func impossibleReferencesAreNeverShown() {
+    #expect(SpokenReference.references(in: "John 99:1").isEmpty)
+    #expect(SpokenReference.references(in: "Jude 30").isEmpty, "Jude has 25 verses")
+    #expect(SpokenReference.references(in: "Jude 5").map(\.display) == ["Jude 1:5"])
+    #expect(SpokenReference.references(in: "John 3:0").isEmpty)
+}
+
+@Test func bookNamesThatAreEverydayWordsNeedANumber() {
+    #expect(SpokenReference.references(in: "mark my words").isEmpty)
+    #expect(SpokenReference.references(in: "in the book of acts we see").isEmpty)
+    #expect(SpokenReference.references(in: "it is 5 o'clock").isEmpty, "\"is\" isn't Isaiah out loud")
+    #expect(SpokenReference.references(in: "Mark 4").map(\.display) == ["Mark 4"])
+    #expect(SpokenReference.references(in: "first John one nine").map(\.display) == ["1 John 1:9"])
+}
