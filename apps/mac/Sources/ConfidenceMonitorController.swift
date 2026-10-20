@@ -139,7 +139,7 @@ final class ConfidenceMonitorController {
         case .mirror:
             source = .mirror
         case .worship, .message:
-            let id = StageLayouts.id(for: setup.stageMode)
+            let id = setup.stageLayoutOverride ?? StageLayouts.id(for: setup.stageMode)
             let layout = appModel.resident.confidenceLayouts.value(id) ?? StageLayouts.fallback(for: id)
             modeLayout = layout
             source = .layout(layout)

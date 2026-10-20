@@ -109,7 +109,8 @@ final class StreamRouter {
                 }
             }
         }
-        guard let theme = liveTheme else { return .clear }
+        let override = ShowSetup.shared.streamThemeOverride.flatMap { appModel.theme($0) }
+        guard let theme = override ?? liveTheme else { return .clear }
         let category = liveSlide.flatMap { SlideSceneBuilder.themeSlide(for: $0, theme: theme)?.name } ?? ""
         if let pick = theme.streamDesigns?.first(where: { $0.category.caseInsensitiveCompare(category) == .orderedSame }) {
             switch pick.mode {

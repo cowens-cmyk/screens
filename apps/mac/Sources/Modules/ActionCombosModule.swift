@@ -533,6 +533,8 @@ struct ActionCombosModule: View {
                     Button(mode.title) { updateAction(comboID, action.id) { $0.streamMode = mode.rawValue } }
                 }
             }
+        case .listenStart, .listenStop:
+            EmptyView()
         case .setStageMode:
             QuietMenuChip(title: action.stageMode.flatMap(ShowSetup.StageMode.init(rawValue:))?.title ?? "Stage…") {
                 ForEach(ShowSetup.StageMode.allCases) { mode in

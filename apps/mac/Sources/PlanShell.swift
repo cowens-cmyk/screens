@@ -22,6 +22,9 @@ struct PlanShell: View {
     @State private var controlsShown = false
     @State private var addingVideo = false
     @State private var columns = NavigationSplitViewVisibility.all
+    /// Songs open in the song editor; this switches to the slide editor.
+    @State private var songSlideEditor = false
+    @State private var messagePlanID: String?
     @Environment(\.openWindow) private var openWindow
 
     private var mode: AppMode { AppMode(rawValue: modeRaw) ?? .present }
@@ -44,6 +47,9 @@ struct PlanShell: View {
             .inspectorColumnWidth(min: 240, ideal: 320, max: 520)
         }
         .toolbar { toolbar }
+        .sheet(item: Binding(get: { messagePlanID.map(IdentifiedID.init) }, set: { messagePlanID = $0?.id })) { plan in
+            PlanMessageSheet(model: model, planID: plan.id)
+        }
         .sheet(isPresented: $creatingPlan) {
             NewServiceSheet(model: model) { id in model.currentServiceID = id }
         }
@@ -52,6 +58,7 @@ struct PlanShell: View {
             Task { await addMedia(urls) }
         }
         .onChange(of: model.currentServiceID) { _, _ in itemID = nil }
+        .onChange(of: itemID) { _, _ in songSlideEditor = false }
         .task { await model.resident.ready([.service]) }
     }
 
@@ -67,6 +74,11 @@ struct PlanShell: View {
                     ForEach(plans.upcoming, id: \.id) { planRow($0) }
                     if plans.upcoming.isEmpty {
                         Text("No upcoming plans").foregroundStyle(.secondary)
+                    }
+                }
+                if !plans.templates.isEmpty {
+                    Section("Templates") {
+                        ForEach(plans.templates, id: \.id) { planRow($0) }
                     }
                 }
                 if !plans.past.isEmpty {
@@ -108,22 +120,83 @@ struct PlanShell: View {
     private func planRow(_ plan: Service) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(plan.name).lineLimit(1)
-            if let date = Self.dateLabel(plan.serviceDate) {
+            if plan.isTemplate != true, let date = Self.dateLabel(plan.serviceDate) {
                 Text(date).font(.caption).foregroundStyle(.secondary)
             }
         }
         .tag(plan.id)
+        .contextMenu {
+            if !runOnly {
+                if plan.isTemplate == true {
+                    Button("New Plan from This Template") { newPlan(from: plan) }
+                    Button("Stop Using as Template") { model.updateService(plan.id) { $0.isTemplate = nil } }
+                } else {
+                    Button("Save as Template") { saveTemplate(from: plan) }
+                }
+            }
+        }
     }
 
-    /// Upcoming plans soonest first, then past plans newest first.
-    private var plans: (upcoming: [Service], past: [Service]) {
+    /// A template copy of a plan: the same order, headers and colors, with
+    /// links to the same presentations; a message stays a placeholder.
+    private func saveTemplate(from plan: Service) {
+        var template = plan
+        template.id = UUID().uuidString
+        template.name = plan.name + " Template"
+        template.isTemplate = true
+        template.origin = nil
+        template.mxuPlanHexId = nil
+        template.mxuPlanVersion = nil
+        template.mxuPlanTimes = nil
+        template.items = plan.items.map { item in
+            var copy = item
+            copy.id = UUID().uuidString
+            return copy
+        }
+        model.createInDrive(template)
+    }
+
+    /// Next Sunday's plan from a template. Each plan gets a message of its
+    /// own (empty, in the template's series) instead of sharing one.
+    private func newPlan(from template: Service) {
+        var plan = template
+        plan.id = UUID().uuidString
+        plan.isTemplate = nil
+        plan.name = template.name.replacingOccurrences(of: " Template", with: "")
+        plan.serviceDate = Self.dayFormatter.string(from: NewServiceSheet.nextSunday())
+        plan.messagePresentationId = nil
+        plan.items = template.items.map { item in
+            var copy = item
+            copy.id = UUID().uuidString
+            if item.refId == template.messagePresentationId
+                || (item.itemKind == .presentation && model.presentation(item.refId)
+                    .map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true) {
+                var message = Presentation(
+                    id: UUID().uuidString, name: "Message", presentationKind: .deck,
+                    themeId: template.sermonThemeId ?? model.slideBuilding.sermonThemeId ?? BasicTemplates.pointsThemeID,
+                    slides: [])
+                message.category = PresentationTypes.sermon
+                model.createInDrive(message)
+                copy.refId = message.id
+                plan.messagePresentationId = message.id
+            }
+            return copy
+        }
+        model.createInDrive(plan)
+        model.currentServiceID = plan.id
+    }
+
+    /// Upcoming plans soonest first, templates, then past plans newest first.
+    private var plans: (upcoming: [Service], templates: [Service], past: [Service]) {
         let today = Self.dayFormatter.string(from: .now)
-        let all = Array(model.resident.services.values)
+        let everything = Array(model.resident.services.values)
+        let templates = everything.filter { $0.isTemplate == true }.sorted { $0.name < $1.name }
+        let all = everything.filter { $0.isTemplate != true }
         let upcoming = all.filter { ($0.serviceDate ?? "") >= today || $0.serviceDate == nil }
             .sorted { ($0.serviceDate ?? "9999", $0.name) < ($1.serviceDate ?? "9999", $1.name) }
         let past = all.filter { ($0.serviceDate ?? "9999") < today }
             .sorted { ($0.serviceDate ?? "", $0.name) > ($1.serviceDate ?? "", $1.name) }
-        return (upcoming, past)
+        return (upcoming, templates, past)
     }
 
     private static let dayFormatter: DateFormatter = {
@@ -149,6 +222,12 @@ struct PlanShell: View {
                 .navigationTitle(model.resident.services.value(planID)?.name ?? "Plan")
                 .toolbar {
                     if !runOnly {
+                        ToolbarItem {
+                            Button { messagePlanID = planID } label: {
+                                Label("Message & Series", systemImage: "text.book.closed")
+                            }
+                            .help("This plan's message, sermon series and what every screen shows")
+                        }
                         ToolbarItem { addMenu(planID: planID) }
                     }
                 }
@@ -202,6 +281,9 @@ struct PlanShell: View {
     private var editor: some View {
         if let refID = selectedRefID, let entry = model.indexEntry(refID) {
             switch entry.kind {
+            case .presentation where !songSlideEditor && model.presentation(entry.id)?.presentationKind == .song:
+                SongEditorView(model: model, presentationID: entry.id) { songSlideEditor = true }
+                    .id(entry.id)
             case .presentation, .theme, .overlay, .confidenceLayout:
                 SlideEditorView(
                     appModel: model, render: render, presentationID: entry.id,
@@ -294,7 +376,10 @@ struct PlanShell: View {
         case .message:
             name = "Message"
             presentation.category = PresentationTypes.sermon
-            presentation.themeId = model.slideBuilding.sermonThemeId ?? BasicTemplates.pointsThemeID
+            presentation.themeId = model.resident.services.value(planID)?.sermonThemeId
+                ?? model.slideBuilding.sermonThemeId ?? BasicTemplates.pointsThemeID
+            let id = presentation.id
+            model.updateService(planID) { $0.messagePresentationId = id }
         }
         presentation.name = name
         model.createInDrive(presentation)
@@ -318,4 +403,9 @@ struct PlanShell: View {
         }
         itemID = item.id
     }
+}
+
+/// A plain id for sheet(item:).
+struct IdentifiedID: Identifiable, Hashable {
+    let id: String
 }

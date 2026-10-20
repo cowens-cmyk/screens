@@ -167,6 +167,7 @@ final class ServiceControls {
 
         let deckWasLive = livePresentationID == presentation.id
         if !deckWasLive {
+            applyScreenDefaults(for: presentation)
             actionRouter?.presentationDidGoLive(presentation)
         }
         actionRouter?.noteLiveTheme(theme, slide: slide)
@@ -627,7 +628,10 @@ final class ServiceControls {
 
     private func armMediaAdvance(for item: MediaItem, serviceItemID: String) {
         cancelMediaAdvance()
-        guard let advance = item.autoAdvance else { return }
+        // "Next slide" when the video ends is an after-playback advance.
+        let advance = item.endAction == .next && item.mediaKind == .video
+            ? AutoAdvance(delaySeconds: 0, afterPlayback: true) : item.autoAdvance
+        guard let advance else { return }
         if advance.afterPlayback ?? false, item.mediaKind == .video {
             mediaAdvanceWatch = (serviceItemID, item.id, Date())
             autoAdvancePending = AutoAdvancePending(
@@ -660,7 +664,9 @@ final class ServiceControls {
     private func mediaAdvancePollTick() {
         guard let watch = mediaAdvanceWatch,
               isMediaLive(watch.mediaID),
-              let advance = appModel.media(watch.mediaID)?.autoAdvance
+              let watched = appModel.media(watch.mediaID),
+              let advance = watched.endAction == .next
+                ? AutoAdvance(delaySeconds: 0, afterPlayback: true) : watched.autoAdvance
         else { return cancelMediaAdvance() }
         let now = Date()
         let lead = MediaAutoAdvance.leadSeconds(fromDelay: advance.delaySeconds)
@@ -787,8 +793,84 @@ final class ServiceControls {
             armMediaAdvance(for: mediaItem, serviceItemID: id)
             serviceTracking?.noteItemFired(serviceItemID: id)
         }
+        armMediaEnd(mediaItem, on: layer)
         appModel.markUsed(mediaItem.id)
         return layer
+    }
+
+    // MARK: Screen defaults for what goes live
+
+    /// A song puts the stage on Worship (chords, current and next slide, key,
+    /// time); the message puts it on Message (sermon timer and clock) and
+    /// starts the sermon timer. A presentation's own stage layout or
+    /// livestream theme wins.
+    private func applyScreenDefaults(for presentation: Presentation) {
+        let setup = ShowSetup.shared
+        setup.stageLayoutOverride = presentation.stageLayoutId
+        setup.streamThemeOverride = presentation.streamThemeId
+        let isMessage = PresentationTypes.category(of: presentation) == PresentationTypes.sermon
+        guard setup.stageFollowsItems, presentation.stageLayoutId == nil, setup.stageMode != .mirror else {
+            if isMessage { startSermonTimer(for: presentation) }
+            return
+        }
+        if isMessage {
+            setup.stageMode = .message
+            startSermonTimer(for: presentation)
+        } else if presentation.presentationKind == .song {
+            setup.stageMode = .worship
+        }
+    }
+
+    static let sermonTimerName = "Sermon"
+
+    /// One "Sermon" countdown, set to the message's length (35 minutes unless
+    /// it says otherwise), counting on past 0:00 into red.
+    private func startSermonTimer(for presentation: Presentation) {
+        let seconds = presentation.sermonTimerSeconds ?? 35 * 60
+        let id = timers.timers.first { $0.name == Self.sermonTimerName }?.id
+            ?? timers.addCountdown(name: Self.sermonTimerName, seconds: seconds)
+        guard timers.snapshot(id: id)?.isRunning != true else { return }
+        timers.setDuration(id: id, seconds: seconds)
+        timers.setKeepsCountingAfterZero(id: id, true)
+        timers.reset(id: id)
+        timers.start(id: id)
+    }
+
+    // MARK: When a video ends
+
+    private var mediaEndPoll: Timer?
+
+    /// Stop and Fade to Black take the video down when it finishes; Hold
+    /// leaves its last frame up; Next is the after-playback advance.
+    private func armMediaEnd(_ item: MediaItem, on layer: LayerKind) {
+        mediaEndPoll?.invalidate()
+        mediaEndPoll = nil
+        guard item.mediaKind == .video, let action = item.endAction,
+              action == .stop || action == .fadeToBlack else { return }
+        let id = item.id
+        let poll = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.mediaEndTick(id: id, layer: layer, action: action) }
+        }
+        RunLoop.main.add(poll, forMode: .common)
+        mediaEndPoll = poll
+    }
+
+    private func mediaEndTick(id: String, layer: LayerKind, action: MediaEndAction) {
+        guard state.liveMedia[layer]?.mediaId == id else {
+            mediaEndPoll?.invalidate()
+            mediaEndPoll = nil
+            return
+        }
+        guard let transport = render.media.transport(id: id), !transport.isLooping,
+              MediaTransportController.isFinished(transport, at: Date()) else { return }
+        mediaEndPoll?.invalidate()
+        mediaEndPoll = nil
+        settlePending()
+        state.clear(layer: layer, atHostTime: CACurrentMediaTime())
+        render.nextLiveTransitions[layer] = action == .fadeToBlack
+            ? SceneTransition(kind: .dissolve, duration: 1.0)
+            : SceneTransition(kind: .cut, duration: 0)
+        apply()
     }
 
     func dismissOverlay(id: String) {

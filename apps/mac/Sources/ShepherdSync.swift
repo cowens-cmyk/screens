@@ -119,12 +119,14 @@ final class ShepherdSync {
                 let date = ShepherdPlanSync.serviceDate(for: detail)
                 if let existing {
                     if existing.items != items || existing.name != name || existing.mxuPlanVersion != version {
+                        let times = Self.planTimes(detail)
                         model.updateService(existing.id) { service in
                             service.items = items
                             service.name = name
                             service.serviceDate = date
                             service.mxuPlanVersion = version
                             service.mxuServiceTypeName = detail.serviceType.name
+                            service.mxuPlanTimes = times
                         }
                         updated += 1
                     }
@@ -134,6 +136,7 @@ final class ShepherdSync {
                         origin: ShepherdPlanSync.origin, mxuPlanHexId: plan.id,
                         mxuServiceTypeName: detail.serviceType.name, mxuPlanVersion: version)
                     service.mxuDerivedName = name
+                    service.mxuPlanTimes = Self.planTimes(detail)
                     model.createInDrive(service)
                     created += 1
                 }
@@ -164,6 +167,17 @@ final class ShepherdSync {
     }
 
     // MARK: Helpers
+
+    /// Service and rehearsal times, for "5 minutes before each service" rules.
+    static func planTimes(_ plan: ShepherdClient.PlanDetail) -> [MxUPlanTime] {
+        let formatter = ISO8601DateFormatter()
+        return plan.times.enumerated().map { index, time in
+            MxUPlanTime(
+                hexId: "\(plan.id)-\(index)", name: time.label ?? time.kind,
+                startsAt: time.startsAt.map(formatter.string(from:)),
+                isRehearsal: time.kind != "service")
+        }
+    }
 
     /// Today through `weeks` weeks ahead, in the church's calendar.
     static func window(weeks: Int, now: Date = .now) -> (String, String) {

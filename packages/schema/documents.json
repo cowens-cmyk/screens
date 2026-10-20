@@ -1711,6 +1711,21 @@
           "name": "category",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "streamThemeId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "stageLayoutId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "sermonTimerSeconds",
+          "type": "double",
+          "optional": true
         }
       ]
     },
@@ -1861,6 +1876,11 @@
         {
           "name": "scaleMode",
           "type": "MediaScaleMode",
+          "optional": true
+        },
+        {
+          "name": "endAction",
+          "type": "MediaEndAction",
           "optional": true
         }
       ]
@@ -2435,6 +2455,21 @@
         {
           "name": "versions",
           "type": "list:ServiceVersion",
+          "optional": true
+        },
+        {
+          "name": "sermonThemeId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "messagePresentationId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "isTemplate",
+          "type": "bool",
           "optional": true
         }
       ]
@@ -3051,7 +3086,9 @@
         "fireAudio",
         "fireAudioPlaylist",
         "setStreamMode",
-        "setStageMode"
+        "setStageMode",
+        "listenStart",
+        "listenStop"
       ]
     },
     "MIDIMessageKind": {
@@ -3256,6 +3293,11 @@
           "name": "stageMode",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "serviceId",
+          "type": "string",
+          "optional": true
         }
       ]
     },
@@ -3297,7 +3339,8 @@
         "weekly",
         "oneTime",
         "timerReaches",
-        "calendarEvent"
+        "calendarEvent",
+        "planTime"
       ]
     },
     "ScheduleCondition": {
@@ -3354,6 +3397,16 @@
         {
           "name": "offsetSeconds",
           "type": "double",
+          "optional": true
+        },
+        {
+          "name": "serviceId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "serviceTimeIndex",
+          "type": "int",
           "optional": true
         }
       ]
@@ -4731,6 +4784,15 @@
           "type": "string",
           "optional": true
         }
+      ]
+    },
+    "MediaEndAction": {
+      "kind": "enum",
+      "cases": [
+        "stop",
+        "next",
+        "hold",
+        "fadeToBlack"
       ]
     }
   }

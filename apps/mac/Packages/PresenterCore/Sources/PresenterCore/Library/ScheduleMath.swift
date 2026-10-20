@@ -129,8 +129,15 @@ public enum ScheduleMath {
             return nil
         case .calendarEvent:
             return calendarEventStart(condition, after)
+        case .planTime:
+            return planTimeStart(condition, after)
         }
     }
+
+    /// The next service time of the condition's plan (its Shepherd times,
+    /// or its own date and time), plus the condition's offset, after a date.
+    /// The app installs the lookup at launch.
+    nonisolated(unsafe) public static var planTimeStart: @Sendable (ScheduleCondition, Date) -> Date? = { _, _ in nil }
 
     /// The next matching Calendar event start (plus the condition's offset)
     /// after a date. The app installs an EventKit-backed lookup at launch.
@@ -175,7 +182,7 @@ public enum ScheduleMath {
                   let date = parseLocalDate(raw, calendar: calendar)
             else { return false }
             return now >= date
-        case .timerReaches, .calendarEvent:
+        case .timerReaches, .calendarEvent, .planTime:
             return false
         }
     }

@@ -438,8 +438,11 @@ struct RunOrderList: View {
                 headerColorMenu(item)
                 Divider()
 
+                if item.itemKind == .presentation {
+                    SlideshowMenu(model: model, presentationID: item.refId)
+                }
                 if item.itemKind == .media {
-
+                    VideoEndMenu(model: model, mediaID: item.refId)
                     MediaCueMenuItems(
                         model: model, actionRouter: controls?.actionRouter,
                         mediaID: item.refId, state: mediaMenuState,
@@ -888,5 +891,71 @@ struct LibrarySearchSheet: View {
             let section: LibrarySection = hit.entry.kind == .presentation ? .presentations : .media
             return scopes.isEmpty || scopes.contains(section)
         }
+    }
+}
+
+/// Right-click › When Video Ends: stop, next slide, hold the last frame, or
+/// fade to black. Choosing one stops the video looping.
+struct VideoEndMenu: View {
+    let model: AppModel
+    let mediaID: String
+
+    var body: some View {
+        let current = model.media(mediaID)?.endAction
+        Menu("When Video Ends") {
+            ForEach([(MediaEndAction.stop, "Stop"), (.next, "Go to Next Slide"),
+                     (.hold, "Hold Last Frame"), (.fadeToBlack, "Fade to Black")], id: \.0) { action, title in
+                Toggle(title, isOn: Binding(
+                    get: { current == action },
+                    set: { _ in
+                        model.updateMedia(mediaID) { media in
+                            media.endAction = action
+                            media.loops = false
+                        }
+                    }))
+            }
+            Divider()
+            Toggle("Loop Instead", isOn: Binding(
+                get: { model.media(mediaID)?.loops == true && current == nil },
+                set: { _ in
+                    model.updateMedia(mediaID) { media in
+                        media.endAction = nil
+                        media.loops = true
+                    }
+                }))
+        }
+    }
+}
+
+/// Right-click › Slideshow: how long each slide stays up, and what happens
+/// after the last one (loop, or move on to the next item in the plan).
+struct SlideshowMenu: View {
+    let model: AppModel
+    let presentationID: String
+
+    var body: some View {
+        let advance = model.presentation(presentationID)?.autoAdvance
+        Menu("Slideshow") {
+            Toggle("Off", isOn: Binding(get: { advance == nil }, set: { _ in set(nil) }))
+            Divider()
+            ForEach([3.0, 5, 8, 10, 15, 20, 30, 60], id: \.self) { seconds in
+                Toggle("\(Int(seconds)) seconds per slide", isOn: Binding(
+                    get: { advance?.delaySeconds == seconds },
+                    set: { _ in set(AutoAdvance(delaySeconds: seconds, loopToStart: advance?.loopToStart ?? true)) }))
+            }
+            if let advance {
+                Divider()
+                Toggle("Loop back to the first slide", isOn: Binding(
+                    get: { advance.loopToStart ?? false },
+                    set: { _ in set(AutoAdvance(delaySeconds: advance.delaySeconds, loopToStart: true)) }))
+                Toggle("Go to the next item after the last slide", isOn: Binding(
+                    get: { !(advance.loopToStart ?? false) },
+                    set: { _ in set(AutoAdvance(delaySeconds: advance.delaySeconds, loopToStart: false)) }))
+            }
+        }
+    }
+
+    private func set(_ advance: AutoAdvance?) {
+        model.updatePresentation(presentationID) { $0.autoAdvance = advance }
     }
 }

@@ -436,6 +436,14 @@ struct AppSettingsView: View {
             ))
         }
         rows.append(SettingsRowSpec(
+            id: "anthem.link", category: .planningCenter,
+            title: "Anthem",
+            caption: "The tracks change the slides: Anthem sends each section's cue to Screens the way it would to ProPresenter.",
+            keywords: "anthem tracks multitrack cue slides network propresenter band",
+            control: AnyView(AnthemSettingsForm()),
+            stacked: true
+        ))
+        rows.append(SettingsRowSpec(
             id: "shepherd.sync", category: .planningCenter,
             title: "Shepherd",
             caption: "Upcoming Sunday plans from Shepherd become services. Songs link to presentations already in the library; any without one are flagged No slides.",
@@ -527,7 +535,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .keyboard: "Keyboard"
         case .screens: "Screens"
         case .bible: "Bible"
-        case .planningCenter: "Shepherd"
+        case .planningCenter: "Shepherd & Anthem"
 
         case .api: "Network & API"
         }

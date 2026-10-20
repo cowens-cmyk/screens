@@ -72,3 +72,38 @@ struct ShareBundleTests {
         }
     }
 }
+
+/// Anthem triggers slide N of a presentation by its place among all the
+/// presentation's slides, grouped by section the way ProPresenter lists them.
+@Test func proPresenterGroupsKeepTheSlideOrderAnthemTriggers() throws {
+    var song = Presentation(id: "song", name: "Living Hope", presentationKind: .song, themeId: "", slides: [
+        Slide(id: "a", name: "V1a", objects: [SlideObject(id: "t1", objectKind: .text, name: "", text: "How great the chasm")]),
+        Slide(id: "b", name: "V1b", objects: []),
+        Slide(id: "c", name: "C", objects: [SlideObject(id: "t2", objectKind: .text, name: "", text: "Hallelujah")]),
+        Slide(id: "d", name: "V1 again", objects: []),
+    ])
+    song.slides[0].sectionId = "v1"; song.slides[1].sectionId = "v1"
+    song.slides[2].sectionId = "ch"; song.slides[3].sectionId = "v1"
+    song.sections = [PresentationSection(id: "v1", name: "Verse 1"), PresentationSection(id: "ch", name: "Chorus")]
+    let described = ProPresenterCompat.describe(song)
+    let groups = try #require(described["groups"] as? [[String: Any]])
+    #expect(groups.map { $0["name"] as? String } == ["Verse 1", "Chorus", "Verse 1"])
+    #expect(groups.map { ($0["slides"] as? [Any])?.count } == [2, 1, 1], "flattened, slide 2 is the chorus")
+    #expect(((groups[1]["slides"] as? [[String: Any]])?.first?["text"] as? String) == "Hallelujah")
+    #expect((described["id"] as? [String: Any])?["uuid"] as? String == "song")
+}
+
+@Test func planTimeRulesFireBeforeEachService() {
+    let nine = Date(timeIntervalSince1970: 1_800_000_000)
+    let eleven = nine.addingTimeInterval(2 * 3600)
+    ScheduleMath.planTimeStart = { condition, after in
+        [nine, eleven].map { $0.addingTimeInterval(condition.offsetSeconds ?? 0) }.filter { $0 > after }.min()
+    }
+    defer { ScheduleMath.planTimeStart = { _, _ in nil } }
+    let fiveBefore = ScheduleCondition(id: "c", kind: .planTime, offsetSeconds: -300)
+    let calendar = Calendar(identifier: .gregorian)
+    #expect(ScheduleMath.nextDue(for: fiveBefore, after: nine.addingTimeInterval(-3600), calendar: calendar)
+        == nine.addingTimeInterval(-300))
+    #expect(ScheduleMath.nextDue(for: fiveBefore, after: nine, calendar: calendar)
+        == eleven.addingTimeInterval(-300), "the second service gets its own countdown")
+}

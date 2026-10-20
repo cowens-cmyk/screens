@@ -135,6 +135,7 @@ struct MxUSlidesApp: App {
                 confidenceMonitor: confidence
             )
             controls.actionRouter = router
+            AnthemLink.shared.attach(model: model, controls: controls)
             _actionRouter = State(initialValue: router)
             _confidenceMonitor = State(initialValue: confidence)
             let schedulerController = SchedulerController(
@@ -163,6 +164,7 @@ struct MxUSlidesApp: App {
             keyIn.attach()
             _keyIn = State(initialValue: keyIn)
             ShepherdSync.shared.attach(model)
+            PlanTimeBridge.shared.start(model)
             LiveAssist.shared.attach(model: model, controls: controls)
             AppUpdater.shared.start()
             let tracking = ServiceTimingController(model: model, controls: controls, render: render)

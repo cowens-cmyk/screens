@@ -320,6 +320,10 @@ final class ActionRouter {
             }
             presentationFireDepth += 1
             defer { presentationFireDepth -= 1 }
+            // A scheduled click in a given plan brings that plan up first.
+            if let plan = action.serviceId, !plan.isEmpty, model.currentServiceID != plan {
+                model.currentServiceID = plan
+            }
             controls.fire(slide: slides[index], in: presentation)
         case .setStreamMode:
             if let mode = action.streamMode.flatMap(ShowSetup.StreamMode.init(rawValue:)) {
@@ -329,6 +333,13 @@ final class ActionRouter {
             if let mode = action.stageMode.flatMap(ShowSetup.StageMode.init(rawValue:)) {
                 ShowSetup.shared.stageMode = mode
             }
+        case .listenStart:
+            // The first slide of the message turns on the sermon microphone.
+            if !(LiveAssist.shared.listening && LiveAssist.shared.mode == .sermon) {
+                Task { await LiveAssist.shared.startSermon() }
+            }
+        case .listenStop:
+            if LiveAssist.shared.listening { LiveAssist.shared.stop() }
         case .setConfidenceLayout:
             guard let confidenceMonitor else { return miss(action, "confidenceMonitor") }
 

@@ -1733,6 +1733,7 @@ struct SlideTile: View {
         case .firePresentation: .presentations
         case .setConfidenceLayout, .setStageMode: .confidence
         case .setStreamMode: .screens
+        case .listenStart, .listenStop: .confidence
         case .fireOverlay, .dismissOverlay: .overlays
         case .fireLiveInput: .screens
         case .setSignage: .media
@@ -1840,6 +1841,8 @@ func slideActionLabel(
         "Fire Presentation: \(entryName(action.presentationId))"
     case .setStreamMode:
         "Livestream: \(action.streamMode.flatMap(ShowSetup.StreamMode.init(rawValue:))?.title ?? "—")"
+    case .listenStart: "Turn On Microphone"
+    case .listenStop: "Turn Off Microphone"
     case .setStageMode:
         "Stage Display: \(action.stageMode.flatMap(ShowSetup.StageMode.init(rawValue:))?.title ?? "—")"
     case .setConfidenceLayout:

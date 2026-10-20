@@ -1,0 +1,117 @@
+import PresenterCore
+import SwiftUI
+
+/// A plan's message and sermon series, with what every screen will show:
+/// the series theme on the audience screens, its lower thirds on the
+/// livestream, and the sermon timer and clock on the stage. Each line says
+/// whether that screen is covered, so nothing is left to chance on Sunday.
+struct PlanMessageSheet: View {
+    let model: AppModel
+    let planID: String
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var creatingSeries = false
+
+    private var plan: Service? { model.resident.services.value(planID) }
+    private var seriesID: String { plan?.sermonThemeId ?? model.slideBuilding.sermonThemeId ?? "" }
+    private var series: Theme? { seriesID.isEmpty ? nil : model.theme(seriesID) }
+    private var messageID: String? {
+        plan?.messagePresentationId
+            ?? plan?.items.first { item in
+                item.itemKind == .presentation
+                    && model.presentation(item.refId).map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
+            }?.refId
+    }
+    private var message: Presentation? { messageID.flatMap { model.presentation($0) } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Message & Sermon Series").font(.title3.weight(.semibold))
+
+            Form {
+                Section("Sermon series") {
+                    HStack {
+                        Picker("Series", selection: Binding(get: { seriesID }, set: chooseSeries)) {
+                            Text("Choose…").tag("")
+                            ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
+                        }
+                        Button("New Series…") { creatingSeries = true }
+                    }
+                    Text("The series sets the look of the message on every screen. Switch series here any week.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Message") {
+                    if let message {
+                        LabeledContent("Presentation", value: message.name)
+                        Stepper(value: Binding(
+                            get: { Int((message.sermonTimerSeconds ?? 35 * 60) / 60) },
+                            set: { minutes in
+                                model.updatePresentation(message.id) { $0.sermonTimerSeconds = Double(minutes * 60) }
+                            }), in: 5...120, step: 5) {
+                            LabeledContent("Sermon timer", value: "\(Int((message.sermonTimerSeconds ?? 35 * 60) / 60)) min")
+                        }
+                    } else {
+                        Button("Add a Message to This Plan", action: addMessage)
+                    }
+                }
+                Section("Every screen") {
+                    check("Audience", ok: series != nil && message?.themeId == seriesID,
+                          detail: series.map { "Message slides use \($0.name)" } ?? "Choose a series")
+                    check("Livestream", ok: (series?.streamDesigns?.isEmpty == false) || series?.streamLowerThirdThemeId != nil,
+                          detail: (series?.streamDesigns?.isEmpty == false) || series?.streamLowerThirdThemeId != nil
+                              ? "Lower thirds from \(series?.name ?? "the series")"
+                              : "This series has no lower thirds — set them in the theme editor")
+                    check("Stage", ok: message != nil,
+                          detail: "Sermon timer (\(Int((message?.sermonTimerSeconds ?? 35 * 60) / 60)) min, red past 0:00) and the clock")
+                }
+            }
+            .formStyle(.grouped)
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 520, height: 560)
+        .sheet(isPresented: $creatingSeries) { SermonSeriesSheet(model: model) }
+    }
+
+    private func check(_ screen: String, ok: Bool, detail: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(ok ? .green : .orange)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(screen).font(.body.weight(.medium))
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// The plan, its message and future sermon imports all follow the series.
+    private func chooseSeries(_ id: String) {
+        guard !id.isEmpty else { return }
+        model.updateService(planID) { $0.sermonThemeId = id }
+        model.updateSlideBuilding { $0.sermonThemeId = id }
+        if let messageID {
+            model.updatePresentation(messageID) { message in
+                message.themeId = id
+                for index in message.slides.indices { message.slides[index].themeId = nil }
+            }
+        }
+    }
+
+    private func addMessage() {
+        var message = Presentation(
+            id: UUID().uuidString, name: "Message", presentationKind: .deck,
+            themeId: seriesID.isEmpty ? BasicTemplates.pointsThemeID : seriesID, slides: [])
+        message.category = PresentationTypes.sermon
+        model.createInDrive(message)
+        let item = ServiceItem(id: UUID().uuidString, itemKind: .presentation, name: "Message", refId: message.id)
+        let id = message.id
+        model.updateService(planID) { plan in
+            plan.items.append(item)
+            plan.messagePresentationId = id
+        }
+    }
+}

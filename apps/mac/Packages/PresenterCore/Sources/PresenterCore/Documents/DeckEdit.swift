@@ -236,6 +236,9 @@ struct DeckField {
             optional(\.autoAdvance, "autoAdvance"),
             optional(\.displayKey, "displayKey"),
             optional(\.category, "category"),
+            optional(\.streamThemeId, "streamThemeId"),
+            optional(\.stageLayoutId, "stageLayoutId"),
+            optional(\.sermonTimerSeconds, "sermonTimerSeconds"),
         ]
     }
 }

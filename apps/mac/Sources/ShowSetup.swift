@@ -51,6 +51,17 @@ final class ShowSetup {
     }
     var onStageChange: (() -> Void)?
 
+    /// The live presentation's own stage layout, which wins over the mode's.
+    var stageLayoutOverride: String? { didSet { onStageChange?() } }
+    /// The live presentation's own livestream theme, which wins over its
+    /// slides' themes for the lower third.
+    var streamThemeOverride: String? { didSet { changed() } }
+    /// The stage follows what's live: Worship for songs, Message for the
+    /// message. Turned off, the stage only changes when someone changes it.
+    var stageFollowsItems: Bool {
+        didSet { UserDefaults.standard.set(stageFollowsItems, forKey: "show.stageFollowsItems") }
+    }
+
     var audienceTarget: String { didSet { save(audienceTarget, "show.audienceTarget") } }
     var streamTarget: String { didSet { save(streamTarget, "show.streamTarget"); changed() } }
     var stageTarget: String { didSet { save(stageTarget, "show.stageTarget") } }
@@ -71,6 +82,7 @@ final class ShowSetup {
         stageTarget = defaults.string(forKey: "show.stageTarget") ?? ""
         streamMode = defaults.string(forKey: "show.streamMode").flatMap(StreamMode.init(rawValue:)) ?? .auto
         stageMode = defaults.string(forKey: "show.stageMode").flatMap(StageMode.init(rawValue:)) ?? .worship
+        stageFollowsItems = defaults.object(forKey: "show.stageFollowsItems") as? Bool ?? true
     }
 
     private func save(_ value: String, _ key: String) {

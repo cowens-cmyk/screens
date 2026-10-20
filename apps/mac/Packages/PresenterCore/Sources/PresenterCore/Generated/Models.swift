@@ -884,8 +884,11 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
     public var autoAdvance: AutoAdvance?
     public var displayKey: String?
     public var category: String?
+    public var streamThemeId: String?
+    public var stageLayoutId: String?
+    public var sermonTimerSeconds: Double?
 
-    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil, category: String? = nil) {
+    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil, category: String? = nil, streamThemeId: String? = nil, stageLayoutId: String? = nil, sermonTimerSeconds: Double? = nil) {
         self.id = id
         self.name = name
         self.presentationKind = presentationKind
@@ -907,6 +910,9 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
         self.autoAdvance = autoAdvance
         self.displayKey = displayKey
         self.category = category
+        self.streamThemeId = streamThemeId
+        self.stageLayoutId = stageLayoutId
+        self.sermonTimerSeconds = sermonTimerSeconds
     }
 }
 
@@ -955,8 +961,9 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
     public var actions: [SlideAction]?
     public var autoAdvance: AutoAdvance?
     public var scaleMode: MediaScaleMode?
+    public var endAction: MediaEndAction?
 
-    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil, scaleMode: MediaScaleMode? = nil) {
+    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil, scaleMode: MediaScaleMode? = nil, endAction: MediaEndAction? = nil) {
         self.id = id
         self.name = name
         self.mediaKind = mediaKind
@@ -984,6 +991,7 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
         self.actions = actions
         self.autoAdvance = autoAdvance
         self.scaleMode = scaleMode
+        self.endAction = endAction
     }
 }
 
@@ -1290,8 +1298,11 @@ public struct Service: Codable, Sendable, Equatable, Identifiable {
     public var mxuDerivedName: String?
     public var mxuSyncPaused: Bool?
     public var versions: [ServiceVersion]?
+    public var sermonThemeId: String?
+    public var messagePresentationId: String?
+    public var isTemplate: Bool?
 
-    public init(id: String, name: String, serviceDate: String, items: [ServiceItem], origin: String? = nil, mxuPlanHexId: String? = nil, mxuServiceTypeName: String? = nil, mxuPlanVersion: String? = nil, mxuPlanTimes: [MxUPlanTime]? = nil, mxuTimeOrders: [MxUPlanTimeOrder]? = nil, mxuSyncedOrder: [String]? = nil, mxuDerivedName: String? = nil, mxuSyncPaused: Bool? = nil, versions: [ServiceVersion]? = nil) {
+    public init(id: String, name: String, serviceDate: String, items: [ServiceItem], origin: String? = nil, mxuPlanHexId: String? = nil, mxuServiceTypeName: String? = nil, mxuPlanVersion: String? = nil, mxuPlanTimes: [MxUPlanTime]? = nil, mxuTimeOrders: [MxUPlanTimeOrder]? = nil, mxuSyncedOrder: [String]? = nil, mxuDerivedName: String? = nil, mxuSyncPaused: Bool? = nil, versions: [ServiceVersion]? = nil, sermonThemeId: String? = nil, messagePresentationId: String? = nil, isTemplate: Bool? = nil) {
         self.id = id
         self.name = name
         self.serviceDate = serviceDate
@@ -1306,6 +1317,9 @@ public struct Service: Codable, Sendable, Equatable, Identifiable {
         self.mxuDerivedName = mxuDerivedName
         self.mxuSyncPaused = mxuSyncPaused
         self.versions = versions
+        self.sermonThemeId = sermonThemeId
+        self.messagePresentationId = messagePresentationId
+        self.isTemplate = isTemplate
     }
 }
 
@@ -1658,6 +1672,8 @@ public enum SlideActionKind: String, Codable, Sendable, CaseIterable, Equatable 
     case fireAudioPlaylist
     case setStreamMode
     case setStageMode
+    case listenStart
+    case listenStop
 }
 
 public enum MIDIMessageKind: String, Codable, Sendable, CaseIterable, Equatable {
@@ -1711,8 +1727,9 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
     public var delaySeconds: Double?
     public var streamMode: String?
     public var stageMode: String?
+    public var serviceId: String?
 
-    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, signageId: String? = nil, screenId: String? = nil, delaySeconds: Double? = nil, streamMode: String? = nil, stageMode: String? = nil) {
+    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, signageId: String? = nil, screenId: String? = nil, delaySeconds: Double? = nil, streamMode: String? = nil, stageMode: String? = nil, serviceId: String? = nil) {
         self.id = id
         self.kind = kind
         self.layer = layer
@@ -1750,6 +1767,7 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
         self.delaySeconds = delaySeconds
         self.streamMode = streamMode
         self.stageMode = stageMode
+        self.serviceId = serviceId
     }
 }
 
@@ -1776,6 +1794,7 @@ public enum ScheduleConditionKind: String, Codable, Sendable, CaseIterable, Equa
     case oneTime
     case timerReaches
     case calendarEvent
+    case planTime
 }
 
 public struct ScheduleCondition: Codable, Sendable, Equatable, Identifiable {
@@ -1790,8 +1809,10 @@ public struct ScheduleCondition: Codable, Sendable, Equatable, Identifiable {
     public var calendarId: String?
     public var eventTitleContains: String?
     public var offsetSeconds: Double?
+    public var serviceId: String?
+    public var serviceTimeIndex: Int?
 
-    public init(id: String, kind: ScheduleConditionKind, days: [Int]? = nil, timeOfDay: String? = nil, date: String? = nil, timerId: String? = nil, timerSeconds: Double? = nil, excludedDates: [String]? = nil, calendarId: String? = nil, eventTitleContains: String? = nil, offsetSeconds: Double? = nil) {
+    public init(id: String, kind: ScheduleConditionKind, days: [Int]? = nil, timeOfDay: String? = nil, date: String? = nil, timerId: String? = nil, timerSeconds: Double? = nil, excludedDates: [String]? = nil, calendarId: String? = nil, eventTitleContains: String? = nil, offsetSeconds: Double? = nil, serviceId: String? = nil, serviceTimeIndex: Int? = nil) {
         self.id = id
         self.kind = kind
         self.days = days
@@ -1803,6 +1824,8 @@ public struct ScheduleCondition: Codable, Sendable, Equatable, Identifiable {
         self.calendarId = calendarId
         self.eventTitleContains = eventTitleContains
         self.offsetSeconds = offsetSeconds
+        self.serviceId = serviceId
+        self.serviceTimeIndex = serviceTimeIndex
     }
 }
 
@@ -2588,4 +2611,11 @@ public struct StreamDesign: Codable, Sendable, Equatable {
         self.themeId = themeId
         self.slideId = slideId
     }
+}
+
+public enum MediaEndAction: String, Codable, Sendable, CaseIterable, Equatable {
+    case stop
+    case next
+    case hold
+    case fadeToBlack
 }

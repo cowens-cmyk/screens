@@ -25,6 +25,7 @@ import Testing
             .quiet("the exit sweep re-applies only when an exit landed"),
             .quiet("the slide auto-advance poll fires only when the video ends"),
             .quiet("the media auto-advance poll fires only when the video ends"),
+            .quiet("the video end poll clears the layer once, when the video ends"),
             .moves(["alertVisible"]),  
             .quiet("the linked-text clock re-applies the live scene; apply() writes state only on a change"),
         ],

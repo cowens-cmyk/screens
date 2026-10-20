@@ -963,6 +963,7 @@ private struct ConditionEditor: View {
         case .oneTime: "One Time"
         case .timerReaches: "Timer Reaches"
         case .calendarEvent: "Calendar Event"
+        case .planTime: "Plan Service Time"
         }
     }
 
@@ -1026,6 +1027,24 @@ private struct ConditionEditor: View {
             )
         case .calendarEvent:
             CalendarConditionFields(condition: condition, update: update)
+        case .planTime:
+            Picker("Plan", selection: Binding(
+                get: { condition.serviceId ?? "" },
+                set: { value in update { $0.serviceId = value.isEmpty ? nil : value } }
+            )) {
+                Text("Every plan").tag("")
+                ForEach(model.resident.services.values.sorted { $0.serviceDate > $1.serviceDate }, id: \.id) { plan in
+                    Text(plan.name).tag(plan.id)
+                }
+            }
+            Stepper(value: Binding(
+                get: { -Int(condition.offsetSeconds ?? 0) / 60 },
+                set: { minutes in update { $0.offsetSeconds = Double(-minutes * 60) } }
+            ), in: -60...120) {
+                let minutes = -Int(condition.offsetSeconds ?? 0) / 60
+                Text(minutes == 0 ? "When each service starts"
+                     : minutes > 0 ? "\(minutes) min before each service" : "\(-minutes) min after each service starts")
+            }
         case .timerReaches:
             Picker("Timer", selection: Binding(
                 get: { condition.timerId ?? "" },
@@ -1281,6 +1300,12 @@ extension SchedulerView {
                 return ScheduleConditionFormat.seconds(in: raw) > 0
                     ? date.formatted(.dateTime.month(.abbreviated).day().hour().minute().second())
                     : date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+            case .planTime:
+                let plan = condition.serviceId.flatMap { model.resident.services.value($0)?.name } ?? "every plan"
+                let minutes = -Int(condition.offsetSeconds ?? 0) / 60
+                return minutes == 0 ? "Service start (\(plan))"
+                    : minutes > 0 ? "\(minutes) min before each service (\(plan))"
+                    : "\(-minutes) min after service start (\(plan))"
             case .calendarEvent:
                 let title = condition.eventTitleContains.flatMap { $0.isEmpty ? nil : "“\($0)”" } ?? "any event"
                 let offset = Int(condition.offsetSeconds ?? 0) / 60

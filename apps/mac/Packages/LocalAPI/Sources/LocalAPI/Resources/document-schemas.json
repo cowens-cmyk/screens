@@ -1373,6 +1373,15 @@
         },
         "category": {
           "type": "string"
+        },
+        "streamThemeId": {
+          "type": "string"
+        },
+        "stageLayoutId": {
+          "type": "string"
+        },
+        "sermonTimerSeconds": {
+          "type": "number"
         }
       },
       "required": [
@@ -1501,6 +1510,9 @@
         },
         "scaleMode": {
           "$ref": "#/components/schemas/MediaScaleMode"
+        },
+        "endAction": {
+          "$ref": "#/components/schemas/MediaEndAction"
         }
       },
       "required": [
@@ -2021,6 +2033,15 @@
           "items": {
             "$ref": "#/components/schemas/ServiceVersion"
           }
+        },
+        "sermonThemeId": {
+          "type": "string"
+        },
+        "messagePresentationId": {
+          "type": "string"
+        },
+        "isTemplate": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2559,7 +2580,9 @@
         "fireAudio",
         "fireAudioPlaylist",
         "setStreamMode",
-        "setStageMode"
+        "setStageMode",
+        "listenStart",
+        "listenStop"
       ]
     },
     "MIDIMessageKind": {
@@ -2692,6 +2715,9 @@
         },
         "stageMode": {
           "type": "string"
+        },
+        "serviceId": {
+          "type": "string"
         }
       },
       "required": [
@@ -2736,7 +2762,8 @@
         "weekly",
         "oneTime",
         "timerReaches",
-        "calendarEvent"
+        "calendarEvent",
+        "planTime"
       ]
     },
     "ScheduleCondition": {
@@ -2780,6 +2807,12 @@
         },
         "offsetSeconds": {
           "type": "number"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "serviceTimeIndex": {
+          "type": "integer"
         }
       },
       "required": [
@@ -4041,6 +4074,15 @@
       "required": [
         "category",
         "mode"
+      ]
+    },
+    "MediaEndAction": {
+      "type": "string",
+      "enum": [
+        "stop",
+        "next",
+        "hold",
+        "fadeToBlack"
       ]
     }
   }

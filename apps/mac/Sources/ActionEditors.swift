@@ -25,6 +25,8 @@ extension SlideActionKind {
         case .setConfidenceLayout: "Set Stage Layout"
         case .setStreamMode: "Livestream"
         case .setStageMode: "Stage Display"
+        case .listenStart: "Turn On Microphone"
+        case .listenStop: "Turn Off Microphone"
         case .fireOverlay: "Fire Overlay"
         case .dismissOverlay: "Take Down Overlay"
         case .fireLiveInput: "Fire Live Input"
@@ -267,20 +269,38 @@ struct ActionParameterFields: View {
                 intField(action, "Velocity", \.midiValue, default: 127, range: 0...127)
             }
         case .firePresentation:
+            // Plan first, then one of its presentations, then the slide by
+            // name: "at 9:55, in the 9:00 plan, click Countdown's first slide".
+            Picker("Plan", selection: stringBinding(action, \.serviceId)) {
+                Text("Any plan").tag("")
+                ForEach(model.resident.services.values.sorted { $0.serviceDate > $1.serviceDate }, id: \.id) { plan in
+                    Text(plan.name).tag(plan.id)
+                }
+            }
             Picker("Presentation", selection: stringBinding(action, \.presentationId)) {
                 Text("Choose\u{2026}").tag("")
-                ForEach(entries(of: .presentation), id: \.id) { entry in
+                ForEach(presentationChoices(plan: action.serviceId), id: \.id) { entry in
                     Text(entry.name).tag(entry.id)
                 }
             }
-
-            Stepper(value: Binding(
-                get: { (action.slideIndex ?? 0) + 1 },
-                set: { shown in
-                    update(action.id) { $0.slideIndex = max(0, shown - 1) }
+            if let id = action.presentationId, let presentation = model.presentation(id), !presentation.slides.isEmpty {
+                Picker("Slide", selection: Binding(
+                    get: { action.slideIndex ?? 0 },
+                    set: { index in update(action.id) { $0.slideIndex = index } }
+                )) {
+                    ForEach(Array(presentation.slides.enumerated()), id: \.offset) { index, slide in
+                        Text("\(index + 1). \(slide.name.isEmpty ? "Slide" : slide.name)").tag(index)
+                    }
                 }
-            ), in: 1...999) {
-                LabeledContent("Slide", value: "\((action.slideIndex ?? 0) + 1)")
+            } else {
+                Stepper(value: Binding(
+                    get: { (action.slideIndex ?? 0) + 1 },
+                    set: { shown in
+                        update(action.id) { $0.slideIndex = max(0, shown - 1) }
+                    }
+                ), in: 1...999) {
+                    LabeledContent("Slide", value: "\((action.slideIndex ?? 0) + 1)")
+                }
             }
         case .setStreamMode:
             Picker("Livestream", selection: stringBinding(action, \.streamMode)) {
@@ -290,6 +310,9 @@ struct ActionParameterFields: View {
             Picker("Stage Display", selection: stringBinding(action, \.stageMode)) {
                 ForEach(ShowSetup.StageMode.allCases) { Text($0.title).tag($0.rawValue) }
             }
+        case .listenStart, .listenStop:
+            Text("The sermon microphone listens for scripture as the pastor speaks.")
+                .font(.caption).foregroundStyle(.secondary)
         case .setConfidenceLayout:
             Picker("Layout", selection: stringBinding(action, \.confidenceLayoutId)) {
 
@@ -409,6 +432,17 @@ struct ActionParameterFields: View {
 
     private func entries(of kind: DocumentKind) -> [LibraryIndex.Entry] {
         model.entries(of: kind)
+    }
+
+    /// The plan's presentations, in plan order; every presentation when no
+    /// plan is chosen.
+    private func presentationChoices(plan: String?) -> [LibraryIndex.Entry] {
+        guard let plan, !plan.isEmpty, let service = model.resident.services.value(plan) else {
+            return entries(of: .presentation)
+        }
+        return service.items.compactMap { item in
+            item.itemKind == .presentation ? model.indexEntry(item.refId) : nil
+        }
     }
 
     private func mediaName(_ id: String?) -> String {
