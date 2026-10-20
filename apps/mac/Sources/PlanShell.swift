@@ -45,13 +45,14 @@ struct PlanShell: View {
         } detail: {
             center
                 .frame(minWidth: 280, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-        }
-        .inspector(isPresented: $screensShown) {
-            Group {
-                if let render { MonitorsPanel(render: render) } else { Color.clear }
-            }
-            .frame(minWidth: 220, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-            .inspectorColumnWidth(min: 220, ideal: 300, max: 520)
+                // The screens column is the detail's inspector, as split views expect.
+                .inspector(isPresented: $screensShown) {
+                    Group {
+                        if let render { MonitorsPanel(render: render) } else { Color.clear }
+                    }
+                    .frame(minWidth: 220, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    .inspectorColumnWidth(min: 220, ideal: 300, max: 520)
+                }
         }
         .toolbar { toolbar }
         .preferredColorScheme(.dark)

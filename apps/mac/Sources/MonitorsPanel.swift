@@ -59,7 +59,9 @@ struct MonitorsPanel: View {
     /// screen's shape, no taller than `previewHeight`.
     private func previewSize(_ target: String) -> CGSize {
         let aspect = max(PreviewTargets.aspect(of: target, render: render), 0.1)
-        let width = max(columnWidth - 24, 80)
+        // 24 for padding, 16 always kept for a scroll bar: a preview sized
+        // to the room the bar leaves would flip the bar on and off forever.
+        let width = max(columnWidth - 40, 80)
         let height = min(width / aspect, previewHeight)
         return CGSize(width: (height * aspect).rounded(), height: height.rounded())
     }
