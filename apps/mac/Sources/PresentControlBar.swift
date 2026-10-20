@@ -9,6 +9,7 @@ struct PresentControlBar: View {
     var showsStatus = true
     @State private var nextTaps = 0
     @State private var backTaps = 0
+    @State private var clearTaps = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var live: (title: String, detail: String)? {
@@ -53,8 +54,9 @@ struct PresentControlBar: View {
                 .tint(HopeStyle.blue)
                 .help("Next (→ or Space)")
 
-                Button { controls.clearAll() } label: {
+                Button { clearTaps += 1; controls.clearAll() } label: {
                     Image(systemName: "xmark").font(.title3.weight(.semibold)).frame(width: 30, height: 30)
+                        .symbolEffect(.bounce.down, options: .speed(1.4), value: clearTaps)
                 }
                 .buttonStyle(.glass)
                 .buttonBorderShape(.circle)
@@ -67,10 +69,12 @@ struct PresentControlBar: View {
 
     private var status: some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(live == nil ? Color.secondary.opacity(0.5) : HopeStyle.live)
-                .frame(width: 8, height: 8)
+            // The live dot breathes while something is on screen.
+            Image(systemName: "circle.fill")
+                .font(.system(size: 8))
+                .foregroundStyle(live == nil ? Color.secondary.opacity(0.5) : HopeStyle.live)
                 .shadow(color: live == nil ? .clear : HopeStyle.live.opacity(0.8), radius: 4)
+                .symbolEffect(.breathe.pulse, options: .repeat(.continuous), isActive: live != nil)
             VStack(alignment: .leading, spacing: 1) {
                 Text(live?.title ?? "Nothing live")
                     .font(.callout.weight(.semibold))

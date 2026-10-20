@@ -132,6 +132,7 @@ struct RunOrderList: View {
                         .draggablePayload(runOnly ? nil : "svc::" + item.id)
                 } else {
                     itemRow(item, order: order, changed: changed.contains(item.id))
+                        .transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity))
                         .tag(item.id)
                         .listRowSeparator(.hidden)
                         .listRowBackground(liveRowBackground(item))
@@ -347,7 +348,8 @@ struct RunOrderList: View {
                     .frame(width: 3, height: 16)
             }
             ItemKindBadge(kind: HopeStyle.kind(
-                of: item, presentation: item.itemKind == .presentation ? model.presentation(item.refId) : nil))
+                of: item, presentation: item.itemKind == .presentation ? model.presentation(item.refId) : nil),
+                live: isItemLive(item))
 
             Text(displayName(item))
                 .lineLimit(1)
@@ -752,10 +754,8 @@ struct ServiceItemDetailView: View {
                 )
             }
         } else {
-            ContentUnavailableView(
-                "No Item Selected", systemImage: "rectangle.grid.3x2",
-                description: Text("Select a service item to see its slides.")
-            )
+            HopeEmptyState(title: "No Item Selected", symbol: "rectangle.grid.3x2",
+                           message: "Pick an item in the plan to see its slides.")
         }
     }
 }

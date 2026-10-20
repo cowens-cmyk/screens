@@ -7,6 +7,7 @@ struct SchedulerView: View {
     let controls: ServiceControls?
 
     @Environment(\.scheduler) private var scheduler
+    @State private var width: CGFloat = 1000
     @State private var selectedTriggerID: String?
     @State private var dropTargetID: String?
 
@@ -32,13 +33,29 @@ struct SchedulerView: View {
     }
 
     var body: some View {
-        HStack(spacing: CornerStandard.panelInset) {
-            boardCard
-                .frame(width: 380)
-            detailCard
-                .frame(maxWidth: .infinity)
+        // Side by side when the center column has room; stacked when it's
+        // narrow (screens column open, small window), so nothing is cut off.
+        Group {
+            if width >= 760 {
+                HStack(spacing: CornerStandard.panelInset) {
+                    boardCard
+                        .frame(width: 380)
+                    detailCard
+                        .frame(maxWidth: .infinity)
+                }
+            } else {
+                VStack(spacing: CornerStandard.panelInset) {
+                    boardCard
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    detailCard
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
         }
         .padding(.top, CornerStandard.panelInset)
+        .padding(.horizontal, CornerStandard.panelInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .alert("Rename Folder", isPresented: Binding(
             get: { renamingFolder != nil },
             set: { if !$0 { renamingFolder = nil } }

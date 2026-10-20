@@ -74,16 +74,89 @@ enum HopeStyle {
     }
 }
 
-/// A small rounded badge in an item's color with its symbol.
+/// A small rounded badge in an item's color with its symbol. It hops when
+/// its item goes live and wiggles under the pointer, so the plan feels
+/// alive without anything moving while it's left alone.
 struct ItemKindBadge: View {
     let kind: HopeStyle.ItemKind
+    var live = false
+    @State private var hovers = 0
 
     var body: some View {
         Image(systemName: kind.symbol)
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.white)
+            .symbolEffect(.bounce.up, options: .speed(1.2), value: live)
+            .symbolEffect(.wiggle, options: .nonRepeating, value: hovers)
             .frame(width: 20, height: 20)
             .background(kind.color.gradient, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .shadow(color: live ? kind.color.opacity(0.7) : .clear, radius: 5)
+            .scaleEffect(live ? 1.08 : 1)
+            .animation(HopeMotion.ui, value: live)
+            .onHover { if $0 { hovers += 1 } }
+    }
+}
+
+/// An empty column: a big symbol in a Hope gradient that breathes slowly,
+/// a title and one plain line, and an optional button.
+struct HopeEmptyState<Actions: View>: View {
+    let title: String
+    let symbol: String
+    var message: String = ""
+    var colors: [Color] = [HopeStyle.lightBlue, HopeStyle.stagePurple]
+    @ViewBuilder var actions: () -> Actions
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 44, weight: .regular))
+                .foregroundStyle(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                .symbolEffect(.breathe.pulse, options: .repeat(.continuous))
+                .padding(.bottom, 4)
+            Text(title).font(.title3.weight(.semibold))
+            if !message.isEmpty {
+                Text(message).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+            actions()
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+extension HopeEmptyState where Actions == EmptyView {
+    init(title: String, symbol: String, message: String = "", colors: [Color] = [HopeStyle.lightBlue, HopeStyle.stagePurple]) {
+        self.init(title: title, symbol: symbol, message: message, colors: colors) { EmptyView() }
+    }
+}
+
+/// The NEXT tag on the coming plan: a capsule with a soft light that sweeps
+/// across it now and then.
+struct NextTag: View {
+    @State private var sweep = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Text("NEXT")
+            .font(.system(size: 9, weight: .bold))
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(LinearGradient(colors: [HopeStyle.blue, HopeStyle.lightBlue], startPoint: .leading, endPoint: .trailing),
+                        in: Capsule())
+            .overlay {
+                if !reduceMotion {
+                    LinearGradient(colors: [.clear, .white.opacity(0.55), .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 14)
+                        .offset(x: sweep ? 26 : -26)
+                        .clipShape(Capsule())
+                        .allowsHitTesting(false)
+                }
+            }
+            .clipShape(Capsule())
+            .foregroundStyle(.white)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 1.1).delay(2.5).repeatForever(autoreverses: false)) { sweep = true }
+            }
     }
 }
 

@@ -14,7 +14,7 @@ struct NewServiceSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("New Service").font(.headline)
+            Text("New Plan").font(.headline)
             Form {
                 TextField("Name", text: $name)
                 DatePicker("Date", selection: $date, displayedComponents: .date)
@@ -27,7 +27,7 @@ struct NewServiceSheet: View {
                 }
             }
             .formStyle(.grouped)
-            Text("Add songs, scripture, presentations, videos and headers with Add Item at the bottom of the service, or drag them in from the library.")
+            Text("Add songs, presentations, videos and headers with Add, or drag them in from the library.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Spacer()

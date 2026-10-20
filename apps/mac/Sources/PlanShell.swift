@@ -111,9 +111,12 @@ struct PlanShell: View {
                 set: { if let id = $0 { model.currentServiceID = id } }
             )) {
                 Section("Upcoming") {
-                    ForEach(plans.upcoming, id: \.id) { planRow($0) }
+                    ForEach(plans.upcoming, id: \.id) {
+                        planRow($0).transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity))
+                    }
                     if plans.upcoming.isEmpty {
-                        Text("No upcoming plans").foregroundStyle(.secondary)
+                        Label("Nothing planned yet", systemImage: "sparkles")
+                            .foregroundStyle(.secondary)
                     }
                 }
                 if !plans.templates.isEmpty {
@@ -163,11 +166,7 @@ struct PlanShell: View {
             if plan.isTemplate != true, let date = Self.dateLabel(plan.serviceDate) {
                 HStack(spacing: 4) {
                     if plan.id == plans.upcoming.first?.id {
-                        Text("NEXT")
-                            .font(.system(size: 9, weight: .bold))
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(HopeStyle.blue, in: Capsule())
-                            .foregroundStyle(.white)
+                        NextTag()
                     }
                     Text(date).font(.caption).foregroundStyle(HopeStyle.lightBlue)
                 }
@@ -281,13 +280,13 @@ struct PlanShell: View {
                     }
                 }
         } else {
-            ContentUnavailableView {
-                Label("No Plan", systemImage: "list.bullet.rectangle")
-                    .foregroundStyle(HopeStyle.lightBlue)
-            } description: {
-                Text("Choose a plan, or make a new one.")
-            } actions: {
-                if !runOnly { Button("New Plan") { creatingPlan = true } }
+            HopeEmptyState(title: "No Plan", symbol: "list.bullet.rectangle.portrait",
+                           message: "Choose a plan, or make a new one.") {
+                if !runOnly {
+                    Button("New Plan", systemImage: "plus") { creatingPlan = true }
+                        .buttonStyle(.glassProminent)
+                        .tint(HopeStyle.blue)
+                }
             }
         }
     }
@@ -319,8 +318,8 @@ struct PlanShell: View {
                 ServiceItemDetailView(
                     model: model, render: render, controls: controls, serviceID: planID, itemID: itemID)
             } else {
-                ContentUnavailableView("Nothing to Show", systemImage: "rectangle.on.rectangle",
-                                       description: Text("Pick a plan on the left."))
+                HopeEmptyState(title: "Nothing to Show", symbol: "sparkles.rectangle.stack",
+                               message: "Pick a plan on the left.")
             }
         case .edit:
             editor
@@ -348,8 +347,9 @@ struct PlanShell: View {
                 InspectorView(model: model, entry: entry).frame(maxWidth: 560)
             }
         } else {
-            ContentUnavailableView("Nothing to Edit", systemImage: "pencil",
-                                   description: Text("Pick an item in the plan, or something in the library."))
+            HopeEmptyState(title: "Nothing to Edit", symbol: "pencil.and.scribble",
+                           message: "Pick an item in the plan, or something in the library.",
+                           colors: [HopeStyle.amber, HopeStyle.stagePurple])
         }
     }
 

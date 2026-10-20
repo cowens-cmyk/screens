@@ -313,18 +313,30 @@ final class AudioInputInventory {
         sources.removeValue(forKey: entry.id)?.stop()
     }
 
+    private static var permissionWaiters: [@MainActor (Bool) -> Void] = []
+
     private func withMicrophonePermission(_ then: @escaping @MainActor (Bool) -> Void) {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
             then(true)
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
-                Task { @MainActor in
-                    if !granted {
-                        DiagnosticsStore.shared.note(
-                            "input.audio", detail: "microphone permission declined")
+            // Asking while the output engines are still binding their devices
+            // at launch deadlocked CoreAudio (the prompt waits on the main
+            // thread, the engine's queue waits on the prompt). Ask a few
+            // seconds later, once the app has settled, and only once however many inputs want it.
+            Self.permissionWaiters.append(then)
+            guard Self.permissionWaiters.count == 1 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                AVCaptureDevice.requestAccess(for: .audio) { granted in
+                    Task { @MainActor in
+                        if !granted {
+                            DiagnosticsStore.shared.note(
+                                "input.audio", detail: "microphone permission declined")
+                        }
+                        let waiters = Self.permissionWaiters
+                        Self.permissionWaiters = []
+                        for waiter in waiters { waiter(granted) }
                     }
-                    then(granted)
                 }
             }
         case .denied, .restricted:
