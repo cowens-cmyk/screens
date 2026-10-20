@@ -38,16 +38,20 @@ struct PlanShell: View {
             // The library inside needs 272 to lay out; narrower clips it.
             sidebar
                 .frame(minWidth: 272, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .background(HopeStyle.panel)
                 .clipped()
                 .navigationSplitViewColumnWidth(min: 272, ideal: 290, max: 380)
         } content: {
             planColumn
+                .scrollContentBackground(.hidden)
                 .frame(minWidth: 230, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .background(HopeStyle.panel)
                 .clipped()
                 .navigationSplitViewColumnWidth(min: 230, ideal: 290, max: 420)
         } detail: {
             center
                 .frame(minWidth: 280, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .background(HopeStyle.stage)
                 // The screens column is the detail's inspector, as split views expect.
                 .inspector(isPresented: $screensShown) {
                     Group {
@@ -61,6 +65,7 @@ struct PlanShell: View {
                 }
         }
         .toolbar { toolbar }
+        .tint(HopeStyle.blue)
         .preferredColorScheme(.dark)
         .sheet(item: Binding(get: { messagePlanID.map(IdentifiedID.init) }, set: { messagePlanID = $0?.id })) { plan in
             PlanMessageSheet(model: model, planID: plan.id)
@@ -109,6 +114,7 @@ struct PlanShell: View {
                 }
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
             .frame(maxHeight: .infinity)
 
             if !runOnly {
@@ -142,7 +148,16 @@ struct PlanShell: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(plan.name).lineLimit(1)
             if plan.isTemplate != true, let date = Self.dateLabel(plan.serviceDate) {
-                Text(date).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    if plan.id == plans.upcoming.first?.id {
+                        Text("NEXT")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(HopeStyle.blue, in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    Text(date).font(.caption).foregroundStyle(HopeStyle.lightBlue)
+                }
             }
         }
         .tag(plan.id)
@@ -255,6 +270,7 @@ struct PlanShell: View {
         } else {
             ContentUnavailableView {
                 Label("No Plan", systemImage: "list.bullet.rectangle")
+                    .foregroundStyle(HopeStyle.lightBlue)
             } description: {
                 Text("Choose a plan, or make a new one.")
             } actions: {
@@ -275,6 +291,8 @@ struct PlanShell: View {
         } label: {
             Label("Add", systemImage: "plus")
         }
+        .buttonStyle(.glassProminent)
+        .tint(HopeStyle.blue)
         .help("Add to this plan")
     }
 

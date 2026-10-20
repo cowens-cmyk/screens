@@ -2,7 +2,7 @@ name: MxUSlides
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "26.0"
   createIntermediateGroups: true
   postGenCommand: node scripts/prepare-dependencies.mjs
 
@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     ARCHS: arm64
-    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
     DEVELOPMENT_TEAM: ""
@@ -113,7 +113,7 @@ targets:
         PRODUCT_NAME: "Screens"
         PRODUCT_BUNDLE_IDENTIFIER: com.example.mxuslides
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: "0.7.4"
+        MARKETING_VERSION: "0.8.0"
         CURRENT_PROJECT_VERSION: "1"
         MXU_GIT_COMMIT: ""
         MTL_COMPILER_FLAGS: "-fcikernel"

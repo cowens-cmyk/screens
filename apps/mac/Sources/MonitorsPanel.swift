@@ -28,7 +28,7 @@ struct MonitorsPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if shows(audienceTarget) {
-                        monitor("Audience", target: audienceTarget) { target in
+                        monitor("Audience", target: audienceTarget, color: HopeStyle.blue) { target in
                             LiveSceneView(render: render, screenTargetID: target)
                         }
                     }
@@ -49,6 +49,7 @@ struct MonitorsPanel: View {
             }
             .scrollContentBackground(.hidden)
         }
+        .background(HopeStyle.stage)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             let rounded = (width / 4).rounded(.down) * 4
             if abs(rounded - columnWidth) >= 4 { columnWidth = rounded }
@@ -61,7 +62,7 @@ struct MonitorsPanel: View {
         let aspect = max(PreviewTargets.aspect(of: target, render: render), 0.1)
         // 24 for padding, 16 always kept for a scroll bar: a preview sized
         // to the room the bar leaves would flip the bar on and off forever.
-        let width = max(columnWidth - 40, 80)
+        let width = max(columnWidth - 60, 80)
         let height = min(width / aspect, previewHeight)
         return CGSize(width: (height * aspect).rounded(), height: height.rounded())
     }
@@ -145,28 +146,30 @@ struct MonitorsPanel: View {
 
     @ViewBuilder
     private func monitor(
-        _ title: String, target: String?, @ViewBuilder content: (String) -> some View
+        _ title: String, target: String?, color: Color = HopeStyle.lightBlue,
+        @ViewBuilder content: (String) -> some View
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            ScreenLabel(title: title, color: color)
             if let target {
                 content(target)
                     .frame(width: previewSize(target).width, height: previewSize(target).height)
                     .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.08)))
             } else {
                 placeholder("Choose the \(title.lowercased()) screen in Settings › Show Setup")
             }
         }
+        .screenCard(color)
     }
 
     /// The stage display follows its mode; a playing video takes it over.
     @ViewBuilder
     private var stageMonitor: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Stage").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                ScreenLabel(title: "Stage", color: HopeStyle.amber)
                 Spacer()
                 StageVideoBadge(render: render)
             }
@@ -175,8 +178,8 @@ struct MonitorsPanel: View {
                     .modifier(PreviewedLayoutKeeper(target: stageTarget))
                     .frame(width: previewSize(stageTarget).width, height: previewSize(stageTarget).height)
                     .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.08)))
             } else {
                 placeholder("Choose the stage screen in Settings › Show Setup")
             }
@@ -188,13 +191,14 @@ struct MonitorsPanel: View {
             .controlSize(.small)
             .help("Worship: lyrics, next slide, clock and key. Message: sermon timer, clock, slide and notes. Mirror: what the audience sees. A playing video shows on the stage with the time left.")
         }
+        .screenCard(HopeStyle.amber)
     }
 
     @ViewBuilder
     private var streamMonitor: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Livestream").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                ScreenLabel(title: "Livestream", color: HopeStyle.stagePurple)
                 Spacer()
                 if let streamTarget {
                     StreamCoverageBadge(provider: render.outputs.previewProvider(for: streamTarget))
@@ -209,8 +213,8 @@ struct MonitorsPanel: View {
                 }
                 .frame(width: previewSize(streamTarget).width, height: previewSize(streamTarget).height)
                 .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.08)))
                 Picker("", selection: $setup.streamMode) {
                     ForEach(ShowSetup.StreamMode.allCases) { Text($0.title).tag($0) }
                 }
@@ -222,6 +226,7 @@ struct MonitorsPanel: View {
                 placeholder("Choose the livestream screen in Settings › Show Setup")
             }
         }
+        .screenCard(HopeStyle.stagePurple)
     }
 
     private func placeholder(_ text: String) -> some View {
@@ -292,5 +297,27 @@ struct ShowControlsPanel: View {
                 .padding(.bottom, 10)
             }
         }
+    }
+}
+
+/// A screen's role, in its color: a dot and the name.
+struct ScreenLabel: View {
+    let title: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 7, height: 7)
+                .shadow(color: color.opacity(0.8), radius: 3)
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.primary.opacity(0.85))
+        }
+    }
+}
+
+extension View {
+    /// A screen preview's Liquid Glass card, faintly tinted with its role.
+    func screenCard(_ color: Color) -> some View {
+        padding(10)
+            .glassEffect(.regular.tint(color.opacity(0.12)), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

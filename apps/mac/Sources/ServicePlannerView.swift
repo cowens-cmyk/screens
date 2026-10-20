@@ -344,6 +344,8 @@ struct RunOrderList: View {
                     .fill(Color(red: tint.red, green: tint.green, blue: tint.blue))
                     .frame(width: 3, height: 16)
             }
+            ItemKindBadge(kind: HopeStyle.kind(
+                of: item, presentation: item.itemKind == .presentation ? model.presentation(item.refId) : nil))
 
             Text(displayName(item))
                 .lineLimit(1)
@@ -383,16 +385,6 @@ struct RunOrderList: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-            }
-            if item.itemKind != .info {
-                Glyph(
-                    kind: item.itemKind == .presentation ? .presentations
-                        : item.itemKind == .audio || item.itemKind == .playlist ? .audio
-                        : .media,
-                    size: 13
-                )
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16)
             }
         }
         .overlay(
