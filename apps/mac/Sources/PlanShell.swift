@@ -68,7 +68,7 @@ struct PlanShell: View {
                 // The screens column is the detail's inspector, as split views expect.
                 .inspector(isPresented: $screensShown) {
                     Group {
-                        if let render { MonitorsPanel(render: render) } else { Color.clear }
+                        if let render { MonitorsPanel(render: render, liveKey: controls?.liveSlideID) } else { Color.clear }
                     }
                     // The livestream switch (Lower Third, Full Screen,
                     // Transparent) needs about 300 across.

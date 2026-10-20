@@ -692,6 +692,8 @@ struct RunOrderList: View {
             if let service = try? model.service(serviceID) {
                 Text(itemCountLabel(service))
                     .font(.caption.monospacedDigit())
+                    .contentTransition(.numericText())
+                    .animation(HopeMotion.ui, value: itemCountLabel(service))
                     .foregroundStyle(.tertiary)
             }
         }

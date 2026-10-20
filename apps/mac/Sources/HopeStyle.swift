@@ -74,26 +74,22 @@ enum HopeStyle {
     }
 }
 
-/// A small rounded badge in an item's color with its symbol. It hops when
-/// its item goes live and wiggles under the pointer, so the plan feels
-/// alive without anything moving while it's left alone.
+/// A small rounded badge in an item's color with its symbol. It hops once
+/// and glows when its item goes live, the way a tally light comes on.
 struct ItemKindBadge: View {
     let kind: HopeStyle.ItemKind
     var live = false
-    @State private var hovers = 0
 
     var body: some View {
         Image(systemName: kind.symbol)
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.white)
             .symbolEffect(.bounce.up, options: .speed(1.2), value: live)
-            .symbolEffect(.wiggle, options: .nonRepeating, value: hovers)
             .frame(width: 20, height: 20)
             .background(kind.color.gradient, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .shadow(color: live ? kind.color.opacity(0.7) : .clear, radius: 5)
             .scaleEffect(live ? 1.08 : 1)
             .animation(HopeMotion.ui, value: live)
-            .onHover { if $0 { hovers += 1 } }
     }
 }
 
@@ -130,8 +126,8 @@ extension HopeEmptyState where Actions == EmptyView {
     }
 }
 
-/// The NEXT tag on the coming plan: a capsule with a soft light that sweeps
-/// across it now and then.
+/// The NEXT tag on the coming plan: a capsule with a faint light that
+/// crosses it once when it appears.
 struct NextTag: View {
     @State private var sweep = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -144,7 +140,7 @@ struct NextTag: View {
                         in: Capsule())
             .overlay {
                 if !reduceMotion {
-                    LinearGradient(colors: [.clear, .white.opacity(0.55), .clear], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [.clear, .white.opacity(0.35), .clear], startPoint: .leading, endPoint: .trailing)
                         .frame(width: 14)
                         .offset(x: sweep ? 26 : -26)
                         .clipShape(Capsule())
@@ -155,7 +151,7 @@ struct NextTag: View {
             .foregroundStyle(.white)
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 1.1).delay(2.5).repeatForever(autoreverses: false)) { sweep = true }
+                withAnimation(.easeInOut(duration: 0.9).delay(0.6)) { sweep = true }
             }
     }
 }

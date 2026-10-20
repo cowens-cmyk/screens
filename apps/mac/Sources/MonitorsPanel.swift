@@ -9,6 +9,10 @@ import SwiftUI
 /// the column scrolls when they don't fit.
 struct MonitorsPanel: View {
     let render: RenderContext
+    /// What's live on the audience screen; when it changes, that card's edge
+    /// lights briefly, like a switcher's tally, to confirm the take.
+    var liveKey: String? = nil
+    @State private var tally = false
     @Bindable private var setup = ShowSetup.shared
     @Environment(\.openSettings) private var openSettings
 
@@ -25,12 +29,22 @@ struct MonitorsPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+                .onChange(of: liveKey) { _, key in
+                    guard key != nil else { return }
+                    tally = true
+                    withAnimation(.easeOut(duration: reduceMotion ? 0.2 : 0.8).delay(0.25)) { tally = false }
+                }
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if shows(audienceTarget) {
                         monitor("Audience", target: audienceTarget, color: HopeStyle.blue) { target in
                             LiveSceneView(render: render, screenTargetID: target)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(HopeStyle.blue.opacity(tally ? 0.9 : 0), lineWidth: 1.5)
+                                .allowsHitTesting(false)
                         }
                     }
                     if shows(streamTarget) { streamMonitor }
