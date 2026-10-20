@@ -56,6 +56,16 @@ struct PlanShell: View {
                 .animation(HopeMotion.ui(reduced: reduceMotion), value: modeRaw)
                 .animation(HopeMotion.ui(reduced: reduceMotion), value: itemID)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { detailWidth = $0 }
+                // Saved live inputs wait for the microphone answer; Screens
+                // never raises the prompt by itself (see AudioInputInventory).
+                .overlay(alignment: .top) {
+                    if AudioInputInventory.shared.needsMicrophoneAccess {
+                        MicrophoneAccessBanner()
+                            .padding(.top, 12)
+                            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .animation(HopeMotion.ui(reduced: reduceMotion), value: AudioInputInventory.shared.needsMicrophoneAccess)
                 // Present's controls float over the slides on glass.
                 .overlay(alignment: .bottom) {
                     if mode == .present, let controls {
@@ -460,4 +470,23 @@ struct PlanShell: View {
 /// A plain id for sheet(item:).
 struct IdentifiedID: Identifiable, Hashable {
     let id: String
+}
+
+/// Asks for the microphone only when the person clicks, so the prompt never
+/// lands on a launch that's still setting up its audio devices.
+private struct MicrophoneAccessBanner: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "mic.fill").foregroundStyle(HopeStyle.amber)
+            Text("Microphone access needed")
+                .font(.callout)
+            Button("Allow") { AudioInputInventory.shared.requestMicrophoneAccess() }
+                .buttonStyle(.glassProminent)
+                .tint(HopeStyle.blue)
+                .controlSize(.small)
+        }
+        .padding(.leading, 14).padding(.trailing, 8).padding(.vertical, 6)
+        .glassEffect(.regular, in: Capsule())
+        .fixedSize()
+    }
 }

@@ -204,7 +204,7 @@ final class AudioInputInventory {
         entries.append(entry)
         persist()
         if entry.isAssigned {
-            withMicrophonePermission { [weak self] granted in
+            withMicrophonePermission(asking: true) { [weak self] granted in
                 guard granted else { return }
                 self?.start(entry)
             }
@@ -234,7 +234,7 @@ final class AudioInputInventory {
             created.append(entry)
         }
         persist()
-        withMicrophonePermission { [weak self] granted in
+        withMicrophonePermission(asking: true) { [weak self] granted in
             guard granted, let self else { return }
             for entry in created { self.start(entry) }
         }
@@ -274,7 +274,7 @@ final class AudioInputInventory {
             }
         } else {
             let entry = entries[index]
-            withMicrophonePermission { [weak self] granted in
+            withMicrophonePermission(asking: true) { [weak self] granted in
                 guard granted else { return }
                 self?.start(entry)
             }
@@ -313,32 +313,45 @@ final class AudioInputInventory {
         sources.removeValue(forKey: entry.id)?.stop()
     }
 
-    private static var permissionWaiters: [@MainActor (Bool) -> Void] = []
+    /// Inputs waiting on the microphone answer. While macOS's prompt is up,
+    /// CoreAudio stalls every device call in the app, and a launch that
+    /// raised it on its own froze behind it. So Screens never asks by itself:
+    /// saved inputs wait here, and the window offers Allow Microphone, which
+    /// asks once the app is idle and the person is there to answer.
+    private var permissionWaiters: [@MainActor (Bool) -> Void] = []
+    private(set) var needsMicrophoneAccess = false
 
-    private func withMicrophonePermission(_ then: @escaping @MainActor (Bool) -> Void) {
+    func requestMicrophoneAccess() {
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined else {
+            flushPermissionWaiters(AVCaptureDevice.authorizationStatus(for: .audio) == .authorized)
+            return
+        }
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            Task { @MainActor in
+                if !granted {
+                    DiagnosticsStore.shared.note("input.audio", detail: "microphone permission declined")
+                }
+                AudioInputInventory.shared.flushPermissionWaiters(granted)
+            }
+        }
+    }
+
+    private func flushPermissionWaiters(_ granted: Bool) {
+        needsMicrophoneAccess = false
+        let waiters = permissionWaiters
+        permissionWaiters = []
+        for waiter in waiters { waiter(granted) }
+    }
+
+    /// `asking` is true only for something the person just did (adding or
+    /// assigning an input); then the prompt is expected and safe to show.
+    private func withMicrophonePermission(asking: Bool = false, _ then: @escaping @MainActor (Bool) -> Void) {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
             then(true)
         case .notDetermined:
-            // Asking while the output engines are still binding their devices
-            // at launch deadlocked CoreAudio (the prompt waits on the main
-            // thread, the engine's queue waits on the prompt). Ask a few
-            // seconds later, once the app has settled, and only once however many inputs want it.
-            Self.permissionWaiters.append(then)
-            guard Self.permissionWaiters.count == 1 else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                AVCaptureDevice.requestAccess(for: .audio) { granted in
-                    Task { @MainActor in
-                        if !granted {
-                            DiagnosticsStore.shared.note(
-                                "input.audio", detail: "microphone permission declined")
-                        }
-                        let waiters = Self.permissionWaiters
-                        Self.permissionWaiters = []
-                        for waiter in waiters { waiter(granted) }
-                    }
-                }
-            }
+            permissionWaiters.append(then)
+            if asking { requestMicrophoneAccess() } else { needsMicrophoneAccess = true }
         case .denied, .restricted:
             DiagnosticsStore.shared.note(
                 "input.audio",
