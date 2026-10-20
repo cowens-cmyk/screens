@@ -346,6 +346,20 @@ struct RunOrderList: View {
                 .layoutPriority(0)
             Spacer(minLength: 4)
 
+            // A planned song with no presentation in the library: flag it so
+            // it gets imported or linked before Sunday.
+            if item.itemKind == .info, item.refId.isEmpty, item.mxuSongTitle != nil {
+                Label("No slides", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2.weight(.semibold))
+                    .labelStyle(.titleAndIcon)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Color.orange.opacity(0.18), in: Capsule())
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+                    .help("No presentation for this song in the library. Import it with Song Search (⌘⇧L); the next sync links it.")
+            }
+
             if changed {
                 Text("Changed")
                     .font(.caption2.weight(.semibold))

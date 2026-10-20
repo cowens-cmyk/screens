@@ -163,6 +163,7 @@ struct MxUSlidesApp: App {
             keyIn.attach()
             _keyIn = State(initialValue: keyIn)
             PlanningCenterSync.shared.attach(model)
+            ShepherdSync.shared.attach(model)
             LiveAssist.shared.attach(model: model, controls: controls)
             AppUpdater.shared.start()
             let tracking = ServiceTimingController(model: model, controls: controls, render: render)

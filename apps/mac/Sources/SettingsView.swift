@@ -444,6 +444,14 @@ struct AppSettingsView: View {
             stacked: true
         ))
         rows.append(SettingsRowSpec(
+            id: "shepherd.sync", category: .planningCenter,
+            title: "Shepherd",
+            caption: "Upcoming Sunday plans from Shepherd become services. Songs link to presentations already in the library; any without one are flagged No slides.",
+            keywords: "shepherd hope plan sunday service sync song flag api key",
+            control: AnyView(ShepherdSettingsForm()),
+            stacked: true
+        ))
+        rows.append(SettingsRowSpec(
             id: "bible.sources", category: .bible,
             title: "Bible translations",
             caption: "Where scripture text comes from. Type a reference in Scripture Slides (File menu) and slides are built with your Bible template — each slide starts at the beginning of a verse.",

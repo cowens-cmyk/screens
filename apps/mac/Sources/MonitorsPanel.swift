@@ -3,40 +3,116 @@ import PresenterCore
 import RenderEngine
 import SwiftUI
 
-/// The show view's right column: what the room sees, what the livestream
-/// puts over the camera, and what's on the stage display — always visible.
+/// The show view's right column: a live preview of every screen Screens is
+/// driving — the room, the livestream and the stage first, then any other
+/// outputs. Each can be hidden from the column; all show by default, and
+/// the column scrolls when they don't fit.
 struct MonitorsPanel: View {
     let render: RenderContext
     @Bindable private var setup = ShowSetup.shared
     @Environment(\.openSettings) private var openSettings
 
-    /// Each preview's height, so all three monitors and their switches fit
-    /// the column at any window size.
-    @State private var previewHeight: CGFloat = 180
+    /// Screens hidden from this column, by target id ("" separated by
+    /// newlines). Kept per Mac: it's only about this window.
+    @AppStorage("monitors.hidden") private var hiddenList = ""
 
     var body: some View {
-        GeometryReader { geo in
+        VStack(spacing: 0) {
+            header
+            Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    monitor("Audience", target: audienceTarget) { target in
-                        LiveSceneView(render: render, screenTargetID: target)
+                VStack(alignment: .leading, spacing: 12) {
+                    if shows(audienceTarget) {
+                        monitor("Audience", target: audienceTarget) { target in
+                            LiveSceneView(render: render, screenTargetID: target)
+                        }
                     }
-                    streamMonitor
-                    stageMonitor
+                    if shows(streamTarget) { streamMonitor }
+                    if shows(stageTarget) { stageMonitor }
+                    ForEach(otherScreens.filter { shows($0.id) }, id: \.id) { screen in
+                        monitor(screen.name, target: screen.id) { target in
+                            LiveSceneView(render: render, screenTargetID: target)
+                        }
+                    }
+                    if allHidden {
+                        Text("Every screen is hidden. Turn them back on from Screens above.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 80)
+                    }
                 }
                 .padding(12)
             }
             .scrollContentBackground(.hidden)
-            .onAppear { fit(geo.size.height) }
-            .onChange(of: geo.size.height) { _, height in fit(height) }
         }
     }
 
-    /// Titles, the two switches, spacing and padding take about 150 pt; the
-    /// rest is shared by the three previews.
-    private func fit(_ height: CGFloat) {
-        previewHeight = max(48, (height - 150) / 3)
+    // MARK: Which screens show
+
+    private var header: some View {
+        HStack {
+            Text("Screens").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Spacer()
+            Menu {
+                ForEach(allScreens, id: \.id) { screen in
+                    Toggle(screen.label, isOn: Binding(
+                        get: { !hidden.contains(screen.id) },
+                        set: { setHidden(screen.id, !$0) }))
+                }
+                Divider()
+                Button("Show All") { hiddenList = "" }
+            } label: {
+                Image(systemName: "eye")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Choose which screens preview here")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
+
+    private var hidden: Set<String> {
+        Set(hiddenList.split(separator: "\n").map(String.init))
+    }
+
+    private func setHidden(_ id: String, _ hide: Bool) {
+        var ids = hidden
+        if hide { ids.insert(id) } else { ids.remove(id) }
+        hiddenList = ids.sorted().joined(separator: "\n")
+    }
+
+    /// A role with no screen assigned still shows, so its "choose a screen"
+    /// hint stays reachable; it hides under the role's own name.
+    private func shows(_ target: String?) -> Bool {
+        !hidden.contains(target ?? "")
+    }
+
+    private var otherScreens: [(id: String, name: String)] {
+        let roles = Set([audienceTarget, streamTarget, stageTarget].compactMap { $0 })
+        return PreviewTargets.screens(render).filter { !roles.contains($0.id) }
+    }
+
+    private var allScreens: [(id: String, label: String)] {
+        func name(_ id: String?) -> String {
+            PreviewTargets.screens(render).first { $0.id == id }?.name ?? "not set"
+        }
+        var list: [(id: String, label: String)] = []
+        if let audienceTarget { list.append((audienceTarget, "Audience — \(name(audienceTarget))")) }
+        if let streamTarget { list.append((streamTarget, "Livestream — \(name(streamTarget))")) }
+        if let stageTarget { list.append((stageTarget, "Stage — \(name(stageTarget))")) }
+        list += otherScreens.map { ($0.id, $0.name) }
+        return list
+    }
+
+    private var allHidden: Bool {
+        let shown = [audienceTarget, streamTarget, stageTarget].filter { shows($0) }.count
+            + otherScreens.filter { shows($0.id) }.count
+        return shown == 0
+    }
+
+    /// Previews take the column's width at the screen's shape, up to this
+    /// tall, so a portrait or very tall output doesn't fill the column.
+    private let previewHeight: CGFloat = 260
 
     // MARK: Targets (Settings › Show Setup, else a sensible guess)
 

@@ -17,7 +17,12 @@ final class BibleSettings {
     private static let verseNumbersKey = "bible.verseNumbers"
 
     var apiBibleKey: String { didSet { Keychain.save(apiBibleKey, account: "api-bible") } }
-    var esvKey: String { didSet { Keychain.save(esvKey, account: "esv") } }
+    var esvKey: String {
+        didSet {
+            Keychain.save(esvKey, account: "esv")
+            if translation == nil, !esvKey.isEmpty { translation = .esv }
+        }
+    }
 
     var translation: BibleTranslation? {
         didSet {
@@ -48,11 +53,23 @@ final class BibleSettings {
     private init() {
         let defaults = UserDefaults.standard
         apiBibleKey = Keychain.load(account: "api-bible") ?? ""
-        esvKey = Keychain.load(account: "esv") ?? ""
+        let esv = Keychain.load(account: "esv") ?? ""
+        esvKey = esv
+        // ESV is Hope's translation: it's the default whenever an ESV key is
+        // in place and nobody has picked another.
         translation = defaults.data(forKey: Self.translationKey)
             .flatMap { try? JSONDecoder().decode(BibleTranslation.self, from: $0) }
+            ?? (esv.isEmpty ? nil : .esv)
         keepsLineBreaks = defaults.bool(forKey: Self.keepLineBreaksKey)
         showsVerseNumbers = defaults.object(forKey: Self.verseNumbersKey) as? Bool ?? true
+        // Once, on the update that made ESV the default, a Mac that had
+        // picked another translation moves to ESV; after that its choice holds.
+        if !defaults.bool(forKey: "bible.esvDefaultApplied"), !esv.isEmpty {
+            translation = .esv
+            // didSet doesn't run in init, so store it here.
+            defaults.set(try? JSONEncoder().encode(BibleTranslation.esv), forKey: Self.translationKey)
+            defaults.set(true, forKey: "bible.esvDefaultApplied")
+        }
     }
 
     func refreshTranslations() async {
@@ -73,35 +90,17 @@ final class BibleSettings {
         }
     }
 
+    /// Through SecretStore, so the keys follow the church's iCloud Keychain
+    /// once the app is signed for it; until then they stay on this Mac.
     private enum Keychain {
         static let service = "org.hopejc.screens.bible"
 
         static func load(account: String) -> String? {
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account,
-                kSecReturnData as String: true,
-                kSecMatchLimit as String: kSecMatchLimitOne,
-            ]
-            var item: CFTypeRef?
-            guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-                  let data = item as? Data else { return nil }
-            return String(data: data, encoding: .utf8)
+            SecretStore.load(service: service, account: account)
         }
 
         static func save(_ secret: String, account: String) {
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account,
-            ]
-            SecItemDelete(query as CFDictionary)
-            let trimmed = secret.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return }
-            var attributes = query
-            attributes[kSecValueData as String] = Data(trimmed.utf8)
-            SecItemAdd(attributes as CFDictionary, nil)
+            SecretStore.save(secret.trimmingCharacters(in: .whitespacesAndNewlines), service: service, account: account)
         }
     }
 }
