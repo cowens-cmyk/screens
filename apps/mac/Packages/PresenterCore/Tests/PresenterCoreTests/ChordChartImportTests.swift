@@ -44,7 +44,7 @@ import CoreGraphics
     #expect(out == "Verse 1\n[G]Amazing g[C]race\n\nChorus\n[G] [D] [Em] [C]\n\nBridge (x2)\n[G]Hold on")
 }
 
-@Test func dropsPCOBreakTokens() {
+@Test func dropsChartBreakTokens() {
     let text = "VERSE 1\nG\nHello\nCOLUMN_BREAK\nCHORUS\nC\nWorld\nPAGE_BREAK\n"
     #expect(ChordChartImport.mergeChordsOverLyrics(text) == "Verse 1\n[G]Hello\n\nChorus\n[C]World")
 }

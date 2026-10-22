@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 130,
+  "schemaVersion": 131,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -1750,16 +1750,13 @@
         "mxuMessageNotesDeckDocId": {
           "type": "string"
         },
-        "mxuPcoItemId": {
+        "mxuSourceItemId": {
           "type": "string"
         },
-        "mxuPcoSongId": {
+        "mxuSourceSongId": {
           "type": "string"
         },
-        "mxuPcoArrangementId": {
-          "type": "string"
-        },
-        "mxuPcoKeyId": {
+        "mxuSourceArrangementId": {
           "type": "string"
         },
         "mxuSongKey": {

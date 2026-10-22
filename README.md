@@ -1,6 +1,6 @@
 # Screens
 
-A native macOS presentation app for Hope Church: lyrics, scripture, slides, media, timers, stage displays, NDI and DeckLink output, Planning Center sync, and live streaming. Everything runs on this Mac.
+A native macOS presentation app for Hope Church: lyrics, scripture, slides, media, timers, stage displays, NDI and DeckLink output, Shepherd plan sync, and live streaming. Everything runs on this Mac.
 
 Screens is built on [MxU Slides](https://getmxu.com), which is source-available under the PolyForm Shield License 1.0.0 — see [LICENSE.md](LICENSE.md). Required Notice: Copyright MxU (https://getmxu.com). The MxU name and logos are MxU's trademarks.
 

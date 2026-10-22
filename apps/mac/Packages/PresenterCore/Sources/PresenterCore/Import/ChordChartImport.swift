@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 import PDFKit
 
-/// Converts worship chord charts (chords-over-lyrics plain text, Planning Center `chord_chart`
+/// Converts worship chord charts (chords-over-lyrics plain text, Shepherd `chordChart`
 /// text, or PDFs) into ChordPro-style inline text that `LyricTextImporter` understands.
 public enum ChordChartImport {
 

@@ -207,7 +207,7 @@ final class ShepherdSync {
 
     /// A library presentation for a plan song, by CCLI number or title.
     private static func librarySong(
-        for song: PCOClient.Item, candidates: [ServiceLinkLogic.Candidate]
+        for song: PlanFeed.Item, candidates: [ServiceLinkLogic.Candidate]
     ) -> (refId: String, arrangementId: String?)? {
         var probe = ServiceItem(id: "", itemKind: .info, name: song.title, refId: "")
         probe.mxuSongTitle = song.song?.title ?? song.title

@@ -424,7 +424,7 @@ struct AppSettingsView: View {
             ))
         }
         rows.append(SettingsRowSpec(
-            id: "anthem.link", category: .planningCenter,
+            id: "anthem.link", category: .shepherd,
             title: "Anthem",
             caption: "The tracks change the slides: Anthem sends each section's cue to Screens the way it would to ProPresenter.",
             keywords: "anthem tracks multitrack cue slides network propresenter band",
@@ -432,7 +432,7 @@ struct AppSettingsView: View {
             stacked: true
         ))
         rows.append(SettingsRowSpec(
-            id: "shepherd.sync", category: .planningCenter,
+            id: "shepherd.sync", category: .shepherd,
             title: "Shepherd",
             caption: "Upcoming Sunday plans from Shepherd become services. Songs link to presentations already in the library; any without one are flagged No slides.",
             keywords: "shepherd hope plan sunday service sync song flag api key",
@@ -508,7 +508,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case keyboard
     case screens
     case bible
-    case planningCenter
+    case shepherd
     case api
 
     var id: String { rawValue }
@@ -523,7 +523,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .keyboard: "Keyboard"
         case .screens: "Screens"
         case .bible: "Bible"
-        case .planningCenter: "Shepherd & Anthem"
+        case .shepherd: "Shepherd & Anthem"
 
         case .api: "Network & API"
         }
@@ -539,7 +539,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .keyboard: "keyboard"
         case .screens: "display"
         case .bible: "book"
-        case .planningCenter: "calendar.badge.clock"
+        case .shepherd: "calendar.badge.clock"
         case .api: "network"
         }
     }

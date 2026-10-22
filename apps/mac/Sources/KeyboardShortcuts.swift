@@ -22,7 +22,13 @@ final class KeyMapStore {
 
     private init() {
         if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
-           let stored = try? JSONDecoder().decode(KeyCommandMap.self, from: data) {
+           var stored = try? JSONDecoder().decode(KeyCommandMap.self, from: data) {
+            // The Shepherd settings page was saved as "planningCenter" before
+            // Planning Center was dropped; keep a key bound to it working.
+            if let chord = stored.chords.removeValue(forKey: "settings.planningCenter"),
+               stored.chords["settings.shepherd"] == nil {
+                stored.chords["settings.shepherd"] = chord
+            }
             map = stored
         } else {
             map = KeyCommandMap()

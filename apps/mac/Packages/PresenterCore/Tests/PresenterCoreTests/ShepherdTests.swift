@@ -330,13 +330,13 @@ struct ShepherdTests {
             ServiceLinkRule(id: "wrong-song", normalizedName: "unlisted song",
                             itemKind: .presentation, refId: "must-not-link"),
         ])
-        var lookedUp: [PCOClient.Item] = []
+        var lookedUp: [PlanFeed.Item] = []
         let items = ShepherdPlanSync.items(for: plan, rules: rules, existing: []) { item in
             lookedUp.append(item)
             return item.song?.ccliNumber == 7106807 ? ("library-song", "library-arrangement") : nil
         }
         #expect(items.map(\.itemKind) == [.header, .presentation, .presentation, .info])
-        #expect(items.map(\.mxuPcoItemId) == ["a1…", "a2…", "a3…", "missing"])
+        #expect(items.map(\.mxuSourceItemId) == ["a1…", "a2…", "a3…", "missing"])
         #expect(items[1].refId == "library-song" && items[1].arrangementId == "library-arrangement")
         #expect(items[1].mxuSongKey == "Bb" && items[1].duration == 300)
         #expect(items[1].mxuCcliNumber == 7106807 && items[1].mxuSongTitle == "Living Hope")
@@ -345,7 +345,7 @@ struct ShepherdTests {
         #expect(items[2].mxuDescription == "Greeting and announcements")
         #expect(items[3].refId.isEmpty && items[3].mxuSongTitle == "Not in library" && items[3].mxuCcliNumber == 1234567)
         #expect(lookedUp.map(\.id) == ["a2…", "missing"])
-        #expect(lookedUp[0].customArrangementSequence == ["Verse 1", "Chorus", "Verse 2", "Chorus", "Bridge", "Chorus"])
+        #expect(lookedUp[0].arrangementSequence == ["Verse 1", "Chorus", "Verse 2", "Chorus", "Bridge", "Chorus"])
         #expect(lookedUp[0].song?.copyright == "2017 Phil Wickham Music…")
     }
 

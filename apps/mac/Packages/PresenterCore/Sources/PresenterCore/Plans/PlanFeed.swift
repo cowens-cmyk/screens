@@ -1,42 +1,88 @@
 import Foundation
 
-/// Maps a Planning Center plan onto a Screens service.
+/// A plan as the planner sends it: the neutral shape Shepherd plans are mapped
+/// into before they become Screens service items.
+public enum PlanFeed {
+    public struct Item: Hashable, Sendable, Identifiable {
+        public var id: String
+        public var title: String
+        public var itemType: String
+        public var description: String?
+        public var keyName: String?
+        public var length: Int?
+        /// The section order the band plays ("Verse 1, Chorus, …").
+        public var arrangementSequence: [String]?
+        public var song: Song?
+        public var arrangement: Arrangement?
+
+        public init(
+            id: String, title: String, itemType: String, description: String? = nil,
+            keyName: String? = nil, length: Int? = nil, arrangementSequence: [String]? = nil,
+            song: Song? = nil, arrangement: Arrangement? = nil
+        ) {
+            self.id = id
+            self.title = title
+            self.itemType = itemType
+            self.description = description
+            self.keyName = keyName
+            self.length = length
+            self.arrangementSequence = arrangementSequence
+            self.song = song
+            self.arrangement = arrangement
+        }
+    }
+
+    public struct Song: Hashable, Sendable {
+        public var id: String
+        public var title: String
+        public var author: String?
+        public var copyright: String?
+        public var ccliNumber: Int?
+
+        public init(id: String, title: String, author: String? = nil, copyright: String? = nil, ccliNumber: Int? = nil) {
+            self.id = id
+            self.title = title
+            self.author = author
+            self.copyright = copyright
+            self.ccliNumber = ccliNumber
+        }
+    }
+
+    public struct Arrangement: Hashable, Sendable {
+        public var id: String
+        public var name: String
+        public var bpm: Double?
+        public var meter: String?
+
+        public init(id: String, name: String, bpm: Double? = nil, meter: String? = nil) {
+            self.id = id
+            self.name = name
+            self.bpm = bpm
+            self.meter = meter
+        }
+    }
+}
+
+/// Maps a plan onto a Screens service.
 ///
-/// The plan's order is the template: headers stay headers, songs link to the
-/// library song (by CCLI number, then title) or to one imported from the
-/// arrangement's chord chart, and every other item ("COUNTDOWN",
-/// "Announcements", the sermon) links by the item-name rules the operator
-/// stamps once — so next week's plan fills itself in. Re-syncing keeps local
-/// additions and anything the operator linked by hand.
-public enum PCOPlanSync {
-
-    public static let origin = "planningCenter"
-
-    public static func serviceName(for plan: PCOClient.Plan) -> String {
-        let title = plan.title?.trimmingCharacters(in: .whitespaces) ?? ""
-        return title.isEmpty ? plan.dates : "\(plan.dates) — \(title)"
-    }
-
-    public static func serviceDate(for plan: PCOClient.Plan) -> String {
-        guard let date = plan.sortDate else { return String(plan.dates.prefix(10)) }
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
-    }
+/// The plan's order is the template: headers stay headers, songs link to a
+/// library song, and every other item ("COUNTDOWN", "Announcements", the
+/// sermon) links by the item-name rules the operator stamps once — so next
+/// week's plan fills itself in. Re-syncing keeps local additions and anything
+/// the operator linked by hand.
+public enum PlanItemSync {
 
     /// Builds the synced items. `songRef` returns the library presentation for
-    /// a song item (matching or importing it); nil leaves the item unlinked.
+    /// a song item; nil leaves the item unlinked.
     public static func items(
-        for planItems: [PCOClient.Item],
+        for planItems: [PlanFeed.Item],
         serviceTypeName: String?,
         rules: ServiceLinkRules,
         existing: [ServiceItem],
-        songRef: (PCOClient.Item) -> (refId: String, arrangementId: String?)?
+        songRef: (PlanFeed.Item) -> (refId: String, arrangementId: String?)?
     ) -> [ServiceItem] {
         let previous = Dictionary(
-            existing.compactMap { item in item.mxuPcoItemId.map { ($0, item) } },
+            existing.compactMap { item in item.mxuSourceItemId.map { ($0, item) } },
             uniquingKeysWith: { first, _ in first })
 
         var synced: [ServiceItem] = []
@@ -46,10 +92,9 @@ public enum PCOPlanSync {
                 id: old?.id ?? UUID().uuidString,
                 itemKind: .info, name: planItem.title, refId: "")
             item.mxuItemHexId = planItem.id
-            item.mxuPcoItemId = planItem.id
+            item.mxuSourceItemId = planItem.id
             item.mxuKind = planItem.itemType
             item.mxuDescription = planItem.description
-            item.mxuServicePosition = planItem.servicePosition
             item.duration = planItem.length
             item.colorHex = old?.colorHex
             item.outputPresetId = old?.outputPresetId
@@ -63,20 +108,19 @@ public enum PCOPlanSync {
                 item.mxuSongTitle = song?.title ?? planItem.title
                 item.mxuCcliNumber = song?.ccliNumber
                 item.mxuSongAuthor = song?.author
-                item.mxuPcoSongId = song?.id
-                item.mxuPcoArrangementId = planItem.arrangement?.id
+                item.mxuSourceSongId = song?.id
+                item.mxuSourceArrangementId = planItem.arrangement?.id
                 item.mxuArrangementName = planItem.arrangement?.name
-                item.mxuPcoKeyId = planItem.key?.id
                 item.mxuBpm = planItem.arrangement?.bpm
                 item.mxuTimeSignature = planItem.arrangement?.meter
-                let key = planItem.key?.startingKey ?? planItem.keyName
+                let key = planItem.keyName
                 item.mxuSongKey = key
                 // Re-apply the key when the plan's key changes.
                 item.mxuSongKeyApplied = old?.mxuSongKey == key ? old?.mxuSongKeyApplied : nil
-                if let old, !old.refId.isEmpty, old.mxuPcoSongId == song?.id {
+                if let old, !old.refId.isEmpty, old.mxuSourceSongId == song?.id {
                     item.itemKind = old.itemKind
                     item.refId = old.refId
-                    item.arrangementId = old.mxuPcoArrangementId == planItem.arrangement?.id
+                    item.arrangementId = old.mxuSourceArrangementId == planItem.arrangement?.id
                         ? old.arrangementId : nil
                 } else if let rule = ServiceLinkLogic.matchingRule(
                     name: planItem.title, serviceTypeName: serviceTypeName, in: rules) {
@@ -112,21 +156,21 @@ public enum PCOPlanSync {
         var anchor: String?
         var pending: [(after: String?, item: ServiceItem)] = []
         for item in existing {
-            if item.mxuPcoItemId == nil {
+            if item.mxuSourceItemId == nil {
                 pending.append((anchor, item))
             } else {
-                anchor = item.mxuPcoItemId
+                anchor = item.mxuSourceItemId
             }
         }
         for (after, item) in pending.reversed() {
-            let index = after.flatMap { id in result.firstIndex { $0.mxuPcoItemId == id } }
+            let index = after.flatMap { id in result.firstIndex { $0.mxuSourceItemId == id } }
                 .map { $0 + 1 } ?? 0
             result.insert(item, at: index)
         }
         return result
     }
 
-    /// An arrangement following PCO's section order ("Verse 1, Chorus,
+    /// An arrangement following the plan's section order ("Verse 1, Chorus,
     /// Verse 2, Chorus, Bridge…"), matched to the song's sections by name.
     public static func arrangement(
         named name: String, sequence: [String], sections: [PresentationSection]
@@ -135,7 +179,7 @@ public enum PCOPlanSync {
             sections.map { (normalizeSection($0.name), $0.id) }, uniquingKeysWith: { first, _ in first })
         let ids = sequence.compactMap { byName[normalizeSection($0)] }
         guard !ids.isEmpty else { return nil }
-        return Arrangement(id: UUID().uuidString, name: name.isEmpty ? "Planning Center" : name, sectionIds: ids)
+        return Arrangement(id: UUID().uuidString, name: name.isEmpty ? "Shepherd" : name, sectionIds: ids)
     }
 
     static func normalizeSection(_ name: String) -> String {

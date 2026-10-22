@@ -1,6 +1,6 @@
 import Foundation
 
-/// Uses the same service ordering and re-sync behavior as Planning Center.
+/// Maps a Shepherd plan onto a Screens service through `PlanItemSync`.
 public enum ShepherdPlanSync {
     public static let origin = "shepherd"
 
@@ -43,36 +43,32 @@ public enum ShepherdPlanSync {
         serviceTypeName: String? = nil,
         rules: ServiceLinkRules,
         existing: [ServiceItem],
-        songRef: (PCOClient.Item) -> (refId: String, arrangementId: String?)?
+        songRef: (PlanFeed.Item) -> (refId: String, arrangementId: String?)?
     ) -> [ServiceItem] {
         let mapped = plan.items.sorted { $0.position < $1.position }.map { item in
-            PCOClient.Item(
-                id: item.id, title: item.title, itemType: item.kind, sequence: item.position,
+            PlanFeed.Item(
+                id: item.id, title: item.title, itemType: item.kind,
                 description: item.description, keyName: item.song?.key,
-                length: item.lengthSeconds, servicePosition: nil,
-                customArrangementSequence: item.song?.sequence, updatedAt: "",
+                length: item.lengthSeconds, arrangementSequence: item.song?.sequence,
                 song: item.song.map {
-                    PCOClient.Song(
+                    PlanFeed.Song(
                         id: $0.id, title: $0.title, author: $0.author, copyright: $0.copyright,
                         ccliNumber: $0.ccliNumber.flatMap(Int.init))
                 },
                 arrangement: item.song.flatMap { song in
                     song.arrangementId.map {
-                        PCOClient.Arrangement(
-                            id: $0, name: song.arrangement ?? "", lyrics: nil, chordChart: nil,
-                            chordChartKey: song.key, sequence: song.sequence,
-                            bpm: song.tempo, meter: song.timeSignature, updatedAt: nil)
+                        PlanFeed.Arrangement(
+                            id: $0, name: song.arrangement ?? "", bpm: song.tempo, meter: song.timeSignature)
                     }
-                },
-                key: nil)
+                })
         }
-        var result = PCOPlanSync.items(
+        var result = PlanItemSync.items(
             for: mapped, serviceTypeName: serviceTypeName ?? plan.serviceType.name,
             rules: rules, existing: existing, songRef: { _ in nil })
-        // PCO allows name rules and previous links to bypass songRef. Shepherd
+        // PlanItemSync lets name rules and previous links bypass songRef. Shepherd
         // requires the caller's library lookup to validate every song link.
         for song in mapped where song.itemType == "song" {
-            guard let index = result.firstIndex(where: { $0.mxuPcoItemId == song.id }) else { continue }
+            guard let index = result.firstIndex(where: { $0.mxuSourceItemId == song.id }) else { continue }
             let link = songRef(song)
             result[index].itemKind = link == nil ? .info : .presentation
             result[index].refId = link?.refId ?? ""

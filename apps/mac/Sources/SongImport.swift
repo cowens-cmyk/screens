@@ -29,7 +29,7 @@ enum SongImport {
         presentation.ccli = ccli
         let sequence = arrangement?.sequence.isEmpty == false ? arrangement!.sequence : song.sequence
         if let sections = presentation.sections,
-           let order = PCOPlanSync.arrangement(
+           let order = PlanItemSync.arrangement(
                named: arrangement?.name ?? "Default", sequence: sequence, sections: sections) {
             presentation.arrangements = (presentation.arrangements ?? []) + [order]
             presentation.defaultArrangementId = order.id

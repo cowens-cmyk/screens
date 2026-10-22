@@ -15,6 +15,39 @@ function swiftType(t) {
   return { string: 'String', int: 'Int', double: 'Double', bool: 'Bool' }[t] ?? t
 }
 
+// A renamed field keeps reading its old JSON key, so documents saved before the
+// rename still decode. Encoding writes only the current key; the Automerge
+// encoder drops the old one on the next save.
+function emitLegacyCodable(fields) {
+  const legacy = fields.flatMap((f) => f.legacyNames ?? [])
+  let out = '\n'
+  out += `    private enum CodingKeys: String, CodingKey {\n        case ${fields.map((f) => f.name).join(', ')}\n    }\n\n`
+  out += `    private enum LegacyCodingKeys: String, CodingKey {\n        case ${legacy.join(', ')}\n    }\n\n`
+  out += '    public init(from decoder: Decoder) throws {\n'
+  out += '        let container = try decoder.container(keyedBy: CodingKeys.self)\n'
+  out += '        let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)\n'
+  for (const f of fields) {
+    const type = swiftType(f.type)
+    if (!f.optional) {
+      out += `        ${f.name} = try container.decode(${type}.self, forKey: .${f.name})\n`
+      continue
+    }
+    let expr = `try container.decodeIfPresent(${type}.self, forKey: .${f.name})`
+    for (const old of f.legacyNames ?? []) {
+      expr += `\n            ?? legacy.decodeIfPresent(${type}.self, forKey: .${old})`
+    }
+    out += `        ${f.name} = ${expr}\n`
+  }
+  out += '    }\n\n'
+  out += '    public func encode(to encoder: Encoder) throws {\n'
+  out += '        var container = encoder.container(keyedBy: CodingKeys.self)\n'
+  for (const f of fields) {
+    out += `        try container.${f.optional ? 'encodeIfPresent' : 'encode'}(${f.name}, forKey: .${f.name})\n`
+  }
+  out += '    }\n'
+  return out
+}
+
 function emitSwift() {
   let out = HEADER('swift')
   out += 'import Foundation\n'
@@ -58,7 +91,9 @@ function emitSwift() {
         .join(', ')
       out += `    public init(${params}) {\n`
       for (const f of def.fields) out += `        self.${f.name} = ${f.name}\n`
-      out += '    }\n}\n'
+      out += '    }\n'
+      if (def.fields.some((f) => f.legacyNames)) out += emitLegacyCodable(def.fields)
+      out += '}\n'
     } else {
       throw new Error(`Unknown kind '${def.kind}' for type '${name}'`)
     }

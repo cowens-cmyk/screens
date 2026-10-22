@@ -1,6 +1,6 @@
 import Foundation
 
-/// Builds a song from two sources: the clean lyrics (Planning Center's
+/// Builds a song from two sources: the clean lyrics (the song's
 /// lyrics field) for the words, and the chord chart for the chords. Chords
 /// land on lyric lines whose words match a chart line, so a chart that's
 /// laid out oddly can cost a chord but never a lyric.

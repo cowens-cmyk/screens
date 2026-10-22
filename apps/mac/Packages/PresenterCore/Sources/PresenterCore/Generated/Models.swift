@@ -1124,10 +1124,9 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
     public var mxuMessageNotesSubmittedAt: String?
     public var mxuMessageNotesOnReady: String?
     public var mxuMessageNotesDeckDocId: String?
-    public var mxuPcoItemId: String?
-    public var mxuPcoSongId: String?
-    public var mxuPcoArrangementId: String?
-    public var mxuPcoKeyId: String?
+    public var mxuSourceItemId: String?
+    public var mxuSourceSongId: String?
+    public var mxuSourceArrangementId: String?
     public var mxuSongKey: String?
     public var mxuDescription: String?
     public var mxuServicePosition: String?
@@ -1135,7 +1134,7 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
     public var mxuTimeSignature: String?
     public var mxuSongKeyApplied: String?
 
-    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuPcoItemId: String? = nil, mxuPcoSongId: String? = nil, mxuPcoArrangementId: String? = nil, mxuPcoKeyId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil) {
+    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuSourceItemId: String? = nil, mxuSourceSongId: String? = nil, mxuSourceArrangementId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil) {
         self.id = id
         self.itemKind = itemKind
         self.name = name
@@ -1158,16 +1157,97 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         self.mxuMessageNotesSubmittedAt = mxuMessageNotesSubmittedAt
         self.mxuMessageNotesOnReady = mxuMessageNotesOnReady
         self.mxuMessageNotesDeckDocId = mxuMessageNotesDeckDocId
-        self.mxuPcoItemId = mxuPcoItemId
-        self.mxuPcoSongId = mxuPcoSongId
-        self.mxuPcoArrangementId = mxuPcoArrangementId
-        self.mxuPcoKeyId = mxuPcoKeyId
+        self.mxuSourceItemId = mxuSourceItemId
+        self.mxuSourceSongId = mxuSourceSongId
+        self.mxuSourceArrangementId = mxuSourceArrangementId
         self.mxuSongKey = mxuSongKey
         self.mxuDescription = mxuDescription
         self.mxuServicePosition = mxuServicePosition
         self.mxuBpm = mxuBpm
         self.mxuTimeSignature = mxuTimeSignature
         self.mxuSongKeyApplied = mxuSongKeyApplied
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, itemKind, name, refId, arrangementId, colorHex, outputPresetId, mxuItemHexId, duration, mxuKind, excludedTimeHexIds, hiddenInPresenter, mxuSongTitle, mxuCcliNumber, mxuArrangementName, mxuSongAuthor, mxuMultiTracksUrl, mxuNotes, mxuMessageNotesDocumentHexId, mxuMessageNotesSubmittedAt, mxuMessageNotesOnReady, mxuMessageNotesDeckDocId, mxuSourceItemId, mxuSourceSongId, mxuSourceArrangementId, mxuSongKey, mxuDescription, mxuServicePosition, mxuBpm, mxuTimeSignature, mxuSongKeyApplied
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case mxuPcoItemId, mxuPcoSongId, mxuPcoArrangementId
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        itemKind = try container.decode(ServiceItemKind.self, forKey: .itemKind)
+        name = try container.decode(String.self, forKey: .name)
+        refId = try container.decode(String.self, forKey: .refId)
+        arrangementId = try container.decodeIfPresent(String.self, forKey: .arrangementId)
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex)
+        outputPresetId = try container.decodeIfPresent(String.self, forKey: .outputPresetId)
+        mxuItemHexId = try container.decodeIfPresent(String.self, forKey: .mxuItemHexId)
+        duration = try container.decodeIfPresent(Int.self, forKey: .duration)
+        mxuKind = try container.decodeIfPresent(String.self, forKey: .mxuKind)
+        excludedTimeHexIds = try container.decodeIfPresent([String].self, forKey: .excludedTimeHexIds)
+        hiddenInPresenter = try container.decodeIfPresent(Bool.self, forKey: .hiddenInPresenter)
+        mxuSongTitle = try container.decodeIfPresent(String.self, forKey: .mxuSongTitle)
+        mxuCcliNumber = try container.decodeIfPresent(Int.self, forKey: .mxuCcliNumber)
+        mxuArrangementName = try container.decodeIfPresent(String.self, forKey: .mxuArrangementName)
+        mxuSongAuthor = try container.decodeIfPresent(String.self, forKey: .mxuSongAuthor)
+        mxuMultiTracksUrl = try container.decodeIfPresent(String.self, forKey: .mxuMultiTracksUrl)
+        mxuNotes = try container.decodeIfPresent([MxUPlanItemNote].self, forKey: .mxuNotes)
+        mxuMessageNotesDocumentHexId = try container.decodeIfPresent(String.self, forKey: .mxuMessageNotesDocumentHexId)
+        mxuMessageNotesSubmittedAt = try container.decodeIfPresent(String.self, forKey: .mxuMessageNotesSubmittedAt)
+        mxuMessageNotesOnReady = try container.decodeIfPresent(String.self, forKey: .mxuMessageNotesOnReady)
+        mxuMessageNotesDeckDocId = try container.decodeIfPresent(String.self, forKey: .mxuMessageNotesDeckDocId)
+        mxuSourceItemId = try container.decodeIfPresent(String.self, forKey: .mxuSourceItemId)
+            ?? legacy.decodeIfPresent(String.self, forKey: .mxuPcoItemId)
+        mxuSourceSongId = try container.decodeIfPresent(String.self, forKey: .mxuSourceSongId)
+            ?? legacy.decodeIfPresent(String.self, forKey: .mxuPcoSongId)
+        mxuSourceArrangementId = try container.decodeIfPresent(String.self, forKey: .mxuSourceArrangementId)
+            ?? legacy.decodeIfPresent(String.self, forKey: .mxuPcoArrangementId)
+        mxuSongKey = try container.decodeIfPresent(String.self, forKey: .mxuSongKey)
+        mxuDescription = try container.decodeIfPresent(String.self, forKey: .mxuDescription)
+        mxuServicePosition = try container.decodeIfPresent(String.self, forKey: .mxuServicePosition)
+        mxuBpm = try container.decodeIfPresent(Double.self, forKey: .mxuBpm)
+        mxuTimeSignature = try container.decodeIfPresent(String.self, forKey: .mxuTimeSignature)
+        mxuSongKeyApplied = try container.decodeIfPresent(String.self, forKey: .mxuSongKeyApplied)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(itemKind, forKey: .itemKind)
+        try container.encode(name, forKey: .name)
+        try container.encode(refId, forKey: .refId)
+        try container.encodeIfPresent(arrangementId, forKey: .arrangementId)
+        try container.encodeIfPresent(colorHex, forKey: .colorHex)
+        try container.encodeIfPresent(outputPresetId, forKey: .outputPresetId)
+        try container.encodeIfPresent(mxuItemHexId, forKey: .mxuItemHexId)
+        try container.encodeIfPresent(duration, forKey: .duration)
+        try container.encodeIfPresent(mxuKind, forKey: .mxuKind)
+        try container.encodeIfPresent(excludedTimeHexIds, forKey: .excludedTimeHexIds)
+        try container.encodeIfPresent(hiddenInPresenter, forKey: .hiddenInPresenter)
+        try container.encodeIfPresent(mxuSongTitle, forKey: .mxuSongTitle)
+        try container.encodeIfPresent(mxuCcliNumber, forKey: .mxuCcliNumber)
+        try container.encodeIfPresent(mxuArrangementName, forKey: .mxuArrangementName)
+        try container.encodeIfPresent(mxuSongAuthor, forKey: .mxuSongAuthor)
+        try container.encodeIfPresent(mxuMultiTracksUrl, forKey: .mxuMultiTracksUrl)
+        try container.encodeIfPresent(mxuNotes, forKey: .mxuNotes)
+        try container.encodeIfPresent(mxuMessageNotesDocumentHexId, forKey: .mxuMessageNotesDocumentHexId)
+        try container.encodeIfPresent(mxuMessageNotesSubmittedAt, forKey: .mxuMessageNotesSubmittedAt)
+        try container.encodeIfPresent(mxuMessageNotesOnReady, forKey: .mxuMessageNotesOnReady)
+        try container.encodeIfPresent(mxuMessageNotesDeckDocId, forKey: .mxuMessageNotesDeckDocId)
+        try container.encodeIfPresent(mxuSourceItemId, forKey: .mxuSourceItemId)
+        try container.encodeIfPresent(mxuSourceSongId, forKey: .mxuSourceSongId)
+        try container.encodeIfPresent(mxuSourceArrangementId, forKey: .mxuSourceArrangementId)
+        try container.encodeIfPresent(mxuSongKey, forKey: .mxuSongKey)
+        try container.encodeIfPresent(mxuDescription, forKey: .mxuDescription)
+        try container.encodeIfPresent(mxuServicePosition, forKey: .mxuServicePosition)
+        try container.encodeIfPresent(mxuBpm, forKey: .mxuBpm)
+        try container.encodeIfPresent(mxuTimeSignature, forKey: .mxuTimeSignature)
+        try container.encodeIfPresent(mxuSongKeyApplied, forKey: .mxuSongKeyApplied)
     }
 }
 

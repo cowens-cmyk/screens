@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 130,
+  "schemaVersion": 131,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -2153,24 +2153,22 @@
           "optional": true
         },
         {
-          "name": "mxuPcoItemId",
+          "name": "mxuSourceItemId",
           "type": "string",
-          "optional": true
+          "optional": true,
+          "legacyNames": ["mxuPcoItemId"]
         },
         {
-          "name": "mxuPcoSongId",
+          "name": "mxuSourceSongId",
           "type": "string",
-          "optional": true
+          "optional": true,
+          "legacyNames": ["mxuPcoSongId"]
         },
         {
-          "name": "mxuPcoArrangementId",
+          "name": "mxuSourceArrangementId",
           "type": "string",
-          "optional": true
-        },
-        {
-          "name": "mxuPcoKeyId",
-          "type": "string",
-          "optional": true
+          "optional": true,
+          "legacyNames": ["mxuPcoArrangementId"]
         },
         {
           "name": "mxuSongKey",
