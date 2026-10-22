@@ -33,6 +33,29 @@ struct PlanShell: View {
 
     enum TopPane: String { case plans, library }
 
+    @Environment(\.confidenceMonitor) private var confidenceMonitor
+
+    private var workspaceImportAction: MenuAction? {
+        guard let render, let controls else { return nil }
+        return MenuAction("workspaceImport") {
+            WorkspaceImportRunner(
+                model: model, render: render, controls: controls,
+                confidenceMonitor: confidenceMonitor
+            ).present()
+        }
+    }
+
+    private var findInLibraryAction: MenuAction? {
+        runOnly ? nil : MenuAction("findInLibrary") {
+            topPane = .library
+            model.libraryFindPending = true
+        }
+    }
+
+    private static let presentNewSlideAction = MenuAction("presentNewSlide") {
+        NewSlideRouter.shared.request()
+    }
+
     private var mode: AppMode { AppMode(rawValue: modeRaw) ?? .present }
     private var runOnly: Bool { layout?.runOnly ?? false }
 
@@ -72,6 +95,14 @@ struct PlanShell: View {
         .toolbar { toolbar }
         .tint(HopeStyle.blue)
         .preferredColorScheme(.dark)
+        // The menu bar's commands (File › New, Import, the Present menu, …)
+        // find the library and the show through these.
+        .focusedSceneValue(\.libraryModel, model)
+        .focusedSceneValue(\.serviceControls, controls)
+        .focusedSceneValue(\.presentWorkspaceImport, workspaceImportAction)
+        .focusedSceneValue(\.presentLibrarySearch, findInLibraryAction)
+        .focusedSceneValue(\.presentNewSlide, mode == .present ? Self.presentNewSlideAction : nil)
+        .environment(\.runOnly, runOnly)
         .sheet(item: Binding(get: { messagePlanID.map(IdentifiedID.init) }, set: { messagePlanID = $0?.id })) { plan in
             PlanMessageSheet(model: model, planID: plan.id)
         }

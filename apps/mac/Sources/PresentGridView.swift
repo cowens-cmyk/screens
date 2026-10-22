@@ -184,9 +184,9 @@ enum SlideGridMetrics {
     }
     static let continuousWidthKey = "slideGrid.continuousWidth"
 
-    static let labelHeight: CGFloat = 14
+    static let labelHeight: CGFloat = 18
 
-    static let labelGap: CGFloat = 4
+    static let labelGap: CGFloat = 0
 
     static func tileAspect(for presentation: Presentation) -> CGFloat {
         SlidesAcross.tileAspect(canvas: SlideSceneBuilder.canvasSize(for: presentation))
@@ -1542,6 +1542,26 @@ struct SlideTile: View {
         return presentation.sections?.first { $0.id == id }
     }
 
+    /// The bar's color: the slide's group, else a neutral gray.
+    private var sectionHex: String? {
+        section?.resolvedColorHex(paletteColors: model.groupColors)
+    }
+
+    private var barColor: Color {
+        sectionHex.flatMap(GroupColor.color) ?? Color(.sRGB, white: 0.24)
+    }
+
+    private var barText: Color {
+        sectionHex == nil ? Color(.sRGB, white: 0.85) : GroupColor.text(onHex: sectionHex)
+    }
+
+    /// The group's name on its first slide (as ProPresenter shows it), else
+    /// the slide's own name when it has one worth showing.
+    private var barName: String? {
+        if showsSectionLabel, let section { return section.name }
+        return labelName
+    }
+
     private var labelName: String? {
         guard !slide.name.isEmpty else { return nil }
         let mediaName = slide.background.flatMap { background in
@@ -1553,7 +1573,9 @@ struct SlideTile: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        // Like ProPresenter: the slide, then a bar in its group's color with
+        // the number and group name, one tile with one outline.
+        VStack(alignment: .leading, spacing: 0) {
             SlideThumbnailView(
                 model: model, render: render,
                 slide: slide, presentation: presentation, theme: theme,
@@ -1562,25 +1584,7 @@ struct SlideTile: View {
                 legibleText: legibleText
             )
             .aspectRatio(aspect, contentMode: .fit)
-            .clipShape(tileShape)
 
-            .overlay(alignment: .topLeading) {
-                if showsSectionLabel, let section {
-                    let hex = section.resolvedColorHex(paletteColors: model.groupColors)
-                    Text(section.name)
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(GroupColor.text(onHex: hex))
-                        .lineLimit(1)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background(
-                            (hex.flatMap(GroupColor.color)
-                                ?? Color(.sRGB, white: 0.32)).opacity(0.92),
-                            in: Capsule()
-                        )
-                        .padding(4)
-                }
-            }
             .overlay(alignment: .topTrailing) {
                 if mediaMissing {
                     Image(systemName: "exclamationmark.triangle")
@@ -1592,25 +1596,12 @@ struct SlideTile: View {
                         .help("Media file missing on this Mac — right-click it in the Library › Locate Missing Media…")
                 }
             }
-            .overlay {
-                if isLive {
-                    tileShape.strokeBorder(.green, lineWidth: 3)
-                } else if isSelected {
-
-                    tileShape.strokeBorder(Color.accentColor, lineWidth: 2)
-                } else {
-                    tileShape.strokeBorder(.separator, lineWidth: 1)
-                }
-            }
             HStack(spacing: 5) {
                 Text("\(index + 1)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(isLive ? .green : .secondary)
-
-                if let name = labelName {
+                    .font(.system(size: 11, weight: .bold).monospacedDigit())
+                if let name = barName {
                     Text(String(name.prefix(30)))
-                        .font(.caption)
-                        .foregroundStyle(isLive ? .primary : .secondary)
+                        .font(.system(size: 11, weight: .semibold))
                         .lineLimit(1)
                 }
 
@@ -1670,8 +1661,21 @@ struct SlideTile: View {
                     }
                 }
             }
-            .padding(.leading, 2)
+            .padding(.horizontal, 5)
             .frame(height: SlideGridMetrics.labelHeight)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(barText)
+            .background(barColor)
+        }
+        .clipShape(tileShape)
+        .overlay {
+            if isLive {
+                tileShape.strokeBorder(HopeStyle.amber, lineWidth: 3)
+            } else if isSelected {
+                tileShape.strokeBorder(Color.accentColor, lineWidth: 2)
+            } else {
+                tileShape.strokeBorder(.separator, lineWidth: 1)
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: fire)

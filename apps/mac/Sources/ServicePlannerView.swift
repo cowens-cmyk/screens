@@ -130,6 +130,11 @@ struct RunOrderList: View {
                     headerRow(item, order: order)
                         .tag(item.id)
                         .listRowSeparator(.hidden)
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(headerColor(item))
+                                .padding(.vertical, 1)
+                                .padding(.horizontal, 6))
                         .reportingGlobalFrame(id: item.id, into: $rowFrames)
 
                         .draggablePayload(runOnly ? nil : "svc::" + item.id)
@@ -171,6 +176,8 @@ struct RunOrderList: View {
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
+        // ProPresenter-dense rows, so a whole service fits without scrolling.
+        .environment(\.defaultMinListRowHeight, 22)
 
         .onDeleteCommand {
             guard !runOnly, !selection.isEmpty else { return }
@@ -276,10 +283,6 @@ struct RunOrderList: View {
 
     private func headerRow(_ item: ServiceItem, order: [String]) -> some View {
         let collapsed = collapsedHeaders.contains(item.id)
-        let tint = item.colorHex.flatMap(ColorHex.color).map {
-            Color(red: $0.red, green: $0.green, blue: $0.blue, opacity: $0.alpha)
-        }
-
         return HStack(spacing: 6) {
             Button {
                 withAnimation(.easeOut(duration: 0.15)) {
@@ -292,24 +295,24 @@ struct RunOrderList: View {
                 persistCollapsed()
             } label: {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(headerText(item).opacity(0.8))
                     .rotationEffect(.degrees(collapsed ? -90 : 0))
                     .frame(width: 14, height: 14)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help(collapsed ? "Expand" : "Collapse")
-            rule(tint)
-            Text(item.name.uppercased())
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(tint ?? Color.secondary.opacity(0.8))
-                .tracking(0.6)
+            // A solid band in the header's color, like ProPresenter's
+            // playlist headers.
+            Text(item.name)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(headerText(item))
+                .lineLimit(1)
                 .layoutPriority(1)
-            rule(tint)
-
-            Color.clear.frame(width: 14, height: 1)
+            Spacer(minLength: 0)
         }
+        .padding(.vertical, 1)
         .contentShape(Rectangle())
         .contextMenu {
             if !runOnly {
@@ -327,6 +330,17 @@ struct RunOrderList: View {
         }
 
         .id("runOrderHeaderMenu|\(item.id)|\(inMultiSelection(item.id))")
+    }
+
+    /// A header's band: its own color, else a muted Hope navy.
+    private func headerColor(_ item: ServiceItem) -> Color {
+        item.colorHex.flatMap(ColorHex.color).map {
+            Color(red: $0.red, green: $0.green, blue: $0.blue)
+        } ?? HopeStyle.navy.opacity(0.85)
+    }
+
+    private func headerText(_ item: ServiceItem) -> Color {
+        GroupColor.text(onHex: item.colorHex)
     }
 
     private func inMultiSelection(_ id: String) -> Bool {
@@ -355,6 +369,7 @@ struct RunOrderList: View {
                 live: isItemLive(item))
 
             Text(displayName(item))
+                .font(.system(size: 12))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(item.itemKind == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
