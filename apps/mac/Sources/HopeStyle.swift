@@ -93,7 +93,7 @@ struct ItemKindBadge: View {
     }
 }
 
-/// An empty column: a big symbol in a Hope gradient that breathes slowly,
+/// An empty column: a big symbol in a Hope gradient that breathes once,
 /// a title and one plain line, and an optional button.
 struct HopeEmptyState<Actions: View>: View {
     let title: String
@@ -101,13 +101,17 @@ struct HopeEmptyState<Actions: View>: View {
     var message: String = ""
     var colors: [Color] = [HopeStyle.lightBlue, HopeStyle.stagePurple]
     @ViewBuilder var actions: () -> Actions
+    @State private var shown = false
 
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: symbol)
                 .font(.system(size: 44, weight: .regular))
                 .foregroundStyle(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
-                .symbolEffect(.breathe.pulse, options: .repeat(.continuous))
+                // Once when it appears: a continuous effect redraws the window
+                // every frame and kept an idle app busy.
+                .symbolEffect(.breathe.pulse, options: .nonRepeating, value: shown)
+                .onAppear { shown = true }
                 .padding(.bottom, 4)
             Text(title).font(.title3.weight(.semibold))
             if !message.isEmpty {

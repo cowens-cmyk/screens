@@ -18,6 +18,8 @@ struct PlanShell: View {
     @AppStorage("shell.screensShown") private var screensShown = true
     @AppStorage("shell.topPane") private var topPane = TopPane.plans
     @State private var itemID: String?
+    /// The left column was folded away for Edit (so it comes back after).
+    @State private var foldedForEdit = false
     @State private var creatingPlan = false
     @State private var controlsShown = false
     @State private var addingVideo = false
@@ -88,6 +90,21 @@ struct PlanShell: View {
                         .frame(width: Self.screensWidth)
                         .frame(maxHeight: .infinity)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            // Edit folds the left column away so the slide canvas gets the
+            // room; Present and Schedule bring it back.
+            // Uses the split view's own toggle: driving columnVisibility
+            // instead made the window open 300 points wider every launch.
+            .onChange(of: modeRaw) {
+                // Only with something to edit; otherwise the left column is
+                // where you'd pick it.
+                if mode == .edit, !foldedForEdit, selectedRefID != nil {
+                    foldedForEdit = true
+                    NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+                } else if mode != .edit, foldedForEdit {
+                    foldedForEdit = false
+                    NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
                 }
             }
             .navigationTitle(model.currentServiceID.flatMap { model.resident.services.value($0)?.name } ?? "Screens")

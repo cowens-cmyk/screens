@@ -181,9 +181,17 @@ public final class MetalSceneView: NSView {
         updateFrameRatePacing()
     }
 
+    /// A ceiling for previews: an output runs at its screen's full rate, but
+    /// a small monitor in the window needs no more than 30 to look live, and
+    /// at 120 several of them kept the app busy doing nothing.
+    public var maximumFramesPerSecond: Float? {
+        didSet { if maximumFramesPerSecond != oldValue { updateFrameRatePacing() } }
+    }
+
     private func updateFrameRatePacing() {
         guard let displayLink else { return }
-        let maxFPS = Float(window?.screen?.maximumFramesPerSecond ?? 60)
+        let screenFPS = Float(window?.screen?.maximumFramesPerSecond ?? 60)
+        let maxFPS = min(screenFPS, maximumFramesPerSecond ?? screenFPS)
         displayLink.preferredFrameRateRange = CAFrameRateRange(
             minimum: min(30, maxFPS),
             maximum: maxFPS,

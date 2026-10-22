@@ -78,7 +78,7 @@ struct SlideObjectInspector: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             case .animation:
-                AnimationTab(model: model)
+                SimpleAnimationPanel(model: model)
             }
         }
         .onAppear {

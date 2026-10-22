@@ -182,6 +182,7 @@ struct LiveSceneView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> MetalSceneView {
         let view = MetalSceneView(compositor: render.compositor)
+        view.maximumFramesPerSecond = 30
         apply(to: view)
         return view
     }

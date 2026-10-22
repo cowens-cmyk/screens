@@ -1279,19 +1279,16 @@ struct SlideEditorView: View {
         .fixedSize()
     }
 
+    /// Animations are set in the inspector's Animation tab; the timeline
+    /// is its Advanced view, so the way back only shows while it's open.
+    @ViewBuilder
     private func modePicker(_ model: SlideEditorModel) -> some View {
-        Picker("", selection: Binding(
-            get: { model.editorMode },
-            set: { model.editorMode = $0 }
-        )) {
-            ForEach(SlideEditorModel.EditorMode.allCases, id: \.self) { mode in
-                Text(mode.displayName).tag(mode)
-            }
+        if model.editorMode == .animate {
+            Button("Done", systemImage: "checkmark") { model.editorMode = .design }
+                .labelStyle(.titleAndIcon)
+                .buttonStyle(.borderedProminent)
+                .help("Close the timeline")
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
-        .help("Design edits the slide; Animate edits its steps on the timeline")
     }
 
     @ViewBuilder
