@@ -12,6 +12,8 @@ struct MonitorsPanel: View {
     /// What's live on the audience screen; when it changes, that card's edge
     /// lights briefly, like a switcher's tally, to confirm the take.
     var liveKey: String? = nil
+    /// Clears every layer on every screen; the one button the column keeps.
+    var onClearAll: (() -> Void)? = nil
     @State private var tally = false
     @Bindable private var setup = ShowSetup.shared
     @Environment(\.openSettings) private var openSettings
@@ -64,6 +66,21 @@ struct MonitorsPanel: View {
             }
             .scrollContentBackground(.hidden)
             .animation(HopeMotion.ui(reduced: reduceMotion), value: hiddenList)
+
+            if let onClearAll {
+                Divider()
+                Button(action: onClearAll) {
+                    Label("Clear All", systemImage: "xmark.circle.fill")
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.glass)
+                .tint(nil)
+                .keyboardShortcut(.escape, modifiers: [.shift])
+                .help("Clear every screen (⇧Esc)")
+                .padding(12)
+            }
         }
 
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
@@ -149,7 +166,7 @@ struct MonitorsPanel: View {
 
     /// Previews take the column's width at the screen's shape, up to this
     /// tall, so a portrait or very tall output doesn't fill the column.
-    private let previewHeight: CGFloat = 260
+    private let previewHeight: CGFloat = 340
 
     // MARK: Targets (Settings › Show Setup, else a sensible guess)
 
@@ -216,8 +233,17 @@ struct MonitorsPanel: View {
             HStack {
                 ScreenLabel(title: "Livestream", color: HopeStyle.stagePurple)
                 Spacer()
-                if let streamTarget {
-                    StreamCoverageBadge(provider: render.outputs.previewProvider(for: streamTarget))
+                if streamTarget != nil {
+                    // What goes over the camera, as a small menu rather than a
+                    // row of buttons under the preview.
+                    Picker("Livestream", selection: $setup.streamMode) {
+                        ForEach(ShowSetup.StreamMode.allCases) { Text($0.title).tag($0) }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .help("Auto: slides whose theme has a livestream lower third show in it; everything else leaves the camera clear. Full Screen: the room's screen, edge to edge. Off: nothing over the camera.")
                 }
             }
             if let streamTarget {
@@ -231,13 +257,6 @@ struct MonitorsPanel: View {
                 .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.08)))
-                Picker("", selection: $setup.streamMode) {
-                    ForEach(ShowSetup.StreamMode.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-                .help("Auto: slides whose theme has a livestream lower third show in it; everything else leaves the camera clear. Full Screen: the room's screen, edge to edge. Off: nothing over the camera.")
             } else {
                 placeholder("Choose the livestream screen in Settings › Show Setup")
             }

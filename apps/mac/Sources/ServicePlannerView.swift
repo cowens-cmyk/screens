@@ -12,6 +12,9 @@ struct RunOrderList: View {
     @Binding var selectedItemID: String?
 
     var onReselect: () -> Void = {}
+    /// The plan window's kinds of new item (song, message, …); without it
+    /// the add menu offers the older generic choices.
+    var planAdds: PlanAddActions? = nil
 
     @Environment(\.runOnly) private var runOnly
 
@@ -672,6 +675,17 @@ struct RunOrderList: View {
     private var addBar: some View {
         HStack(spacing: 10) {
             Menu {
+                if let planAdds {
+                    Button("Header…", systemImage: "textformat") { addingHeader = true }
+                    Divider()
+                    Button("Song", systemImage: "music.note", action: planAdds.song)
+                    Button("Presentation", systemImage: "rectangle.on.rectangle", action: planAdds.deck)
+                    Button("Slideshow", systemImage: "play.rectangle.on.rectangle", action: planAdds.slideshow)
+                    Button("Video or Image…", systemImage: "film", action: planAdds.media)
+                    Button("Message", systemImage: "text.book.closed", action: planAdds.message)
+                    Divider()
+                    Button("From Library…", systemImage: "books.vertical") { addingFromLibrary = true }
+                } else {
                 Button("New Slides Presentation") {
                     if let id = model.createEntity(in: .presentations) {
                         model.addServiceItem(serviceID, refID: id)
@@ -681,6 +695,7 @@ struct RunOrderList: View {
                 Button("Header…") { addingHeader = true }
                 Divider()
                 Button("Add From Library…") { addingFromLibrary = true }
+                }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "plus")
@@ -954,4 +969,13 @@ struct SlideshowMenu: View {
     private func set(_ advance: AutoAdvance?) {
         model.updatePresentation(presentationID) { $0.autoAdvance = advance }
     }
+}
+
+/// What the plan window's add menu can make.
+struct PlanAddActions {
+    var song: () -> Void
+    var deck: () -> Void
+    var slideshow: () -> Void
+    var media: () -> Void
+    var message: () -> Void
 }

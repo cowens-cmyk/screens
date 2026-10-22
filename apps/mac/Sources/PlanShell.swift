@@ -3,11 +3,11 @@ import RenderEngine
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The main window: plans first. The sidebar lists plans (upcoming by
-/// date) with the library tucked below; the middle column is the chosen
-/// plan's order of items; the slides fill the center; every screen previews
-/// in the column on the right. Native split view and toolbar, so macOS draws
-/// the glass and nothing custom redraws behind it.
+/// The main window, laid out like ProPresenter: on the left, the plans (or
+/// the library) above the chosen plan's items; the slides fill the middle;
+/// every screen previews down the right, with Clear All under them. Native
+/// split view and toolbar, so macOS draws the glass and nothing custom
+/// redraws behind it.
 struct PlanShell: View {
     @Bindable var model: AppModel
     let render: RenderContext?
@@ -16,20 +16,22 @@ struct PlanShell: View {
 
     @AppStorage("appMode") private var modeRaw = AppMode.present.rawValue
     @AppStorage("shell.screensShown") private var screensShown = true
-    @AppStorage("shell.libraryShown") private var libraryShown = true
+    @AppStorage("shell.topPane") private var topPane = TopPane.plans
     @State private var itemID: String?
     @State private var creatingPlan = false
     @State private var controlsShown = false
     @State private var addingVideo = false
-    @State private var columns = NavigationSplitViewVisibility.all
     /// Songs open in the song editor; this switches to the slide editor.
     @State private var songSlideEditor = false
     @State private var messagePlanID: String?
-    /// The slide area's width, measured, so the control bar picks its full
-    /// or compact form from a settled number rather than while laying out.
-    @State private var detailWidth: CGFloat = 0
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The screens column's width: room for a 16:9 preview a third of the
+    /// window wide, and a fixed number so nothing in it can resize the split.
+    static let screensWidth: CGFloat = 360
+
+    enum TopPane: String { case plans, library }
 
     private var mode: AppMode { AppMode(rawValue: modeRaw) ?? .present }
     private var runOnly: Bool { layout?.runOnly ?? false }
@@ -38,56 +40,34 @@ struct PlanShell: View {
         // Every column gets a fixed minimum and is free to shrink inside it:
         // content that reports its own changing minimum size makes the split
         // view re-run constraints forever, and AppKit then ends the app.
-        NavigationSplitView(columnVisibility: $columns) {
+        NavigationSplitView {
             // The library inside needs 272 to lay out; narrower clips it.
             sidebar
                 .frame(minWidth: 272, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .clipped()
-                .navigationSplitViewColumnWidth(min: 272, ideal: 290, max: 380)
-        } content: {
-            planColumn
-                .frame(minWidth: 230, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .clipped()
-                .navigationSplitViewColumnWidth(min: 230, ideal: 290, max: 420)
+                .navigationSplitViewColumnWidth(min: 272, ideal: 300, max: 420)
         } detail: {
-            center
-                .frame(minWidth: 280, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .background(Color(nsColor: .underPageBackgroundColor))
-                .animation(HopeMotion.ui(reduced: reduceMotion), value: modeRaw)
-                .animation(HopeMotion.ui(reduced: reduceMotion), value: itemID)
-                // Edit folds the plans away so the slide canvas gets the room;
-                // Present and Schedule bring them back.
-                .onChange(of: modeRaw, initial: true) {
-                    let wanted: NavigationSplitViewVisibility = mode == .edit ? .doubleColumn : .all
-                    if columns != wanted {
-                        withAnimation(HopeMotion.ui(reduced: reduceMotion)) { columns = wanted }
-                    }
+            // The screens sit beside the slides at a fixed width rather than
+            // in a split-view inspector: next to a two-column split, the
+            // inspector's size negotiation never settles and AppKit ends the app.
+            HStack(spacing: 0) {
+                center
+                    .frame(minWidth: 320, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    .background(Color(nsColor: .underPageBackgroundColor))
+                    .animation(HopeMotion.ui(reduced: reduceMotion), value: modeRaw)
+                    .animation(HopeMotion.ui(reduced: reduceMotion), value: itemID)
+                // Edit gives the editor the room; Present and Schedule show the screens.
+                if screensShown && mode != .edit, let render {
+                    Divider()
+                    MonitorsPanel(
+                        render: render, liveKey: controls?.liveSlideID,
+                        onClearAll: controls.map { controls in { controls.clearAll() } })
+                        .frame(width: Self.screensWidth)
+                        .frame(maxHeight: .infinity)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { detailWidth = $0 }
-                // Present's controls float over the slides on glass.
-                .overlay(alignment: .bottom) {
-                    if mode == .present, let controls {
-                        PresentControlBar(controls: controls, showsStatus: detailWidth > 560)
-                            .padding(.bottom, 18)
-                            // Rises from the bottom edge and leaves the same way.
-                            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-                    }
-                }
-                // The screens column is the detail's inspector, as split views expect.
-                .inspector(isPresented: Binding(
-                    // Edit gives the editor the room; Present and Schedule show the screens.
-                    get: { screensShown && mode != .edit },
-                    // Hiding it for Edit isn't the person turning it off.
-                    set: { if mode != .edit { screensShown = $0 } })) {
-                    Group {
-                        if let render { MonitorsPanel(render: render, liveKey: controls?.liveSlideID) } else { Color.clear }
-                    }
-                    // The livestream switch (Lower Third, Full Screen,
-                    // Transparent) needs about 300 across.
-                    .frame(minWidth: 300, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                    .clipped()
-                    .inspectorColumnWidth(min: 300, ideal: 330, max: 520)
-                }
+            }
+            .navigationTitle(model.currentServiceID.flatMap { model.resident.services.value($0)?.name } ?? "Screens")
         }
         .toolbar { toolbar }
         .tint(HopeStyle.blue)
@@ -97,6 +77,16 @@ struct PlanShell: View {
         }
         .sheet(isPresented: $creatingPlan) {
             NewServiceSheet(model: model) { id in model.currentServiceID = id }
+        }
+        .sheet(isPresented: $controlsShown) {
+            if let controls {
+                ShowControlsPanel(model: model, controls: controls)
+                    .frame(width: 380, height: 480)
+                    .safeAreaInset(edge: .bottom) {
+                        HStack { Spacer(); Button("Done") { controlsShown = false }.keyboardShortcut(.defaultAction) }
+                            .padding(12)
+                    }
+            }
         }
         .fileImporter(isPresented: $addingVideo, allowedContentTypes: [.movie, .video, .image], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
@@ -114,71 +104,81 @@ struct PlanShell: View {
         }
     }
 
-    // MARK: Sidebar — plans, then the library
+    // MARK: Sidebar — plans or the library, then the plan's items
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            List(selection: Binding(
-                get: { model.currentServiceID },
-                set: { if let id = $0 { model.currentServiceID = id } }
-            )) {
-                Section("Upcoming") {
-                    ForEach(plans.upcoming, id: \.id) {
-                        planRow($0).transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity))
-                    }
-                    if plans.upcoming.isEmpty {
-                        Label("Nothing planned yet", systemImage: "sparkles")
-                            .foregroundStyle(.secondary)
+            if !runOnly {
+                topPaneHeader
+                Group {
+                    switch topPane {
+                    case .plans: planList
+                    case .library: LibrarySidebar(model: model, render: render, layout: layout, controls: controls)
                     }
                 }
-                if !plans.templates.isEmpty {
-                    Section("Templates") {
-                        ForEach(plans.templates, id: \.id) { planRow($0) }
-                    }
-                }
-                if !plans.past.isEmpty {
-                    Section("Past") {
-                        ForEach(plans.past, id: \.id) { planRow($0) }
-                    }
-                }
+                .frame(height: topPane == .plans ? 210 : 300)
+                Divider()
             }
-            .listStyle(.sidebar)
-            .frame(maxHeight: .infinity)
+            planItems
+                .frame(maxHeight: .infinity)
 
             // Saved live inputs wait for the microphone answer; Screens never
             // raises the prompt by itself (see AudioInputInventory).
             if AudioInputInventory.shared.needsMicrophoneAccess {
                 MicrophoneAccessBanner()
                     .padding(.horizontal, 10)
-                    .padding(.bottom, 8)
+                    .padding(.vertical, 8)
                     .transition(.opacity)
             }
+        }
+    }
 
-            if !runOnly {
-                Divider()
-                DisclosureGroup(isExpanded: $libraryShown.animation(HopeMotion.ui(reduced: reduceMotion))) {
-                    LibrarySidebar(model: model, render: render, layout: layout, controls: controls)
-                        .frame(height: 300)
-                } label: {
-                    Label("Library", systemImage: "books.vertical").font(.subheadline.weight(.semibold))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+    private var topPaneHeader: some View {
+        HStack(spacing: 8) {
+            Picker("Show", selection: $topPane.animation(HopeMotion.ui(reduced: reduceMotion))) {
+                Text("Plans").tag(TopPane.plans)
+                Text("Library").tag(TopPane.library)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+            .fixedSize()
+            Spacer(minLength: 0)
+            if topPane == .plans {
+                Button { creatingPlan = true } label: { Image(systemName: "plus") }
+                    .buttonStyle(.borderless)
+                    .help("New plan")
             }
         }
-        .safeAreaInset(edge: .top) {
-            if !runOnly {
-                HStack {
-                    Text("Plans").font(.headline)
-                    Spacer()
-                    Button { creatingPlan = true } label: { Image(systemName: "plus") }
-                        .buttonStyle(.borderless)
-                        .help("New plan")
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var planList: some View {
+        List(selection: Binding(
+            get: { model.currentServiceID },
+            set: { if let id = $0 { model.currentServiceID = id } }
+        )) {
+            Section("Upcoming") {
+                ForEach(plans.upcoming, id: \.id) {
+                    planRow($0).transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity))
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+                if plans.upcoming.isEmpty {
+                    Text("Nothing planned yet").foregroundStyle(.secondary)
+                }
+            }
+            if !plans.templates.isEmpty {
+                Section("Templates") {
+                    ForEach(plans.templates, id: \.id) { planRow($0) }
+                }
+            }
+            if !plans.past.isEmpty {
+                Section("Past") {
+                    ForEach(plans.past, id: \.id) { planRow($0) }
+                }
             }
         }
+        .listStyle(.sidebar)
     }
 
     private func planRow(_ plan: Service) -> some View {
@@ -283,26 +283,36 @@ struct PlanShell: View {
     // MARK: The plan's items
 
     @ViewBuilder
-    private var planColumn: some View {
-        if let planID = model.currentServiceID, model.resident.services.value(planID) != nil {
-            RunOrderList(
-                model: model, controls: controls, serviceID: planID, render: render,
-                selectedItemID: $itemID)
-                .navigationTitle(model.resident.services.value(planID)?.name ?? "Plan")
-                .toolbar {
+    private var planItems: some View {
+        if let planID = model.currentServiceID, let plan = model.resident.services.value(planID) {
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    Text(plan.name.uppercased())
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 4)
                     if !runOnly {
-                        ToolbarItem {
-                            Button { messagePlanID = planID } label: {
-                                Label("Message & Series", systemImage: "text.book.closed")
-                            }
+                        Button { messagePlanID = planID } label: { Image(systemName: "text.book.closed") }
+                            .buttonStyle(.borderless)
                             .help("This plan's message, sermon series and what every screen shows")
-                        }
-                        ToolbarItem { addMenu(planID: planID) }
                     }
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                RunOrderList(
+                    model: model, controls: controls, serviceID: planID, render: render,
+                    selectedItemID: $itemID, planAdds: PlanAddActions(
+                        song: { addPresentation(planID, kind: .song) },
+                        deck: { addPresentation(planID, kind: .deck) },
+                        slideshow: { addPresentation(planID, kind: .slideshow) },
+                        media: { addingVideo = true },
+                        message: { addPresentation(planID, kind: .message) }))
+            }
         } else {
             HopeEmptyState(title: "No Plan", symbol: "list.bullet.rectangle.portrait",
-                           message: "Choose a plan, or make a new one.") {
+                           message: "Choose a plan above, or make a new one.") {
                 if !runOnly {
                     Button("New Plan", systemImage: "plus") { creatingPlan = true }
                         .buttonStyle(.glassProminent)
@@ -310,23 +320,6 @@ struct PlanShell: View {
                 }
             }
         }
-    }
-
-    private func addMenu(planID: String) -> some View {
-        Menu {
-            Button("Header", systemImage: "textformat") { addHeader(planID) }
-            Divider()
-            Button("Song", systemImage: "music.note") { addPresentation(planID, kind: .song) }
-            Button("Presentation", systemImage: "rectangle.on.rectangle") { addPresentation(planID, kind: .deck) }
-            Button("Slideshow", systemImage: "play.rectangle.on.rectangle") { addPresentation(planID, kind: .slideshow) }
-            Button("Video or Image…", systemImage: "film") { addingVideo = true }
-            Button("Message", systemImage: "text.book.closed") { addPresentation(planID, kind: .message) }
-        } label: {
-            Label("Add", systemImage: "plus")
-        }
-        .buttonStyle(.glassProminent)
-        .tint(HopeStyle.blue)
-        .help("Add to this plan")
     }
 
     // MARK: Center
@@ -338,6 +331,18 @@ struct PlanShell: View {
             if let planID = model.currentServiceID {
                 ServiceItemDetailView(
                     model: model, render: render, controls: controls, serviceID: planID, itemID: itemID)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        VStack(spacing: 0) {
+                            Divider()
+                            HStack {
+                                Spacer()
+                                SlideSizeControl()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                        }
+                        .background(.bar)
+                    }
             } else {
                 HopeEmptyState(title: "Nothing to Show", symbol: "sparkles.rectangle.stack",
                                message: "Pick a plan on the left.")
@@ -399,24 +404,23 @@ struct PlanShell: View {
             }
         }
         ToolbarItemGroup(placement: .primaryAction) {
-            if let controls {
-                Button { controlsShown.toggle() } label: {
-                    Label("Controls", systemImage: "slider.horizontal.3")
+            // Everything not used every minute of a service lives in one menu.
+            Menu {
+                if let planID = model.currentServiceID, !runOnly {
+                    Button("Message & Series…", systemImage: "text.book.closed") { messagePlanID = planID }
                 }
-                .help("Timers, macros and the sermon microphone")
-                .popover(isPresented: $controlsShown, arrowEdge: .bottom) {
-                    ShowControlsPanel(model: model, controls: controls)
-                        .frame(width: 360, height: 440)
+                if controls != nil {
+                    Button("Timers & Macros…", systemImage: "timer") { controlsShown = true }
                 }
+                Button("Screen Setup…", systemImage: "display.2") { openWindow(id: "outputs") }
+            } label: {
+                Label("More", systemImage: "ellipsis")
             }
-            Button { openWindow(id: "outputs") } label: {
-                Label("Screen Setup", systemImage: "display.2")
-            }
-            .help("Which screen is which: audience, livestream, stage")
+            .help("Message & Series, Timers & Macros, Screen Setup")
             Button { withAnimation(HopeMotion.ui(reduced: reduceMotion)) { screensShown.toggle() } } label: {
                 Label("Screens", systemImage: "sidebar.right")
             }
-            .help("Show or hide the screen previews")
+            .help("Show or hide the screens")
         }
     }
 
@@ -494,5 +498,32 @@ private struct MicrophoneAccessBanner: View {
         .buttonStyle(.glass)
         .tint(nil)
         .help("Live audio inputs are waiting for microphone access")
+    }
+}
+
+/// Slide size at the bottom of the slides, like ProPresenter's: drag right
+/// for bigger slides (fewer to a row), left for more at once.
+private struct SlideSizeControl: View {
+    @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
+
+    var body: some View {
+        let range = SlidesAcross.range
+        HStack(spacing: 6) {
+            Image(systemName: "square.grid.3x3.fill").font(.system(size: 10))
+            Slider(
+                value: Binding(
+                    // Reversed: the right end is the fewest across, the biggest slides.
+                    get: { Double(range.upperBound + range.lowerBound - SlidesAcross.clamped(slidesAcross)) },
+                    set: { raw in
+                        let next = SlidesAcross.clamped(range.upperBound + range.lowerBound - Int(raw.rounded()))
+                        if next != slidesAcross { slidesAcross = next }
+                    }),
+                in: Double(range.lowerBound) ... Double(range.upperBound), step: 1)
+                .controlSize(.small)
+                .frame(width: 120)
+            Image(systemName: "square.fill").font(.system(size: 12))
+        }
+        .foregroundStyle(.secondary)
+        .help("Slide size")
     }
 }
