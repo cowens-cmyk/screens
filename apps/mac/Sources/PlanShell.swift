@@ -29,6 +29,8 @@ struct PlanShell: View {
     /// The plan whose message notes are being imported.
     @State private var notesPlanID: String?
     @State private var schedulePlanID: String?
+    /// The plan being saved as a template, while its message length is asked.
+    @State private var templatePlanID: String?
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -122,6 +124,13 @@ struct PlanShell: View {
         }
         .sheet(item: Binding(get: { notesPlanID.map(IdentifiedID.init) }, set: { notesPlanID = $0?.id })) { plan in
             SermonImportSheet(model: model, planID: plan.id)
+        }
+        .sheet(item: Binding(get: { templatePlanID.map(IdentifiedID.init) }, set: { templatePlanID = $0?.id })) { item in
+            if let plan = model.resident.services.value(item.id) {
+                SermonLengthPrompt(initialMinutes: TemplateSermonLength.suggestedMinutes(for: plan, model: model)) { minutes in
+                    saveTemplate(from: plan, sermonSeconds: SermonTimer.seconds(minutes: minutes))
+                }
+            }
         }
         .sheet(item: Binding(get: { schedulePlanID.map(IdentifiedID.init) }, set: { schedulePlanID = $0?.id })) { plan in
             ScheduleServiceSheet(model: model, planID: plan.id)
@@ -258,7 +267,13 @@ struct PlanShell: View {
                     Button("New Plan from This Template") { newPlan(from: plan) }
                     Button("Stop Using as Template") { model.updateService(plan.id) { $0.isTemplate = nil } }
                 } else {
-                    Button("Save as Template") { saveTemplate(from: plan) }
+                    Button("Save as Template…") {
+                        if TemplateSermonLength.hasMessage(plan, model: model) {
+                            templatePlanID = plan.id
+                        } else {
+                            saveTemplate(from: plan, sermonSeconds: nil)
+                        }
+                    }
                 }
             }
         }
@@ -266,7 +281,7 @@ struct PlanShell: View {
 
     /// A template copy of a plan: the same order, headers and colors, with
     /// links to the same presentations; a message stays a placeholder.
-    private func saveTemplate(from plan: Service) {
+    private func saveTemplate(from plan: Service, sermonSeconds: Double?) {
         var template = plan
         template.id = UUID().uuidString
         template.name = plan.name + " Template"
@@ -280,6 +295,8 @@ struct PlanShell: View {
             copy.id = UUID().uuidString
             return copy
         }
+        // The one thing each template sets for its stage: how long the message runs.
+        if let sermonSeconds { TemplateSermonLength.apply(sermonSeconds, to: &template, model: model) }
         model.createInDrive(template)
     }
 
@@ -303,6 +320,7 @@ struct PlanShell: View {
                     themeId: template.sermonThemeId ?? model.slideBuilding.sermonThemeId ?? BasicTemplates.pointsThemeID,
                     slides: [])
                 message.category = PresentationTypes.sermon
+                message.sermonTimerSeconds = TemplateSermonLength.seconds(in: template, model: model)
                 model.createInDrive(message)
                 copy.refId = message.id
                 plan.messagePresentationId = message.id
