@@ -132,7 +132,7 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         )
     }
 
-    static func linked(
+    public static func linked(
         _ objectName: String, _ source: TextSourceKind,
         x: Double, y: Double, width: Double, height: Double,
         size: Double, color: String? = nil,

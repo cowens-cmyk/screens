@@ -1127,6 +1127,20 @@ struct SlideEditorView: View {
             }
             .help("Add a live input — a camera or NDI source (plays in Present)")
 
+            if model.isConfidenceEditor {
+                // What the stage shows live: lyrics, time, and messages from
+                // the booth.
+                Menu {
+                    ForEach([TextSourceKind.currentSlide, .nextSlide, .clock, .timer, .stageMessage,
+                             .songKey, .slideNotes, .currentGroup, .videoCountdown, .nextServiceItem], id: \.self) { source in
+                        Button(source.displayName) { model.addLiveText(source) }
+                    }
+                } label: {
+                    Label("Add Live Info", systemImage: "dot.radiowaves.left.and.right")
+                }
+                .help("Add live info: lyrics, next slide, clock, timer, stage message, key")
+            }
+
             Toggle(isOn: pathDrawingBinding(model)) {
                 Label("Draw Path", systemImage: "pencil.tip")
             }

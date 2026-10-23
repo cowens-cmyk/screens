@@ -1278,6 +1278,23 @@ final class SlideEditorModel {
         ))
     }
 
+    /// Live text for a stage layout (lyrics, clock, a timer, the stage
+    /// message), sized for a stage screen and centred.
+    func addLiveText(_ source: TextSourceKind) {
+        let big: Set<TextSourceKind> = [.currentSlide, .clock, .timer, .stageMessage]
+        let width = canvasSize.width * 0.8
+        let height = canvasSize.height * (big.contains(source) ? 0.3 : 0.15)
+        add(ConfidenceLayoutTemplate.linked(
+            source.displayName, source,
+            x: (canvasSize.width - width) / 2, y: (canvasSize.height - height) / 2,
+            width: width, height: height,
+            size: big.contains(source) ? 96 : 60,
+            color: source == .stageMessage ? "#FF4739FF" : nil,
+            tabular: source == .clock || source == .timer || source == .videoCountdown,
+            shrink: true, minSize: 24,
+            clockFormat: source == .clock ? "h:mm" : nil))
+    }
+
     func addShapeObject() {
         let size = CGSize(width: 400, height: 300)
         add(SlideObject(

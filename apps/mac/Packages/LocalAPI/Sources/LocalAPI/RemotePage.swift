@@ -86,6 +86,7 @@ button{font:inherit;color:var(--text);border:0;cursor:pointer}
     <button data-tab="slides">Slides</button>
     <button data-tab="timers">Timers</button>
     <button data-tab="macros">Macros</button>
+    <button data-tab="stage">Stage</button>
   </nav>
   <main>
     <section class="tab act" id="tab-show">
@@ -104,6 +105,14 @@ button{font:inherit;color:var(--text);border:0;cursor:pointer}
     <section class="tab" id="tab-slides"><div class="grid" id="grid"></div></section>
     <section class="tab" id="tab-timers"><div id="timers"></div></section>
     <section class="tab" id="tab-macros"><div id="macros"></div></section>
+    <section class="tab" id="tab-stage">
+      <div class="card"><div class="lab">On stage now</div><div id="stageNow">&mdash;</div></div>
+      <textarea id="stageMsg" rows="3" placeholder="Message to stage" style="width:100%;box-sizing:border-box;font:inherit;font-size:18px;padding:10px;border-radius:10px;border:1px solid #444;background:#1c1c1e;color:#fff"></textarea>
+      <div class="row">
+        <button class="btn big next" id="stageSend">Send to Stage</button>
+        <button class="btn clr" id="stageClear">Clear</button>
+      </div>
+    </section>
   </main>
 </div>
 <div id="toast"></div>
@@ -168,6 +177,8 @@ function render(){
   var nt=(s.nextSlide&&s.nextSlide.text)||s.nextSlideText;
   $("nxt").textContent=nt||"—";
   if(live&&live.presentationId&&live.presentationId!==deckId)loadDeck(live.presentationId);
+  var al=s.alert;
+  $("stageNow").textContent=(al&&al.target!=="audience")?al.message:"Nothing";
   markLive();
 }
 function loadDeck(id){
@@ -237,6 +248,8 @@ $("next").onclick=function(){advance(1,this)};
 $("prev").onclick=function(){advance(-1,this)};
 var clears=document.querySelectorAll("[data-clear]");
 for(var i=0;i<clears.length;i++)clears[i].onclick=function(){if(!guard())return;flash(this);act("POST","/v1/show/clear",{"function":this.getAttribute("data-clear")},function(){if(!ws)refresh()})};
+$("stageSend").onclick=function(){var m=$("stageMsg").value.trim();if(!m||!guard())return;flash(this);act("POST","/v1/alerts/fire",{message:m,behavior:"persist",target:"confidence"},function(){$("stageMsg").value="";if(!ws)refresh()})};
+$("stageClear").onclick=function(){if(!guard())return;flash(this);act("POST","/v1/alerts/dismiss",undefined,function(){if(!ws)refresh()})};
 $("clearAll").onclick=function(){if(!guard())return;flash(this);act("POST","/v1/show/clear-all",undefined,function(){if(!ws)refresh()})};
 
 var tabs=document.querySelectorAll("nav button");
@@ -250,7 +263,7 @@ for(var j=0;j<tabs.length;j++)tabs[j].onclick=function(){
 };
 
 document.addEventListener("keydown",function(e){
-  if(!token||e.target.tagName==="INPUT")return;
+  if(!token||e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA")return;
   if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key===" "||e.key==="PageDown"){e.preventDefault();advance(1,$("next"))}
   else if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"){e.preventDefault();advance(-1,$("prev"))}
 });

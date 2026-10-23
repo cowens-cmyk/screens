@@ -25,6 +25,7 @@ struct PlanShell: View {
     /// Songs open in the song editor; this switches to the slide editor.
     @State private var songSlideEditor = false
     @State private var messagePlanID: String?
+    @State private var scriptureShown = false
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -86,7 +87,9 @@ struct PlanShell: View {
                     Divider()
                     MonitorsPanel(
                         render: render, liveKey: controls?.liveSlideID,
-                        onClearAll: controls.map { controls in { controls.clearAll() } })
+                        onClearAll: controls.map { controls in { controls.clearAll() } },
+                        controls: controls,
+                        onEditStage: { editStageDisplay() })
                         .frame(width: Self.screensWidth)
                         .frame(maxHeight: .infinity)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -108,9 +111,13 @@ struct PlanShell: View {
         .focusedSceneValue(\.presentWorkspaceImport, workspaceImportAction)
         .focusedSceneValue(\.presentLibrarySearch, findInLibraryAction)
         .focusedSceneValue(\.presentNewSlide, mode == .present ? Self.presentNewSlideAction : nil)
+        .focusedSceneValue(\.presentScripture, runOnly ? nil : MenuAction("scripture") { scriptureShown = true })
         .environment(\.runOnly, runOnly)
         .sheet(item: Binding(get: { messagePlanID.map(IdentifiedID.init) }, set: { messagePlanID = $0?.id })) { plan in
             PlanMessageSheet(model: model, planID: plan.id)
+        }
+        .sheet(isPresented: $scriptureShown) {
+            ScriptureSheet(model: model, render: render) { id in addToPlan(id) }
         }
         .sheet(isPresented: $creatingPlan) {
             NewServiceSheet(model: model) { id in model.currentServiceID = id }
@@ -456,6 +463,7 @@ struct PlanShell: View {
             }
         }
         ToolbarItemGroup(placement: .primaryAction) {
+            if !runOnly { bibleMenu }
             // Everything not used every minute of a service lives in one menu.
             Menu {
                 if let planID = model.currentServiceID, !runOnly {
@@ -465,6 +473,7 @@ struct PlanShell: View {
                     Button("Timers & Macros…", systemImage: "timer") { controlsShown = true }
                 }
                 Button("Screen Setup…", systemImage: "display.2") { openWindow(id: "outputs") }
+                Button("Edit Stage Display…", systemImage: "rectangle.inset.filled.and.person.filled") { editStageDisplay() }
             } label: {
                 Label("More", systemImage: "ellipsis")
             }
@@ -474,6 +483,74 @@ struct PlanShell: View {
             }
             .help("Show or hide the screens")
         }
+    }
+
+    // MARK: Bible
+
+    /// Click to add a passage; the arrow holds listening and the Bible theme,
+    /// which can change while a passage is up.
+    private var bibleMenu: some View {
+        let assist = LiveAssist.shared
+        let current = model.slideBuilding.scriptureThemeId
+        return Menu {
+            Button("Add Scripture…") { scriptureShown = true }
+            Divider()
+            if assist.listening {
+                Button("Stop Listening", systemImage: "mic.slash") { assist.stop() }
+            } else {
+                Button("Listen for Scripture", systemImage: "mic") {
+                    assist.showsAutomatically = true
+                    Task { await assist.startSermon() }
+                }
+            }
+            Divider()
+            Section("Bible Theme") {
+                ForEach(bibleThemes, id: \.id) { theme in
+                    Button {
+                        setBibleTheme(theme.id)
+                    } label: {
+                        if theme.id == current { Label(theme.name, systemImage: "checkmark") } else { Text(theme.name) }
+                    }
+                }
+            }
+        } label: {
+            Label("Bible", systemImage: assist.listening ? "waveform" : "book")
+        } primaryAction: {
+            scriptureShown = true
+        }
+        .help(assist.listening ? "Listening for scripture. Click to add a passage." : "Add scripture (⌘⇧B)")
+    }
+
+    /// Themes to show scripture in: full-screen designs, not their lower thirds.
+    private var bibleThemes: [LibraryIndex.Entry] {
+        model.entries(of: .theme)
+            .filter { !$0.name.localizedCaseInsensitiveContains("lower third") }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// The default for new passages, and the passage on screen now takes it too.
+    private func setBibleTheme(_ themeID: String) {
+        model.updateSlideBuilding { $0.scriptureThemeId = themeID }
+        if let live = controls?.state.liveSlide?.presentation,
+           PresentationTypes.category(of: live) == PresentationTypes.bible {
+            model.applyTheme(to: live.id, themeID: themeID)
+        }
+    }
+
+    // MARK: Stage display
+
+    private func editStageDisplay() {
+        StageEditorButton.open(model: model) { id in
+            itemID = nil
+            model.openInEditor(entryID: id)
+            modeRaw = AppMode.edit.rawValue
+        }
+    }
+
+    private func addToPlan(_ presentationID: String) {
+        guard let planID = model.currentServiceID else { return }
+        let name = model.indexEntry(presentationID)?.name ?? "Scripture"
+        append(ServiceItem(id: UUID().uuidString, itemKind: .presentation, name: name, refId: presentationID), to: planID)
     }
 
     // MARK: Adding to the plan

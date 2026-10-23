@@ -22,23 +22,31 @@ struct StageEditorButton: View {
     }
 
     private func open() {
+        if let id = Self.open(model: model) { show(id) }
+    }
+
+    /// The current stage mode's layout, created from its template the first
+    /// time; nil until the library has loaded (then try again).
+    @discardableResult
+    static func open(model: AppModel, then show: ((String) -> Void)? = nil) -> String? {
         let id = StageLayouts.id(for: ShowSetup.shared.stageMode)
         if model.indexEntry(id) != nil {
-            show(id)
-            return
+            show?(id)
+            return id
         }
         // Not until the library has loaded: an id that just hasn't been read
         // yet must not be created a second time.
-        guard model.client.isReady else { return }
+        guard model.client.isReady else { return nil }
         let created = model.createInDrive(StageLayouts.make(id))
         if model.libraryEntry(id) != nil {
-            show(id)
-        } else {
-            Task { @MainActor in
-                _ = try? await created.value
-                show(id)
-            }
+            show?(id)
+            return id
         }
+        Task { @MainActor in
+            _ = try? await created.value
+            show?(id)
+        }
+        return nil
     }
 
     private func show(_ id: String) {

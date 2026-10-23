@@ -14,6 +14,10 @@ struct MonitorsPanel: View {
     var liveKey: String? = nil
     /// Clears every layer on every screen; the one button the column keeps.
     var onClearAll: (() -> Void)? = nil
+    /// Sends typed messages to the stage screen.
+    var controls: ServiceControls? = nil
+    /// Opens the stage layout in the editor.
+    var onEditStage: (() -> Void)? = nil
     @State private var tally = false
     @Bindable private var setup = ShowSetup.shared
     @Environment(\.openSettings) private var openSettings
@@ -205,6 +209,24 @@ struct MonitorsPanel: View {
                 ScreenLabel(title: "Stage", color: HopeStyle.amber)
                 Spacer()
                 StageVideoBadge(render: render)
+                // What the stage shows, as a small menu rather than a row of
+                // buttons under the preview.
+                Menu {
+                    Picker("Show", selection: $setup.stageMode) {
+                        ForEach(ShowSetup.StageMode.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                    if let onEditStage {
+                        Divider()
+                        Button("Edit Stage Display…", action: onEditStage)
+                    }
+                } label: {
+                    Text(setup.stageMode.title)
+                }
+                .menuStyle(.borderlessButton)
+                .controlSize(.small)
+                .fixedSize()
+                .help("Worship: lyrics, next slide, clock and key. Message: sermon timer, clock, slide and notes. Mirror: what the audience sees. A playing video shows on the stage with the time left.")
             }
             if let stageTarget {
                 LiveSceneView(render: render, screenTargetID: stageTarget)
@@ -216,13 +238,7 @@ struct MonitorsPanel: View {
             } else {
                 placeholder("Choose the stage screen in Settings › Show Setup")
             }
-            Picker("", selection: $setup.stageMode) {
-                ForEach(ShowSetup.StageMode.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
-            .help("Worship: lyrics, next slide, clock and key. Message: sermon timer, clock, slide and notes. Mirror: what the audience sees. A playing video shows on the stage with the time left.")
+            if let controls { StageMessageField(controls: controls) }
         }
         .screenCard(HopeStyle.amber)
     }
@@ -366,5 +382,53 @@ extension View {
         padding(10)
             .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.06)))
+    }
+}
+
+/// A message to whoever is on stage: typed, sent, shown as a red bar across
+/// the top of the stage screen until cleared.
+struct StageMessageField: View {
+    let controls: ServiceControls
+    @State private var draft = ""
+
+    private var onStage: String? {
+        guard let live = controls.state.liveAlert, live.showsOnConfidence else { return nil }
+        return live.message
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                TextField("Message to stage", text: $draft)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .onSubmit(send)
+                Button("Send", action: send)
+                    .controlSize(.small)
+                    .disabled(trimmed.isEmpty)
+            }
+            if let onStage {
+                HStack(spacing: 6) {
+                    Circle().fill(Color.red).frame(width: 6, height: 6)
+                    Text(onStage)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 4)
+                    Button("Clear") { controls.dismissAlert() }
+                        .controlSize(.small)
+                        .buttonStyle(.borderless)
+                }
+                .help("On the stage screen now")
+            }
+        }
+    }
+
+    private var trimmed: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private func send() {
+        guard !trimmed.isEmpty else { return }
+        controls.fireAlert(id: "stage-message", message: trimmed, behavior: .persist, target: .confidence)
+        draft = ""
     }
 }

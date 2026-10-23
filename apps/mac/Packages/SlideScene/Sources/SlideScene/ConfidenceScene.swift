@@ -13,15 +13,21 @@ public struct CueAlert: Sendable, Equatable {
 
     public var theme: Theme?
 
+    /// When it was sent: the stage bar flashes once as it appears, so the
+    /// person on stage notices it.
+    public var firedAt: Date
+
     public init(
         id: String = UUID().uuidString,
         message: String,
         behavior: AlertBehavior,
         target: AlertTarget = .confidence,
         theme: Theme? = nil,
-        layer: LayerKind? = nil
+        layer: LayerKind? = nil,
+        firedAt: Date = Date()
     ) {
         self.id = id
+        self.firedAt = firedAt
         self.message = message
         self.behavior = behavior
         self.target = target
@@ -431,6 +437,7 @@ public struct ConfidenceInfo: Sendable, Equatable {
 public enum ConfidenceSceneBuilder {
 
     public static let amber = SceneColor(red: 1.0, green: 0.72, blue: 0.15)
+    public static let stageRed = SceneColor(red: 0.84, green: 0.13, blue: 0.13)
 
     public static let builtInLayout: ConfidenceLayout = {
         var layout = ConfidenceLayout.defaultTemplate(name: "Built-in Layout")
@@ -602,11 +609,11 @@ public enum AlertSceneBuilder {
         let message = info.map {
             LinkedText.resolvedAlertMessage(alert.message, info: $0, at: date)
         } ?? alert.message
+        // A red bar across the top, over whatever the layout shows. For its
+        // first half second it's white, so it reads as a single flash.
         let height = canvasSize.height * (150.0 / 1080.0)
-        let band = CGRect(
-            x: 0, y: canvasSize.height - height,
-            width: canvasSize.width, height: height
-        )
+        let band = CGRect(x: 0, y: 0, width: canvasSize.width, height: height)
+        let flashing = date.timeIntervalSince(alert.firedAt) < 0.5
         let inset = canvasSize.width * (40.0 / 1920.0)
         return [
             RenderItem(
@@ -614,7 +621,7 @@ public enum AlertSceneBuilder {
                 frame: band,
                 content: .shape(ShapeStyle(
                     kind: .rectangle,
-                    fill: .solid(ConfidenceSceneBuilder.amber)
+                    fill: .solid(flashing ? .white : ConfidenceSceneBuilder.stageRed)
                 ))
             ),
             RenderItem(
@@ -623,7 +630,7 @@ public enum AlertSceneBuilder {
                 content: .text(StyledText(
                     string: message,
                     fontSize: canvasSize.height * (72.0 / 1080.0),
-                    color: .black,
+                    color: flashing ? ConfidenceSceneBuilder.stageRed : .white,
                     alignment: .center,
                     tabularFigures: false,
                     autoShrink: true,
