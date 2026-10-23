@@ -3,14 +3,27 @@ import PresenterCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// New Sermon Series: Claude designs the artwork from the series name (or
-/// staff pick their own images) and it becomes a theme with Point, Scripture
-/// and Point + Scripture designs and a matching lower third for each,
-/// already tied for the livestream. One theme per series.
+/// New Sermon Series: built from the series art (a photo of it), designed
+/// by Claude from the series name, or imported from Claude Design. Each
+/// becomes a theme with the five message designs and a matching lower third
+/// for each but Title, already tied for the livestream. One theme per series.
 struct SermonSeriesSheet: View {
     let model: AppModel
+    /// Art dropped before the sheet opened (on the plan's series picker).
+    var photo: URL?
+    /// The new series' theme id, once it's saved.
+    var onCreated: (String) -> Void = { _ in }
+
+    enum Source: String, CaseIterable, Identifiable {
+        case photo = "From a Photo"
+        case name = "From the Name"
+        case claudeDesign = "Claude Design"
+        var id: String { rawValue }
+    }
 
     @Environment(\.dismiss) private var dismiss
+    @State private var source = Source.photo
+    @State private var droppedPhoto: URL?
     @State private var name = ""
     @State private var background: URL?
     @State private var lowerThird: URL?
@@ -25,64 +38,97 @@ struct SermonSeriesSheet: View {
     @State private var barAccentColor = Color(red: 1, green: 0.7, blue: 0.12)
     @State private var copied = false
     @State private var creating = false
-    @State private var ownArtwork = false
     @State private var error: String?
     @State private var importNote: String?
 
     private let families = NSFontManager.shared.availableFontFamilies
 
+    private var ownArtwork: Bool { source == .claudeDesign }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New Sermon Series").font(.headline)
-            Form {
-                TextField("Series name", text: $name)
-                Toggle("Use artwork from Claude Design", isOn: $ownArtwork)
-                if ownArtwork {
-                    HStack {
-                        Button(copied ? "Copied" : "Copy Claude Design Prompt") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(
-                                SeriesExport.exportPrompt(series: name.isEmpty ? "New Series" : name), forType: .string)
-                            copied = true
-                        }
-                        Button("Import Claude Design Download…", action: chooseDownload)
-                        Spacer()
-                    }
-                    if let importNote {
-                        Text(importNote).font(.caption).foregroundStyle(.secondary)
-                    }
-                    imageRow("Background (1920×1080)", $background, types: [.jpeg, .png, .heic])
-                    imageRow("Lower third (transparent PNG)", $lowerThird, types: [.png])
-                    FontFacePicker(title: "Heading font", families: families, postScript: $headingFont)
-                    Toggle("Headings in all caps", isOn: $headingCaps)
-                    FontFacePicker(title: "Body font", families: families, postScript: $bodyFont)
-                    FontFacePicker(title: "Scripture font", families: families, postScript: $verseFont)
-                    ColorPicker("Text on background", selection: $textColor, supportsOpacity: false)
-                    ColorPicker("Accent on background", selection: $accentColor, supportsOpacity: false)
-                    ColorPicker("Text on lower third", selection: $barTextColor, supportsOpacity: false)
-                    ColorPicker("Accent on lower third", selection: $barAccentColor, supportsOpacity: false)
-                }
+            Picker("", selection: $source) {
+                ForEach(Source.allCases) { Text($0.rawValue).tag($0) }
             }
-            .formStyle(.grouped)
-            Text(ownArtwork
-                 ? "Paste the prompt into Claude Design, download the ZIP it makes, and import or drop it here. Everything below fills in."
-                 : "Claude designs the background, lower-third bar, fonts and colors from the series name. Takes about a minute.")
-                .font(.caption).foregroundStyle(.secondary)
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button(creating ? (ownArtwork ? "Creating…" : "Designing…") : "Create Series Theme") { Task { await create() } }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || creating)
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            if source == .photo {
+                PhotoSeriesPane(model: model, name: $name, photo: $droppedPhoto,
+                                onCancel: { dismiss() }, onCreated: finish)
+            } else {
+                designForm
             }
         }
         .padding(16)
-        .frame(width: 540)
+        .frame(width: source == .photo ? 780 : 540)
         .dropDestination(for: URL.self) { urls, _ in
-            load(urls)
+            // A single picture is series art unless the Claude Design
+            // import is open; a ZIP, folder or set of files is a download.
+            if source != .claudeDesign, urls.count == 1, let url = urls.first, SeriesArt.accepts(url) {
+                source = .photo
+                droppedPhoto = url
+            } else {
+                load(urls)
+            }
             return true
         }
+        .onAppear {
+            if let photo { droppedPhoto = photo }
+        }
+    }
+
+    @ViewBuilder
+    private var designForm: some View {
+        Form {
+            TextField("Series name", text: $name)
+            if ownArtwork {
+                HStack {
+                    Button(copied ? "Copied" : "Copy Claude Design Prompt") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(
+                            SeriesExport.exportPrompt(series: name.isEmpty ? "New Series" : name), forType: .string)
+                        copied = true
+                    }
+                    Button("Import Claude Design Download…", action: chooseDownload)
+                    Spacer()
+                }
+                if let importNote {
+                    Text(importNote).font(.caption).foregroundStyle(.secondary)
+                }
+                imageRow("Background (1920×1080)", $background, types: [.jpeg, .png, .heic])
+                imageRow("Lower third (transparent PNG)", $lowerThird, types: [.png])
+                FontFacePicker(title: "Heading font", families: families, postScript: $headingFont)
+                Toggle("Headings in all caps", isOn: $headingCaps)
+                FontFacePicker(title: "Body font", families: families, postScript: $bodyFont)
+                FontFacePicker(title: "Scripture font", families: families, postScript: $verseFont)
+                ColorPicker("Text on background", selection: $textColor, supportsOpacity: false)
+                ColorPicker("Accent on background", selection: $accentColor, supportsOpacity: false)
+                ColorPicker("Text on lower third", selection: $barTextColor, supportsOpacity: false)
+                ColorPicker("Accent on lower third", selection: $barAccentColor, supportsOpacity: false)
+            }
+        }
+        .formStyle(.grouped)
+        Text(ownArtwork
+             ? "Paste the prompt into Claude Design, download the ZIP it makes, and import or drop it here. Everything below fills in."
+             : "Claude designs the background, lower-third bar, fonts and colors from the series name. Takes about a minute.")
+            .font(.caption).foregroundStyle(.secondary)
+        if let error { Text(error).font(.caption).foregroundStyle(.red) }
+        HStack {
+            Spacer()
+            Button("Cancel") { dismiss() }
+            Button(creating ? (ownArtwork ? "Creating…" : "Designing…") : "Create Series Theme") { Task { await create() } }
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || creating)
+        }
+    }
+
+    /// Makes the new series current for slide building and tells whoever
+    /// opened the sheet.
+    private func finish(_ themeID: String) {
+        model.updateSlideBuilding { $0.sermonThemeId = themeID }
+        onCreated(themeID)
+        dismiss()
     }
 
     private func chooseDownload() {
@@ -101,7 +147,7 @@ struct SermonSeriesSheet: View {
     private func load(_ urls: [URL]) {
         do {
             let found = try ClaudeDesignImport.read(urls)
-            ownArtwork = true
+            source = .claudeDesign
             error = nil
             if let series = found.series, name.trimmingCharacters(in: .whitespaces).isEmpty { name = series }
             if let url = found.background { background = url }
@@ -157,9 +203,7 @@ struct SermonSeriesSheet: View {
         let seriesName = name.trimmingCharacters(in: .whitespaces)
         if !ownArtwork {
             do {
-                let id = try await SeriesGenerator.generate(series: seriesName, hint: "", model: model)
-                model.updateSlideBuilding { $0.sermonThemeId = id }
-                dismiss()
+                finish(try await SeriesGenerator.generate(series: seriesName, hint: "", model: model))
             } catch {
                 self.error = error.localizedDescription
             }
@@ -180,8 +224,7 @@ struct SermonSeriesSheet: View {
             headingCaps: headingCaps)
         let theme = SermonSeriesTheme.make(style)
         model.createInDrive(theme)
-        model.updateSlideBuilding { $0.sermonThemeId = theme.id }
-        dismiss()
+        finish(theme.id)
     }
 
     static func postScript(_ family: String, bold: Bool) -> String {

@@ -12,6 +12,9 @@ struct PlanMessageSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var creatingSeries = false
     @State private var importingNotes = false
+    /// Series art dropped on the picker, to make a new series from.
+    @State private var seriesArt: URL?
+    @State private var artTargeted = false
 
     private var plan: Service? { model.resident.services.value(planID) }
     private var seriesID: String { plan?.sermonThemeId ?? model.slideBuilding.sermonThemeId ?? "" }
@@ -36,9 +39,21 @@ struct PlanMessageSheet: View {
                             Text("Choose…").tag("")
                             ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
                         }
-                        Button("New Series…") { creatingSeries = true }
+                        Button("New Series…") {
+                            seriesArt = nil
+                            creatingSeries = true
+                        }
                     }
-                    Text("The series sets the look of the message on every screen. Switch series here any week.")
+                    .padding(2)
+                    .background(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.accentColor, lineWidth: 2)
+                        .opacity(artTargeted ? 1 : 0))
+                    .dropDestination(for: URL.self) { urls, _ in
+                        guard let url = urls.first(where: SeriesArt.accepts) else { return false }
+                        seriesArt = url
+                        creatingSeries = true
+                        return true
+                    } isTargeted: { artTargeted = $0 }
+                    Text("The series sets the look of the message on every screen. Switch series here any week, or drop the series art here to make a new one from it.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Message") {
@@ -82,7 +97,10 @@ struct PlanMessageSheet: View {
         }
         .padding(20)
         .frame(width: 520, height: 560)
-        .sheet(isPresented: $creatingSeries) { SermonSeriesSheet(model: model) }
+        .sheet(isPresented: $creatingSeries) {
+            // A new series made here is this plan's series.
+            SermonSeriesSheet(model: model, photo: seriesArt, onCreated: chooseSeries)
+        }
         .sheet(isPresented: $importingNotes) { SermonImportSheet(model: model, planID: planID) }
     }
 

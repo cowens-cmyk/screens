@@ -80,10 +80,26 @@ extension ClaudeClient {
         return try JSONDecoder().decode(SeriesDesign.self, from: Data(json.utf8))
     }
 
-    private static func send(system: String, schema: [String: Any], effort: String, content: [[String: Any]]) async throws -> String {
+    /// Has Claude look at a series graphic and say how to build the series
+    /// from it. The image goes as a JPEG already scaled to what Claude
+    /// reads; fonts are the families installed here (see ArtAnalysis).
+    static func analyzeArt(jpeg: Data, fileName: String, width: Int, height: Int, fonts: [String]) async throws -> ArtAnalysis {
+        let json = try await send(
+            system: ArtAnalysis.instructions, schema: ArtAnalysis.schema, effort: "high", adaptiveThinking: true,
+            content: [
+                ["type": "image",
+                 "source": ["type": "base64", "media_type": "image/jpeg", "data": jpeg.base64EncodedString()]],
+                ["type": "text", "text": ArtAnalysis.prompt(fileName: fileName, width: width, height: height, fonts: fonts)],
+            ])
+        return try ArtAnalysis.decode(json)
+    }
+
+    private static func send(
+        system: String, schema: [String: Any], effort: String, adaptiveThinking: Bool = false, content: [[String: Any]]
+    ) async throws -> String {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { throw ClaudeError.missingKey }
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "max_tokens": 32000,
             // A rare safety decline is retried on Anthropic's recommended
@@ -96,6 +112,9 @@ extension ClaudeClient {
             ],
             "messages": [["role": "user", "content": content]],
         ]
+        // Opus thinks either way; said outright so a fallback model that
+        // answers instead thinks too.
+        if adaptiveThinking { body["thinking"] = ["type": "adaptive"] }
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!, timeoutInterval: 600)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
