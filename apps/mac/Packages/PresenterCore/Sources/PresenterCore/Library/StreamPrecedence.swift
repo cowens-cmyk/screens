@@ -24,6 +24,8 @@ public enum StreamPrecedence {
         case slideDesign
         /// The theme's pick for the slide's category.
         case themeRoute
+        /// The slide's own lower-third picture (a PNG over the camera).
+        case slideImage(mediaID: String)
     }
 
     public static func decide(global: GlobalMode, slide: StreamDesignMode?) -> Decision {
@@ -43,6 +45,30 @@ public enum StreamPrecedence {
             case .transparent: return .nothing
             }
         }
+    }
+
+    /// As above, for the slide's whole choice: a Lower Third that names a
+    /// picture shows that picture. It stands where the slide's Lower Third
+    /// stands, so it beats the switch the same way.
+    public static func decide(global: GlobalMode, design: StreamDesign?) -> Decision {
+        if let mediaID = design?.lowerThirdImageID { return .slideImage(mediaID: mediaID) }
+        return decide(global: global, slide: design?.mode)
+    }
+}
+
+extension StreamDesign {
+    /// A slide's lower-third picture. Stored as a Lower Third with a media id
+    /// rather than as a mode of its own: a build that predates the picture
+    /// reads it as the theme's lower third instead of failing on an unknown
+    /// mode and dropping the whole presentation.
+    public static func lowerThirdImage(_ mediaID: String) -> StreamDesign {
+        StreamDesign(category: "", mode: .design, mediaId: mediaID)
+    }
+
+    /// The picture this choice puts over the camera, if it names one.
+    public var lowerThirdImageID: String? {
+        guard mode == .design, let mediaId, !mediaId.isEmpty else { return nil }
+        return mediaId
     }
 }
 
@@ -68,6 +94,14 @@ extension StreamPrecedence {
         case .playing: .audience
         case .over: .nothing
         case .none: decide(global: global, slide: slide)
+        }
+    }
+
+    public static func decide(global: GlobalMode, design: StreamDesign?, video: Video) -> Decision {
+        switch video {
+        case .playing: .audience
+        case .over: .nothing
+        case .none: decide(global: global, design: design)
         }
     }
 }

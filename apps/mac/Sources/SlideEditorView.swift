@@ -201,6 +201,9 @@ struct SlideEditorView: View {
             ReflowSheet(model: model)
         }
 
+        .sheet(item: Binding(get: { model.livestreamPrompt }, set: { model.livestreamPrompt = $0 })) {
+            LivestreamPromptSheet(model: appModel, request: $0)
+        }
         .sheet(isPresented: Binding(get: { model.choosingNewSlide }, set: { model.choosingNewSlide = $0 })) {
             NewSlideSheet(appModel: appModel, render: render, deckThemeId: model.presentation.themeId, startsWithThemes: true) { choice in
                 model.addSlide(choice)
@@ -562,7 +565,8 @@ struct SlideEditorView: View {
             let imported = await appModel.importFiles(urls)
             guard let first = imported.first else { return }
             if insertZone {
-                _ = model.insertMediaSlide(mediaID: first, beforeSlideID: slideID)
+                // Every file dropped between slides becomes a slide.
+                _ = model.insertMediaSlides(mediaIDs: imported, beforeSlideID: slideID)
             } else {
                 _ = model.setDroppedBackground(mediaID: first, onSlide: slideID)
             }

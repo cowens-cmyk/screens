@@ -2693,12 +2693,14 @@ public struct StreamDesign: Codable, Sendable, Equatable {
     public var mode: StreamDesignMode
     public var themeId: String?
     public var slideId: String?
+    public var mediaId: String?
 
-    public init(category: String, mode: StreamDesignMode, themeId: String? = nil, slideId: String? = nil) {
+    public init(category: String, mode: StreamDesignMode, themeId: String? = nil, slideId: String? = nil, mediaId: String? = nil) {
         self.category = category
         self.mode = mode
         self.themeId = themeId
         self.slideId = slideId
+        self.mediaId = mediaId
     }
 }
 

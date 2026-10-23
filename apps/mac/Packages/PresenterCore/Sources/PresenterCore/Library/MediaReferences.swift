@@ -18,6 +18,9 @@ public enum MediaReferences {
         var out = ids(inObjects: slide.objects)
         if let id = slide.background?.mediaId { out.insert(id) }
         if let id = slide.backgroundFill?.mediaId { out.insert(id) }
+        // The livestream's lower-third picture is the slide's media too: it
+        // syncs with the deck and counts as used.
+        if let id = slide.streamDesign?.lowerThirdImageID { out.insert(id) }
         out.formUnion(ids(inActions: slide.actions))
         return out
     }

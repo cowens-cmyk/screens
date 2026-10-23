@@ -18,6 +18,8 @@ struct SlideScreensSheet: View {
     @State private var audience = ""
     @State private var stream = "default"
     @State private var stage = ""
+    /// The lower-third picture on offer: the slide's own, or one just picked.
+    @State private var imageID: String?
 
     private var first: Slide? { presentation.slides.first { slideIDs.contains($0.id) } }
 
@@ -35,7 +37,23 @@ struct SlideScreensSheet: View {
                     Text(StreamWording.lowerThird).tag("lowerThird")
                     Text(StreamWording.fullScreen).tag("audience")
                     Text(StreamWording.nothing).tag("clear")
+                    if let imageID {
+                        Text(model.media(imageID)?.name ?? "Lower-Third Image").tag("image|\(imageID)")
+                    }
                     designOptions(prefix: "design")
+                }
+                LabeledContent("") {
+                    HStack {
+                        Button(StreamWording.lowerThirdImage) {
+                            LowerThirdImagePicker.choose(model) { id in
+                                imageID = id
+                                stream = "image|\(id)"
+                            }
+                        }
+                        if stream.hasPrefix("image|") {
+                            Button(StreamWording.removeLowerThirdImage) { stream = "default" }
+                        }
+                    }
                 }
                 Picker("Stage", selection: $stage) {
                     Text("Keep current").tag("")
@@ -60,7 +78,10 @@ struct SlideScreensSheet: View {
                 if let name = first.themeSlideName, !name.isEmpty {
                     audience = "design|\(first.themeId ?? presentation.themeId)|\(name)"
                 }
-                if let own = first.streamDesign {
+                if let own = first.streamDesign, let image = own.lowerThirdImageID {
+                    imageID = image
+                    stream = "image|\(image)"
+                } else if let own = first.streamDesign {
                     switch own.mode {
                     case .clear: stream = "clear"
                     case .audience: stream = "audience"
@@ -108,6 +129,8 @@ struct SlideScreensSheet: View {
                 case "clear": deck.slides[index].streamDesign = .slideNothing
                 case "audience": deck.slides[index].streamDesign = .slideFullScreen
                 case "lowerThird": deck.slides[index].streamDesign = .slideLowerThird
+                case "image" where streamParts.count == 2:
+                    deck.slides[index].streamDesign = .lowerThirdImage(streamParts[1])
                 case "design" where streamParts.count == 3:
                     deck.slides[index].streamDesign = StreamDesign(
                         category: "", mode: .design, themeId: streamParts[1], slideId: streamSlideID)

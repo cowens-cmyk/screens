@@ -536,6 +536,7 @@ struct SlideGridBody: View {
 
     @State private var actionPlacement: ActionPlacement?
     @State private var screensTarget: SlideScreensTarget?
+    @State private var livestreamPrompt: LivestreamPromptRequest?
 
     @State private var autoAdvanceTarget: AutoAdvanceTarget?
 
@@ -677,6 +678,7 @@ struct SlideGridBody: View {
         .onChange(of: clipboardRequests.pastes) { _, _ in pasteFromKeyboard() }
         .onChange(of: clipboardRequests.selectAlls) { _, _ in selectAllFromKeyboard() }
         .onChange(of: NewSlideRouter.shared.requests) { _, _ in newSlideFromMenu() }
+        .sheet(item: $livestreamPrompt) { LivestreamPromptSheet(model: model, request: $0) }
         .sheet(item: $newSlideTarget) { target in
             NewSlideSheet(appModel: model, render: render, deckThemeId: presentation.themeId) { choice in
                 insertNewSlide(choice, after: target.after)
@@ -1192,14 +1194,18 @@ struct SlideGridBody: View {
     /// Livestream › the same choices as the Screens sheet and the theme's
     /// routing table. A choice here wins over the Show Setup switch.
     private func livestreamMenu(_ slideIDs: [String]) -> some View {
-        let current = Set(presentation.slides.filter { slideIDs.contains($0.id) }.map { slide -> String in
+        let chosen = presentation.slides.filter { slideIDs.contains($0.id) }
+        let current = Set(chosen.map { slide -> String in
             guard let own = slide.streamDesign else { return "default" }
+            if let image = own.lowerThirdImageID { return "image|\(image)" }
             switch own.mode {
             case .clear: return "clear"
             case .audience: return "audience"
             case .design: return own.isThemeLowerThird ? "lowerThird" : "design"
             }
         })
+        let image = current.count == 1 ? chosen.first?.streamDesign?.lowerThirdImageID : nil
+        let withImage = chosen.filter { $0.streamDesign?.lowerThirdImageID != nil }.map(\.id)
         let choices: [(key: String, title: String, design: StreamDesign?)] = [
             ("default", StreamWording.themeDefault, nil),
             ("lowerThird", StreamWording.lowerThird, .slideLowerThird),
@@ -1212,6 +1218,18 @@ struct SlideGridBody: View {
                     setStreamDesign(choice.design, of: slideIDs)
                 }
                 if choice.key == "default" { Divider() }
+            }
+            Divider()
+            if let image {
+                Button("✓ " + (model.media(image)?.name ?? "Lower-Third Image")) {}
+                    .disabled(true)
+            }
+            Button(StreamWording.lowerThirdImage) {
+                LowerThirdImagePicker.choose(model) { setStreamDesign(.lowerThirdImage($0), of: slideIDs) }
+            }
+            if !withImage.isEmpty {
+                // Back to Theme Default, and only on the slides that had one.
+                Button(StreamWording.removeLowerThirdImage) { setStreamDesign(nil, of: withImage) }
             }
         }
     }
@@ -1514,7 +1532,9 @@ struct SlideGridBody: View {
             let imported = await model.importFiles(urls)
             guard let first = imported.first else { return }
             if insertZone {
-                _ = insertMediaSlide(mediaID: first, beforeIndex: index)
+                // Every file dropped between slides becomes a slide, so a
+                // folder of announcements lands in one go.
+                _ = insertMediaSlides(mediaIDs: imported, beforeIndex: index)
             } else {
                 _ = model.setSlideBackground(
                     presentationID: presentation.id, slideID: slideID, mediaID: first)
@@ -1523,19 +1543,36 @@ struct SlideGridBody: View {
     }
 
     private func insertMediaSlide(mediaID: String, beforeIndex index: Int) -> Bool {
-        guard let item = model.media(mediaID) else { return false }
-        let media = CueMedia.droppedAsNewSlide(for: item)
+        insertMediaSlides(mediaIDs: [mediaID], beforeIndex: index)
+    }
+
+    /// New slides from pictures or videos, then the livestream question
+    /// for them.
+    private func insertMediaSlides(mediaIDs: [String], beforeIndex index: Int) -> Bool {
         let anchorSection = slides.indices.contains(index) ? slides[index].sectionId : nil
         let afterID = index > 0 && slides.indices.contains(index - 1)
             ? slides[index - 1].id : nil
-        let slide = Slide(
-            id: UUID().uuidString,
-            name: item.name,
-            objects: [],
-            background: media,
-            sectionId: anchorSection)
-        model.insertSlide(presentation.id, slide: slide, afterSlideID: afterID)
+        let added = mediaIDs.compactMap { model.media($0) }.map { item in
+            Slide(
+                id: UUID().uuidString,
+                name: item.name,
+                objects: [],
+                background: CueMedia.droppedAsNewSlide(for: item),
+                sectionId: anchorSection)
+        }
+        guard !added.isEmpty else { return false }
+        model.insertSlides(presentation.id, slides: added, afterSlideID: afterID)
+        askLivestream(for: added)
         return true
+    }
+
+    private func askLivestream(for added: [Slide]) {
+        let presentationID = presentation.id
+        let asked = LivestreamPromptRequest.make(model, presentationID: presentationID, added: added) { design, ids in
+            setStreamDesign(design, of: ids)
+        }
+        guard let asked else { return }
+        livestreamPrompt = livestreamPrompt.map { $0.adding(asked) } ?? asked
     }
 
     private func dropSlide(_ payload: String, before target: Slide) -> Bool {
