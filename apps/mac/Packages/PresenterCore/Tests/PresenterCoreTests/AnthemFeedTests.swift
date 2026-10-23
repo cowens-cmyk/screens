@@ -242,15 +242,64 @@ private let buildMyLife = song("p1", "Build My Life", sections: [
         #expect(AnthemArrangementMatch.compare(performed, song: shape(p)).proposed == ["c", "x"])
     }
 
+    private func pick(
+        _ order: [String], in arrangements: [Arrangement], itemPick: String? = nil, defaultID: String? = nil,
+        usedElsewhere: Set<String> = [], planLabel: String = "Oct 26"
+    ) -> (arrangement: Arrangement, isNew: Bool) {
+        AnthemSongMatch.anthemArrangement(
+            order: order, in: arrangements, itemPick: itemPick, defaultID: defaultID,
+            usedElsewhere: usedElsewhere, planLabel: planLabel, newID: "n")
+    }
+
     @Test func anthemArrangementReusesOrUpdates() {
         let existing = [Arrangement(id: "a", name: "Default", sectionIds: ["v", "c"])]
-        let same = AnthemSongMatch.anthemArrangement(order: ["v", "c"], in: existing, newID: "n")
+        let same = pick(["v", "c"], in: existing)
         #expect(same.arrangement.id == "a" && !same.isNew)
-        let fresh = AnthemSongMatch.anthemArrangement(order: ["v", "c", "c"], in: existing, newID: "n")
+        let fresh = pick(["v", "c", "c"], in: existing)
         #expect(fresh.arrangement == Arrangement(id: "n", name: "Anthem", sectionIds: ["v", "c", "c"]) && fresh.isNew)
         let named = existing + [Arrangement(id: "b", name: "Anthem", sectionIds: ["v"])]
-        let updated = AnthemSongMatch.anthemArrangement(order: ["v", "c", "c"], in: named, newID: "n")
+        let updated = pick(["v", "c", "c"], in: named, itemPick: "b")
         #expect(updated.arrangement == Arrangement(id: "b", name: "Anthem", sectionIds: ["v", "c", "c"]) && !updated.isNew)
+    }
+
+    @Test func anArrangementAnotherItemUsesIsNeverRewritten() {
+        // The opener matched first and uses "Anthem"; the reprise plays it
+        // another way.
+        let arrangements = [
+            Arrangement(id: "d", name: "Default", sectionIds: ["v", "c"]),
+            Arrangement(id: "a", name: "Anthem", sectionIds: ["v", "c", "c"]),
+        ]
+        let reprise = pick(["c", "c"], in: arrangements, itemPick: "a", defaultID: "d", usedElsewhere: ["a"])
+        #expect(reprise.isNew)
+        #expect(reprise.arrangement == Arrangement(id: "n", name: "Anthem – Oct 26", sectionIds: ["c", "c"]))
+        // The same name taken too: numbered.
+        let more = arrangements + [Arrangement(id: "x", name: "Anthem – Oct 26", sectionIds: ["v"])]
+        let third = pick(["c"], in: more, usedElsewhere: ["a", "x"])
+        #expect(third.arrangement.name == "Anthem – Oct 26 2" && third.isNew)
+        // No plan label: Anthem 2.
+        #expect(pick(["c", "c"], in: arrangements, usedElsewhere: ["a"], planLabel: " ").arrangement.name == "Anthem 2")
+        // Shared but already in Anthem's order: reused as it is.
+        let shared = pick(["v", "c", "c"], in: arrangements, usedElsewhere: ["a"])
+        #expect(shared.arrangement.id == "a" && !shared.isNew)
+        // The default is never rewritten, even if it is named Anthem.
+        let defaultAnthem = [Arrangement(id: "a", name: "Anthem", sectionIds: ["v"])]
+        #expect(pick(["v", "c"], in: defaultAnthem, defaultID: "a").isNew)
+        // A user's own arrangement nobody uses is not Match Anthem's to rewrite.
+        let sunday = [Arrangement(id: "s", name: "Sunday", sectionIds: ["v"])]
+        let own = pick(["v", "c"], in: sunday, itemPick: "s")
+        #expect(own.isNew && own.arrangement.name == "Anthem")
+    }
+
+    @Test func settingTouchesOnlyOneArrangement() {
+        let a = Arrangement(id: "a", name: "A", sectionIds: ["v"])
+        let b = Arrangement(id: "b", name: "Anthem", sectionIds: ["c"])
+        var b2 = b
+        b2.sectionIds = ["c", "c"]
+        #expect(AnthemSongMatch.setting("b", to: b2, in: [a, b]) == [a, b2])
+        #expect(AnthemSongMatch.setting("b", to: b, in: [a]) == [a, b])
+        #expect(AnthemSongMatch.setting("b", to: nil, in: [a, b]) == [a])
+        #expect(AnthemSongMatch.setting("b", to: nil, in: [b]) == nil)
+        #expect(AnthemSongMatch.setting("b", to: b, in: nil) == [b])
     }
 }
 
@@ -274,7 +323,23 @@ private let buildMyLife = song("p1", "Build My Life", sections: [
         #expect(report.result(forItem: "i3")?.status == .notInAnthem)
         #expect(report.notInScreens.map(\.title) == ["Firm Foundation"])
         #expect(report.matched == 2)
-        #expect(report.followsSetlist)
+        // Two of three either side: the current or next plan, not a later one.
+        #expect(report.followsSetlist(isCurrentOrNext: true))
+        #expect(!report.followsSetlist(isCurrentOrNext: false))
+    }
+
+    @Test func aLaterPlanFollowsOnlyWhenThreeQuartersMatch() {
+        func report(matched: Int, plan: Int, entries: Int) -> AnthemSongMatch.Report {
+            let paired = (0..<matched).map {
+                AnthemSongMatch.Result(itemID: "i\($0)", entryID: "e\($0)", title: "", status: .match, comparison: nil)
+            }
+            return AnthemSongMatch.Report(results: paired, planSongCount: plan, entryCount: entries)
+        }
+        #expect(report(matched: 3, plan: 4, entries: 4).followsSetlist(isCurrentOrNext: false))
+        #expect(!report(matched: 3, plan: 4, entries: 5).followsSetlist(isCurrentOrNext: false))
+        #expect(!report(matched: 3, plan: 5, entries: 4).followsSetlist(isCurrentOrNext: false))
+        #expect(report(matched: 2, plan: 4, entries: 6).followsSetlist(isCurrentOrNext: true))
+        #expect(!report(matched: 0, plan: 0, entries: 0).followsSetlist(isCurrentOrNext: true))
     }
 
     @Test func ccliBeatsATitleThatDiffers() throws {
@@ -295,7 +360,8 @@ private let buildMyLife = song("p1", "Build My Life", sections: [
             + [AnthemSongMatch.PlanSong(item: item("i1", "Build My Life", ref: "p1"), presentation: buildMyLife)]
         let report = AnthemSongMatch.report(setlist: try setlist(), songs: songs)
         #expect(report.matched == 1)
-        #expect(!report.followsSetlist)
+        #expect(!report.followsSetlist(isCurrentOrNext: true))
+        #expect(!report.followsSetlist(isCurrentOrNext: false))
     }
 
     @Test func titlesNormalize() {
@@ -315,6 +381,29 @@ private let buildMyLife = song("p1", "Build My Life", sections: [
         #expect(AnthemCue.occurrence(of: "c", in: arranged, current: 5) == 5)
         #expect(AnthemCue.occurrence(of: "v1", in: arranged, current: 4) == 0)
         #expect(AnthemCue.occurrence(of: "tag", in: arranged, current: 0) == nil)
+    }
+
+    @Test func aSongSungTwiceLandsOnTheRightItem() {
+        // Opener i1 and reprise i4 are the same presentation.
+        let items: [(id: String, refId: String)] = [("i1", "bml"), ("i2", "grat"), ("i3", "msg"), ("i4", "bml")]
+        func land(live: String? = nil, anthem: String? = nil) -> String? {
+            AnthemCue.planItem(for: "bml", in: items, liveItemID: live, anthemItemID: anthem)
+        }
+        #expect(land() == "i1")
+        #expect(land(live: "i1") == "i1")
+        #expect(land(live: "i4") == "i4")
+        // Past the opener: the reprise, not back to the top.
+        #expect(land(live: "i3") == "i4")
+        #expect(land(live: "i2", anthem: "i1") == "i4")
+        // Nothing live: what Anthem says is playing.
+        #expect(land(anthem: "i4") == "i4")
+        // Live past the last one: Anthem's pairing, else the first.
+        let after: [(id: String, refId: String)] = items + [("i5", "close")]
+        #expect(AnthemCue.planItem(for: "bml", in: after, liveItemID: "i5", anthemItemID: "i4") == "i4")
+        #expect(AnthemCue.planItem(for: "bml", in: after, liveItemID: "i5", anthemItemID: nil) == "i1")
+        // An Anthem pairing to another song is ignored.
+        #expect(land(anthem: "i2") == "i1")
+        #expect(AnthemCue.planItem(for: "none", in: items, liveItemID: nil, anthemItemID: nil) == nil)
     }
 }
 
@@ -412,5 +501,7 @@ private let buildMyLife = song("p1", "Build My Life", sections: [
         #expect(AnthemShow.parseResponse(Data("garbage".utf8)) == nil)
         #expect(String(data: AnthemShow.request(path: "/v1/info", host: "band"), encoding: .utf8)?
             .hasPrefix("GET /v1/info HTTP/1.0\r\nHost: band\r\n") == true)
+        #expect(String(data: AnthemShow.request(path: "/v1/info", host: "fe80::1"), encoding: .utf8)?
+            .contains("\r\nHost: [fe80::1]\r\n") == true)
     }
 }

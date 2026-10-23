@@ -460,8 +460,31 @@ final class MIDIOutService: @unchecked Sendable {
         if MIDISourceCreate(client, "Screens" as CFString, &virtualSource) != noErr {
             virtualSource = 0
         }
+        var uid: Int32 = 0
+        if virtualSource != 0 {
+            MIDIObjectGetIntegerProperty(virtualSource, kMIDIPropertyUniqueID, &uid)
+        }
+        uidLock.lock()
+        sourceUID = uid
+        uidLock.unlock()
         ready = true
         return true
+    }
+
+    /// The "Screens" source's unique ID, so MIDI in never listens to what
+    /// Screens sends. Zero before it exists. Its own lock, taken last, so
+    /// MIDIInService can read it while holding its own.
+    var ownSourceUID: Int32 {
+        uidLock.lock()
+        defer { uidLock.unlock() }
+        return sourceUID
+    }
+    private let uidLock = NSLock()
+    private var sourceUID: Int32 = 0
+
+    /// Tells MIDI in what just went out, so an echo of it is ignored.
+    private func noteSent(_ data: [UInt8]) {
+        MIDIInService.shared.noteSent(data)
     }
 
     static func bytes(kind: MIDIMessageKind, channel: Int, number: Int, value: Int) -> [UInt8] {
@@ -486,6 +509,7 @@ final class MIDIOutService: @unchecked Sendable {
         var packetList = MIDIPacketList()
         let packet = MIDIPacketListInit(&packetList)
         _ = MIDIPacketListAdd(&packetList, MemoryLayout<MIDIPacketList>.size, packet, 0, data.count, data)
+        noteSent(data)
         if virtualSource != 0 { MIDIReceived(virtualSource, &packetList) }
         if let network, network != 0 { MIDISend(port, network, &packetList) }
     }
@@ -507,11 +531,12 @@ final class MIDIOutService: @unchecked Sendable {
         let packet = MIDIPacketListInit(&packetList)
         _ = MIDIPacketListAdd(
             &packetList, MemoryLayout<MIDIPacketList>.size, packet, 0, data.count, data)
+        noteSent(data)
         if explicitUID == nil, virtualSource != 0 {
             MIDIReceived(virtualSource, &packetList)
         }
         if explicitUID == nil, let targets = targetUIDs, targets.isEmpty { return }
-        // Screens' own "Screens" destination is its input: sending there
+        // Screens' own "Screens In" destination is its input: sending there
         // would play every cue back into Screens.
         let own = MIDIInService.shared.ownDestinationUID
         for index in 0..<MIDIGetNumberOfDestinations() {

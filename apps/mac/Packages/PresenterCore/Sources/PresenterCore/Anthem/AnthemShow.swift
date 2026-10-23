@@ -183,7 +183,9 @@ public enum AnthemShow {
     /// The plain HTTP request Screens sends. HTTP/1.0 so the answer comes
     /// whole and the connection closes when it is done.
     public static func request(path: String, host: String) -> Data {
-        Data("GET \(path) HTTP/1.0\r\nHost: \(host)\r\nAccept: application/json\r\nConnection: close\r\n\r\n".utf8)
+        // An IPv6 address goes in brackets in a Host header.
+        let host = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
+        return Data("GET \(path) HTTP/1.0\r\nHost: \(host)\r\nAccept: application/json\r\nConnection: close\r\n\r\n".utf8)
     }
 
     /// Status and body of a whole HTTP response, chunked or not.

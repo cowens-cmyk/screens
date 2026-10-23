@@ -32,15 +32,10 @@ final class LightkeyLink {
     /// Changes Lightkey's scene as the service moves: each plan item sends
     /// its position's note (Walk-in, Song 1, Message…) when it goes live.
     /// Per Mac, like the rest of this link; the note table is the church's.
-    var followsService: Bool {
-        get { followChoice ?? configured }
-        set { followChoice = newValue; save() }
-    }
-    /// Unset until someone flips the switch: until then it follows whether
-    /// Lightkey has been set up on this Mac at all.
-    private var followChoice: Bool?
-    /// Any Lightkey setting saved, or a cue or test note sent from here.
-    private var configured: Bool
+    /// Off until someone turns it on here: a Mac that only sends section
+    /// notes, or a Lightkey that hasn't learned the positions' notes yet,
+    /// shouldn't start changing scenes by itself.
+    var followsService: Bool { didSet { save() } }
 
     private(set) var status = ""
 
@@ -54,9 +49,7 @@ final class LightkeyLink {
         port = defaults.object(forKey: "lightkey.port") as? Int ?? 5004
         channel = defaults.object(forKey: "lightkey.channel") as? Int ?? 16
         sendsSections = defaults.bool(forKey: "lightkey.sections")
-        followChoice = defaults.object(forKey: "lightkey.followService") as? Bool
-        configured = defaults.bool(forKey: "lightkey.configured")
-            || defaults.object(forKey: "lightkey.location") != nil
+        followsService = defaults.bool(forKey: "lightkey.followService")
     }
 
     private func save() {
@@ -66,14 +59,7 @@ final class LightkeyLink {
         defaults.set(port, forKey: "lightkey.port")
         defaults.set(channel, forKey: "lightkey.channel")
         defaults.set(sendsSections, forKey: "lightkey.sections")
-        defaults.set(followChoice, forKey: "lightkey.followService")
-        markConfigured()
-    }
-
-    private func markConfigured() {
-        guard !configured else { return }
-        configured = true
-        UserDefaults.standard.set(true, forKey: "lightkey.configured")
+        defaults.set(followsService, forKey: "lightkey.followService")
     }
 
     func start() {
@@ -111,7 +97,6 @@ final class LightkeyLink {
     }
 
     func send(kind: MIDIMessageKind, channel: Int, number: Int, value: Int) {
-        markConfigured()
         let network: MIDIEndpointRef? = location == .network && connection != nil
             ? MIDINetworkSession.default().destinationEndpoint() : nil
         MIDIOutService.shared.sendToLightkey(
@@ -250,8 +235,15 @@ struct LightingCueTableForm: View {
     var body: some View {
         let table = ServiceLighting.table(model)
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Change Lightkey scenes with the service", isOn: $link.followsService)
-            Text("When a plan item goes live, Lightkey gets its position's note. Songs count Song 1, Song 2… down the plan. A header named Message, Baptism, Communion and so on gives its items that position. Right-click a plan item to pick its cue or turn it off.")
+            Toggle(isOn: $link.followsService) {
+                Text("Change Lightkey scenes with the service").fontWeight(.semibold)
+            }
+            if !link.followsService {
+                Text("Off on this Mac. Teach Lightkey each note below (press Send while a cue is in MIDI learn), then turn this on.")
+                    .font(.caption).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("When a plan item goes live, Lightkey gets its position's note. Songs count Song 1, Song 2… down the plan. A header named Message, Baptism, Communion and so on gives its items that position; clicking the header while presenting sends it. Right-click a plan item to pick its cue or turn it off.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
@@ -273,7 +265,7 @@ struct LightingCueTableForm: View {
                 Button("Use Defaults") { save(LightingCueTable.defaults) }
                     .disabled(table == LightingCueTable.defaults)
             }
-            Text("Songs past the last song row use it. Press Send while a Lightkey cue is in MIDI learn. Notes go out on channel \(link.channel).")
+            Text("Songs past the last song row use it. Press Send while a Lightkey cue is in MIDI learn. Notes go out on channel \(link.channel); 1–10 (song sections) and 31–54 (the Lightkey Cue action) are left for those.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .alert("Add Cue", isPresented: $addingCue) {

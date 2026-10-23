@@ -110,10 +110,18 @@ final class AnthemFeed {
         poller = nil
         browser?.cancel()
         browser = nil
+        browserRetry?.cancel()
+        browserRetry = nil
+        browserFailures = 0
+        generation += 1
         browsed = []
         failures = 0
         lastSetlistFetch = nil
         status = nil
+        // A setlist from the Anthem this feed read before (or with the feed
+        // off, any setlist) no longer speaks for anything: its badges go.
+        setlistAt = nil
+        setSetlist(nil)
         guard enabled, model != nil else {
             setConnection(.off)
             return
@@ -123,11 +131,17 @@ final class AnthemFeed {
         poller = Task { [weak self] in await self?.poll() }
     }
 
+    @ObservationIgnored private var generation = 0
+    @ObservationIgnored private var browserFailures = 0
+    @ObservationIgnored private var browserRetry: Task<Void, Never>?
+
     private func browse() {
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: AnthemShow.serviceType, domain: nil), using: .tcp)
+        let generation = generation
         browser.browseResultsChangedHandler = { results, _ in
             Task { @MainActor in
                 let feed = AnthemFeed.shared
+                guard feed.generation == generation else { return }
                 feed.browsed = results.sorted { "\($0.endpoint)" < "\($1.endpoint)" }
                 if !results.isEmpty, feed.connection != .connected(feed.anthemName) {
                     feed.lastSetlistFetch = nil
@@ -135,8 +149,41 @@ final class AnthemFeed {
                 }
             }
         }
+        // Bonjour can fail outright (mDNSResponder restarting, the network
+        // going away under it); a failed browser never recovers, so a new
+        // one starts after a wait that grows to a minute.
+        browser.stateUpdateHandler = { state in
+            switch state {
+            case .failed(let error):
+                let reason = "\(error)"
+                Task { @MainActor in AnthemFeed.shared.browserFailed(reason, generation: generation) }
+            case .ready:
+                Task { @MainActor in
+                    if AnthemFeed.shared.generation == generation { AnthemFeed.shared.browserFailures = 0 }
+                }
+            default:
+                break
+            }
+        }
         browser.start(queue: .main)
         self.browser = browser
+    }
+
+    private func browserFailed(_ reason: String, generation: Int) {
+        guard generation == self.generation else { return }
+        browser?.cancel()
+        browser = nil
+        browsed = []
+        browserFailures += 1
+        let wait = min(60, 1 << min(browserFailures, 6))
+        DiagnosticsStore.shared.note("anthem.feed", detail: "Bonjour failed (\(reason)); again in \(wait) s")
+        browserRetry?.cancel()
+        browserRetry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(wait))
+            guard let self, !Task.isCancelled, self.generation == generation, self.browser == nil,
+                  self.enabled, AnthemShow.endpoint(fromManual: self.manualAddress) == nil else { return }
+            self.browse()
+        }
     }
 
     /// The Mac Anthem runs on, from its Bonjour name or the typed address.
@@ -194,10 +241,21 @@ final class AnthemFeed {
             return
         }
         let host = anthemName
+        let generation = generation
+        // Bonjour hands back IPv4 and link-local IPv6 for the same Mac, and
+        // IPv4 is the one that works through every church switch. A typed
+        // address is used as typed, IPv6 included.
+        let ipv4Only: Bool = switch target {
+        case .service: true
+        default: false
+        }
         do {
             let due = lastSetlistFetch.map { Date.now.timeIntervalSince($0) >= 9.5 } ?? true
             if due {
-                let (code, body) = try await AnthemHTTP.get(target, path: "/v1/setlist/active", host: host)
+                let (code, body) = try await AnthemHTTP.get(
+                    target, path: "/v1/setlist/active", host: host, ipv4Only: ipv4Only)
+                // Turned off or pointed elsewhere while this read was out.
+                guard generation == self.generation else { return }
                 switch try AnthemShow.decodeSetlist(body, status: code) {
                 case .setlist(let fresh): setSetlist(fresh)
                 case .none: setSetlist(nil)
@@ -206,7 +264,8 @@ final class AnthemFeed {
                 // Also catches a plan that arrived since the setlist did.
                 if autoMatch { autoMatchUpcoming() }
             }
-            let (code, body) = try await AnthemHTTP.get(target, path: "/v1/status", host: host)
+            let (code, body) = try await AnthemHTTP.get(target, path: "/v1/status", host: host, ipv4Only: ipv4Only)
+            guard generation == self.generation else { return }
             status = try? AnthemShow.decodeStatus(body, status: code)
             if connection != .connected(host) {
                 DiagnosticsStore.shared.note("anthem.feed", detail: "connected: \(host)")
@@ -214,6 +273,7 @@ final class AnthemFeed {
             setConnection(.connected(host))
             failures = 0
         } catch {
+            guard generation == self.generation else { return }
             failures += 1
             status = nil
             // One miss can be a busy network; two in a row, Anthem is gone.
@@ -242,11 +302,20 @@ final class AnthemFeed {
     func report(for serviceID: String, model: AppModel) -> AnthemSongMatch.Report? {
         guard let setlist else { return nil }
         // Read so views update when presentations, plans or the rule change.
-        let key = "\(serviceID)|\(setlistRevision)|\(model.version(of: .presentation))|\(model.version(of: .service))|\(model.listVersion)|\(ignoreInstrumental)|\(model.currentServiceID ?? "")"
+        let today = AppModel.isoDate(.now)
+        let key = "\(serviceID)|\(setlistRevision)|\(model.version(of: .presentation))|\(model.version(of: .service))|\(model.listVersion)|\(ignoreInstrumental)|\(model.currentServiceID ?? "")|\(today)"
         if let hit = reportCache[key] { return hit }
         guard let service = try? model.service(serviceID) else { return nil }
         let isCurrent = model.currentServiceID == serviceID
-        guard isCurrent || String(service.serviceDate.prefix(10)) >= AppModel.isoDate(.now) else { return nil }
+        let day = String(service.serviceDate.prefix(10))
+        guard isCurrent || day >= today else { return nil }
+        // The next plan by date is the likeliest one Anthem's setlist is
+        // for, so it gets the easier test; a later plan needs most songs.
+        let nextDay = model.resident.services.values
+            .filter { $0.isTemplate != true }
+            .map { String($0.serviceDate.prefix(10)) }
+            .filter { $0 >= today }
+            .min()
         var warming = false
         let songs = service.items.compactMap { item -> AnthemSongMatch.PlanSong? in
             let presentation = item.itemKind == .presentation ? model.presentation(item.refId) : nil
@@ -256,7 +325,7 @@ final class AnthemFeed {
         }
         let report = AnthemSongMatch.report(
             setlist: setlist, songs: songs, options: .init(ignoreInstrumental: ignoreInstrumental))
-        let result = report.followsSetlist ? report : nil
+        let result = report.followsSetlist(isCurrentOrNext: isCurrent || day == nextDay) ? report : nil
         // A song still loading would read as no slides; ask again later.
         if !warming {
             if reportCache.count > 32 { reportCache.removeAll() }
@@ -267,8 +336,9 @@ final class AnthemFeed {
 
     /// With "Match Anthem automatically", every upcoming plan Anthem's
     /// setlist is for gets Anthem's order on its songs that differ. A song
-    /// on screen right now is left alone, and a fix the operator undid is
-    /// not made again for the same order.
+    /// on screen right now — through this item or any other — is left
+    /// alone, and a song is matched once per order, so an arrangement the
+    /// operator changes back stays that way.
     func autoMatchUpcoming() {
         guard autoMatch, let model, setlist != nil else { return }
         let today = AppModel.isoDate(.now)
@@ -279,52 +349,83 @@ final class AnthemFeed {
             guard let report = report(for: plan.id, model: model) else { continue }
             for result in report.mismatches {
                 guard let itemID = result.itemID, let proposed = result.comparison?.proposed, !proposed.isEmpty,
-                      controls?.liveContextID != itemID else { continue }
+                      let item = plan.items.first(where: { $0.id == itemID }),
+                      controls?.liveContextID != itemID, controls?.livePresentationID != item.refId
+                else { continue }
                 let key = "\(plan.id)|\(itemID)|\(proposed.joined(separator: ","))"
                 guard !autoMatched.contains(key) else { continue }
                 autoMatched.insert(key)
-                if model.matchAnthem(serviceID: plan.id, itemID: itemID, order: proposed) {
+                // Not on Edit › Undo: the operator didn't do it, and an undo
+                // of their own last edit shouldn't land on this instead.
+                if model.matchAnthem(serviceID: plan.id, itemID: itemID, order: proposed, registersUndo: false) {
                     DiagnosticsStore.shared.note("anthem.match", detail: "auto: \(result.title)")
                 }
             }
         }
     }
+
+    /// The current plan's item for the song Anthem says is live, when the
+    /// feed is connected and the plan follows its setlist.
+    func liveItemID(serviceID: String, model: AppModel) -> String? {
+        guard case .connected = connection, let entryID = status?.liveEntryId else { return nil }
+        return report(for: serviceID, model: model)?.results.first { $0.entryID == entryID }?.itemID
+    }
 }
 
 extension AppModel {
-    /// Gives the plan item an arrangement in Anthem's order: the song's
-    /// "Anthem" arrangement, rewritten or added, or an existing one already
-    /// in that order. Undo puts back the arrangements and the item's pick.
+    /// Gives the plan item an arrangement in Anthem's order without
+    /// touching any other plan item's (AnthemSongMatch.anthemArrangement):
+    /// one already in that order, Match Anthem's own one that only this
+    /// item uses, or a new one. Undo, when registered, puts back just that
+    /// arrangement and the item's pick.
     @discardableResult
-    func matchAnthem(serviceID: String, itemID: String, order: [String]) -> Bool {
+    func matchAnthem(serviceID: String, itemID: String, order: [String], registersUndo: Bool = true) -> Bool {
         guard !order.isEmpty, let service = try? service(serviceID),
               let item = service.items.first(where: { $0.id == itemID }), item.itemKind == .presentation,
               let presentation = presentation(item.refId) else { return false }
         let presentationID = presentation.id
-        let before = (arrangements: presentation.arrangements, pick: item.arrangementId)
-        let existing = presentation.arrangements ?? []
-        let chosen = AnthemSongMatch.anthemArrangement(order: order, in: existing, newID: UUID().uuidString)
-        var arrangements = existing
-        if let index = arrangements.firstIndex(where: { $0.id == chosen.arrangement.id }) {
-            arrangements[index] = chosen.arrangement
-        } else {
-            arrangements.append(chosen.arrangement)
+        var usedElsewhere = Set<String>()
+        for plan in resident.services.values {
+            for other in plan.items where other.refId == presentationID && other.itemKind == .presentation {
+                guard plan.id != serviceID || other.id != itemID, let pick = other.arrangementId else { continue }
+                usedElsewhere.insert(pick)
+            }
         }
-        let after = (arrangements: Optional(arrangements), pick: Optional(chosen.arrangement.id))
-        guard after.arrangements != before.arrangements || after.pick != before.pick else { return false }
-        let apply: ((arrangements: [Arrangement]?, pick: String?)) -> Bool = { [weak self] state in
+        let chosen = AnthemSongMatch.anthemArrangement(
+            order: order, in: presentation.arrangements ?? [], itemPick: item.arrangementId,
+            defaultID: presentation.defaultArrangementId, usedElsewhere: usedElsewhere,
+            planLabel: Self.anthemPlanLabel(service), newID: UUID().uuidString)
+        let id = chosen.arrangement.id
+        let before = (arrangement: presentation.arrangements?.first { $0.id == id }, pick: item.arrangementId)
+        let after = (arrangement: Optional(chosen.arrangement), pick: Optional(id))
+        guard after.arrangement != before.arrangement || after.pick != before.pick else { return false }
+        let apply: ((arrangement: Arrangement?, pick: String?)) -> Bool = { [weak self] state in
             guard let self, libraryEntry(presentationID) != nil, (try? self.service(serviceID)) != nil else { return false }
-            let arrangements = state.arrangements
-            updatePresentation(presentationID) { $0.arrangements = arrangements }
+            let arrangement = state.arrangement
+            updatePresentation(presentationID) {
+                $0.arrangements = AnthemSongMatch.setting(id, to: arrangement, in: $0.arrangements)
+            }
             setServiceItemArrangement(serviceID, itemID: itemID, arrangementID: state.pick)
             return true
         }
         _ = apply(after)
-        moveUndo.registerEdit(
-            key: "matchAnthem:\(serviceID):\(itemID)", label: "Match Anthem",
-            undo: { apply(before) }, redo: { apply(after) }
-        )
+        if registersUndo {
+            moveUndo.registerEdit(
+                key: "matchAnthem:\(serviceID):\(itemID)", label: "Match Anthem",
+                undo: { apply(before) }, redo: { apply(after) }
+            )
+        }
         return true
+    }
+
+    /// "Oct 26" for a new arrangement's name; the plan's name when its date
+    /// doesn't read.
+    static func anthemPlanLabel(_ service: Service) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: String(service.serviceDate.prefix(10))) else { return service.name }
+        return date.formatted(.dateTime.month(.abbreviated).day())
     }
 }
 
@@ -374,11 +475,11 @@ enum AnthemHTTP {
 
     private static let queue = DispatchQueue(label: "org.hopejc.screens.anthem.feed")
 
-    static func get(_ endpoint: NWEndpoint, path: String, host: String, timeout: TimeInterval = 3) async throws -> (Int, Data) {
+    static func get(
+        _ endpoint: NWEndpoint, path: String, host: String, ipv4Only: Bool, timeout: TimeInterval = 3
+    ) async throws -> (Int, Data) {
         let parameters = NWParameters.tcp
-        // Bonjour hands back IPv4 and link-local IPv6; IPv4 is the one that
-        // works through every church switch.
-        if let ip = parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
+        if ipv4Only, let ip = parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
             ip.version = .v4
         }
         let connection = NWConnection(to: endpoint, using: parameters)
@@ -503,7 +604,7 @@ private struct AnthemMismatchPopover: View {
                     done()
                 }
                 .disabled(runOnly || comparison.proposed.isEmpty)
-                .help("Sets this song's arrangement to Anthem's order, in an arrangement named Anthem.")
+                .help("Gives this plan item an arrangement in Anthem's order. Arrangements other plan items use are left as they are.")
             }
             .controlSize(.small)
         }

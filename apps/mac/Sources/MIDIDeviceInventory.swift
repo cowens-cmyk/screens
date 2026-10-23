@@ -239,7 +239,11 @@ final class MIDIDeviceInventory {
     }
 
     static func sourceEndpoints() -> [MIDIEndpoint] {
-        endpoints(count: MIDIGetNumberOfSources(), at: MIDIGetSource)
+        // Not Screens' own "Screens" source: listening to it would read
+        // back every cue Screens sends.
+        let own = MIDIOutService.shared.ownSourceUID
+        return endpoints(count: MIDIGetNumberOfSources(), at: MIDIGetSource)
+            .filter { own == 0 || $0.uid != own }
     }
 
     var discoveredDevices: [MIDIDeviceEntry] {

@@ -157,34 +157,65 @@ struct ServicePositionTests {
         #expect(!ServicePosition.isPreServiceSlideshow(id: "a", name: "Announcements", loops: true, preServicePresentationId: "b"))
     }
 
-    @Test func cueTableDefaultsStayClearOfSectionNotes() {
+    @Test func cueTableDefaultsStayClearOfSectionAndActionNotes() {
         let table = LightingCueTable.defaults
         #expect(table.count == 13)
-        #expect(table.allSatisfy { $0.note >= 20 && $0.note <= 127 })
-        #expect(Set(table.map(\.note)).count == table.count)
-        #expect(LightingCueTable.note(for: .walkIn, in: table) == 20)
-        #expect(LightingCueTable.note(for: .song(1), in: table) == 22)
-        #expect(LightingCueTable.note(for: .communion, in: table) == 32)
+        #expect(table.map(\.note) == Array(60...72))
+        #expect(LightingCueTable.note(for: .walkIn, in: table) == 60)
+        #expect(LightingCueTable.note(for: .song(1), in: table) == 62)
+        #expect(LightingCueTable.note(for: .communion, in: table) == 72)
+        // Song sections send 1–10 and the Lightkey Cue action 31–54.
+        #expect(table.allSatisfy { row in !LightingCueTable.reservedNotes.contains { $0.contains(row.note) } })
         #expect(LightingCueTable.effective(nil) == table)
         #expect(LightingCueTable.effective([]) == table)
-        #expect(LightingCueTable.nextFreeNote(in: table) == 33)
+        #expect(LightingCueTable.nextFreeNote(in: table) == 73)
+    }
+
+    @Test func addedCuesNeverTakeAReservedNote() {
+        var table = LightingCueTable.defaults
+        // Everything above the defaults taken: the next free one is below
+        // them, skipping 31–54 and 1–10.
+        table += (73...127).map { LightingCue(position: ServicePosition.custom("C\($0)").key, note: $0) }
+        var handed: [Int] = []
+        // 59–55 and 30–11 are all that's left.
+        for _ in 0..<25 {
+            let note = LightingCueTable.nextFreeNote(in: table)
+            handed.append(note)
+            table.append(LightingCue(position: ServicePosition.custom("N\(note)").key, note: note))
+        }
+        #expect(handed.prefix(5) == [59, 58, 57, 56, 55])
+        #expect(handed[5] == 30)
+        #expect(handed.last == 11)
+        #expect(handed.allSatisfy { note in !LightingCueTable.reservedNotes.contains { $0.contains(note) } })
+        #expect(Set(handed).count == handed.count)
+    }
+
+    @Test func anItemGoesLiveOncePerVisit() {
+        var tracker = LiveItemTracker()
+        // Song 1's next slide doesn't send the cue or run its macros again;
+        // back to Song 1 after Song 2 is a new visit.
+        let keys = ["song1", "song1", "song2", "song1",
+                    LiveItemTracker.preServiceKey("loop"), LiveItemTracker.preServiceKey("loop")]
+        let fresh = keys.map { tracker.wentLive($0) }
+        #expect(fresh == [true, false, true, true, true, false])
+        #expect(tracker.current == "preService|loop")
     }
 
     @Test func laterSongsUseTheLastSongRow() {
         var table = LightingCueTable.defaults
-        #expect(LightingCueTable.note(for: .song(6), in: table) == 26)
-        #expect(LightingCueTable.note(for: .song(9), in: table) == 26)
+        #expect(LightingCueTable.note(for: .song(6), in: table) == 66)
+        #expect(LightingCueTable.note(for: .song(9), in: table) == 66)
         #expect(LightingCueTable.songCount(in: table) == 5)
-        table.append(LightingCue(position: ServicePosition.song(6).key, note: 40))
-        #expect(LightingCueTable.note(for: .song(7), in: table) == 40)
+        table.append(LightingCue(position: ServicePosition.song(6).key, note: 73))
+        #expect(LightingCueTable.note(for: .song(7), in: table) == 73)
         #expect(LightingCueTable.songCount(in: table) == 6)
 
         let index = table.firstIndex { $0.position == "message" }!
         table[index].off = true
         #expect(LightingCueTable.note(for: .message, in: table) == nil)
         #expect(LightingCueTable.note(for: .custom("Prayer"), in: table) == nil)
-        table.append(LightingCue(position: ServicePosition.custom("Prayer").key, note: 41))
-        #expect(LightingCueTable.note(for: .custom("Prayer"), in: table) == 41)
+        table.append(LightingCue(position: ServicePosition.custom("Prayer").key, note: 74))
+        #expect(LightingCueTable.note(for: .custom("Prayer"), in: table) == 74)
         #expect(LightingCueTable.customNames(in: table) == ["Prayer"])
     }
 

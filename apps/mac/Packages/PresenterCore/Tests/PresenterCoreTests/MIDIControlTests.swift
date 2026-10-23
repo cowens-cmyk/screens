@@ -283,3 +283,33 @@ import Testing
     #expect(!resolved.acceptsChannel(ofStatus: 0x90))  
     #expect(ResolvedMIDIDevice(device: MIDIDevice(id: "d2", name: "Y")).acceptsChannel(ofStatus: 0x9F))
 }
+
+@Test func aMessageHeardFromAnthemAndAtScreensInCountsOnce() {
+    var guarding = MIDIInputGuard()
+    let next = MIDIParse.ChannelMessage(status: 0x90, data1: 13, data2: 127)
+    let heard: [(MIDIInputGuard.Path, TimeInterval)] = [
+        (.anthemSource, 10.000), (.screensIn, 10.010),
+        // The other way round, too.
+        (.screensIn, 11.000), (.anthemSource, 11.020),
+        // A second press on the same path is a second press.
+        (.anthemSource, 12.000), (.anthemSource, 12.010),
+        // Past the window it is a new message.
+        (.screensIn, 12.050),
+        // Another device sending the same note isn't Anthem heard twice.
+        (.other, 13.000), (.anthemSource, 13.005),
+    ]
+    let accepted = heard.map { guarding.accept(next, path: $0.0, at: $0.1) }
+    #expect(accepted == [true, false, true, false, true, true, true, true, true])
+}
+
+@Test func screensNeverActsOnWhatItSent() {
+    var guarding = MIDIInputGuard()
+    guarding.noteSent([0x9F, 62, 127], at: 5.0)
+    let cue = MIDIParse.ChannelMessage(status: 0x9F, data1: 62, data2: 127)
+    let other = MIDIParse.ChannelMessage(status: 0x9F, data1: 63, data2: 127)
+    let heard: [(MIDIParse.ChannelMessage, MIDIInputGuard.Path, TimeInterval)] = [
+        (cue, .other, 5.004), (cue, .screensIn, 5.05), (other, .other, 5.05), (cue, .other, 5.2),
+    ]
+    let accepted = heard.map { guarding.accept($0.0, path: $0.1, at: $0.2) }
+    #expect(accepted == [false, false, true, true])
+}

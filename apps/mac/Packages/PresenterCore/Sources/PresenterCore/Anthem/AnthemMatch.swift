@@ -295,11 +295,16 @@ public enum AnthemSongMatch {
         public var mismatches: [Result] { results.filter { $0.status == .mismatch } }
         public var notInScreens: [Result] { results.filter { $0.status == .notInScreens } }
 
-        /// Whether this plan is the one Anthem's setlist is for: most of the
-        /// songs either side has are in both. Keeps last month's plan from
-        /// lighting up because it shares a song.
-        public var followsSetlist: Bool {
-            matched > 0 && matched * 2 >= min(planSongCount, entryCount)
+        /// Whether this plan is the one Anthem's setlist is for. The plan on
+        /// screen, or the next one by date, needs half the songs either side
+        /// has to be in both. Any other plan needs three quarters of its own
+        /// songs and three quarters of Anthem's: next month's plan sharing a
+        /// few songs isn't marked, and isn't rewritten by Match Anthem
+        /// automatically.
+        public func followsSetlist(isCurrentOrNext: Bool) -> Bool {
+            guard matched > 0 else { return false }
+            if isCurrentOrNext { return matched * 2 >= min(planSongCount, entryCount) }
+            return matched * 4 >= planSongCount * 3 && matched * 4 >= entryCount * 3
         }
     }
 
@@ -364,20 +369,72 @@ public enum AnthemSongMatch {
         return text.split(separator: " ").joined(separator: " ")
     }
 
-    /// The arrangement "Match Anthem" leaves on the song: the one named
-    /// Anthem rewritten to `order`, or a new one. An existing arrangement
-    /// with exactly that order is reused instead of adding a copy.
+    /// The arrangement "Match Anthem" gives one plan item. Anthem's order is
+    /// this performance's, so an arrangement another plan item shows (in
+    /// this plan or any other) is never rewritten: an opener and its reprise,
+    /// or the same song next month, keep their own orders.
+    ///
+    /// In turn: an arrangement already in Anthem's order (the item's own
+    /// first); one of Match Anthem's own ("Anthem…") that no other item
+    /// uses, rewritten (the item's own first); else a new one named
+    /// "Anthem", or "Anthem – <plan>" when that name is taken, numbered when
+    /// that is too. The song's default arrangement is never rewritten:
+    /// every item without a pick of its own shows it.
+    ///
+    /// - Parameters:
+    ///   - itemPick: the item's arrangement now.
+    ///   - usedElsewhere: arrangement ids other plan items of this song pick.
+    ///   - planLabel: the plan's date or name, for a new arrangement's name.
     public static func anthemArrangement(
-        order: [String], in arrangements: [Arrangement], newID: String
+        order: [String], in arrangements: [Arrangement], itemPick: String?, defaultID: String?,
+        usedElsewhere: Set<String>, planLabel: String, newID: String
     ) -> (arrangement: Arrangement, isNew: Bool) {
-        if let same = arrangements.first(where: { $0.sectionIds == order }) {
+        let ownFirst = arrangements.filter { $0.id == itemPick } + arrangements.filter { $0.id != itemPick }
+        if let same = ownFirst.first(where: { $0.sectionIds == order }) {
             return (same, false)
         }
-        if var named = arrangements.first(where: { $0.name.caseInsensitiveCompare("Anthem") == .orderedSame }) {
-            named.sectionIds = order
-            return (named, false)
+        if var spare = ownFirst.first(where: {
+            isAnthemArrangement($0) && $0.id != defaultID && !usedElsewhere.contains($0.id)
+        }) {
+            spare.sectionIds = order
+            return (spare, false)
         }
-        return (Arrangement(id: newID, name: "Anthem", sectionIds: order), true)
+        let names = Set(arrangements.map { $0.name.lowercased() })
+        let label = planLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = label.isEmpty ? "Anthem 2" : "Anthem – \(label)"
+        var name = names.contains("anthem") ? base : "Anthem"
+        var number = label.isEmpty ? 2 : 1
+        while names.contains(name.lowercased()) {
+            number += 1
+            name = label.isEmpty ? "Anthem \(number)" : "\(base) \(number)"
+        }
+        return (Arrangement(id: newID, name: name, sectionIds: order), true)
+    }
+
+    /// One Match Anthem made: "Anthem", "Anthem 2", "Anthem – Oct 26".
+    static func isAnthemArrangement(_ arrangement: Arrangement) -> Bool {
+        let name = arrangement.name.lowercased()
+        return name == "anthem" || name.hasPrefix("anthem ")
+    }
+
+    /// The song's arrangements with one set: `arrangement` replaces the one
+    /// with `id` (or is added), nil removes it. Match Anthem and its undo
+    /// touch only that one, so an edit to another arrangement made in
+    /// between survives.
+    public static func setting(
+        _ id: String, to arrangement: Arrangement?, in arrangements: [Arrangement]?
+    ) -> [Arrangement]? {
+        var result = arrangements ?? []
+        if let arrangement {
+            if let index = result.firstIndex(where: { $0.id == id }) {
+                result[index] = arrangement
+            } else {
+                result.append(arrangement)
+            }
+        } else {
+            result.removeAll { $0.id == id }
+        }
+        return result.isEmpty ? nil : result
     }
 }
 
@@ -392,5 +449,29 @@ public enum AnthemCue {
             return next
         }
         return arranged.firstIndex(of: slideID)
+    }
+
+    /// Which plan item a trigger for `presentationID` lands on when Anthem
+    /// didn't say (a network trigger names only the presentation). A song
+    /// sung twice — opener and reprise — must not always land on the first:
+    /// the live item when it is that song; else the next item after the
+    /// live one with that song; else the item paired with the entry Anthem
+    /// says is live; else the first item with that song.
+    ///
+    /// - Parameter items: the plan's items as (id, presentation id), in order.
+    public static func planItem(
+        for presentationID: String, in items: [(id: String, refId: String)],
+        liveItemID: String?, anthemItemID: String?
+    ) -> String? {
+        let songs = items.indices.filter { items[$0].refId == presentationID }
+        guard !songs.isEmpty else { return nil }
+        if let liveItemID, let live = items.firstIndex(where: { $0.id == liveItemID }) {
+            if items[live].refId == presentationID { return liveItemID }
+            if let next = songs.first(where: { $0 > live }) { return items[next].id }
+        }
+        if let anthemItemID, songs.contains(where: { items[$0].id == anthemItemID }) {
+            return anthemItemID
+        }
+        return items[songs[0]].id
     }
 }
