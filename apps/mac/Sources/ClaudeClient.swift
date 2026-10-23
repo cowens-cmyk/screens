@@ -1,6 +1,7 @@
 import Foundation
 import PresenterCore
 import Security
+import SwiftUI
 
 /// Reads sermon notes with Claude. The API key lives in the Keychain.
 enum ClaudeClient {
@@ -19,11 +20,41 @@ enum ClaudeClient {
             }
         }
     }
+}
 
+/// The API key field, shared by Settings › Bible and › Network & API. It reads
+/// the Keychain only when its page is shown (Settings views are built at
+/// launch, and a read there brought up the Keychain prompt before anyone
+/// asked for Claude), and writes only when the key really changes.
+struct ClaudeKeyField: View {
+    @State private var key = ""
+    @State private var loaded: String?
+
+    var body: some View {
+        SecureField("Anthropic API key", text: $key)
+            .textFieldStyle(.roundedBorder)
+            .onAppear {
+                guard loaded == nil else { return }
+                let stored = ClaudeClient.apiKey
+                loaded = stored
+                key = stored
+            }
+            .onChange(of: key) { _, value in
+                guard let loaded, value != loaded else { return }
+                ClaudeClient.apiKey = value
+                self.loaded = value
+            }
+    }
+}
+
+extension ClaudeClient {
     static var apiKey: String {
         get { Keychain.load() ?? "" }
         set { Keychain.save(newValue) }
     }
+}
+
+extension ClaudeClient {
 
     /// Sends the notes (a PDF) and gets the slides back as a structured
     /// outline — the response is constrained to SermonOutline's schema.

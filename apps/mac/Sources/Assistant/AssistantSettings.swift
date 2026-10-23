@@ -26,13 +26,10 @@ enum AssistantPreferences {
 /// Settings › Network & API › Assistant.
 struct AssistantSettingsForm: View {
     @AppStorage(AssistantModel.defaultsKey) private var modelRaw = AssistantModel.opus.rawValue
-    @State private var key = ClaudeClient.apiKey
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SecureField("Anthropic API key", text: $key)
-                .textFieldStyle(.roundedBorder)
-                .onChange(of: key) { _, value in ClaudeClient.apiKey = value }
+            ClaudeKeyField()
             Text("From console.anthropic.com › API Keys. Sermon import uses the same key.")
                 .font(.caption).foregroundStyle(.secondary)
             Picker("Model", selection: $modelRaw) {

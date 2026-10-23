@@ -240,14 +240,11 @@ struct FontFacePicker: View {
 /// Settings › Bible › Sermon import.
 struct SermonImportSettingsForm: View {
     let model: AppModel
-    @State private var key = ClaudeClient.apiKey
     @State private var creatingSeries = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SecureField("Anthropic API key", text: $key)
-                .textFieldStyle(.roundedBorder)
-                .onChange(of: key) { _, value in ClaudeClient.apiKey = value }
+            ClaudeKeyField()
             Text("From console.anthropic.com › API Keys. Reading a week's notes costs a few cents.")
                 .font(.caption).foregroundStyle(.secondary)
             Picker("Current series theme", selection: model.slideBuildingBinding(\.sermonThemeId)) {
