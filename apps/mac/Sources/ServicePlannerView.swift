@@ -396,7 +396,7 @@ struct RunOrderList: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(item.itemKind == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                .layoutPriority(0)
+                .layoutPriority(item.isCountdown == true ? 1 : 0)
             Spacer(minLength: 4)
 
             // A planned song with no presentation in the library: flag it so

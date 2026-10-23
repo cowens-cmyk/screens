@@ -27,7 +27,7 @@ enum HopeStyle {
         startPoint: .top, endPoint: .bottom)
 
     enum ItemKind {
-        case header, song, message, slideshow, video, presentation, audio, other
+        case header, song, message, slideshow, video, presentation, audio, countdown, other
 
         var color: Color {
             switch self {
@@ -37,6 +37,7 @@ enum HopeStyle {
             case .video: lightBlue
             case .presentation: blue
             case .audio: Color.pink
+            case .countdown: amber
             case .header, .other: Color.secondary
             }
         }
@@ -50,6 +51,7 @@ enum HopeStyle {
             case .video: "film.fill"
             case .presentation: "rectangle.on.rectangle"
             case .audio: "waveform"
+            case .countdown: "timer"
             case .other: "questionmark.square.dashed"
             }
         }
@@ -58,6 +60,7 @@ enum HopeStyle {
     /// What kind of item a plan row is, from the item and (when loaded) the
     /// presentation it points to.
     static func kind(of item: ServiceItem, presentation: Presentation?) -> ItemKind {
+        if item.isCountdown == true { return .countdown }
         switch item.itemKind {
         case .header: return .header
         case .media: return .video
