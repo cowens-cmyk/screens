@@ -51,7 +51,7 @@ final class LiveAssist {
     /// Passages built as soon as they're heard, so Show is instant.
     private(set) var prepared: [String: Presentation] = [:]
     /// Puts each newly spoken passage live by itself.
-    var showsAutomatically = false {
+    var showsAutomatically = true {
         didSet { UserDefaults.standard.set(showsAutomatically, forKey: "liveAssist.sermon.autoShow") }
     }
 
@@ -85,7 +85,8 @@ final class LiveAssist {
         sermonDeviceUID = UserDefaults.standard.string(forKey: "liveAssist.sermon.deviceUID") ?? ""
         let sermonStored = UserDefaults.standard.object(forKey: "liveAssist.sermon.channel") as? Int ?? -1
         sermonChannel = sermonStored >= 0 ? sermonStored : nil
-        showsAutomatically = UserDefaults.standard.bool(forKey: "liveAssist.sermon.autoShow")
+        // On unless turned off: a heard passage should just appear.
+        showsAutomatically = UserDefaults.standard.object(forKey: "liveAssist.sermon.autoShow") as? Bool ?? true
         transcriber.onText = { [weak self] text, isFinal in self?.heard(text, isFinal: isFinal) }
         transcriber.onLevel = { [weak self] level in self?.level = level }
         transcriber.onState = { [weak self] state in self?.update(state) }

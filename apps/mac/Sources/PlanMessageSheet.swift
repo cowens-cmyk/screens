@@ -11,6 +11,7 @@ struct PlanMessageSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var creatingSeries = false
+    @State private var importingNotes = false
 
     private var plan: Service? { model.resident.services.value(planID) }
     private var seriesID: String { plan?.sermonThemeId ?? model.slideBuilding.sermonThemeId ?? "" }
@@ -41,6 +42,12 @@ struct PlanMessageSheet: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Message") {
+                    HStack {
+                        Text("Build the message from the pastor's notes in the series' designs.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Import Notes…") { importingNotes = true }
+                    }
                     if let message {
                         LabeledContent("Presentation", value: message.name)
                         Stepper(value: Binding(
@@ -75,6 +82,7 @@ struct PlanMessageSheet: View {
         .padding(20)
         .frame(width: 520, height: 560)
         .sheet(isPresented: $creatingSeries) { SermonSeriesSheet(model: model) }
+        .sheet(isPresented: $importingNotes) { SermonImportSheet(model: model, planID: planID) }
     }
 
     private func check(_ screen: String, ok: Bool, detail: String) -> some View {

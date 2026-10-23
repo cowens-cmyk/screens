@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 131,
+  "schemaVersion": 132,
   "types": {
     "SlideObjectKind": {
       "kind": "enum",
@@ -2199,6 +2199,11 @@
           "name": "mxuSongKeyApplied",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "isCountdown",
+          "type": "bool",
+          "optional": true
         }
       ]
     },
@@ -2721,6 +2726,11 @@
           "name": "streamDesigns",
           "type": "list:StreamDesign",
           "optional": true
+        },
+        {
+          "name": "isSermonSeries",
+          "type": "bool",
+          "optional": true
         }
       ]
     },
@@ -3086,7 +3096,8 @@
         "setStreamMode",
         "setStageMode",
         "listenStart",
-        "listenStop"
+        "listenStop",
+        "fireServiceItem"
       ]
     },
     "MIDIMessageKind": {
@@ -3294,6 +3305,11 @@
         },
         {
           "name": "serviceId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "serviceItemId",
           "type": "string",
           "optional": true
         }

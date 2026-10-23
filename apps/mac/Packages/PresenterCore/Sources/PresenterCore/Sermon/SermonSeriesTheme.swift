@@ -1,9 +1,9 @@
 import Foundation
 
 /// A sermon series' look, turned into a theme: full-screen Title, Point,
-/// Scripture and Quote designs for the room and a matching lower third for
-/// each, tied together for the livestream. Built once per series from the
-/// artwork made in Claude Design.
+/// Scripture, Point + Scripture and Worship designs for the room, and a
+/// matching lower third for each but Title, tied together for the
+/// livestream. Built once per series from its artwork.
 public struct SermonSeriesStyle: Sendable {
     public var name: String
     /// Media ids for the series art (no text in them).
@@ -48,6 +48,14 @@ public enum SermonSeriesTheme {
     public static let pointCategory = "Sermon Points"
     public static let scriptureCategory = "Bible"
     public static let pointScriptureCategory = "Point + Scripture"
+    public static let titleCategory = "Title"
+    /// Songs ask for "Lyrics"; ThemeCategories answers that with Worship.
+    public static let worshipCategory = "Worship"
+    /// Text boxes on the designs. Worship's is "Lyrics", the name every
+    /// song slide's text box has, so lyrics land in it.
+    static let titleText = "Title"
+    static let subtitleText = "Subtitle"
+    static let lyricsText = "Lyrics"
 
     public static func make(_ style: SermonSeriesStyle, id: String = UUID().uuidString) -> Theme {
         func text(_ name: String, _ sample: String, x: Double, y: Double, w: Double, h: Double,
@@ -114,13 +122,190 @@ public enum SermonSeriesTheme {
             text("Reference", "John 3:16 ESV", x: 80, y: 1012, w: 1760, h: 38, size: 22, bold: true, accent: true, onBar: true, align: .left),
         ] + bar(), folder: thirds)
 
+        // Title and Worship take the Point design's look, the same way an
+        // older series is brought up to date, so both paths agree.
+        let title = titleDesign(from: point, accent: scripture)
+        let worship = worshipDesign(from: point)
+        let worshipLower = worshipLowerThird(from: pointLower)
+
         let ties = [(pointCategory, pointLower), (scriptureCategory, scriptureLower),
-                    (pointScriptureCategory, pointScriptureLower)]
+                    (pointScriptureCategory, pointScriptureLower), (worshipCategory, worshipLower)]
         return Theme(
             id: id, name: style.name, fontFamily: style.font, fontSize: 72, textColorHex: style.textColor,
             backgroundColorHex: "#000000FF",
-            slides: [point, scripture, pointScripture, pointLower, scriptureLower, pointScriptureLower],
-            streamDesigns: ties.map { StreamDesign(category: $0.0, mode: .design, themeId: id, slideId: $0.1.id) })
+            // Point stays first: it's the design a slide with no category falls back to.
+            slides: [point, scripture, pointScripture, title, worship,
+                     pointLower, scriptureLower, pointScriptureLower, worshipLower],
+            streamDesigns: [titleRoute]
+                + ties.map { StreamDesign(category: $0.0, mode: .design, themeId: id, slideId: $0.1.id) },
+            isSermonSeries: true)
+    }
+
+    /// The title slide leaves the camera clear on the livestream: the
+    /// message title over the pastor would only cover the shot.
+    static var titleRoute: StreamDesign { StreamDesign(category: titleCategory, mode: .clear) }
+
+    // MARK: Series
+
+    /// A series theme: flagged when made, or (for series made before the
+    /// flag) one with all three message designs.
+    public static func isSeries(_ theme: Theme) -> Bool {
+        if theme.isSermonSeries == true { return true }
+        let names = Set(fullScreen(theme.slides ?? []).map { $0.name.lowercased() })
+        return [pointCategory, scriptureCategory, pointScriptureCategory].allSatisfy { names.contains($0.lowercased()) }
+    }
+
+    /// A series theme with any missing Title and Worship designs, Worship
+    /// lower third and their livestream routes added in the series' own
+    /// look (taken from its Point design), and flagged as a series. Nil when
+    /// the theme isn't a series or already has everything, so running it
+    /// again changes nothing.
+    public static func upgraded(_ theme: Theme) -> Theme? {
+        guard isSeries(theme) else { return nil }
+        var result = theme
+        var slides = theme.slides ?? []
+        let full = fullScreen(slides)
+        let lower = slides.filter { isLowerThird($0) }
+        let point = full.first { $0.name.caseInsensitiveCompare(pointCategory) == .orderedSame } ?? full.first
+        let scripture = full.first { $0.name.caseInsensitiveCompare(scriptureCategory) == .orderedSame }
+
+        if let point, !has(titleCategory, in: full) {
+            slides.append(titleDesign(from: point, accent: scripture))
+        }
+        if let point, !has(worshipCategory, in: full) {
+            slides.append(worshipDesign(from: point))
+        }
+        let worshipLowerName = "\(worshipCategory) (Lower Third)"
+        var worshipLower = lower.first { $0.name.caseInsensitiveCompare(worshipLowerName) == .orderedSame }
+        if worshipLower == nil,
+           let pointLower = lower.first(where: {
+               $0.name.caseInsensitiveCompare("\(pointCategory) (Lower Third)") == .orderedSame
+           }) {
+            let made = worshipLowerThird(from: pointLower)
+            slides.append(made)
+            worshipLower = made
+        }
+        result.slides = slides
+
+        var routes = theme.streamDesigns ?? []
+        func routed(_ category: String) -> Bool {
+            routes.contains { $0.category.caseInsensitiveCompare(category) == .orderedSame }
+        }
+        if !routed(titleCategory) { routes.insert(titleRoute, at: 0) }
+        if !routed(worshipCategory), let worshipLower {
+            routes.append(StreamDesign(category: worshipCategory, mode: .design, themeId: theme.id, slideId: worshipLower.id))
+        }
+        result.streamDesigns = routes
+        result.isSermonSeries = true
+        return result == theme ? nil : result
+    }
+
+    static func isLowerThird(_ slide: Slide) -> Bool {
+        (slide.folder ?? "").caseInsensitiveCompare(BasicTemplates.lowerThirds) == .orderedSame
+    }
+
+    static func fullScreen(_ slides: [Slide]) -> [Slide] {
+        slides.filter { !isLowerThird($0) }
+    }
+
+    private static func has(_ category: String, in slides: [Slide]) -> Bool {
+        slides.contains { $0.name.caseInsensitiveCompare(category) == .orderedSame }
+    }
+
+    // MARK: Designs taken from Point
+
+    /// The message title, large, in the Point's box, with the series name or
+    /// speaker beneath it in the scripture reference's accent style.
+    static func titleDesign(from point: Slide, accent: Slide?) -> Slide {
+        let source = pointText(in: point)
+        let frame = box(of: source)
+        let size = source?.textStyle?.fontSize ?? 90
+        let titleHeight = frame.h * 0.75
+        var title = restyled(source, name: titleText, sample: "Message Title", size: size * 1.15, keepCaps: true)
+        place(&title, x: frame.x, y: frame.y, w: frame.w, h: titleHeight)
+        let reference = accent?.objects.first { $0.objectKind == .text && $0.name == "Reference" }
+        var subtitle = restyled(reference ?? source, name: subtitleText, sample: "Series Name", size: size * 0.45, keepCaps: true)
+        subtitle.textStyle?.horizontalAlignment = source?.textStyle?.horizontalAlignment
+        place(&subtitle, x: frame.x, y: frame.y + titleHeight, w: frame.w, h: max(60, frame.h - titleHeight))
+        return derived(from: point, name: titleCategory, texts: [title, subtitle])
+    }
+
+    /// Song lyrics in the Point's box and face, in sentence case: lyrics in
+    /// capitals are hard to sing from.
+    static func worshipDesign(from point: Slide) -> Slide {
+        let source = pointText(in: point)
+        let frame = box(of: source)
+        var lyrics = restyled(source, name: lyricsText, sample: sampleLyrics,
+                              size: (source?.textStyle?.fontSize ?? 90) * 0.9, keepCaps: false)
+        place(&lyrics, x: frame.x, y: frame.y, w: frame.w, h: frame.h)
+        return derived(from: point, name: worshipCategory, texts: [lyrics])
+    }
+
+    /// The Point lower third's bar with lyrics on it.
+    static func worshipLowerThird(from pointLower: Slide) -> Slide {
+        let source = pointText(in: pointLower)
+        let frame = box(of: source)
+        var lyrics = restyled(source, name: lyricsText, sample: sampleLyrics,
+                              size: (source?.textStyle?.fontSize ?? 50) * 0.9, keepCaps: false)
+        place(&lyrics, x: frame.x, y: frame.y, w: frame.w, h: frame.h)
+        return derived(from: pointLower, name: "\(worshipCategory) (Lower Third)", texts: [lyrics])
+    }
+
+    private static let sampleLyrics = "Amazing grace how sweet the sound\nThat saved a wretch like me"
+
+    private static func pointText(in slide: Slide) -> SlideObject? {
+        let texts = slide.objects.filter { $0.objectKind == .text }
+        return texts.first { $0.name == "Point" } ?? texts.first
+    }
+
+    private static func box(of object: SlideObject?) -> (x: Double, y: Double, w: Double, h: Double) {
+        (object?.x ?? 160, object?.y ?? 300, object?.width ?? 1600, object?.height ?? 480)
+    }
+
+    private static func restyled(
+        _ source: SlideObject?, name: String, sample: String, size: Double, keepCaps: Bool
+    ) -> SlideObject {
+        var style = source?.textStyle ?? TextStyle(horizontalAlignment: .center, verticalAlignment: .middle)
+        style.fontSize = size.rounded()
+        style.minFontSize = (size * 0.5).rounded()
+        style.autoShrink = true
+        if !keepCaps {
+            style.textTransform = nil
+            style.tracking = nil
+        } else if style.textTransform == .uppercase {
+            style.tracking = (size * 0.08).rounded()
+        }
+        var object = source ?? SlideObject(id: "", objectKind: .text, name: name, text: sample)
+        object.id = UUID().uuidString
+        object.name = name
+        object.text = sample
+        object.textStyle = style
+        return object
+    }
+
+    private static func place(_ object: inout SlideObject, x: Double, y: Double, w: Double, h: Double) {
+        object.x = x
+        object.y = y
+        object.width = w
+        object.height = h
+    }
+
+    /// A copy of a design with its text boxes swapped for new ones and
+    /// everything else (series art, bar) kept beneath, under fresh ids.
+    private static func derived(from design: Slide, name: String, texts: [SlideObject]) -> Slide {
+        let rest = design.objects.filter { $0.objectKind != .text }.map { object -> SlideObject in
+            var copy = object
+            copy.id = UUID().uuidString
+            return copy
+        }
+        var slide = design
+        slide.id = UUID().uuidString
+        slide.name = name
+        slide.objects = texts + rest
+        // Animation order and history name the old design's objects.
+        slide.animationOrder = nil
+        slide.history = nil
+        return slide
     }
 
     /// The prompt to paste into Claude Design for a new series' artwork.
@@ -128,11 +313,33 @@ public enum SermonSeriesTheme {
         """
         Design the slide artwork for a church sermon series called "\(series)". I need two images, both 1920×1080, with NO words on them (my presentation app adds the text):
 
-        1. Background — used behind three full-screen slide types: a sermon point (one large line), a scripture passage (a paragraph of verse text plus its reference), and a point with its supporting verse. Keep the middle calm and dark enough for large white text.
+        1. Background — used behind five full-screen slide types: the message title, a sermon point (one large line), a scripture passage (a paragraph of verse text plus its reference), a point with its supporting verse, and song lyrics. Keep the middle calm and dark enough for large white text.
         2. Lower third — a transparent PNG with only a bar or shape across the bottom (roughly the bottom 260 pixels) for text to sit on over a camera shot of the pastor. Everything else fully transparent.
 
         Also tell me the heading, body and scripture fonts (with weights), whether headings are all caps, and as hex codes: the text and accent colors on the background, and the text and accent colors on the lower-third bar.
         Export 1 as JPG and 2 as PNG.
         """
+    }
+}
+
+public extension Library {
+
+    /// Brings every sermon series in the library up to the five designs
+    /// (see SermonSeriesTheme.upgraded). Other themes are left alone.
+    @discardableResult
+    func upgradeSermonSeriesThemes() throws -> Int {
+        var upgraded = 0
+        for id in try store.ids(of: .theme) {
+            let document = try open(Theme.self, id: id)
+            guard let theme = SermonSeriesTheme.upgraded(document.value) else { continue }
+            try document.update { stored in
+                stored.slides = theme.slides
+                stored.streamDesigns = theme.streamDesigns
+                stored.isSermonSeries = true
+            }
+            try save(document)
+            upgraded += 1
+        }
+        return upgraded
     }
 }

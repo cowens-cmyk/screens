@@ -35,7 +35,7 @@ public struct SeriesExport: Codable, Equatable, Sendable {
         """
         Export the "\(series)" sermon series for my presentation app as one ZIP containing exactly these three files:
 
-        1. background.png — 1920×1080, the series background with NO words on it. Used behind a sermon point (one large line), a scripture passage (a paragraph plus its reference) and a point with its verse, so keep the middle calm enough for large text.
+        1. background.png — 1920×1080, the series background with NO words on it. Used behind the message title, a sermon point (one large line), a scripture passage (a paragraph plus its reference), a point with its verse and song lyrics, so keep the middle calm enough for large text.
         2. lower-third.png — 1920×1080 transparent PNG: only a bar or shape in the series style across the bottom ~200 pixels (it may fade upward a little), for text over a camera shot. Everything else fully transparent.
         3. screens-theme.json — exactly this shape, filled in:
         {

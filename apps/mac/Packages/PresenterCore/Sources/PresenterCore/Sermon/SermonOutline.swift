@@ -3,6 +3,8 @@ import Foundation
 /// What Claude reads out of a week's sermon notes: the slides, in order.
 public struct SermonOutline: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
+        /// The message title, shown before the message starts.
+        case title
         /// A point on its own.
         case point
         /// A passage, read on screen.
@@ -10,8 +12,9 @@ public struct SermonOutline: Codable, Equatable, Sendable {
         /// A point with the verse that supports it.
         case pointScripture
 
-        public var title: String {
+        public var label: String {
             switch self {
+            case .title: "Title"
             case .point: "Point"
             case .scripture: "Scripture"
             case .pointScripture: "Point + Scripture"
@@ -22,10 +25,12 @@ public struct SermonOutline: Codable, Equatable, Sendable {
     public struct Item: Codable, Equatable, Sendable, Identifiable {
         public var id = UUID()
         public var kind: Kind
-        /// The point's words. For scripture, the reference as written.
+        /// The point's words. For scripture, the reference as written. For
+        /// the title, the message title.
         public var text: String
         /// The Bible reference to look up (scripture and point + scripture);
-        /// empty for a plain point.
+        /// empty for a plain point. For the title, the line beneath it
+        /// (series name, speaker), which the schema has no other field for.
         public var reference: String
 
         enum CodingKeys: String, CodingKey { case kind, text, reference }
@@ -75,7 +80,8 @@ public struct SermonOutline: Codable, Equatable, Sendable {
     public static let instructions = """
     You turn a pastor's sermon notes into the slides shown during the message at a church service.
 
-    Return the slides in the order they come up in the sermon. Every slide is one of three kinds:
+    Return the slides in the order they come up in the sermon. Every slide is one of four kinds:
+    - "title": exactly one, first. text is the message title. reference is the series name and the speaker if the notes give them, joined with " · " (e.g. "God's Promise · Pastor Dan"), else an empty string.
     - "point": a main point or sub-point the congregation should see. text is the point in the pastor's wording, trimmed of filler (fill-in-the-blank points: write them with the blank filled in). reference is empty.
     - "scripture": a Bible passage the notes ask to read or show. reference is the passage as a reference, e.g. "Genesis 32:22-32" or "Romans 8:28"; text repeats it. Don't write out verse text — the app looks it up.
     - "pointScripture": a point the notes tie directly to one short verse (one or two verses). text is the point, reference is the verse.

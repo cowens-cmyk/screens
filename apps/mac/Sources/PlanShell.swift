@@ -26,6 +26,9 @@ struct PlanShell: View {
     @State private var songSlideEditor = false
     @State private var messagePlanID: String?
     @State private var scriptureShown = false
+    /// The plan whose message notes are being imported.
+    @State private var notesPlanID: String?
+    @State private var schedulePlanID: String?
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -99,6 +102,7 @@ struct PlanShell: View {
             // room; Present and Schedule bring it back.
             .onChange(of: modeRaw, initial: true) { syncSidebar() }
             .onChange(of: itemID) { syncSidebar() }
+            .onChange(of: model.selectedEntryID) { syncSidebar() }
             .navigationTitle(model.currentServiceID.flatMap { model.resident.services.value($0)?.name } ?? "Screens")
         }
         .toolbar { toolbar }
@@ -115,6 +119,12 @@ struct PlanShell: View {
         .environment(\.runOnly, runOnly)
         .sheet(item: Binding(get: { messagePlanID.map(IdentifiedID.init) }, set: { messagePlanID = $0?.id })) { plan in
             PlanMessageSheet(model: model, planID: plan.id)
+        }
+        .sheet(item: Binding(get: { notesPlanID.map(IdentifiedID.init) }, set: { notesPlanID = $0?.id })) { plan in
+            SermonImportSheet(model: model, planID: plan.id)
+        }
+        .sheet(item: Binding(get: { schedulePlanID.map(IdentifiedID.init) }, set: { schedulePlanID = $0?.id })) { plan in
+            ScheduleServiceSheet(model: model, planID: plan.id)
         }
         .sheet(isPresented: $scriptureShown) {
             ScriptureSheet(model: model, render: render) { id in addToPlan(id) }
@@ -137,10 +147,12 @@ struct PlanShell: View {
             Task { await addMedia(urls) }
         }
         .animation(HopeMotion.ui(reduced: reduceMotion), value: model.currentServiceID)
-        .onChange(of: model.currentServiceID) { _, _ in itemID = nil }
+        .onChange(of: model.currentServiceID) { _, _ in itemID = nil; ensureCountdowns() }
+        .onChange(of: plans.upcoming.map(\.id)) { ensureCountdowns() }
         .onChange(of: itemID) { _, _ in songSlideEditor = false }
         .task {
             await model.resident.ready([.service])
+            ensureCountdowns()
             // A plan remembered from a library that's since been wiped.
             if let id = model.currentServiceID, model.resident.services.value(id) == nil {
                 model.currentServiceID = nil
@@ -354,7 +366,7 @@ struct PlanShell: View {
                         deck: { addPresentation(planID, kind: .deck) },
                         slideshow: { addPresentation(planID, kind: .slideshow) },
                         media: { addingVideo = true },
-                        message: { addPresentation(planID, kind: .message) }))
+                        message: { notesPlanID = planID }))
             }
         } else {
             HopeEmptyState(title: "No Plan", symbol: "list.bullet.rectangle.portrait",
@@ -463,7 +475,16 @@ struct PlanShell: View {
             }
         }
         ToolbarItemGroup(placement: .primaryAction) {
-            if !runOnly { bibleMenu }
+            if !runOnly {
+                Button {
+                    schedulePlanID = model.currentServiceID
+                } label: {
+                    Label("Schedule Service", systemImage: "calendar.badge.clock")
+                }
+                .disabled(model.currentServiceID == nil)
+                .help("When this service starts and when its countdown starts")
+                bibleMenu
+            }
             // Everything not used every minute of a service lives in one menu.
             Menu {
                 if let planID = model.currentServiceID, !runOnly {
@@ -485,13 +506,30 @@ struct PlanShell: View {
         }
     }
 
+    // MARK: Countdown
+
+    /// Every upcoming service opens with a countdown: a plan without one gets
+    /// an empty Countdown item first, to be given this week's video.
+    private func ensureCountdowns() {
+        guard !runOnly else { return }
+        for plan in plans.upcoming {
+            guard let ensured = ServiceCountdown.ensuringCountdown(plan) else { continue }
+            let countdown = ensured.items[0]
+            model.updateService(plan.id) { service in
+                guard ServiceCountdown.item(in: service) == nil else { return }
+                service.items.insert(countdown, at: 0)
+            }
+        }
+    }
+
     // MARK: Bible
 
     /// Click to add a passage; the arrow holds listening and the Bible theme,
     /// which can change while a passage is up.
     private var bibleMenu: some View {
         let assist = LiveAssist.shared
-        let current = model.slideBuilding.scriptureThemeId
+        // Unset means the built-in Scripture theme, which is what new passages use.
+        let current = model.slideBuilding.scriptureThemeId ?? BasicTemplates.scriptureThemeID
         return Menu {
             Button("Add Scripture…") { scriptureShown = true }
             Divider()

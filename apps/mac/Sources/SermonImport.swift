@@ -4,13 +4,24 @@ import SlideScene
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Import Sermon: drop the week's notes (PDF or Pages), Claude lists the
-/// slides, you check them, and they're built with the series theme into the
-/// presentation you choose.
+/// Import Sermon: pick the series, drop the week's notes (PDF or Pages),
+/// Claude lists the slides, you check them, and they're built with the
+/// series' designs. Opened for a plan, the result becomes that plan's
+/// message; otherwise it goes into the presentation you choose.
 struct SermonImportSheet: View {
     let model: AppModel
     var target: SlideTarget?
+    /// The plan the message is for; nil when imported from the library.
+    var planID: String?
     let onCreated: (String) -> Void
+
+    init(model: AppModel, target: SlideTarget? = nil, planID: String? = nil,
+         onCreated: @escaping (String) -> Void = { _ in }) {
+        self.model = model
+        self.target = target
+        self.planID = planID
+        self.onCreated = onCreated
+    }
 
     @Environment(\.dismiss) private var dismiss
     @State private var fileName = ""
@@ -23,14 +34,43 @@ struct SermonImportSheet: View {
     @State private var replaces = true
     @State private var addToService = true
     @State private var dropping = false
-    /// The series theme being designed after the notes are read.
+    /// The series the slides are built with.
+    @State private var seriesID = ""
+    /// Set once someone picks a series (or the plan already has one), so
+    /// the series named in the notes never overrides it.
+    @State private var seriesPicked = false
+    /// The series theme being designed from the notes.
     @State private var designing: String?
+    @State private var seriesLoaded = false
 
-    private var seriesThemeID: String { model.slideBuilding.sermonThemeId ?? "" }
+    /// The picker's choice that designs a new series from the notes.
+    private static let newSeries = "new-series-from-notes"
+
+    private var plan: Service? { planID.flatMap { model.resident.services.value($0) } }
+
+    /// Only series themes: the message designs live there.
+    private var seriesEntries: [LibraryIndex.Entry] {
+        model.entries(of: .theme).filter { entry in
+            model.theme(entry.id).map(SermonSeriesTheme.isSeries) == true
+        }
+    }
+
+    /// The series the notes name, when nothing in the library is called that.
+    private var unknownSeries: String? {
+        guard let name = outline?.series.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+              matchingSeries(name) == nil else { return nil }
+        return name
+    }
+
+    private var canBuild: Bool {
+        outline?.slides.isEmpty == false && !seriesID.isEmpty && seriesID != Self.newSeries
+            && !building && designing == nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Import Sermon").font(.headline)
+            Text(plan.map { "Import Message Notes for \($0.name)" } ?? "Import Message Notes").font(.headline)
+            seriesRow
             if outline == nil {
                 dropZone
             } else {
@@ -40,27 +80,30 @@ struct SermonImportSheet: View {
             if let designing {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text("Designing the \(designing) theme…").font(.caption).foregroundStyle(.secondary)
+                    Text("Designing the \(designing) series…").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            Form {
-                Picker("Series theme", selection: model.slideBuildingBinding(\.sermonThemeId)) {
-                    Text("Choose…").tag("")
-                    ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
+            if let plan {
+                Text(planMessageID(in: plan) == nil
+                     ? "The message goes at the end of \(plan.name)."
+                     : "The message replaces the one in \(plan.name).")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Form {
+                    Picker("Put slides in", selection: $destination) {
+                        Text("A new presentation").tag("")
+                        Divider()
+                        ForEach(model.entries(of: .presentation), id: \.id) { Text($0.name).tag($0.id) }
+                    }
+                    if !destination.isEmpty {
+                        Toggle("Replace that presentation's slides", isOn: $replaces)
+                    } else {
+                        AddToCurrentServiceToggle(model: model, isOn: $addToService)
+                    }
                 }
-                Picker("Put slides in", selection: $destination) {
-                    Text("A new presentation").tag("")
-                    Divider()
-                    ForEach(model.entries(of: .presentation), id: \.id) { Text($0.name).tag($0.id) }
-                }
-                if !destination.isEmpty {
-                    Toggle("Replace that presentation's slides", isOn: $replaces)
-                } else {
-                    AddToCurrentServiceToggle(model: model, isOn: $addToService)
-                }
+                .formStyle(.grouped)
+                .frame(height: destination.isEmpty && model.currentServiceID == nil ? 80 : 110)
             }
-            .formStyle(.grouped)
-            .frame(height: destination.isEmpty && model.currentServiceID == nil ? 120 : 150)
             HStack {
                 if outline != nil {
                     Button("Start Over") { outline = nil; fileName = "" }
@@ -69,18 +112,37 @@ struct SermonImportSheet: View {
                 Button("Cancel") { dismiss() }
                 Button(building ? "Building…" : "Build Slides") { Task { await build() } }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(outline?.slides.isEmpty != false || seriesThemeID.isEmpty || building || designing != nil)
+                    .disabled(!canBuild)
             }
         }
         .padding(16)
-        .frame(width: 640, height: 640)
+        .frame(width: 640, height: 660)
         .onAppear { destination = target?.presentationID ?? "" }
+        .task { await loadSeries() }
+    }
+
+    private var seriesRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("Series", selection: Binding(get: { seriesID }, set: pickSeries)) {
+                Text(seriesLoaded ? "Choose…" : "Loading…").tag("")
+                ForEach(seriesEntries, id: \.id) { Text($0.name).tag($0.id) }
+                if outline != nil {
+                    Divider()
+                    Text("New Series from These Notes").tag(Self.newSeries)
+                }
+            }
+            .disabled(designing != nil)
+            if seriesID.isEmpty, let unknownSeries {
+                Text("The notes name the series “\(unknownSeries)”, which isn't in the library. Choose New Series from These Notes to design it.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var dropZone: some View {
         VStack(spacing: 10) {
             Image(systemName: "doc.text").font(.system(size: 34)).foregroundStyle(.secondary)
-            Text(reading ? "Claude is reading \(fileName)…" : "Drop the sermon notes here (PDF or Pages)")
+            Text(reading ? "Claude is reading \(fileName)…" : "Drop the message notes here (PDF or Pages)")
                 .foregroundStyle(.secondary)
             if reading { ProgressView().controlSize(.small) } else {
                 Button("Choose File…", action: choose)
@@ -106,15 +168,23 @@ struct SermonImportSheet: View {
                 ForEach(Binding(get: { outline?.slides ?? [] }, set: { outline?.slides = $0 })) { $item in
                     HStack(alignment: .top) {
                         Picker("", selection: $item.kind) {
-                            ForEach(SermonOutline.Kind.allCases, id: \.self) { Text($0.title).tag($0) }
+                            ForEach(SermonOutline.Kind.allCases, id: \.self) { Text($0.label).tag($0) }
                         }
                         .labelsHidden()
                         .frame(width: 150)
                         VStack(alignment: .leading, spacing: 4) {
-                            if item.kind != .scripture {
+                            switch item.kind {
+                            case .title:
+                                TextField("Message title", text: $item.text, axis: .vertical)
+                                TextField("Series or speaker", text: $item.reference)
+                                    .foregroundStyle(.secondary)
+                            case .point:
                                 TextField("Point", text: $item.text, axis: .vertical)
-                            }
-                            if item.kind != .point {
+                            case .scripture:
+                                TextField("Reference, e.g. Romans 8:28", text: $item.reference)
+                                    .foregroundStyle(.secondary)
+                            case .pointScripture:
+                                TextField("Point", text: $item.text, axis: .vertical)
                                 TextField("Reference, e.g. Romans 8:28", text: $item.reference)
                                     .foregroundStyle(.secondary)
                             }
@@ -130,6 +200,33 @@ struct SermonImportSheet: View {
             }
         }
         .frame(minHeight: 300)
+    }
+
+    /// Fills the series list, then starts on the plan's series, else the
+    /// last one used.
+    private func loadSeries() async {
+        await model.themesFilled(model.entries(of: .theme).map(\.id))
+        seriesLoaded = true
+        guard seriesID.isEmpty else { return }
+        let isSeries = { (id: String) in model.theme(id).map(SermonSeriesTheme.isSeries) == true }
+        if let id = plan?.sermonThemeId, isSeries(id) {
+            seriesID = id
+            seriesPicked = true
+        } else if let id = model.slideBuilding.sermonThemeId, isSeries(id) {
+            seriesID = id
+        }
+    }
+
+    private func pickSeries(_ id: String) {
+        seriesPicked = true
+        seriesID = id
+        if id == Self.newSeries, let outline { Task { await designSeries(for: outline) } }
+    }
+
+    private func matchingSeries(_ name: String) -> String? {
+        let wanted = SeriesGenerator.normalized(name)
+        guard !wanted.isEmpty else { return nil }
+        return seriesEntries.first { SeriesGenerator.normalized($0.name) == wanted }?.id
     }
 
     private func choose() {
@@ -150,47 +247,71 @@ struct SermonImportSheet: View {
             let read = try await ClaudeClient.outline(fromPDF: pdf, fileName: url.lastPathComponent)
             outline = read
             error = nil
-            reading = false
-            await useSeriesTheme(for: read)
+            // The notes' series only fills in a choice nobody has made.
+            if !seriesPicked, let id = matchingSeries(read.series) { seriesID = id }
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    /// Each series gets its own theme: reuse the one already made for the
-    /// series the notes name, or have Claude design it now.
-    private func useSeriesTheme(for outline: SermonOutline) async {
-        let series = outline.series.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !series.isEmpty else { return }
-        if let id = SeriesGenerator.existingTheme(for: series, model: model) {
-            model.updateSlideBuilding { $0.sermonThemeId = id }
+    /// Has Claude design a series from the notes' series name (or the
+    /// message title when they name none), then picks it.
+    private func designSeries(for outline: SermonOutline) async {
+        let named = outline.series.trimmingCharacters(in: .whitespacesAndNewlines)
+        let series = named.isEmpty ? outline.title.trimmingCharacters(in: .whitespacesAndNewlines) : named
+        guard !series.isEmpty else {
+            error = "The notes don't name a series. Make one with New Series… in the plan's Message & Series."
+            seriesID = ""
             return
         }
         designing = series
         defer { designing = nil }
         do {
-            let id = try await SeriesGenerator.generate(series: series, hint: outline.title, model: model)
-            model.updateSlideBuilding { $0.sermonThemeId = id }
+            seriesID = try await SeriesGenerator.generate(series: series, hint: outline.title, model: model)
+            error = nil
         } catch {
-            self.error = "Couldn't design the \(series) theme: \(error.localizedDescription) Pick a theme below instead."
+            seriesID = ""
+            self.error = "Couldn't design the \(series) series: \(error.localizedDescription)"
         }
     }
 
+    private func planMessageID(in plan: Service) -> String? {
+        PlanMessage.itemIndex(in: plan) { id in
+            model.presentation(id).map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
+        }.map { plan.items[$0].refId }
+    }
+
     private func build() async {
-        guard let outline, !seriesThemeID.isEmpty else { return }
+        guard let outline, canBuild else { return }
+        let seriesID = seriesID
         building = true
         defer { building = false }
-        await model.themesFilled([seriesThemeID])
-        let theme = model.theme(seriesThemeID)
+        await model.themesFilled([seriesID])
+        var theme = model.theme(seriesID)
+        // A series that missed the launch upgrade (restored or synced in
+        // later) gets its Title and Worship designs now.
+        if let current = theme, let upgraded = SermonSeriesTheme.upgraded(current) {
+            let designs = upgraded.slides
+            let routes = upgraded.streamDesigns
+            model.updateTheme(seriesID) { stored in
+                stored.slides = designs
+                stored.streamDesigns = routes
+                stored.isSermonSeries = true
+            }
+            theme = upgraded
+        }
+        // The next import starts on this series.
+        model.updateSlideBuilding { $0.sermonThemeId = seriesID }
         let slides = await SermonSlides.build(outline, theme: theme)
         guard !slides.isEmpty else { error = "No slides to build."; return }
 
+        if let planID {
+            await placeInPlan(planID, slides: slides, title: outline.title, seriesID: seriesID)
+            return
+        }
         if destination.isEmpty {
-            var presentation = Presentation(
-                id: UUID().uuidString, name: outline.title.isEmpty ? "Message" : outline.title,
-                presentationKind: .deck, themeId: seriesThemeID,
-                folder: model.newPlacement.folder(for: .presentation), slides: slides)
-            presentation.category = PresentationTypes.sermon
+            var presentation = newMessage(slides: slides, title: outline.title, seriesID: seriesID)
+            presentation.folder = model.newPlacement.folder(for: .presentation)
             model.createInDrive(presentation)
             AddToCurrentServiceToggle.add(presentation.id, model: model, if: addToService)
             dismiss()
@@ -201,7 +322,7 @@ struct SermonImportSheet: View {
         let deckTheme = (try? await model.client.loadValue(Presentation.self, id: id))?.themeId ?? ""
         let placed = slides.map { slide -> Slide in
             var slide = slide
-            if deckTheme != seriesThemeID { slide.themeId = seriesThemeID }
+            if deckTheme != seriesID { slide.themeId = seriesID }
             return slide
         }
         if replaces {
@@ -209,6 +330,35 @@ struct SermonImportSheet: View {
         } else {
             let last = (try? await model.client.loadValue(Presentation.self, id: id))?.slides.last?.id
             model.insertSlides(id, slides: placed, afterSlideID: last)
+        }
+        dismiss()
+        onCreated(id)
+    }
+
+    private func newMessage(slides: [Slide], title: String, seriesID: String) -> Presentation {
+        var presentation = Presentation(
+            id: UUID().uuidString, name: title.isEmpty ? "Message" : title,
+            presentationKind: .deck, themeId: seriesID, slides: slides)
+        presentation.category = PresentationTypes.sermon
+        return presentation
+    }
+
+    /// The new message takes the place of the plan's old one (keeping its
+    /// sermon timer), and the plan follows the series.
+    private func placeInPlan(_ planID: String, slides: [Slide], title: String, seriesID: String) async {
+        let items = plan?.items.filter { $0.itemKind == .presentation }.map(\.refId) ?? []
+        let loaded = await model.presentationsFilled(items)
+        let oldID = plan.flatMap { plan in
+            PlanMessage.itemIndex(in: plan) { id in
+                loaded[id].map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
+            }.map { plan.items[$0].refId }
+        }
+        var presentation = newMessage(slides: slides, title: title, seriesID: seriesID)
+        presentation.sermonTimerSeconds = oldID.flatMap { loaded[$0]?.sermonTimerSeconds }
+        model.createInDrive(presentation)
+        let id = presentation.id
+        model.updateService(planID) { plan in
+            PlanMessage.place(id, name: "Message", series: seriesID, in: &plan) { $0 == oldID }
         }
         dismiss()
         onCreated(id)
@@ -224,6 +374,9 @@ enum SermonSlides {
         var slides: [Slide] = []
         for item in outline.slides {
             switch item.kind {
+            case .title:
+                slides.append(slide(SermonSeriesTheme.titleCategory, name: item.text,
+                                    [("Title", item.text), ("Subtitle", item.reference)]))
             case .point:
                 slides.append(slide(SermonSeriesTheme.pointCategory, name: item.text, [("Point", item.text)]))
             case .scripture:

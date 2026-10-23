@@ -80,7 +80,7 @@ enum SeriesGenerator {
         return choices.isEmpty ? ["Helvetica Neue"] : choices
     }
 
-    private static func normalized(_ name: String) -> String {
+    static func normalized(_ name: String) -> String {
         name.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 }

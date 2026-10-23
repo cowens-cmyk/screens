@@ -345,6 +345,14 @@ final class ActionRouter {
             }
         case .listenStop:
             if LiveAssist.shared.listening { LiveAssist.shared.stop() }
+        case .fireServiceItem:
+            // A scheduled countdown: bring the plan up, then play its item
+            // in the plan, so its end moves on to the next item.
+            guard let planID = action.serviceId, let itemID = action.serviceItemId,
+                  let item = model.resident.services.value(planID)?.items.first(where: { $0.id == itemID })
+            else { return miss(action, "serviceItemId") }
+            if model.currentServiceID != planID { model.currentServiceID = planID }
+            if case .unresolvable = controls.fireServiceItem(item) { return miss(action, "serviceItem media") }
         case .setConfidenceLayout:
             guard let confidenceMonitor else { return miss(action, "confidenceMonitor") }
 

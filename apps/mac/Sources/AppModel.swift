@@ -382,6 +382,7 @@ final class AppModel {
         try backfillCCLIIndex(prepared, rootURL: root)
         try seedBasics(prepared, rootURL: root)
         try seedUsageHistory(prepared, rootURL: root)
+        try upgradeSermonSeries(prepared, rootURL: root)
     }
 
     private func libraryOpened(rootURL root: URL) {
@@ -486,6 +487,16 @@ final class AppModel {
         let marker = rootURL.appendingPathComponent(".seeded-usage-from-services-v1")
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }
         try prepared.seedUsageFromServices()
+        FileManager.default.createFile(atPath: marker.path, contents: nil)
+    }
+
+    /// Series made before Title and Worship designs existed get them, in
+    /// each series' own look. The upgrade skips anything already done, so
+    /// the marker only saves reading every theme on each launch.
+    @LibraryActor private static func upgradeSermonSeries(_ prepared: Library, rootURL: URL) throws {
+        let marker = rootURL.appendingPathComponent(".upgraded-sermon-series-v1")
+        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
+        try prepared.upgradeSermonSeriesThemes()
         FileManager.default.createFile(atPath: marker.path, contents: nil)
     }
 
@@ -2367,6 +2378,12 @@ final class AppModel {
         client.create(ScheduleTrigger(id: id, name: trimmed, conditions: conditions, actions: actions))
         reconcileSchedulerBoard()
         return id
+    }
+
+    /// A trigger built elsewhere (a scheduled countdown), as it is.
+    func createScheduleTrigger(_ trigger: ScheduleTrigger) {
+        client.create(trigger)
+        reconcileSchedulerBoard()
     }
 
     func updateScheduleTrigger(_ id: String, _ mutate: @escaping @Sendable (inout ScheduleTrigger) -> Void) {

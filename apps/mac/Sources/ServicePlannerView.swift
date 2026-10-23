@@ -404,6 +404,9 @@ struct RunOrderList: View {
             if item.itemKind == .info, item.refId.isEmpty, item.mxuSongTitle != nil {
                 getLyricsButton(item)
             }
+            if item.isCountdown == true, !runOnly {
+                CountdownVideoMenu(model: model, planID: serviceID, item: item)
+            }
 
             if changed {
                 Text("Changed")
@@ -504,7 +507,10 @@ struct RunOrderList: View {
     }
 
     private func displayName(_ item: ServiceItem) -> String {
-        model.entry(item.refId)?.name ?? item.name
+        if item.isCountdown == true {
+            return model.entry(item.refId).map { "Countdown · \($0.name)" } ?? "Countdown"
+        }
+        return model.entry(item.refId)?.name ?? item.name
     }
 
     /// A planned song with no slides: one click fetches them, from Shepherd
@@ -744,7 +750,7 @@ struct RunOrderList: View {
                     Button("Presentation", systemImage: "rectangle.on.rectangle", action: planAdds.deck)
                     Button("Slideshow", systemImage: "play.rectangle.on.rectangle", action: planAdds.slideshow)
                     Button("Video or Image…", systemImage: "film", action: planAdds.media)
-                    Button("Message", systemImage: "text.book.closed", action: planAdds.message)
+                    Button("Message Notes…", systemImage: "text.book.closed", action: planAdds.message)
                     Divider()
                     Button("From Library…", systemImage: "books.vertical") { addingFromLibrary = true }
                 } else {

@@ -27,6 +27,7 @@ extension SlideActionKind {
         case .setStageMode: "Stage Display"
         case .listenStart: "Turn On Microphone"
         case .listenStop: "Turn Off Microphone"
+        case .fireServiceItem: "Play Plan Item"
         case .fireOverlay: "Fire Overlay"
         case .dismissOverlay: "Take Down Overlay"
         case .fireLiveInput: "Fire Live Input"
@@ -312,6 +313,9 @@ struct ActionParameterFields: View {
             }
         case .listenStart, .listenStop:
             Text("The sermon microphone listens for scripture as the pastor speaks.")
+                .font(.caption).foregroundStyle(.secondary)
+        case .fireServiceItem:
+            Text("Brings up the plan and plays the item. Set from Schedule Service.")
                 .font(.caption).foregroundStyle(.secondary)
         case .setConfidenceLayout:
             Picker("Layout", selection: stringBinding(action, \.confidenceLayoutId)) {

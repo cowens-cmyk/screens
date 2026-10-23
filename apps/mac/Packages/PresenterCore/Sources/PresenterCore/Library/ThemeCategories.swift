@@ -13,7 +13,11 @@ public enum ThemeCategories {
         "points": ["point", "sermon points"],
         "point": ["points", "sermon points"],
         "announcements": ["call to action", "announcement"],
-        "lyrics": ["lyric", "song"],
+        // A sermon series names its lyrics design Worship.
+        "lyrics": ["lyric", "song", "worship"],
+        "worship": ["lyrics", "lyric", "song"],
+        "title": ["message title", "sermon title"],
+        "point + scripture": ["point and scripture", "point + verse"],
     ]
 
     static let lowerThirdSuffixes = [" (lower third)", " lower third"]

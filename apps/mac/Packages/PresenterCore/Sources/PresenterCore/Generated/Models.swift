@@ -1133,8 +1133,9 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
     public var mxuBpm: Double?
     public var mxuTimeSignature: String?
     public var mxuSongKeyApplied: String?
+    public var isCountdown: Bool?
 
-    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuSourceItemId: String? = nil, mxuSourceSongId: String? = nil, mxuSourceArrangementId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil) {
+    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuSourceItemId: String? = nil, mxuSourceSongId: String? = nil, mxuSourceArrangementId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil, isCountdown: Bool? = nil) {
         self.id = id
         self.itemKind = itemKind
         self.name = name
@@ -1166,10 +1167,11 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         self.mxuBpm = mxuBpm
         self.mxuTimeSignature = mxuTimeSignature
         self.mxuSongKeyApplied = mxuSongKeyApplied
+        self.isCountdown = isCountdown
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, itemKind, name, refId, arrangementId, colorHex, outputPresetId, mxuItemHexId, duration, mxuKind, excludedTimeHexIds, hiddenInPresenter, mxuSongTitle, mxuCcliNumber, mxuArrangementName, mxuSongAuthor, mxuMultiTracksUrl, mxuNotes, mxuMessageNotesDocumentHexId, mxuMessageNotesSubmittedAt, mxuMessageNotesOnReady, mxuMessageNotesDeckDocId, mxuSourceItemId, mxuSourceSongId, mxuSourceArrangementId, mxuSongKey, mxuDescription, mxuServicePosition, mxuBpm, mxuTimeSignature, mxuSongKeyApplied
+        case id, itemKind, name, refId, arrangementId, colorHex, outputPresetId, mxuItemHexId, duration, mxuKind, excludedTimeHexIds, hiddenInPresenter, mxuSongTitle, mxuCcliNumber, mxuArrangementName, mxuSongAuthor, mxuMultiTracksUrl, mxuNotes, mxuMessageNotesDocumentHexId, mxuMessageNotesSubmittedAt, mxuMessageNotesOnReady, mxuMessageNotesDeckDocId, mxuSourceItemId, mxuSourceSongId, mxuSourceArrangementId, mxuSongKey, mxuDescription, mxuServicePosition, mxuBpm, mxuTimeSignature, mxuSongKeyApplied, isCountdown
     }
 
     private enum LegacyCodingKeys: String, CodingKey {
@@ -1213,6 +1215,7 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         mxuBpm = try container.decodeIfPresent(Double.self, forKey: .mxuBpm)
         mxuTimeSignature = try container.decodeIfPresent(String.self, forKey: .mxuTimeSignature)
         mxuSongKeyApplied = try container.decodeIfPresent(String.self, forKey: .mxuSongKeyApplied)
+        isCountdown = try container.decodeIfPresent(Bool.self, forKey: .isCountdown)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1248,6 +1251,7 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         try container.encodeIfPresent(mxuBpm, forKey: .mxuBpm)
         try container.encodeIfPresent(mxuTimeSignature, forKey: .mxuTimeSignature)
         try container.encodeIfPresent(mxuSongKeyApplied, forKey: .mxuSongKeyApplied)
+        try container.encodeIfPresent(isCountdown, forKey: .isCountdown)
     }
 }
 
@@ -1546,8 +1550,9 @@ public struct Theme: Codable, Sendable, Equatable, Identifiable {
     public var slides: [Slide]?
     public var streamLowerThirdThemeId: String?
     public var streamDesigns: [StreamDesign]?
+    public var isSermonSeries: Bool?
 
-    public init(id: String, name: String, fontFamily: String, fontSize: Double, textColorHex: String, backgroundColorHex: String, slides: [Slide]? = nil, streamLowerThirdThemeId: String? = nil, streamDesigns: [StreamDesign]? = nil) {
+    public init(id: String, name: String, fontFamily: String, fontSize: Double, textColorHex: String, backgroundColorHex: String, slides: [Slide]? = nil, streamLowerThirdThemeId: String? = nil, streamDesigns: [StreamDesign]? = nil, isSermonSeries: Bool? = nil) {
         self.id = id
         self.name = name
         self.fontFamily = fontFamily
@@ -1557,6 +1562,7 @@ public struct Theme: Codable, Sendable, Equatable, Identifiable {
         self.slides = slides
         self.streamLowerThirdThemeId = streamLowerThirdThemeId
         self.streamDesigns = streamDesigns
+        self.isSermonSeries = isSermonSeries
     }
 }
 
@@ -1754,6 +1760,7 @@ public enum SlideActionKind: String, Codable, Sendable, CaseIterable, Equatable 
     case setStageMode
     case listenStart
     case listenStop
+    case fireServiceItem
 }
 
 public enum MIDIMessageKind: String, Codable, Sendable, CaseIterable, Equatable {
@@ -1808,8 +1815,9 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
     public var streamMode: String?
     public var stageMode: String?
     public var serviceId: String?
+    public var serviceItemId: String?
 
-    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, signageId: String? = nil, screenId: String? = nil, delaySeconds: Double? = nil, streamMode: String? = nil, stageMode: String? = nil, serviceId: String? = nil) {
+    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, signageId: String? = nil, screenId: String? = nil, delaySeconds: Double? = nil, streamMode: String? = nil, stageMode: String? = nil, serviceId: String? = nil, serviceItemId: String? = nil) {
         self.id = id
         self.kind = kind
         self.layer = layer
@@ -1848,6 +1856,7 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
         self.streamMode = streamMode
         self.stageMode = stageMode
         self.serviceId = serviceId
+        self.serviceItemId = serviceItemId
     }
 }
 

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 131,
+  "schemaVersion": 132,
   "schemas": {
     "SlideObjectKind": {
       "type": "string",
@@ -1776,6 +1776,9 @@
         },
         "mxuSongKeyApplied": {
           "type": "string"
+        },
+        "isCountdown": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2286,6 +2289,9 @@
           "items": {
             "$ref": "#/components/schemas/StreamDesign"
           }
+        },
+        "isSermonSeries": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2579,7 +2585,8 @@
         "setStreamMode",
         "setStageMode",
         "listenStart",
-        "listenStop"
+        "listenStop",
+        "fireServiceItem"
       ]
     },
     "MIDIMessageKind": {
@@ -2714,6 +2721,9 @@
           "type": "string"
         },
         "serviceId": {
+          "type": "string"
+        },
+        "serviceItemId": {
           "type": "string"
         }
       },
