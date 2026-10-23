@@ -221,9 +221,10 @@ final class ServiceControls {
 
         // The item's lighting cue and macros first, so the slide's own
         // actions and the song-section note land after them.
-        if let contextID {
-            planItemWentLive(contextID, ownActions: slide.actions ?? [])
-        } else if !deckWasLive {
+        // A library deck fires with its own id as the context (the grid, the
+        // Local API), which isn't a plan item: the walk-in check still runs.
+        let wasPlanItem = contextID.map { planItemWentLive($0, ownActions: slide.actions ?? []) } ?? false
+        if !wasPlanItem, !deckWasLive {
             preServiceWentLive(presentation)
         }
         actionRouter?.slideDidFire(slide, contextID: contextID)
@@ -875,24 +876,28 @@ final class ServiceControls {
 
     // MARK: Lights follow the service
 
-    /// The plan item (or pre-service deck) whose cue went out last. A cue
-    /// goes once per item, not on every slide of it, and again only once
-    /// another item has gone live.
-    private var lightingKey: String?
+    /// The plan item (or pre-service deck) that last went live on the
+    /// screens. Its cue and macros go once per item, not on every slide of
+    /// it, and again only once another item has gone live. Only a slide or
+    /// video landing moves it; a header click doesn't, so clicking one never
+    /// re-runs the live item's macros.
+    private var liveItem = LiveItemTracker()
 
-    /// A plan item went live — its first slide, its video, or its header
-    /// clicked. Lightkey gets the item's position cue, then the item's own
-    /// macros run. When those macros, or the slide's or video's own
-    /// actions (`ownActions`), already send Lightkey a cue, that cue is the
+    /// A plan item's slide or video went live. Returns false when `itemID`
+    /// isn't an item of the current plan (a library deck fired by its own
+    /// id). The first time, Lightkey gets the item's position cue, then the
+    /// item's own macros run — whether or not the lights follow the
+    /// service. When those macros, or the slide's or video's own actions
+    /// (`ownActions`), already send Lightkey a cue, that cue is the
     /// operator's choice and the position cue stays quiet rather than
     /// flashing one scene before the other.
-    func planItemWentLive(_ itemID: String, ownActions: [SlideAction] = []) {
-        guard itemID != lightingKey,
-              let serviceID = appModel.currentServiceID,
+    @discardableResult
+    private func planItemWentLive(_ itemID: String, ownActions: [SlideAction] = []) -> Bool {
+        guard let serviceID = appModel.currentServiceID,
               let service = try? appModel.service(serviceID),
-              let item = service.items.first(where: { $0.id == itemID })
-        else { return }
-        lightingKey = itemID
+              let item = service.items.first(where: { $0.id == itemID }), item.itemKind != .header
+        else { return false }
+        guard liveItem.wentLive(itemID) else { return true }
         let macros = item.actions ?? []
         let link = LightkeyLink.shared
         if link.followsService,
@@ -906,17 +911,31 @@ final class ServiceControls {
             DiagnosticsStore.shared.note("actions.planItem", detail: item.name)
             actionRouter?.execute(macros)
         }
+        return true
     }
 
-    /// The walk-in slideshow put up on its own (Service Day's restart, or
-    /// from the library) still sets the walk-in scene.
-    private func preServiceWentLive(_ presentation: Presentation) {
-        let key = "preService|" + presentation.id
-        guard key != lightingKey, LightkeyLink.shared.followsService,
-              ServiceLighting.isPreService(
-                presentation, preServiceID: appModel.slideBuilding.serviceDay?.preServicePresentationId)
+    /// A header clicked while presenting: Lightkey gets the header's scene
+    /// (Baptism, Communion…) before anything under it goes up. Nothing else
+    /// happens — the live item stays the live item, and its macros don't run
+    /// again.
+    func headerClicked(_ headerID: String) {
+        guard LightkeyLink.shared.followsService,
+              let serviceID = appModel.currentServiceID,
+              let service = try? appModel.service(serviceID),
+              service.items.first(where: { $0.id == headerID })?.itemKind == .header,
+              let position = ServiceLighting.positions(in: service, model: appModel)[headerID]
         else { return }
-        lightingKey = key
+        sendLightingCue(position)
+    }
+
+    /// The walk-in slideshow put up on its own (Service Day's restart, the
+    /// library grid, the Local API) still sets the walk-in scene.
+    private func preServiceWentLive(_ presentation: Presentation) {
+        guard ServiceLighting.isPreService(
+                presentation, preServiceID: appModel.slideBuilding.serviceDay?.preServicePresentationId),
+              liveItem.wentLive(LiveItemTracker.preServiceKey(presentation.id)),
+              LightkeyLink.shared.followsService
+        else { return }
         sendLightingCue(.walkIn)
     }
 

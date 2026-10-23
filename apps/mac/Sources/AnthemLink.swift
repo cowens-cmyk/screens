@@ -216,9 +216,14 @@ final class AnthemLink {
               presentation.slides.indices.contains(index) else { return false }
         let slide = presentation.slides[index]
         let items = playlistItems() ?? []
-        let item = itemID.flatMap { id in items.first { $0.id == id } }
-            ?? (controls.liveContextID).flatMap { id in items.first { $0.id == id && $0.refId == presentationID } }
-            ?? items.first { $0.refId == presentationID }
+        // A network trigger names only the presentation; a song sung twice
+        // lands on the live one, the next one, or the one Anthem says it's
+        // playing (AnthemCue.planItem), not always the first.
+        func find(_ id: String?) -> ServiceItem? { id.flatMap { id in items.first { $0.id == id } } }
+        let item = find(itemID) ?? find(AnthemCue.planItem(
+            for: presentationID, in: items.filter { !$0.isHidden }.map { ($0.id, $0.refId) },
+            liveItemID: controls.liveContextID,
+            anthemItemID: model.currentServiceID.flatMap { AnthemFeed.shared.liveItemID(serviceID: $0, model: model) }))
         let arranged = model.arrangedSlides(presentation, arrangementId: item?.arrangementId).map(\.id)
         let current = controls.liveContextID == item?.id ? controls.liveOccurrence : nil
         controls.fire(
@@ -295,7 +300,7 @@ private struct AnthemFeedSettings: View {
                 Toggle("Ignore instrumental sections", isOn: $feed.ignoreInstrumental)
                     .help("Intros, turnarounds and other band-only parts with no blank slide in Screens don't count as a difference.")
                 Toggle("Match Anthem automatically", isOn: $feed.autoMatch)
-                Text("Upcoming plans only. A song that differs gets an arrangement named Anthem in Anthem's order. Edit › Undo puts it back.")
+                Text("Upcoming plans Anthem's setlist is for. A song that differs gets an arrangement in Anthem's order (Anthem, or Anthem – and the plan's date when another plan uses that one). A song on screen is left alone.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -347,7 +352,7 @@ private struct AnthemMIDISettings: View {
                 }
                 .pickerStyle(.segmented)
                 .fixedSize()
-                Text("Anthem's notes, channel 1: Next 13, Previous 14, Select Item 19, Trigger Slide 20 (velocity is the slide number). Other apps can send to the Screens MIDI destination; those use the MIDI input map.")
+                Text("Anthem's notes, channel 1: Next 13, Previous 14, Select Item 19, Trigger Slide 20 (velocity is the slide number). The choice covers Anthem's own MIDI source and the Screens In destination, so Anthem can send to either; a message that arrives on both counts once. If another app sends to Screens In, choose MIDI input map. MIDI devices added in Settings › MIDI always use the map.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

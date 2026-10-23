@@ -228,19 +228,42 @@ struct RunOrderList: View {
     private func rowPressed(
         _ point: CGPoint, _ modifiers: NSEvent.ModifierFlags, visible: [ServiceItem]
     ) -> (() -> Void)? {
-        let id = rowFrames.first(where: { $0.value.contains(point) })?.key
-        if let id, RunOrderSelection.isReselect(
-            pressed: id, current: selectedItemID,
-            command: modifiers.contains(.command), shift: modifiers.contains(.shift),
-            control: modifiers.contains(.control)) {
-            let name = visible.first { $0.id == id }?.name ?? "-"
-            return {
-                DiagnosticsStore.shared.note(
-                    "runOrder.click", detail: "\(id) \"\(name)\" already selected: jump back to it")
-                onReselect()
-            }
-        } else {
-            return nil
+        let id = rowFrames.first { $0.value.contains(point) }?.key
+        let reselect = id.map {
+            RunOrderSelection.isReselect(
+                pressed: $0, current: selectedItemID, command: modifiers.contains(.command),
+                shift: modifiers.contains(.shift), control: modifiers.contains(.control))
+        } ?? false
+        let cue = headerCueClick(point, modifiers, visible: visible)
+        guard let id, cue != nil || reselect else { return nil }
+        let name = visible.first { $0.id == id }?.name ?? "-"
+        return {
+            cue?()
+            guard reselect else { return }
+            DiagnosticsStore.shared.note(
+                "runOrder.click", detail: "\(id) \"\(name)\" already selected: jump back to it")
+            onReselect()
+        }
+    }
+
+    /// A header clicked while presenting sets the lights for its section
+    /// (Baptism, Communion…) before anything in it goes up. Only here, on a
+    /// real click: selection moved by the arrow keys or restored when the
+    /// plan appears must not send a cue. The chevron at the header's leading
+    /// edge only folds it.
+    private func headerCueClick(
+        _ point: CGPoint, _ modifiers: NSEvent.ModifierFlags, visible: [ServiceItem]
+    ) -> (() -> Void)? {
+        guard let hit = rowFrames.first(where: { $0.value.contains(point) }),
+              let header = visible.first(where: { $0.id == hit.key }),
+              RunOrderSelection.isHeaderCueClick(
+                  pressed: header, presenting: runOnly || appModeRaw == AppMode.present.rawValue,
+                  command: modifiers.contains(.command), shift: modifiers.contains(.shift),
+                  control: modifiers.contains(.control), onDisclosure: point.x < hit.value.minX + 20)
+        else { return nil }
+        return {
+            DiagnosticsStore.shared.note("runOrder.headerCue", detail: "\(header.id) \"\(header.name)\"")
+            controls?.headerClicked(header.id)
         }
     }
 
@@ -255,13 +278,6 @@ struct RunOrderList: View {
     }
 
     private func selectionChanged(_ selection: Set<String>, visible: [ServiceItem]) {
-        // A header clicked while presenting sets the lights for its section
-        // (Baptism, Communion…) before anything in it goes up.
-        if selection.count == 1, let id = selection.first,
-           visible.first(where: { $0.id == id })?.itemKind == .header,
-           runOnly || appModeRaw == AppMode.present.rawValue {
-            controls?.planItemWentLive(id)
-        }
         let surface = RunOrderSelection.surfaceItem(
             selection: selection, current: selectedItemID, rows: visible)
         if surface != selectedItemID {

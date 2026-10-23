@@ -192,12 +192,18 @@ public enum ServicePosition: Hashable, Sendable {
 
 /// The church's cue table: a MIDI note per position.
 public enum LightingCueTable {
-    /// Starts above Lightkey's section notes (1–10), so both can be learned
-    /// on one channel.
-    public static let firstNote = 20
+    /// Clear of the other notes Screens sends Lightkey on the same channel:
+    /// the song sections (1–10) and the slide action Lightkey Cue (31–54).
+    /// Both are learned once in Lightkey, so a position must never share one.
+    public static let firstNote = 60
 
-    /// Walk-in 20, Countdown 21, Song 1–5 22–26, Announcements 27, Message
-    /// 28, Closing 29, Walkout 30, Baptism 31, Communion 32.
+    /// Notes no position takes: the section notes and the Lightkey Cue
+    /// action's.
+    public static let reservedNotes: [ClosedRange<Int>] = [1...10, 31...54]
+
+    /// Walk-in 60, Countdown 61, Song 1–5 62–66, Announcements 67, Message
+    /// 68, Closing 69, Walkout 70, Baptism 71, Communion 72. Added songs and
+    /// cues take 73 up.
     public static let defaults: [LightingCue] = ServicePosition.standard(songs: 5).enumerated().map {
         LightingCue(position: $0.element.key, note: firstNote + $0.offset)
     }
@@ -241,10 +247,15 @@ public enum LightingCueTable {
         }
     }
 
-    /// The lowest note at or above `firstNote` that no row uses.
+    /// The note an added song or cue gets: the lowest free one above the
+    /// defaults, then any free one below them, never a reserved one.
     public static func nextFreeNote(in table: [LightingCue]) -> Int {
         let used = Set(table.map(\.note))
-        return (firstNote...127).first { !used.contains($0) } ?? 127
+        let above = firstNote + defaults.count
+        let candidates = Array(above...127) + Array((1..<above).reversed())
+        return candidates.first { note in
+            !used.contains(note) && !reservedNotes.contains { $0.contains(note) }
+        } ?? 127
     }
 
     /// Whether a list of actions (macros included) already sends Lightkey a
@@ -271,5 +282,27 @@ public enum LightingCueTable {
             }
         }
         return false
+    }
+}
+
+/// Which plan item last went live on the screens, so its lighting cue and
+/// macros go once when it goes up, not on every slide of it. Only a slide
+/// or video landing reports here; a header click sends its cue around it,
+/// so clicking a header never re-runs the live item's macros.
+public struct LiveItemTracker: Equatable, Sendable {
+    public private(set) var current: String?
+
+    public init() {}
+
+    /// The walk-in slideshow put up outside the plan counts as its own item.
+    public static func preServiceKey(_ presentationID: String) -> String {
+        "preService|" + presentationID
+    }
+
+    /// True when `key` is newly live: the caller sends its cue and macros.
+    public mutating func wentLive(_ key: String) -> Bool {
+        guard key != current else { return false }
+        current = key
+        return true
     }
 }

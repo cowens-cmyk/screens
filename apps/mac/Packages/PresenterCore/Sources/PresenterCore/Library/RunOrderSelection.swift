@@ -16,6 +16,17 @@ public enum RunOrderSelection {
         pressed == current && !command && !shift && !control
     }
 
+    /// Whether a mouse press on a plan row sends a header's lighting cue: a
+    /// plain click on a header, while presenting, not on its disclosure
+    /// chevron. Only a click does — the selection moving by arrow keys, or
+    /// coming back when the plan appears, never reaches here.
+    public static func isHeaderCueClick(
+        pressed: ServiceItem?, presenting: Bool, command: Bool, shift: Bool, control: Bool,
+        onDisclosure: Bool
+    ) -> Bool {
+        pressed?.itemKind == .header && presenting && !command && !shift && !control && !onDisclosure
+    }
+
     public static func swept(
         frames: [String: CGRect], band: CGRect, keeping: Set<String> = []
     ) -> Set<String> {

@@ -18,9 +18,15 @@ final class MIDIInService: @unchecked Sendable {
     /// MIDI devices, whenever it is there.
     private var followAnthem = false
     private var anthemUIDs = Set<Int32>()
-    /// The "Screens" virtual destination any app on this Mac can send to.
+    /// The "Screens In" virtual destination any app on this Mac can send
+    /// to. Not "Screens": that name is Screens' own output source, and two
+    /// ports with one name make Anthem and Lightkey users pick the wrong one.
+    static let destinationName = "Screens In"
     private var destination = MIDIEndpointRef()
     private var destinationUID: Int32 = 0
+    /// Drops a message heard twice (Anthem's source and Screens In) and
+    /// anything Screens sent coming back in.
+    private var inputGuard = MIDIInputGuard()
     /// Told when Anthem's source comes or goes.
     var onAnthemChange: (@Sendable (Bool) -> Void)? {
         get { lock.lock(); defer { lock.unlock() }; return anthemChange }
@@ -53,12 +59,28 @@ final class MIDIInService: @unchecked Sendable {
         return anthemUIDs.contains(uid)
     }
 
-    /// The "Screens" destination's unique ID, so MIDI out never sends into
-    /// its own input. Zero before it exists.
+    /// Whether a message arrived at the Screens In destination.
+    func isScreensIn(_ uid: Int32) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return uid != 0 && uid == destinationUID
+    }
+
+    /// The "Screens In" destination's unique ID, so MIDI out never sends
+    /// into its own input. Zero before it exists.
     var ownDestinationUID: Int32 {
         lock.lock()
         defer { lock.unlock() }
         return destinationUID
+    }
+
+    /// What MIDIOutService just sent, so an echo of it is ignored. Called
+    /// with MIDIOutService's lock held; this one is taken after it, never
+    /// the other way round.
+    func noteSent(_ bytes: [UInt8]) {
+        lock.lock()
+        inputGuard.noteSent(bytes, at: ProcessInfo.processInfo.systemUptime)
+        lock.unlock()
     }
 
     func setHandler(_ handler: @escaping @Sendable (Int32, UInt8, UInt8, UInt8) -> Void) {
@@ -86,13 +108,15 @@ final class MIDIInService: @unchecked Sendable {
 
         guard !wanted.isEmpty || followAnthem || ready else { return }
         guard ensureReady() else { return }
+        let ownSource = MIDIOutService.shared.ownSourceUID
         var present: [Int32: MIDIEndpointRef] = [:]
         var anthem = Set<Int32>()
         for index in 0..<MIDIGetNumberOfSources() {
             let source = MIDIGetSource(index)
             guard source != 0 else { continue }
             var uid: Int32 = 0
-            guard MIDIObjectGetIntegerProperty(source, kMIDIPropertyUniqueID, &uid) == noErr
+            guard MIDIObjectGetIntegerProperty(source, kMIDIPropertyUniqueID, &uid) == noErr,
+                  ownSource == 0 || uid != ownSource
             else { continue }
             if Self.name(of: source).map(AnthemMIDI.isAnthemSource(name:)) == true {
                 anthem.insert(uid)
@@ -129,10 +153,11 @@ final class MIDIInService: @unchecked Sendable {
                   { [weak self] packetList, refCon in self?.receive(packetList, refCon) }
               ) == noErr
         else { return false }
-        // Messages sent to "Screens" arrive as if from a source whose ID is
-        // the destination's own, and read with the MIDI input map.
+        // Messages sent to "Screens In" arrive as if from a source whose ID
+        // is the destination's own. They read with Anthem's notes when
+        // Settings › Anthem says so, else with the MIDI input map.
         if MIDIDestinationCreateWithBlock(
-            client, "Screens" as CFString, &destination,
+            client, Self.destinationName as CFString, &destination,
             { [weak self] packetList, _ in self?.receiveAtDestination(packetList) }
         ) == noErr {
             MIDIObjectGetIntegerProperty(destination, kMIDIPropertyUniqueID, &destinationUID)
@@ -158,17 +183,23 @@ final class MIDIInService: @unchecked Sendable {
     }
 
     private func receive(_ packetList: UnsafePointer<MIDIPacketList>, _ refCon: UnsafeMutableRawPointer?) {
-        lock.lock()
-        let handler = handler
-        lock.unlock()
-        guard let handler else { return }
         let sourceUid = Int32(truncatingIfNeeded: refCon.map { Int(bitPattern: $0) } ?? 0)
+        var accepted: [MIDIParse.ChannelMessage] = []
         for packet in packetList.unsafeSequence() {
             let length = Int(packet.pointee.length)
             let bytes = withUnsafeBytes(of: packet.pointee.data) { Array($0.prefix(length)) }
-            for message in MIDIParse.channelMessages(in: bytes) {
-                handler(sourceUid, message.status, message.data1, message.data2)
-            }
+            accepted += MIDIParse.channelMessages(in: bytes)
+        }
+        lock.lock()
+        let handler = handler
+        let path: MIDIInputGuard.Path = anthemUIDs.contains(sourceUid) ? .anthemSource
+            : sourceUid != 0 && sourceUid == destinationUID ? .screensIn : .other
+        let now = ProcessInfo.processInfo.systemUptime
+        accepted = accepted.filter { inputGuard.accept($0, path: path, at: now) }
+        lock.unlock()
+        guard let handler else { return }
+        for message in accepted {
+            handler(sourceUid, message.status, message.data1, message.data2)
         }
     }
 }
@@ -210,11 +241,17 @@ final class MIDIInController {
         }), !device.acceptsChannel(ofStatus: status) {
             return
         }
-        // Anthem counts its notes one up from ProPresenter's stock numbers,
-        // so its own source reads with Anthem's map unless Settings › Anthem
-        // says otherwise.
+        // Anthem counts its notes one up from ProPresenter's stock numbers.
+        // Its own source reads with Anthem's map unless Settings › Anthem
+        // says otherwise; so does the Screens In destination when it says
+        // Anthem's notes, since that is where Anthem's MIDI out lands when
+        // it is pointed at Screens. Either way it's Anthem, and picks items
+        // and slides by Anthem's numbering.
+        let feed = AnthemFeed.shared
+        let anthemNotes = feed.followMIDI && feed.midiUsesAnthemNotes
         let fromAnthem = MIDIInService.shared.isAnthemSource(sourceUid)
-        let map = fromAnthem && AnthemFeed.shared.midiUsesAnthemNotes
+            || (anthemNotes && MIDIInService.shared.isScreensIn(sourceUid))
+        let map = fromAnthem && feed.midiUsesAnthemNotes
             ? MIDIInputPreset.anthem.map : MIDICommandMapStore.shared.map
         guard let (command, velocity) = map.resolve(
             status: status, data1: data1, data2: data2

@@ -48,3 +48,22 @@ private let rows = [item("h1", .header), item("a"), item("b", .media), item("h2"
     #expect(removal.count == 3)
     #expect(RunOrderSelection.removal(of: ["b"], in: items).synced.isEmpty)
 }
+
+@Test func onlyAPlainClickOnAHeaderWhilePresentingSendsItsCue() {
+    let header = item("h1", .header)
+    func click(
+        _ row: ServiceItem?, presenting: Bool = true, command: Bool = false, shift: Bool = false,
+        onDisclosure: Bool = false
+    ) -> Bool {
+        RunOrderSelection.isHeaderCueClick(
+            pressed: row, presenting: presenting, command: command, shift: shift, control: false,
+            onDisclosure: onDisclosure)
+    }
+    #expect(click(header))
+    #expect(!click(header, presenting: false))
+    #expect(!click(header, command: true))
+    #expect(!click(header, shift: true))
+    #expect(!click(header, onDisclosure: true))
+    #expect(!click(item("a")))
+    #expect(!click(nil))
+}

@@ -430,6 +430,54 @@ public enum AnthemMIDI {
     }
 }
 
+/// Keeps one MIDI message from being acted on twice, and Screens from
+/// acting on its own messages.
+///
+/// Anthem can reach Screens two ways at once: Screens listens to Anthem's
+/// own source, and Anthem (or a bus) can also send to the Screens In
+/// destination. The same message on the other of those two within
+/// `duplicateWindow` is the same press, heard twice. And anything Screens
+/// sent in the last `echoWindow` coming back in (an IAC bus or network
+/// session that is both an output and an input) is Screens hearing itself.
+public struct MIDIInputGuard: Sendable {
+    public enum Path: Equatable, Sendable {
+        case anthemSource, screensIn, other
+    }
+
+    public static let duplicateWindow: TimeInterval = 0.03
+    public static let echoWindow: TimeInterval = 0.1
+
+    private var heard: [(message: MIDIParse.ChannelMessage, path: Path, at: TimeInterval)] = []
+    private var sent: [(message: MIDIParse.ChannelMessage, at: TimeInterval)] = []
+
+    public init() {}
+
+    /// Bytes Screens just sent out.
+    public mutating func noteSent(_ bytes: [UInt8], at time: TimeInterval) {
+        prune(time)
+        sent += MIDIParse.channelMessages(in: bytes).map { ($0, time) }
+    }
+
+    /// Whether a message that just arrived should be acted on.
+    public mutating func accept(_ message: MIDIParse.ChannelMessage, path: Path, at time: TimeInterval) -> Bool {
+        prune(time)
+        if sent.contains(where: { $0.message == message }) { return false }
+        if path != .other, heard.contains(where: {
+            $0.message == message && $0.path != path && $0.path != .other
+                && time - $0.at <= Self.duplicateWindow
+        }) {
+            return false
+        }
+        heard.append((message, path, time))
+        return true
+    }
+
+    private mutating func prune(_ time: TimeInterval) {
+        heard.removeAll { time - $0.at > Self.duplicateWindow }
+        sent.removeAll { time - $0.at > Self.echoWindow }
+    }
+}
+
 public enum MIDIParse {
     public struct ChannelMessage: Equatable, Sendable {
         public var status: UInt8
