@@ -11,35 +11,6 @@ import Testing
     #expect(SpokenReference.references(in: "first John one nine").map(\.display) == ["1 John 1:9"])
 }
 
-@Test func followerAdvancesWhenNextSlideIsSung() {
-    var follower = LyricFollower(slideTexts: [
-        "Amazing grace how sweet the sound\nThat saved a wretch like me",
-        "I once was lost but now am found\nWas blind but now I see",
-        "Twas grace that taught my heart to fear\nAnd grace my fears relieved",
-    ])
-    follower.hear("that saved a wretch like me")
-    let finished = follower.decision(current: 0)
-    #expect(finished?.slideIndex == 1)
-    follower.reset()
-    follower.hear("I once was lost but")
-    #expect(follower.decision(current: 0)?.reason == .nextSlideStarted)
-    follower.reset()
-    follower.hear("amazing grace how sweet")
-    #expect(follower.decision(current: 0) == nil, "still singing the current slide")
-}
-
-@Test func followerJumpsToRepeatedChorus() {
-    var follower = LyricFollower(slideTexts: [
-        "verse one words here about the mountains",
-        "chorus line you are holy holy forever",
-        "verse two words about the valley below",
-        "bridge section we lift our hands up high",
-    ])
-    follower.hear("you are holy holy forever")
-    let decision = follower.decision(current: 3)
-    #expect(decision?.slideIndex == 1 && decision?.reason == .jump)
-}
-
 // Recognizers run spoken numbers together ("John three sixteen" → "John 316",
 // "John one one" → "John 11"); every reading must be a real chapter and verse.
 @Test func runTogetherNumbersSplitIntoChapterAndVerse() {

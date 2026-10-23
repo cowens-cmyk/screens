@@ -26,10 +26,13 @@ struct LiveAssistSettingsForm: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             LiveAssistInputPicker()
-            Toggle("Advance lyrics as they're sung", isOn: $assist.followsLyrics)
+            Toggle("Advance lyrics as they're sung", isOn: $assist.advancesAutomatically)
             Slider(value: $assist.autoAdvanceConfidence, in: 0.5...0.95) {
                 Text("Advance when \(Int(assist.autoAdvanceConfidence * 100))% sure")
             }
+            .disabled(!assist.advancesAutomatically)
+            Text("Turn on Follow in a song's slide grid header. Off: Follow only outlines the next slide.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Watch for spoken Bible references", isOn: $assist.detectsScripture)
             Text("Start and stop listening, watch the confidence meter and show detected passages in Window › Live Assist (⌥⌘L).")
                 .font(.caption).foregroundStyle(.secondary)

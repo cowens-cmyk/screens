@@ -1,13 +1,14 @@
+import AVFoundation
 import Observation
 import PresenterCore
 import SlideScene
 import Speech
 import SwiftUI
 
-/// Listens to the room and helps the operator: follows the song and moves to
-/// the next slide as it's sung (with a confidence meter and instant manual
-/// takeover), and spots spoken Bible references ("turn to Genesis 32") so
-/// the passage is one click away.
+/// Listens to the room and helps the operator: follows a song the operator
+/// turned Follow on for and highlights or puts up the next slide as it's sung
+/// (with a confidence meter and instant manual takeover), and spots spoken
+/// Bible references ("turn to Genesis 32") so the passage is one click away.
 @MainActor
 @Observable
 final class LiveAssist {
@@ -56,18 +57,59 @@ final class LiveAssist {
     }
 
     private(set) var level: Float = 0
-    var followsLyrics = false
+    /// Off: a followed song only highlights the next slide; the operator
+    /// puts it up.
+    var advancesAutomatically = true {
+        didSet { UserDefaults.standard.set(advancesAutomatically, forKey: "liveAssist.follow.advances") }
+    }
     var detectsScripture = true
     /// Below this, the follower only suggests; the operator decides.
-    var autoAdvanceConfidence = 0.7
+    var autoAdvanceConfidence = 0.7 {
+        didSet { UserDefaults.standard.set(autoAdvanceConfidence, forKey: "liveAssist.follow.confidence") }
+    }
 
     private(set) var listening = false
+    /// Between Start and the first words: permissions, the speech model.
+    private(set) var starting = false
     private(set) var status = "Off"
     private(set) var transcript = ""
+    /// What the follower would do next, for the confidence meter.
     private(set) var lastDecision: LyricFollower.Decision?
+    /// Where it thinks the singer is in the live song.
+    private(set) var followPosition: LyricFollower.Position?
     /// References heard, newest first; an ambiguous one lists its other readings.
     private(set) var detected: [SpokenDetection] = []
+    /// Following holds off until then after the operator moves a slide.
     private(set) var pausedUntil: Date?
+
+    // MARK: Follow state
+
+    /// Songs the operator turned Follow on for. Not saved: each service
+    /// starts with Follow off, so the microphone opens only when asked.
+    private(set) var followedSongIDs: Set<String> = []
+    /// Follow every song that goes live, not only the ones turned on.
+    var followsEverySong = false {
+        didSet {
+            guard followsEverySong != oldValue else { return }
+            DiagnosticsStore.shared.note("liveAssist.follow", detail: followsEverySong ? "every song on" : "every song off")
+            if followsEverySong { listenForLyrics() } else { stopIfNothingFollowed() }
+        }
+    }
+
+    /// The slide the follower thinks comes next, highlighted in the grid.
+    struct Suggestion: Equatable {
+        var presentationID: String
+        var contextID: String?
+        /// The live slide it was made from: it stands only while that slide is up.
+        var fromOccurrence: Int
+        var slideIndex: Int
+        /// "6 Chorus".
+        var label: String
+    }
+    /// Changes only when the suggested slide does, so tiles redraw rarely;
+    /// the confidence moves separately.
+    private(set) var suggestion: Suggestion?
+    private(set) var suggestionConfidence = 0.0
 
     private let transcriber = LiveTranscriber()
     private var follower: LyricFollower?
@@ -76,7 +118,14 @@ final class LiveAssist {
     private weak var controls: ServiceControls?
     private weak var model: AppModel?
     private var lastAutoFire = Date.distantPast
-    private var lastLiveSignature = ""
+    /// The live slide the follower is anchored to ("context|occurrence|slide").
+    private var liveSignature = ""
+    /// An advance that hasn't landed yet (a transition can hold it back):
+    /// until it does, the old slide still being live isn't the operator.
+    private var landing: (from: String, until: Date)?
+    private var pauseEnd: Task<Void, Never>?
+    /// Listening began because of Follow, so it stops when nothing is followed.
+    private var listeningForFollow = false
 
     private init() {
         deviceUID = UserDefaults.standard.string(forKey: Self.deviceKey) ?? ""
@@ -87,6 +136,9 @@ final class LiveAssist {
         sermonChannel = sermonStored >= 0 ? sermonStored : nil
         // On unless turned off: a heard passage should just appear.
         showsAutomatically = UserDefaults.standard.object(forKey: "liveAssist.sermon.autoShow") as? Bool ?? true
+        advancesAutomatically = UserDefaults.standard.object(forKey: "liveAssist.follow.advances") as? Bool ?? true
+        let confidence = UserDefaults.standard.double(forKey: "liveAssist.follow.confidence")
+        autoAdvanceConfidence = (0.5...0.95).contains(confidence) ? confidence : 0.7
         transcriber.onText = { [weak self] text, isFinal in self?.heard(text, isFinal: isFinal) }
         transcriber.onLevel = { [weak self] level in self?.level = level }
         transcriber.onState = { [weak self] state in self?.update(state) }
@@ -111,6 +163,8 @@ final class LiveAssist {
     }
 
     func start() async {
+        starting = true
+        defer { if transcriber.state != .preparing { starting = false } }
         let devices = LiveTranscriber.inputDevices()
         if mode == .sermon {
             if !devices.contains(where: { $0.uid == sermonDeviceUID }) { sermonDeviceUID = devices.first?.uid ?? "" }
@@ -123,6 +177,13 @@ final class LiveAssist {
             status = "Choose an audio input"
             return
         }
+        // Starting is always something the operator just did, so asking for
+        // the microphone here is expected (never at launch: see
+        // AudioInputInventory).
+        guard await Self.microphoneAuthorized() else {
+            status = "Allow the microphone in System Settings › Privacy & Security"
+            return
+        }
         let authorized = await Self.speechAuthorized()
         guard authorized else {
             status = "Allow Speech Recognition in System Settings › Privacy & Security"
@@ -130,6 +191,14 @@ final class LiveAssist {
         }
         transcriber.start(
             deviceUID: device, channels: inputChannel.map { .mono(channel: $0) } ?? .default)
+    }
+
+    nonisolated private static func microphoneAuthorized() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: return true
+        case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
+        default: return false
+        }
     }
 
     /// macOS answers the permission request on a background queue; the
@@ -150,22 +219,46 @@ final class LiveAssist {
     func stop() {
         transcriber.stop()
         listening = false
+        starting = false
+        listeningForFollow = false
         level = 0
         status = "Off"
+        clearSuggestion()
     }
 
-    /// Any manual move pauses following briefly so the operator stays in charge.
-    func operatorTookOver() {
+    /// Any manual move pauses following briefly so the operator stays in
+    /// charge, unless it put up the slide that was suggested. `occurrence`
+    /// and `contextID` name the slide being fired, when the caller knows it.
+    func operatorTookOver(firing occurrence: Int? = nil, contextID: String? = nil) {
+        guard followsEverySong || !followedSongIDs.isEmpty else { return }
+        if let suggestion, let controls {
+            let fired = occurrence ?? controls.liveOccurrence
+            let context = occurrence == nil ? controls.liveContextID : contextID
+            if fired == suggestion.slideIndex, context == suggestion.contextID { return }
+        }
+        takeOver()
+    }
+
+    var isPaused: Bool { pausedUntil.map { Date() < $0 } ?? false }
+
+    /// Holds following off for 8 s: it keeps listening and suggesting, and
+    /// advances nothing.
+    func takeOver() {
         pausedUntil = Date().addingTimeInterval(8)
-        follower?.reset()
+        pauseEnd?.cancel()
+        pauseEnd = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            self?.pausedUntil = nil
+        }
     }
 
     private func update(_ state: LiveTranscriber.State) {
         switch state {
-        case .idle: listening = false; status = "Off"
-        case .preparing: status = "Preparing speech model…"
-        case .listening: listening = true; status = "Listening"
-        case .failed(let message): listening = false; status = message
+        case .idle: listening = false; starting = false; status = "Off"
+        case .preparing: starting = true; status = "Preparing speech model…"
+        case .listening: listening = true; starting = false; status = "Listening"
+        case .failed(let message): listening = false; starting = false; status = message
         }
     }
 
@@ -178,7 +271,7 @@ final class LiveAssist {
             return
         }
         if detectsScripture, isFinal { spotScripture(in: text) }
-        if followsLyrics { follow(text, isFinal: isFinal) }
+        follow(text, isFinal: isFinal)
     }
 
     private func spotScripture(in text: String) {
@@ -224,40 +317,128 @@ final class LiveAssist {
 
     // MARK: Lyric following
 
+    static func isSong(_ presentation: Presentation) -> Bool {
+        presentation.presentationKind == .song || presentation.category == PresentationTypes.worship
+    }
+
+    func isFollowing(_ presentationID: String) -> Bool {
+        followsEverySong || followedSongIDs.contains(presentationID)
+    }
+
+    /// Listening on the worship input, which is what following hears.
+    var hearsWorship: Bool { listening && mode == .worship }
+
+    /// Turns Follow on or off for one song; on starts listening if needed.
+    func toggleFollow(_ presentation: Presentation) {
+        if followedSongIDs.contains(presentation.id) {
+            followedSongIDs.remove(presentation.id)
+            DiagnosticsStore.shared.note("liveAssist.follow", detail: "off: \(presentation.name)")
+            if suggestion?.presentationID == presentation.id, !isFollowing(presentation.id) { clearSuggestion() }
+            stopIfNothingFollowed()
+        } else {
+            followedSongIDs.insert(presentation.id)
+            DiagnosticsStore.shared.note("liveAssist.follow", detail: "on: \(presentation.name)")
+            listenForLyrics()
+        }
+    }
+
+    /// Starts the worship input if it isn't already what's being heard.
+    func listenForLyrics() {
+        guard !hearsWorship, !(starting && mode == .worship) else { return }
+        listeningForFollow = true
+        Task { await startWorship() }
+    }
+
+    private func stopIfNothingFollowed() {
+        guard !followsEverySong, followedSongIDs.isEmpty, listeningForFollow, mode == .worship else { return }
+        stop()
+    }
+
+    private func clearSuggestion() {
+        if suggestion != nil { suggestion = nil }
+        follower = nil
+        followerKey = ""
+        lastDecision = nil
+        followPosition = nil
+    }
+
+    /// "6 Chorus": the slide's number and its group, else its first line.
+    private func label(for index: Int, in slides: [Slide], of presentation: Presentation) -> String {
+        let slide = slides[index]
+        if let id = slide.sectionId, let name = presentation.sections?.first(where: { $0.id == id })?.name, !name.isEmpty {
+            return "\(index + 1) \(name)"
+        }
+        let line = ConfidenceSceneBuilder.lyricText(for: slide)
+            .split(separator: "\n").first.map { String($0.prefix(18)) } ?? ""
+        return line.isEmpty ? "\(index + 1)" : "\(index + 1) \(line)"
+    }
+
     private func follow(_ text: String, isFinal: Bool) {
+        // Only a followed song that's live: never a deck, never anything else.
         guard let controls, let live = controls.state.liveSlide, let presentation = live.presentation,
-              presentation.presentationKind == .song || presentation.category == PresentationTypes.worship
-        else { return }
+              Self.isSong(presentation), isFollowing(presentation.id)
+        else {
+            if follower != nil { clearSuggestion() }
+            return
+        }
         let slides = SlideSceneBuilder.arrangedSlides(for: presentation, arrangementId: live.arrangementId)
-        let key = "\(presentation.id)|\(live.arrangementId ?? "")|\(slides.count)"
-        if key != followerKey {
+        let texts = slides.map { ConfidenceSceneBuilder.lyricText(for: $0) }
+        let occurrence = controls.liveOccurrence ?? slides.firstIndex { $0.id == live.slide.id } ?? 0
+        let contextID = controls.liveContextID
+        let key = "\(presentation.id)|\(live.arrangementId ?? "")|\(texts.hashValue)"
+        let signature = "\(contextID ?? "")|\(occurrence)|\(live.slide.id)"
+        if key != followerKey || follower == nil {
             followerKey = key
-            follower = LyricFollower(slideTexts: slides.map { ConfidenceSceneBuilder.lyricText(for: $0) })
+            follower = LyricFollower(slideTexts: texts, live: occurrence)
+            liveSignature = signature
+            landing = nil
+        } else if signature != liveSignature {
+            if let landing, signature == landing.from, Date() < landing.until {
+                // Our advance hasn't landed yet; the follower is already there.
+            } else {
+                // Someone else moved the slide: listen from there, and hold off
+                // unless it was the suggested slide.
+                let accepted = suggestion.map { $0.slideIndex == occurrence && $0.contextID == contextID } ?? false
+                liveSignature = signature
+                landing = nil
+                follower?.liveChanged(to: occurrence)
+                if !accepted { takeOver() }
+            }
+        } else {
+            landing = nil
         }
-        let signature = "\(live.slide.id)|\(controls.liveOccurrence ?? -1)"
-        if signature != lastLiveSignature {
-            // The slide changed (by us or the operator): listen fresh.
-            lastLiveSignature = signature
-            follower?.reset()
-        }
-        guard isFinal || text.split(separator: " ").count >= 3 else { return }
-        follower?.hear(text)
         guard var follower else { return }
-        let current = controls.liveOccurrence ?? slides.firstIndex { $0.id == live.slide.id } ?? 0
-        let decision = follower.decision(current: current)
+        follower.hear(text, isFinal: isFinal)
         self.follower = follower
-        lastDecision = decision
-        guard let decision, decision.confidence >= autoAdvanceConfidence,
-              pausedUntil.map({ Date() > $0 }) ?? true,
-              Date().timeIntervalSince(lastAutoFire) > 1.5,
+        lastDecision = follower.suggestion
+        followPosition = follower.position
+
+        if let made = follower.suggestion, slides.indices.contains(made.slideIndex) {
+            let next = Suggestion(
+                presentationID: presentation.id, contextID: contextID, fromOccurrence: follower.live,
+                slideIndex: made.slideIndex, label: label(for: made.slideIndex, in: slides, of: presentation))
+            if suggestion != next { suggestion = next }
+            if abs(suggestionConfidence - made.confidence) >= 0.01 { suggestionConfidence = made.confidence }
+        } else if suggestion != nil {
+            suggestion = nil
+        }
+
+        guard advancesAutomatically, !isPaused,
+              let decision = follower.decision, decision.confidence >= autoAdvanceConfidence,
+              Date().timeIntervalSince(lastAutoFire) > 1.2,
               slides.indices.contains(decision.slideIndex)
         else { return }
         lastAutoFire = Date()
+        landing = (from: liveSignature, until: Date().addingTimeInterval(3))
+        liveSignature = "\(contextID ?? "")|\(decision.slideIndex)|\(slides[decision.slideIndex].id)"
+        self.follower?.liveChanged(to: decision.slideIndex)
+        suggestion = nil
         controls.fire(
             slide: slides[decision.slideIndex], in: presentation, arrangementId: live.arrangementId,
-            contextID: controls.liveContextID, occurrence: decision.slideIndex)
+            contextID: contextID, occurrence: decision.slideIndex)
         DiagnosticsStore.shared.note(
-            "liveAssist.advance", detail: "\(decision.reason) \(Int(decision.confidence * 100))%")
+            "liveAssist.follow.advance",
+            detail: "\(presentation.name) \(occurrence + 1)→\(decision.slideIndex + 1) \(decision.reason) \(Int(decision.confidence * 100))%")
     }
 
     // MARK: Scripture
@@ -309,11 +490,24 @@ struct LiveAssistView: View {
                 Text("Lyric following and scripture detection options are in Settings › Show Setup.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
-            if assist.followsLyrics {
-                Section("Lyric Following") {
-                    ConfidenceMeter(decision: assist.lastDecision, threshold: assist.autoAdvanceConfidence)
-                    Button("Take Over (pause 8 s)") { assist.operatorTookOver() }
+            Section("Lyric Follow") {
+                Toggle("Follow every song", isOn: $assist.followsEverySong)
+                Toggle("Advance automatically", isOn: $assist.advancesAutomatically)
+                if !assist.followsEverySong {
+                    Text("Or turn on Follow for one song in its slide grid header.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                ConfidenceMeter(
+                    decision: assist.lastDecision, label: assist.suggestion?.label,
+                    threshold: assist.advancesAutomatically ? assist.autoAdvanceConfidence : nil)
+                if let position = assist.followPosition {
+                    Text("Heard: slide \(position.slideIndex + 1), word \(position.word) of \(position.wordCount)")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button("Take Over (pause 8 s)") { assist.takeOver() }
                         .keyboardShortcut(.escape, modifiers: [])
+                    if assist.isPaused { Text("Paused").font(.caption).foregroundStyle(.orange) }
                 }
             }
             Section("Scripture Detection") {
@@ -344,25 +538,29 @@ struct LiveAssistView: View {
 
 private struct ConfidenceMeter: View {
     let decision: LyricFollower.Decision?
-    let threshold: Double
+    /// "6 Chorus".
+    let label: String?
+    /// Nil when it only suggests.
+    let threshold: Double?
 
     var body: some View {
         let value = decision?.confidence ?? 0
         VStack(alignment: .leading, spacing: 4) {
             ProgressView(value: value)
-                .tint(value >= threshold ? .green : value >= 0.4 ? .yellow : .gray)
-            Text(label(value)).font(.caption).foregroundStyle(.secondary)
+                .tint(threshold.map { value >= $0 } == true ? .green : value >= 0.4 ? .yellow : .gray)
+            Text(text(value)).font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    private func label(_ value: Double) -> String {
+    private func text(_ value: Double) -> String {
         guard let decision else { return "Listening for the next line…" }
-        let what = switch decision.reason {
+        let slide = label ?? "slide \(decision.slideIndex + 1)"
+        let why = switch decision.reason {
         case .nextSlideStarted: "next slide started"
-        case .currentSlideFinished: "slide finished"
-        case .jump: "jumped to slide \(decision.slideIndex + 1)"
+        case .currentSlideFinished: "last line sung"
+        case .jump: "jumped"
         }
-        return "\(Int(value * 100))% — \(what)"
+        return "Next: \(slide) — \(Int(value * 100))%, \(why)"
     }
 }
 
