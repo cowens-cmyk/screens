@@ -338,7 +338,32 @@ Open with ⌘,. A search field finds any setting. Pages:
 
 ## The Assistant window
 
-**Window › Assistant** (⇧⌘A) opens this chat. At the top are two one-click jobs: **Update pre-service slides** (checks the pre-service slideshow against hopejc.org's events and removes promos for events that have ended, asking first) and **Build announcements from a card…** (pick PDF, JPG or PNG cards; each becomes a slide in Announcements). The paperclip attaches PDFs or images to any message. Deleting slides, removing plan items and scheduling services show **Approve** and **Cancel** in the chat before anything changes. **Stop** (Esc) ends a reply. The pencil button starts a new conversation. Slide and plan edits the Assistant makes can be undone with Edit › Undo; new presentations and imported media stay until deleted in the library. In Run-Only Mode the Assistant window is locked.
+**Window › Assistant** (⇧⌘A) opens this chat. At the top are four one-click jobs:
+- **Build Sunday**: gets the next upcoming plan ready (see below).
+- **Check song lyrics**: **Every Song in the Next Plan**, or **One Song…** (type the title, then **Check**). Compares the slides with the lyrics in Shepherd (see below).
+- **Update pre-service slides**: checks the pre-service slideshow against hopejc.org's events and removes promos for events that have ended, asking first.
+- **Build announcements from a card…**: pick PDF, JPG or PNG cards; each becomes a slide in Announcements.
+
+The paperclip attaches PDFs or images to any message; each page of a PDF is listed on its own. Deleting slides, removing plan items, scheduling services, applying the Build Sunday changes and fixing song lyrics show **Approve** and **Cancel** in the chat before anything changes. **Stop** (Esc) ends a reply. The pencil button starts a new conversation. Slide and plan edits the Assistant makes can be undone with Edit › Undo; new presentations and imported media stay until deleted in the library. In Run-Only Mode the Assistant window is locked.
+
+## Build Sunday (Assistant)
+
+**Build Sunday** prepares the next upcoming plan (a Shepherd plan when there is one) and ends with a "Ready for Sunday" checklist: ✓ or ⚠ for Songs, Message, Pre-service, Countdown and Schedule. To include the message, attach the pastor's notes PDF with the paperclip before clicking it; otherwise the Assistant asks for them. In order, it:
+1. Loads plans from Shepherd (as **Load Plans Now** does), when Shepherd is set up.
+2. Songs: for each planned song with no slides, links a copy already in the library, else imports the lyrics from Shepherd's song library. It never opens SongSelect; songs still missing need **Get Lyrics** in the plan.
+3. Message: if the plan has no message slides, it checks the plan's series (and asks if none is chosen), then builds the message from the notes the same way **Import Sermon** does. It won't replace a message that already has slides unless you say so.
+4. Pre-service: matches the pre-service slideshow (the one named in the **Service Day** setup, else one named Pre-Service) against hopejc.org's events and notes the promos for events that have ended.
+5. Countdown: if the countdown has no video, suggests the newest video in Media › **Countdowns** that wasn't used the week before.
+6. Schedule: if no countdowns are scheduled for the plan, proposes the **Service Day** service times on the plan's date (else Shepherd's service times).
+7. Shows one summary to approve with everything that replaces or removes something: the countdown video, the service times, the series, and the pre-service slides to delete. Nothing in it changes until **Approve**.
+
+Songs and the message are added without asking, since they only add to the plan. Running Build Sunday again only fills in what's still missing. It doesn't change **Run on this Mac**; the summary says when this Mac is set not to play the countdowns.
+
+## Check song lyrics (Assistant)
+
+**Check song lyrics** compares each song's slides with the song in Shepherd (found by CCLI number, then title) and reports: misspellings, wrong, missing or extra words, missing or extra lines, whole sections missing or extra, section names that differ, whether the song order matches the plan's arrangement, and capitalization that isn't consistent across the slides (for example "You" and "you" for the same word, or a line starting in lowercase). Punctuation is ignored, since imported slides have none. A chorus copied onto several slides is compared once.
+
+The comparison is done in Screens; only the differences go to Claude, never whole songs. When there are fixes, the Assistant offers them; **Approve** shows each changed line (− old, + new) first. Fixes change wording, spelling and missing lines; capitals change only if you ask. Extra lines are reported but never removed, since they may be on purpose. A slide edited after the check is skipped until it's checked again. Each fix can be undone with Edit › Undo. Shepherd must be set up in Settings › Shepherd & Anthem.
 
 ## Assistant conventions
 
@@ -350,3 +375,4 @@ Open with ⌘,. A search field finds any setting. Pages:
 - New presentations for a plan should be added to the plan as well as the library.
 - When a change is made, say what changed and where to see it (which plan, presentation and slide).
 - If a feature or setting isn't described here, say so instead of guessing at menu names.
+- Song lyrics are copyrighted. When talking about a song, quote only the words that differ, not whole verses.

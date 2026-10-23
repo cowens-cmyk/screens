@@ -286,33 +286,18 @@ struct SermonImportSheet: View {
         let seriesID = seriesID
         building = true
         defer { building = false }
-        await model.themesFilled([seriesID])
-        var theme = model.theme(seriesID)
-        // A series that missed the launch upgrade (restored or synced in
-        // later) gets its Title and Worship designs now.
-        if let current = theme, let upgraded = SermonSeriesTheme.upgraded(current) {
-            // Worked out again on the stored theme, so an edit (or a sync)
-            // since it was read isn't written over. The slides built here
-            // find their designs by name, so new ids there don't matter.
-            model.updateTheme(seriesID) { stored in
-                guard let fresh = SermonSeriesTheme.upgraded(stored) else { return }
-                stored.slides = fresh.slides
-                stored.streamDesigns = fresh.streamDesigns
-                stored.isSermonSeries = true
-            }
-            theme = upgraded
-        }
-        // The next import starts on this series.
-        model.updateSlideBuilding { $0.sermonThemeId = seriesID }
+        let theme = await SermonMessage.seriesTheme(seriesID, model: model)
         let slides = await SermonSlides.build(outline, theme: theme)
         guard !slides.isEmpty else { error = "No slides to build."; return }
 
         if let planID {
-            await placeInPlan(planID, slides: slides, title: outline.title, seriesID: seriesID)
+            let id = await SermonMessage.place(slides, title: outline.title, seriesID: seriesID, inPlan: planID, model: model)
+            dismiss()
+            onCreated(id)
             return
         }
         if destination.isEmpty {
-            var presentation = newMessage(slides: slides, title: outline.title, seriesID: seriesID)
+            var presentation = SermonMessage.newMessage(slides: slides, title: outline.title, seriesID: seriesID)
             presentation.folder = model.newPlacement.folder(for: .presentation)
             model.createInDrive(presentation)
             AddToCurrentServiceToggle.add(presentation.id, model: model, if: addToService)
@@ -336,8 +321,35 @@ struct SermonImportSheet: View {
         dismiss()
         onCreated(id)
     }
+}
 
-    private func newMessage(slides: [Slide], title: String, seriesID: String) -> Presentation {
+/// Building a plan's message once the notes have been read: shared by the
+/// Import Sermon sheet and the Assistant's build_message_from_notes.
+@MainActor
+enum SermonMessage {
+    /// The series theme to lay the message out with. A series that missed
+    /// the launch upgrade (restored or synced in later) gets its Title and
+    /// Worship designs now, and the next import starts on this series.
+    static func seriesTheme(_ seriesID: String, model: AppModel) async -> Theme? {
+        await model.themesFilled([seriesID])
+        var theme = model.theme(seriesID)
+        if let current = theme, let upgraded = SermonSeriesTheme.upgraded(current) {
+            // Worked out again on the stored theme, so an edit (or a sync)
+            // since it was read isn't written over. The slides built here
+            // find their designs by name, so new ids there don't matter.
+            model.updateTheme(seriesID) { stored in
+                guard let fresh = SermonSeriesTheme.upgraded(stored) else { return }
+                stored.slides = fresh.slides
+                stored.streamDesigns = fresh.streamDesigns
+                stored.isSermonSeries = true
+            }
+            theme = upgraded
+        }
+        model.updateSlideBuilding { $0.sermonThemeId = seriesID }
+        return theme
+    }
+
+    static func newMessage(slides: [Slide], title: String, seriesID: String) -> Presentation {
         var presentation = Presentation(
             id: UUID().uuidString, name: title.isEmpty ? "Message" : title,
             presentationKind: .deck, themeId: seriesID, slides: slides)
@@ -345,25 +357,30 @@ struct SermonImportSheet: View {
         return presentation
     }
 
+    /// The plan's current message: its id, and the presentation when it
+    /// could be read.
+    static func current(in planID: String, model: AppModel) async -> (id: String, presentation: Presentation?)? {
+        guard let plan = model.resident.services.value(planID) else { return nil }
+        let loaded = await model.presentationsFilled(
+            plan.items.filter { $0.itemKind == .presentation }.map(\.refId))
+        return PlanMessage.itemIndex(in: plan) { id in
+            loaded[id].map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
+        }.map { index in (plan.items[index].refId, loaded[plan.items[index].refId]) }
+    }
+
     /// The new message takes the place of the plan's old one (keeping its
-    /// sermon timer), and the plan follows the series.
-    private func placeInPlan(_ planID: String, slides: [Slide], title: String, seriesID: String) async {
-        let items = plan?.items.filter { $0.itemKind == .presentation }.map(\.refId) ?? []
-        let loaded = await model.presentationsFilled(items)
-        let oldID = plan.flatMap { plan in
-            PlanMessage.itemIndex(in: plan) { id in
-                loaded[id].map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
-            }.map { plan.items[$0].refId }
-        }
+    /// sermon timer), and the plan follows the series. Returns its id.
+    static func place(_ slides: [Slide], title: String, seriesID: String, inPlan planID: String, model: AppModel) async -> String {
+        let old = await current(in: planID, model: model)
         var presentation = newMessage(slides: slides, title: title, seriesID: seriesID)
-        presentation.sermonTimerSeconds = oldID.flatMap { loaded[$0]?.sermonTimerSeconds }
+        presentation.sermonTimerSeconds = old?.presentation?.sermonTimerSeconds
         model.createInDrive(presentation)
         let id = presentation.id
+        let oldID = old?.id
         model.updateService(planID) { plan in
             PlanMessage.place(id, name: "Message", series: seriesID, in: &plan) { $0 == oldID }
         }
-        dismiss()
-        onCreated(id)
+        return id
     }
 }
 

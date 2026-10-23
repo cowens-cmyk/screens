@@ -10,6 +10,8 @@ struct AssistantView: View {
     @AppStorage(AssistantModel.defaultsKey) private var modelRaw = AssistantModel.opus.rawValue
     @State private var draft = ""
     @State private var picking: Picking?
+    @State private var askingSong = false
+    @State private var songName = ""
     @FocusState private var composerFocused: Bool
 
     private enum Picking: Identifiable {
@@ -92,7 +94,23 @@ struct AssistantView: View {
     }
 
     private var jobs: some View {
-        HStack(spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 8, alignment: .leading)], alignment: .leading, spacing: 6) {
+            Button {
+                session.run(.buildSunday)
+            } label: {
+                Label(AssistantPrompt.Job.buildSunday.title, systemImage: AssistantPrompt.Job.buildSunday.systemImage)
+            }
+            .help("Get the next plan ready: songs, message, countdown, pre-service and schedule. Attach the message notes first if you have them.")
+            Menu {
+                Button("Every Song in the Next Plan") { session.run(.checkSongLyrics(song: nil)) }
+                Button("One Song…") { askingSong = true }
+            } label: {
+                Label(AssistantPrompt.Job.checkSongLyrics(song: nil).title,
+                      systemImage: AssistantPrompt.Job.checkSongLyrics(song: nil).systemImage)
+            }
+            .fixedSize()
+            .help("Compare song slides with the lyrics in Shepherd")
+            .popover(isPresented: $askingSong, arrowEdge: .bottom) { songPrompt }
             Button {
                 session.run(.updatePreService)
             } label: {
@@ -104,12 +122,37 @@ struct AssistantView: View {
                 Label(AssistantPrompt.Job.announcementsFromCards.title,
                       systemImage: AssistantPrompt.Job.announcementsFromCards.systemImage)
             }
-            Spacer(minLength: 0)
         }
         .controlSize(.small)
         .disabled(session.isRunning || !session.hasKey)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private var songPrompt: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Which song?").font(.headline)
+            TextField("Song title", text: $songName)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 240)
+                .onSubmit(checkSong)
+            HStack {
+                Spacer()
+                Button("Cancel") { askingSong = false }
+                Button("Check", action: checkSong)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(songName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(12)
+    }
+
+    private func checkSong() {
+        let name = songName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !session.isRunning else { return }
+        askingSong = false
+        songName = ""
+        session.run(.checkSongLyrics(song: name))
     }
 
     private var transcript: some View {
@@ -150,7 +193,7 @@ struct AssistantView: View {
             Text("Ask how to do something in Screens, or ask for a change.")
             Text("For example: \"Add a slide to Announcements for the Fall Festival\", \"Schedule Sunday's plan for 9 and 11\", or \"How do I send a message to the stage?\"")
                 .foregroundStyle(.secondary)
-            Text("Deleting slides, removing plan items and scheduling ask you first.")
+            Text("Deleting slides, removing plan items, scheduling and fixing lyrics ask you first.")
                 .foregroundStyle(.secondary)
         }
         .font(.callout)

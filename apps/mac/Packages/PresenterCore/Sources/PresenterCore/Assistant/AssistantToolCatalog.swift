@@ -294,5 +294,83 @@ public enum AssistantToolCatalog {
                 "presentation_id": string("Existing presentation to add the slides to."),
                 "presentation_name": string("Name to find or create when no presentation_id is given."),
             ], required: ["cards"])),
+        AssistantToolSpec(
+            name: "sync_shepherd",
+            description: "Loads upcoming plans from Shepherd now (Settings › Shepherd › Load Plans Now), so new songs, items "
+                + "and service times come in. Safe to call any time. Says whether Shepherd is set up and how the sync went.",
+            schema: object([:])),
+        AssistantToolSpec(
+            name: "check_service_readiness",
+            description: "One look at what a plan still needs for Sunday. Without plan_id it picks the next upcoming plan "
+                + "(a Shepherd plan when there is one). Returns the plan; its songs and which have no slides; the countdown "
+                + "item, its video and a suggested video (newest in Media › Countdowns not used last week); the message, "
+                + "its slide count and the plan's sermon series; the pre-service slideshow; and the countdowns already "
+                + "scheduled with proposed service times from the Service Day setup or Shepherd. Changes nothing.",
+            schema: object(["plan_id": string("The plan id; leave out for the next upcoming plan.")])),
+        AssistantToolSpec(
+            name: "import_songs_from_shepherd",
+            description: "For planned songs with no slides: links a library presentation that already has the song (by CCLI "
+                + "number or title), else imports the song's lyrics from Shepherd's song library as a new presentation and "
+                + "links it. Shepherd only; it never opens SongSelect. Songs that already have slides are left alone, so "
+                + "calling it again is safe. Returns each song as linked, imported or not found.",
+            schema: object([
+                "plan_id": string("The plan id.", nonEmpty: true),
+                "item_ids": strings("Only these plan items; leave out for every song without slides.", maxItems: 40),
+            ], required: ["plan_id"])),
+        AssistantToolSpec(
+            name: "build_message_from_notes",
+            description: "Builds the plan's message slides from the pastor's notes, as Import Sermon does: Claude reads the "
+                + "notes PDF into Title, Point and Scripture slides, they're laid out with the series' designs, and the new "
+                + "presentation becomes the plan's message. Takes about a minute. The attachment must be a PDF page the user "
+                + "attached (any page of it; the whole PDF is read). Uses the plan's series unless series_id is given; fails "
+                + "when neither names a sermon series, so ask the user. Won't replace a message that has slides unless "
+                + "replace_existing is true.",
+            schema: object([
+                "attachment": string("Attachment id of the notes, e.g. att_1.", nonEmpty: true),
+                "plan_id": string("The plan id.", nonEmpty: true),
+                "series_id": string("Sermon series theme id (list_themes marks them); leave out for the plan's series."),
+                "replace_existing": boolean("Replace a message that already has slides. Default false; ask the user first."),
+            ], required: ["attachment", "plan_id"])),
+        AssistantToolSpec(
+            name: "apply_sunday_setup",
+            description: "Applies the changes Build Sunday gathered, after the user approves one summary of all of them: the "
+                + "countdown video, the service times (Schedule Service: replaces this plan's scheduled countdowns), the "
+                + "plan's sermon series, and pre-service slides to remove. Give only what should change; at least one.",
+            schema: object([
+                "plan_id": string("The plan id.", nonEmpty: true),
+                "countdown_media_id": string("Video for the plan's countdown item (list_media or check_service_readiness)."),
+                "service_times": strings("Local start times as YYYY-MM-DDTHH:MM, e.g. 2026-10-25T09:00.", maxItems: 8),
+                "series_id": string("Sermon series theme id to set as the plan's series."),
+                "remove_slides": object([
+                    "presentation_id": string("The pre-service presentation id.", nonEmpty: true),
+                    "slide_ids": strings("Ids of the slides to delete.", maxItems: 200),
+                    "reason": string("One short line saying why, e.g. \"Events have passed\"."),
+                ], required: ["presentation_id", "slide_ids"]),
+            ], required: ["plan_id"]),
+            needsConfirmation: true),
+        AssistantToolSpec(
+            name: "check_song_lyrics",
+            description: "Compares a song's slides with its lyrics in Shepherd (matched by CCLI number, then title) and "
+                + "returns only the differences: misspelled, wrong, missing or extra words; missing or extra lines and "
+                + "sections; section names that differ; the plan's song order against the slides' arrangement; and "
+                + "capitalization that isn't consistent across the slides. Slides are numbered from 1. Lists the slides "
+                + "it can fix. Give plan_id alone for every song in a plan, plan_id and item_id for one planned song, or "
+                + "presentation_id for a library song.",
+            schema: object([
+                "plan_id": string("The plan id."),
+                "item_id": string("One song's plan item id (from get_plan)."),
+                "presentation_id": string("A song presentation in the library, when it isn't in a plan."),
+            ])),
+        AssistantToolSpec(
+            name: "apply_lyric_fixes",
+            description: "Fixes a song's slides with the corrected words from the last check_song_lyrics of that "
+                + "presentation. The user sees each changed line and must approve. A slide edited since the check is "
+                + "skipped; check again first.",
+            schema: object([
+                "presentation_id": string("The song presentation id.", nonEmpty: true),
+                "slide_ids": strings("Slides to fix, from the check's fixes.", maxItems: 400),
+                "include_capitalization": boolean("Also take the lyrics' capitals. Default false: only words change."),
+            ], required: ["presentation_id", "slide_ids"]),
+            needsConfirmation: true),
     ]
 }

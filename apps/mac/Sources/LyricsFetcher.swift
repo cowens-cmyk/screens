@@ -45,20 +45,35 @@ final class LyricsFetcher {
 
     // MARK: Shepherd
 
+    /// What a Shepherd lookup for a planned song came to.
+    enum ShepherdOutcome: Equatable {
+        /// A new presentation from Shepherd's lyrics, with its id.
+        case imported(String)
+        case notConfigured
+        case notFound
+        /// Shepherd has the song but no lyrics or chord chart for it.
+        case noWords
+        case failed(String)
+    }
+
     private func fromShepherd(item: ServiceItem, title: String, model: AppModel) async -> String? {
+        if case .imported(let id) = await Self.importFromShepherd(item: item, title: title, model: model) { return id }
+        return nil
+    }
+
+    /// The Shepherd half of Get Lyrics on its own: finds the song (CCLI
+    /// number, then title), builds a presentation from its lyrics in the
+    /// plan's arrangement and key, and adds it to the library. Linking it
+    /// to the plan is the caller's. The Assistant uses this too, and never
+    /// the SongSelect half.
+    static func importFromShepherd(item: ServiceItem, title: String, model: AppModel) async -> ShepherdOutcome {
         let sync = ShepherdSync.shared
-        guard sync.isConfigured else { return nil }
+        guard sync.isConfigured else { return .notConfigured }
         let client = sync.client
-        let ccli = item.mxuCcliNumber.map(String.init)
         do {
-            var found: [ShepherdClient.SongSummary] = []
-            if let ccli { found = try await client.searchSongs(ccli).filter { $0.archived != true } }
-            var match = found.first { ccli != nil && $0.ccliNumber == ccli }
-            if match == nil {
-                let byTitle = try await client.searchSongs(title).filter { $0.archived != true }
-                match = byTitle.first { $0.title.caseInsensitiveCompare(title) == .orderedSame }
-            }
-            guard let match else { return nil }
+            guard let match = try await ShepherdSongMatch.find(
+                ccli: item.mxuCcliNumber.map(String.init), title: title, search: { try await client.searchSongs($0) })
+            else { return .notFound }
             let detail = try await client.song(id: match.id)
             let arrangement = detail.arrangements.first { $0.name == item.mxuArrangementName }
                 ?? detail.arrangements.first
@@ -66,12 +81,12 @@ final class LyricsFetcher {
                   var presentation = SongImport.presentation(
                       song: detail, arrangement: arrangement, playingKey: item.mxuSongKey,
                       themeId: model.slideBuilding.lyricsImportThemeId ?? "")
-            else { return nil }
+            else { return .noWords }
             presentation.folder = model.newPlacement.folder(for: .presentation)
             model.createInDrive(presentation)
-            return presentation.id
+            return .imported(presentation.id)
         } catch {
-            return nil
+            return .failed(error.localizedDescription)
         }
     }
 
@@ -168,7 +183,7 @@ final class LyricsFetcher {
         (try? String(contentsOf: url, encoding: .utf8)) ?? (try? String(contentsOf: url, encoding: .isoLatin1))
     }
 
-    private func link(_ itemID: String, planID: String, to presentationID: String, model: AppModel) {
+    func link(_ itemID: String, planID: String, to presentationID: String, model: AppModel) {
         model.updateService(planID) { plan in
             guard let index = plan.items.firstIndex(where: { $0.id == itemID }) else { return }
             plan.items[index].itemKind = .presentation
