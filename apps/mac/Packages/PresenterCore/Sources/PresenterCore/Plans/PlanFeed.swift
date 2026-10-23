@@ -100,6 +100,9 @@ public enum PlanItemSync {
             item.outputPresetId = old?.outputPresetId
             item.hiddenInPresenter = old?.hiddenInPresenter
             item.isCountdown = old?.isCountdown
+            // Chosen in Screens, not in the plan: a re-sync keeps them.
+            item.lightingCue = old?.lightingCue
+            item.actions = old?.actions
 
             switch planItem.itemType {
             case "header":

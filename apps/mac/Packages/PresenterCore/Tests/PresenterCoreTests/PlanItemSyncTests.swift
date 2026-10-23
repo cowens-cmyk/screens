@@ -78,6 +78,21 @@ private func planItem(
     #expect(unpicked[0].refId == "last-weeks-video" && unpicked[0].isCountdown == true)
 }
 
+@Test func resyncKeepsTheLightingChoiceAndMacros() {
+    var song = ServiceItem(id: "song", itemKind: .presentation, name: "Living Hope", refId: "lh")
+    song.mxuSourceItemId = "3"
+    song.lightingCue = "communion"
+    var macro = SlideAction(id: "a", kind: .fireCombo)
+    macro.comboId = "c"
+    song.actions = [macro]
+    let items = PlanItemSync.items(
+        for: [planItem("3", "Living Hope", type: "song", songID: "s1")],
+        serviceTypeName: nil, rules: ServiceLinkRules(id: "r", rules: []), existing: [song]
+    ) { _ in nil }
+    #expect(items[0].lightingCue == "communion")
+    #expect(items[0].actions?.first?.comboId == "c")
+}
+
 @Test func arrangementFollowsPlanSequence() {
     let sections = [
         PresentationSection(id: "v1", name: "Verse 1"),

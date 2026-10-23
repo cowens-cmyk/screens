@@ -219,6 +219,13 @@ final class ServiceControls {
             restart(mediaID: background.mediaId)
         }
 
+        // The item's lighting cue and macros first, so the slide's own
+        // actions and the song-section note land after them.
+        if let contextID {
+            planItemWentLive(contextID, ownActions: slide.actions ?? [])
+        } else if !deckWasLive {
+            preServiceWentLive(presentation)
+        }
         actionRouter?.slideDidFire(slide, contextID: contextID)
         LightkeyLink.shared.slideWentLive(slide, in: presentation)
         armAutoAdvance(for: slide, in: presentation, keepingMediaAdvance: underVideo)
@@ -816,6 +823,9 @@ final class ServiceControls {
             restart(mediaID: mediaItem.id)
         }
 
+        if let contextID {
+            planItemWentLive(contextID, ownActions: mediaItem.actions ?? [])
+        }
         actionRouter?.mediaDidFire(mediaItem, on: layer)
         switch context {
         case .direct: cancelMediaAdvance()
@@ -861,6 +871,59 @@ final class ServiceControls {
               let plan = appModel.resident.services.value(planID)
         else { return false }
         return plan.items.contains { $0.id == serviceItemID && $0.isCountdown == true }
+    }
+
+    // MARK: Lights follow the service
+
+    /// The plan item (or pre-service deck) whose cue went out last. A cue
+    /// goes once per item, not on every slide of it, and again only once
+    /// another item has gone live.
+    private var lightingKey: String?
+
+    /// A plan item went live — its first slide, its video, or its header
+    /// clicked. Lightkey gets the item's position cue, then the item's own
+    /// macros run. When those macros, or the slide's or video's own
+    /// actions (`ownActions`), already send Lightkey a cue, that cue is the
+    /// operator's choice and the position cue stays quiet rather than
+    /// flashing one scene before the other.
+    func planItemWentLive(_ itemID: String, ownActions: [SlideAction] = []) {
+        guard itemID != lightingKey,
+              let serviceID = appModel.currentServiceID,
+              let service = try? appModel.service(serviceID),
+              let item = service.items.first(where: { $0.id == itemID })
+        else { return }
+        lightingKey = itemID
+        let macros = item.actions ?? []
+        let link = LightkeyLink.shared
+        if link.followsService,
+           let position = ServiceLighting.positions(in: service, model: appModel)[itemID],
+           !LightingCueTable.sendsLightkeyCue(
+               ownActions + macros, lightkeyDeviceID: LightkeyLink.deviceID,
+               combo: { try? self.appModel.actionCombo($0).actions }) {
+            sendLightingCue(position)
+        }
+        if !macros.isEmpty {
+            DiagnosticsStore.shared.note("actions.planItem", detail: item.name)
+            actionRouter?.execute(macros)
+        }
+    }
+
+    /// The walk-in slideshow put up on its own (Service Day's restart, or
+    /// from the library) still sets the walk-in scene.
+    private func preServiceWentLive(_ presentation: Presentation) {
+        let key = "preService|" + presentation.id
+        guard key != lightingKey, LightkeyLink.shared.followsService,
+              ServiceLighting.isPreService(
+                presentation, preServiceID: appModel.slideBuilding.serviceDay?.preServicePresentationId)
+        else { return }
+        lightingKey = key
+        sendLightingCue(.walkIn)
+    }
+
+    private func sendLightingCue(_ position: ServicePosition) {
+        guard let note = LightingCueTable.note(for: position, in: ServiceLighting.table(appModel)) else { return }
+        DiagnosticsStore.shared.note("lightkey.position", detail: "\(position.title) note \(note)")
+        LightkeyLink.shared.sendCue(note: note)
     }
 
     // MARK: What's on the screens, for the pre-service restart
@@ -1383,7 +1446,7 @@ final class ServiceControls {
         }
     }
 
-    private struct ServicePosition {
+    private struct PlanSlide {
         var itemID: String
         var occurrence: Int
         var slide: Slide
@@ -1391,8 +1454,8 @@ final class ServiceControls {
         var arrangementId: String?
     }
 
-    private func servicePositions(in service: Service) -> [ServicePosition] {
-        var positions: [ServicePosition] = []
+    private func planSlides(in service: Service) -> [PlanSlide] {
+        var positions: [PlanSlide] = []
         for item in appModel.runOfShow(service) where item.itemKind == .presentation {
 
             guard let presentation = appModel.presentation(item.refId) else { continue }
@@ -1400,7 +1463,7 @@ final class ServiceControls {
                 for: presentation, arrangementId: item.arrangementId
             )
             for (index, slide) in slides.enumerated() {
-                positions.append(ServicePosition(
+                positions.append(PlanSlide(
                     itemID: item.id, occurrence: index, slide: slide,
                     presentation: presentation, arrangementId: item.arrangementId
                 ))
@@ -1416,7 +1479,7 @@ final class ServiceControls {
         if let serviceID = appModel.currentServiceID,
            let service = try? appModel.service(serviceID),
            let itemIndex = service.items.firstIndex(where: { $0.id == contextID }) {
-            let positions = servicePositions(in: service)
+            let positions = planSlides(in: service)
             guard let current = positions.firstIndex(where: {
                 $0.itemID == contextID && $0.occurrence == occurrence
             }) else { return context }

@@ -350,8 +350,8 @@ struct AppSettingsView: View {
             id: "midi.lightkey", category: .midi,
             title: "Lightkey",
             caption: nil,
-            keywords: "lightkey lighting dmx midi network rtp cue section verse chorus",
-            control: AnyView(LightkeySettingsForm()),
+            keywords: "lightkey lighting dmx midi network rtp cue section verse chorus scene position walk-in countdown song message closing walkout baptism communion",
+            control: AnyView(LightkeySettingsForm(model: model)),
             stacked: true
         ))
         rows.append(SettingsRowSpec(

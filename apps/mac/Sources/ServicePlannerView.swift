@@ -134,11 +134,12 @@ struct RunOrderList: View {
     private func runOrderList(
         service: Service, visible: [ServiceItem], order: [String], changed: Set<String>
     ) -> some View {
-        List(selection: $selection) {
+        let positions = ServiceLighting.positions(in: service, model: model)
+        return List(selection: $selection) {
             ForEach(visible, id: \.id) { item in
                 if item.itemKind == .header {
 
-                    headerRow(item, order: order)
+                    headerRow(item, order: order, service: service)
                         .tag(item.id)
                         .listRowSeparator(.hidden)
                         .listRowBackground(
@@ -150,7 +151,9 @@ struct RunOrderList: View {
 
                         .draggablePayload(runOnly ? nil : "svc::" + item.id)
                 } else {
-                    itemRow(item, order: order, changed: changed.contains(item.id))
+                    itemRow(
+                        item, order: order, changed: changed.contains(item.id),
+                        position: positions[item.id], service: service)
                         .transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity))
                         .tag(item.id)
                         .listRowSeparator(.hidden)
@@ -252,6 +255,13 @@ struct RunOrderList: View {
     }
 
     private func selectionChanged(_ selection: Set<String>, visible: [ServiceItem]) {
+        // A header clicked while presenting sets the lights for its section
+        // (Baptism, Communion…) before anything in it goes up.
+        if selection.count == 1, let id = selection.first,
+           visible.first(where: { $0.id == id })?.itemKind == .header,
+           runOnly || appModeRaw == AppMode.present.rawValue {
+            controls?.planItemWentLive(id)
+        }
         let surface = RunOrderSelection.surfaceItem(
             selection: selection, current: selectedItemID, rows: visible)
         if surface != selectedItemID {
@@ -304,7 +314,7 @@ struct RunOrderList: View {
         }
     }
 
-    private func headerRow(_ item: ServiceItem, order: [String]) -> some View {
+    private func headerRow(_ item: ServiceItem, order: [String], service: Service) -> some View {
         let collapsed = collapsedHeaders.contains(item.id)
         return HStack(spacing: 6) {
             Button {
@@ -344,6 +354,7 @@ struct RunOrderList: View {
                     bulkMenu(batch)
                 } else {
                     headerColorMenu(item)
+                    lightingMenu(item, service: service)
                     Divider()
 
                     Button("Hide") { hide([item.id]) }
@@ -352,7 +363,7 @@ struct RunOrderList: View {
             }
         }
 
-        .id("runOrderHeaderMenu|\(item.id)|\(inMultiSelection(item.id))")
+        .id("runOrderHeaderMenu|\(item.id)|\(inMultiSelection(item.id))|\(item.lightingCue ?? "")")
     }
 
     /// A header's band: its own color, else a muted Hope navy.
@@ -379,7 +390,10 @@ struct RunOrderList: View {
     }
 
     @ViewBuilder
-    private func itemRow(_ item: ServiceItem, order: [String], changed: Bool) -> some View {
+    private func itemRow(
+        _ item: ServiceItem, order: [String], changed: Bool,
+        position: ServicePosition? = nil, service: Service? = nil
+    ) -> some View {
         HStack(spacing: 8) {
             // An item's color, like a header's, shows as a stripe at its edge.
             if let tint = item.colorHex.flatMap(ColorHex.color) {
@@ -427,6 +441,7 @@ struct RunOrderList: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            lightingBadges(item, position: position)
         }
         .overlay(
             RoundedRectangle.standard(CornerStandard.element)
@@ -436,7 +451,9 @@ struct RunOrderList: View {
         )
         .dropDestination(for: String.self) { payloads, _ in
 
-            if !runOnly, item.itemKind == .presentation,
+            if !runOnly, let comboID = payloads.first.flatMap(comboID(in:)) {
+                return addMacro(comboID, to: item)
+            } else if !runOnly, item.itemKind == .presentation,
                let dragged = payloads.first.flatMap(SlideBulkEdit.draggedSlide(in:)) {
                 return model.copySlide(
                     dragged.slideID, from: dragged.presentationID,
@@ -446,9 +463,10 @@ struct RunOrderList: View {
             }
         } isTargeted: { over in
 
-            let slideDrag = NSPasteboard(name: .drag).string(forType: .string)
-                .flatMap(SlideBulkEdit.draggedSlide(in:))
-            let accepts = item.itemKind == .presentation && slideDrag.map { $0.presentationID != item.refId } == true
+            let dragged = NSPasteboard(name: .drag).string(forType: .string)
+            let slideDrag = dragged.flatMap(SlideBulkEdit.draggedSlide(in:))
+            let accepts = (item.itemKind == .presentation && slideDrag.map { $0.presentationID != item.refId } == true)
+                || (!runOnly && dragged.flatMap(comboID(in:)) != nil)
             if over, accepts {
                 dropTargetItemID = item.id
             } else if !over, dropTargetItemID == item.id {
@@ -469,6 +487,12 @@ struct RunOrderList: View {
                     Divider()
                 }
                 headerColorMenu(item)
+                if let service {
+                    lightingMenu(item, service: service, position: position)
+                }
+                if item.actions?.isEmpty == false {
+                    Button("Remove Macros") { setActions(nil, on: item.id) }
+                }
                 Divider()
 
                 if item.itemKind == .presentation {
@@ -504,7 +528,105 @@ struct RunOrderList: View {
             }
         }
 
-        .id("runOrderRowMenu|\(item.id)|\(item.itemKind.rawValue)|\(item.itemKind == .media && model.media(item.refId) == nil)|\(inMultiSelection(item.id))")
+        .id("runOrderRowMenu|\(item.id)|\(item.itemKind.rawValue)|\(item.itemKind == .media && model.media(item.refId) == nil)|\(inMultiSelection(item.id))|\(item.lightingCue ?? "")|\(item.actions?.count ?? 0)")
+    }
+
+    // MARK: Lighting cues and plan-item macros
+
+    /// What Lightkey gets when the item goes live, in small type at the
+    /// row's end, and a bolt when macros ride on the item.
+    @ViewBuilder
+    private func lightingBadges(_ item: ServiceItem, position: ServicePosition?) -> some View {
+        if LightkeyLink.shared.followsService {
+            if let position {
+                Text(position.title)
+                    .font(.caption2)
+                    .foregroundStyle(item.lightingCue == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .help("Lightkey: \(position.title)" + (item.lightingCue == nil ? "" : " (chosen for this item)"))
+            } else if item.lightingCue == ServicePosition.noneKey {
+                Image(systemName: "lightbulb.slash")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .help("No Lightkey cue for this item")
+            }
+        }
+        if let actions = item.actions, !actions.isEmpty {
+            Image(systemName: "bolt.fill")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .help("Runs when it goes live: " + actions.map(macroName).joined(separator: ", "))
+        }
+    }
+
+    /// Right-click › Lighting Cue: Automatic (what the plan works out),
+    /// any position, or None.
+    @ViewBuilder
+    private func lightingMenu(_ item: ServiceItem, service: Service, position: ServicePosition? = nil) -> some View {
+        let automatic = automaticPosition(item, in: service, current: position)
+        Menu("Lighting Cue") {
+            Picker("Lighting Cue", selection: Binding(
+                get: { item.lightingCue ?? "" },
+                set: { setLightingCue($0.isEmpty ? nil : $0, on: item.id) }
+            )) {
+                Text(automatic.map { "Automatic (\($0.title))" } ?? "Automatic (None)").tag("")
+                Divider()
+                ForEach(ServiceLighting.choices(model), id: \.key) { choice in
+                    Text(choice.title).tag(choice.key)
+                }
+                Divider()
+                Text("None").tag(ServicePosition.noneKey)
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        }
+    }
+
+    /// The position the plan gives the item when it hasn't chosen one.
+    private func automaticPosition(_ item: ServiceItem, in service: Service, current: ServicePosition?) -> ServicePosition? {
+        guard item.lightingCue != nil else {
+            return item.itemKind == .header ? ServicePosition.named(item.name, customNames: customCueNames) : current
+        }
+        var plan = service
+        if let index = plan.items.firstIndex(where: { $0.id == item.id }) { plan.items[index].lightingCue = nil }
+        return ServiceLighting.positions(in: plan, model: model)[item.id]
+    }
+
+    private var customCueNames: [String] {
+        LightingCueTable.customNames(in: ServiceLighting.table(model))
+    }
+
+    private func setLightingCue(_ key: String?, on itemID: String) {
+        model.updateService(serviceID) { service in
+            guard let index = service.items.firstIndex(where: { $0.id == itemID }) else { return }
+            service.items[index].lightingCue = key
+        }
+    }
+
+    /// A macro dragged from the Macros list onto a plan item.
+    private func comboID(in payload: String) -> String? {
+        model.indexEntry(payload)?.kind == .actionCombo ? payload : nil
+    }
+
+    private func addMacro(_ comboID: String, to item: ServiceItem) -> Bool {
+        guard item.itemKind != .header, item.actions?.contains(where: { $0.comboId == comboID }) != true
+        else { return false }
+        var action = SlideAction(id: UUID().uuidString, kind: .fireCombo)
+        action.comboId = comboID
+        setActions((item.actions ?? []) + [action], on: item.id)
+        return true
+    }
+
+    private func setActions(_ actions: [SlideAction]?, on itemID: String) {
+        model.updateService(serviceID) { service in
+            guard let index = service.items.firstIndex(where: { $0.id == itemID }) else { return }
+            service.items[index].actions = actions?.isEmpty == false ? actions : nil
+        }
+    }
+
+    private func macroName(_ action: SlideAction) -> String {
+        action.comboId.flatMap { model.entry($0)?.name } ?? "Macro"
     }
 
     private func displayName(_ item: ServiceItem) -> String {

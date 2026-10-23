@@ -317,6 +317,17 @@ These are Hope Church conventions, not special features.
 
 **Window › Screen Configuration** (also More › Screen Setup… and Settings › Show Setup): one card each for **Audience** (what the room sees), **Livestream** (laid over the camera) and **Stage** (lyrics, next slide, clock and timers). Each card's **Output** is None, a connected display, a Blackmagic DeckLink port, or NDI. The Livestream card has **Alpha key (transparent)**. Settings › Show Setup also has Blackmagic DeckLink setup; Settings › Network & API has **NDI network** (pin NDI to the wired production network).
 
+## LightKey cues
+
+Lightkey's scenes follow the service on their own. When a plan item goes live (its first slide, its video, or the countdown), Screens sends Lightkey the note for that item's position, once per item. Clicking a header in Present mode sends the header's position.
+
+- **Positions**: Walk-in, Countdown, Song 1, Song 2…, Announcements, Message, Closing, Walkout, Baptism, Communion, plus any cue the church adds.
+- **How Screens works out a position**, first match wins: the item's own choice; the countdown, and the pre-service slideshow (Walk-in); the nearest header above that names a position ("Walk In", "Pre-Service", "Announcements", "Message", "Sermon", "Closing", "Benediction", "Walk Out", "Baptism", "Communion", "Lord's Supper"); the item's type (Sermon → Message, Announcements → Announcements, songs count Song 1, Song 2… down the plan, hidden items skipped); then the item's own name. "Worship" and "Response" headers don't set a position, so their songs keep their numbers.
+- Each plan row shows its position in small gray text at the right. Right-click an item (or header) › **Lighting Cue** to pick **Automatic**, any position, or **None**.
+- **Macros on a plan item**: drag a macro from the Macros list onto a plan item. It runs when the item goes live, after the position cue; a bolt marks the row. Right-click › **Remove Macros** takes them off. If the item's macros or its first slide's actions send their own Lightkey Cue, that cue is used instead of the position cue.
+- **Settings › MIDI › Lightkey › Lighting cues**: **Change Lightkey scenes with the service** (this Mac) and the church's table of notes, one row per position, each with a note number, an on/off box and **Send** (press it while a Lightkey cue is in MIDI learn). Defaults are notes 20–32 on the Lightkey channel, clear of the song-section notes 1–10. **Add Song** adds Song 6 and up (songs past the last row use it); **Add Cue…** adds a named position that a header with the same name picks up.
+- Templates keep each item's lighting choice and macros.
+
 ## Phone remote and Local API
 
 Settings › Network & API: **Local API** on/off, **Port**, **Connect at** (open http://address/ in Safari or Chrome on the same Wi-Fi), **Access keys** (required; each grants Watch, Operate or Manage), **API reference**. The phone remote has tabs Show, Slides, Timers, Macros and Stage. Companion and Stream Deck use the same address.

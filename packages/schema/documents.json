@@ -2204,6 +2204,16 @@
           "name": "isCountdown",
           "type": "bool",
           "optional": true
+        },
+        {
+          "name": "lightingCue",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "actions",
+          "type": "list:SlideAction",
+          "optional": true
         }
       ]
     },
@@ -4723,6 +4733,29 @@
         {
           "name": "serviceDay",
           "type": "ServiceDaySettings",
+          "optional": true
+        },
+        {
+          "name": "lightingCues",
+          "type": "list:LightingCue",
+          "optional": true
+        }
+      ]
+    },
+    "LightingCue": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "position",
+          "type": "string"
+        },
+        {
+          "name": "note",
+          "type": "int"
+        },
+        {
+          "name": "off",
+          "type": "bool",
           "optional": true
         }
       ]

@@ -29,6 +29,19 @@ final class LightkeyLink {
     /// Sends a note when the song moves to a new section (Verse, Chorus…).
     var sendsSections: Bool { didSet { save() } }
 
+    /// Changes Lightkey's scene as the service moves: each plan item sends
+    /// its position's note (Walk-in, Song 1, Message…) when it goes live.
+    /// Per Mac, like the rest of this link; the note table is the church's.
+    var followsService: Bool {
+        get { followChoice ?? configured }
+        set { followChoice = newValue; save() }
+    }
+    /// Unset until someone flips the switch: until then it follows whether
+    /// Lightkey has been set up on this Mac at all.
+    private var followChoice: Bool?
+    /// Any Lightkey setting saved, or a cue or test note sent from here.
+    private var configured: Bool
+
     private(set) var status = ""
 
     private var connection: MIDINetworkConnection?
@@ -41,6 +54,9 @@ final class LightkeyLink {
         port = defaults.object(forKey: "lightkey.port") as? Int ?? 5004
         channel = defaults.object(forKey: "lightkey.channel") as? Int ?? 16
         sendsSections = defaults.bool(forKey: "lightkey.sections")
+        followChoice = defaults.object(forKey: "lightkey.followService") as? Bool
+        configured = defaults.bool(forKey: "lightkey.configured")
+            || defaults.object(forKey: "lightkey.location") != nil
     }
 
     private func save() {
@@ -50,6 +66,14 @@ final class LightkeyLink {
         defaults.set(port, forKey: "lightkey.port")
         defaults.set(channel, forKey: "lightkey.channel")
         defaults.set(sendsSections, forKey: "lightkey.sections")
+        defaults.set(followChoice, forKey: "lightkey.followService")
+        markConfigured()
+    }
+
+    private func markConfigured() {
+        guard !configured else { return }
+        configured = true
+        UserDefaults.standard.set(true, forKey: "lightkey.configured")
     }
 
     func start() {
@@ -87,6 +111,7 @@ final class LightkeyLink {
     }
 
     func send(kind: MIDIMessageKind, channel: Int, number: Int, value: Int) {
+        markConfigured()
         let network: MIDIEndpointRef? = location == .network && connection != nil
             ? MIDINetworkSession.default().destinationEndpoint() : nil
         MIDIOutService.shared.sendToLightkey(
@@ -95,6 +120,11 @@ final class LightkeyLink {
 
     /// A note Lightkey can MIDI-learn: press Test while Lightkey is learning.
     func sendTest(note: Int = 0) {
+        send(kind: .noteOn, channel: channel, number: note, value: 127)
+    }
+
+    /// A position's note, on this link's channel.
+    func sendCue(note: Int) {
         send(kind: .noteOn, channel: channel, number: note, value: 127)
     }
 
@@ -125,7 +155,47 @@ final class LightkeyLink {
     }
 }
 
+/// The app's side of ServicePosition: what the library knows about each
+/// plan item, and the church's cue table.
+@MainActor
+enum ServiceLighting {
+    static func table(_ model: AppModel) -> [LightingCue] {
+        LightingCueTable.effective(model.slideBuilding.lightingCues)
+    }
+
+    /// Each plan item's position, by item id.
+    static func positions(in service: Service, model: AppModel) -> [String: ServicePosition] {
+        let preServiceID = model.slideBuilding.serviceDay?.preServicePresentationId
+        return ServicePosition.positions(
+            in: service.items, messagePresentationId: service.messagePresentationId,
+            customNames: LightingCueTable.customNames(in: table(model))
+        ) { item in
+            guard item.itemKind == .presentation, let presentation = model.presentation(item.refId) else {
+                return ServicePosition.ItemFacts()
+            }
+            return ServicePosition.ItemFacts(
+                category: PresentationTypes.category(of: presentation),
+                isPreService: isPreService(presentation, preServiceID: preServiceID))
+        }
+    }
+
+    static func isPreService(_ presentation: Presentation, preServiceID: String?) -> Bool {
+        ServicePosition.isPreServiceSlideshow(
+            id: presentation.id, name: presentation.name,
+            loops: presentation.autoAdvance?.loopToStart == true,
+            preServicePresentationId: preServiceID)
+    }
+
+    /// The positions a plan item can be pointed at by hand, in table order.
+    static func choices(_ model: AppModel) -> [ServicePosition] {
+        let table = table(model)
+        return ServicePosition.standard(songs: LightingCueTable.songCount(in: table))
+            + LightingCueTable.customNames(in: table).map(ServicePosition.custom)
+    }
+}
+
 struct LightkeySettingsForm: View {
+    var model: AppModel?
     @Bindable private var link = LightkeyLink.shared
 
     var body: some View {
@@ -160,7 +230,129 @@ struct LightkeySettingsForm: View {
             }
             Text("To fire a Lightkey cue from a slide: right-click › Add Action › Lightkey Cue.")
                 .font(.caption).foregroundStyle(.secondary)
+            if let model {
+                Divider()
+                LightingCueTableForm(model: model)
+            }
         }
         .onAppear { link.apply() }
+    }
+}
+
+/// Settings › MIDI › Lightkey › Lighting cues: a note per service position.
+/// The table is the church's (synced); the switch is this Mac's.
+struct LightingCueTableForm: View {
+    let model: AppModel
+    @Bindable private var link = LightkeyLink.shared
+    @State private var addingCue = false
+    @State private var newCueName = ""
+
+    var body: some View {
+        let table = ServiceLighting.table(model)
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Change Lightkey scenes with the service", isOn: $link.followsService)
+            Text("When a plan item goes live, Lightkey gets its position's note. Songs count Song 1, Song 2… down the plan. A header named Message, Baptism, Communion and so on gives its items that position. Right-click a plan item to pick its cue or turn it off.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+                GridRow {
+                    Text("Position")
+                    Text("Note")
+                    Text("On")
+                    Color.clear.frame(width: 1, height: 1)
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                ForEach(table, id: \.position) { row in
+                    cueRow(row, in: table)
+                }
+            }
+            HStack {
+                Button("Add Song") { addSong(to: table) }
+                Button("Add Cue…") { addingCue = true }
+                Button("Use Defaults") { save(LightingCueTable.defaults) }
+                    .disabled(table == LightingCueTable.defaults)
+            }
+            Text("Songs past the last song row use it. Press Send while a Lightkey cue is in MIDI learn. Notes go out on channel \(link.channel).")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .alert("Add Cue", isPresented: $addingCue) {
+            TextField("Name, e.g. Prayer", text: $newCueName)
+            Button("Add") { addCustom(named: newCueName, to: table) }
+            Button("Cancel", role: .cancel) { newCueName = "" }
+        } message: {
+            Text("A header with this name gives its items this cue.")
+        }
+    }
+
+    @ViewBuilder
+    private func cueRow(_ row: LightingCue, in table: [LightingCue]) -> some View {
+        let position = ServicePosition(key: row.position)
+        GridRow {
+            Text(position?.title ?? row.position)
+            TextField("Note", value: Binding(
+                get: { row.note },
+                set: { note in update(row.position, in: table) { $0.note = min(max(note, 0), 127) } }
+            ), format: .number.grouping(.never))
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 52)
+            Toggle("On", isOn: Binding(
+                get: { row.off != true },
+                set: { on in update(row.position, in: table) { $0.off = on ? nil : true } }
+            ))
+            .labelsHidden()
+            HStack(spacing: 6) {
+                Button("Send") { link.sendCue(note: row.note) }
+                    .controlSize(.small)
+                if isRemovable(position) {
+                    Button {
+                        save(table.filter { $0.position != row.position })
+                    } label: {
+                        Image(systemName: "minus.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove")
+                }
+            }
+        }
+    }
+
+    /// The standard rows stay (turn one off instead); added songs and
+    /// custom cues can go.
+    private func isRemovable(_ position: ServicePosition?) -> Bool {
+        switch position {
+        case .song(let number): number > 5
+        case .custom: true
+        default: false
+        }
+    }
+
+    private func update(_ key: String, in table: [LightingCue], _ change: (inout LightingCue) -> Void) {
+        var table = table
+        guard let index = table.firstIndex(where: { $0.position == key }) else { return }
+        change(&table[index])
+        save(table)
+    }
+
+    private func addSong(to table: [LightingCue]) {
+        let number = LightingCueTable.songCount(in: table) + 1
+        let row = LightingCue(position: ServicePosition.song(number).key, note: LightingCueTable.nextFreeNote(in: table))
+        var table = table
+        let lastSong = table.lastIndex { if case .song? = ServicePosition(key: $0.position) { true } else { false } }
+        table.insert(row, at: lastSong.map { $0 + 1 } ?? table.endIndex)
+        save(table)
+    }
+
+    private func addCustom(named name: String, to table: [LightingCue]) {
+        newCueName = ""
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let position = ServicePosition.custom(trimmed)
+        guard !table.contains(where: { $0.position == position.key }) else { return }
+        save(table + [LightingCue(position: position.key, note: LightingCueTable.nextFreeNote(in: table))])
+    }
+
+    private func save(_ table: [LightingCue]) {
+        model.updateSlideBuilding { $0.lightingCues = table }
     }
 }

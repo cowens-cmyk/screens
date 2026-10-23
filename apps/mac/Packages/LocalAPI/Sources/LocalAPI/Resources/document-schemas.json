@@ -1779,6 +1779,15 @@
         },
         "isCountdown": {
           "type": "boolean"
+        },
+        "lightingCue": {
+          "type": "string"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SlideAction"
+          }
         }
       },
       "required": [
@@ -4014,10 +4023,34 @@
         },
         "serviceDay": {
           "$ref": "#/components/schemas/ServiceDaySettings"
+        },
+        "lightingCues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/LightingCue"
+          }
         }
       },
       "required": [
         "id"
+      ]
+    },
+    "LightingCue": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "type": "string"
+        },
+        "note": {
+          "type": "integer"
+        },
+        "off": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "position",
+        "note"
       ]
     },
     "FontFile": {
