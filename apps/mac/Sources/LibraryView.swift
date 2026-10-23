@@ -1215,8 +1215,8 @@ struct LibrarySidebar: View {
                         Label("Folder", systemImage: "folder.badge.plus")
                             .lineLimit(1)
                     }
-                    .help("New Folder")
                     .disabled(folderPath == nil || (folderPath.map(isUnfiled) ?? false))
+                    .help("New Folder")
                 }
                 Spacer()
                 if AppModel.folderableSections.contains(model.selectedSection) {
