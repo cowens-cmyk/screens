@@ -87,7 +87,10 @@ targets:
         MXUGitCommit: "$(MXU_GIT_COMMIT)"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         LSApplicationCategoryType: public.app-category.video
-        NSLocalNetworkUsageDescription: "Screens uses your local network to discover and receive NDI video sources, and announces its Local API so remotes and control surfaces can find this Mac."
+        NSLocalNetworkUsageDescription: "Screens uses your local network to discover and receive NDI video sources, read Anthem's setlist, and announce its Local API so remotes and control surfaces can find this Mac."
+        # Bonjour types Screens browses or advertises; macOS's local network
+        # privacy only lets an app browse the types it lists.
+        NSBonjourServices: ["_anthem-show._tcp", "_mxu-slides._tcp", "_ndi._tcp"]
         NSCameraUsageDescription: "Screens shows cameras and capture devices on your screens as live video inputs."
         NSMicrophoneUsageDescription: "Screens can include a capture device's audio when it is used as a live input."
         ScreensUpdateRepository: cowens-cmyk/screens
