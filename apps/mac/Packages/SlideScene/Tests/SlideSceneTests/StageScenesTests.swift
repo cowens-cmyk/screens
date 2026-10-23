@@ -77,14 +77,44 @@ private let sermon = ConfidenceLayoutTemplate.sermon.make(name: "Message")
 }
 
 @Test func theVideoIsScaledIntoThePreviewArea() {
+    let canvas = CGSize(width: 1920, height: 1080)
     let scene = StageScenes.videoScene(
-        audience: audienceWithVideo(), video: video(remaining: 30),
-        canvasSize: CGSize(width: 1920, height: 1080), at: now)
+        audience: audienceWithVideo(), video: video(remaining: 30), canvasSize: canvas, at: now)
     let frame = items(in: scene, layer: .videos)[0].frame
-    let area = CGRect(x: 1920 * 0.03, y: 1080 * 0.03, width: 1920 * 0.94, height: 1080 * 0.64)
+    let area = StageScenes.videoArea(in: canvas)
     #expect(area.insetBy(dx: -0.5, dy: -0.5).contains(frame))
     #expect(abs(frame.width / frame.height - 16.0 / 9.0) < 0.001)
     #expect(abs(frame.height - area.height) < 0.001, "fills the area's height")
+    #expect(frame.width < canvas.width * 0.6, "smaller than the screen, so the time left reads first")
+}
+
+@Test func theCountdownSitsAboveTheVideoInBigDigits() throws {
+    let canvas = CGSize(width: 1920, height: 1080)
+    let scene = StageScenes.videoScene(
+        audience: audienceWithVideo(), video: video(remaining: 30), canvasSize: canvas, at: now)
+    let countdown = try #require(items(in: scene, layer: .slide).first { $0.id == "stage-video-countdown" })
+    let name = try #require(items(in: scene, layer: .slide).first { $0.id == "stage-video-name" })
+    let picture = items(in: scene, layer: .videos)[0].frame
+    #expect(countdown.frame.maxY <= picture.minY, "the countdown is above the video")
+    #expect(name.frame.minY >= picture.maxY, "the name is under it")
+    let digits = try #require(text(scene, id: "stage-video-countdown"))
+    let label = try #require(text(scene, id: "stage-video-name"))
+    #expect(digits.fontSize > label.fontSize * 4)
+    #expect(digits.tabularFigures == true)
+}
+
+@Test func aVideoPlayingOnceOnTheBackgroundLayerShowsItsOwnPicture() {
+    var audience = RenderScene(canvasSize: CGSize(width: 1920, height: 1080))
+    audience.addItem(RenderItem(
+        id: "loop", frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+        content: .media(id: "announcements", scaleMode: .fill, sourceRect: nil)
+    ), to: .loopingVideos)
+    var countdown = video(remaining: 40)
+    countdown.layer = .loopingVideos
+    let scene = StageScenes.scene(
+        override: nil, source: .layout(worship), info: ConfidenceInfo(videoCountdown: countdown),
+        at: now, audience: { audience })
+    #expect(items(in: scene, layer: .videos).map(\.content.mediaID) == ["announcements"])
 }
 
 @Test func theStageReturnsWhenTheVideoEndsOrIsCleared() {

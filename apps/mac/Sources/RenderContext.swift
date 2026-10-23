@@ -178,8 +178,10 @@ final class RenderContext {
             let info = confidenceBox.value
             let now = Date()
             let plan = stageBox.value
+            let mirrored = plan.mirroredScreens.contains(screenID)
             return StageScenes.scene(
-                override: confidenceLayoutsBox.value[screenID], source: plan.source,
+                override: mirrored ? nil : confidenceLayoutsBox.value[screenID],
+                source: mirrored ? .mirror : plan.source,
                 info: info, at: now
             ) {
                 if let audience = plan.audience { return audience() }

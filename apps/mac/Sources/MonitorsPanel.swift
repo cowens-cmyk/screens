@@ -1,6 +1,7 @@
 import OutputEngine
 import PresenterCore
 import RenderEngine
+import SlideScene
 import SwiftUI
 
 /// The show view's right column: a live preview of every screen Screens is
@@ -209,13 +210,26 @@ struct MonitorsPanel: View {
                 ScreenLabel(title: "Stage", color: HopeStyle.amber)
                 Spacer()
                 StageVideoBadge(render: render)
+                // One click puts the audience screen on the stage too, and
+                // one more puts back what it showed.
+                Toggle(isOn: $setup.showsAudienceOnStage) {
+                    Image(systemName: "rectangle.on.rectangle")
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help(setup.showsAudienceOnStage
+                    ? "Stop showing the audience screen on the stage display"
+                    : "Show the audience screen on the stage display")
                 // What the stage shows, as a small menu rather than a row of
                 // buttons under the preview.
                 Menu {
                     Picker("Show", selection: $setup.stageMode) {
-                        ForEach(ShowSetup.StageMode.allCases) { Text($0.title).tag($0) }
+                        ForEach(ShowSetup.StageMode.allCases.filter { $0 != .mirror }) { Text($0.title).tag($0) }
                     }
                     .pickerStyle(.inline)
+                    Divider()
+                    Toggle("Show Audience Screen", isOn: $setup.showsAudienceOnStage)
                     if let onEditStage {
                         Divider()
                         Button("Edit Stage Display…", action: onEditStage)
@@ -226,7 +240,7 @@ struct MonitorsPanel: View {
                 .menuStyle(.borderlessButton)
                 .controlSize(.small)
                 .fixedSize()
-                .help("Worship: lyrics, next slide, clock and key. Message: sermon timer, clock, slide and notes. Mirror: what the audience sees. A playing video shows on the stage with the time left.")
+                .help("Worship: lyrics, next slide, clock and key. Message: the sermon timer and the clock. Audience Screen: what the audience sees. A playing video shows on the stage with the time left.")
             }
             if let stageTarget {
                 LiveSceneView(render: render, screenTargetID: stageTarget)
@@ -238,7 +252,10 @@ struct MonitorsPanel: View {
             } else {
                 placeholder("Choose the stage screen in Settings › Show Setup")
             }
-            if let controls { StageMessageField(controls: controls) }
+            if let controls {
+                SermonTimerControl(controls: controls)
+                StageMessageField(controls: controls)
+            }
         }
         .screenCard(HopeStyle.amber)
     }
@@ -249,6 +266,15 @@ struct MonitorsPanel: View {
             HStack {
                 ScreenLabel(title: "Livestream", color: HopeStyle.stagePurple)
                 Spacer()
+                if controls?.screenVideoID != nil {
+                    Text("Video")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.orange, in: RoundedRectangle(cornerRadius: 3))
+                        .help("A video is playing, so the livestream shows it full screen. When it ends the livestream goes clear until the next slide.")
+                }
                 if streamTarget != nil {
                     // What goes over the camera, as a small menu rather than a
                     // row of buttons under the preview.
@@ -430,5 +456,110 @@ struct StageMessageField: View {
         guard !trimmed.isEmpty else { return }
         controls.fireAlert(id: "stage-message", message: trimmed, behavior: .persist, target: .confidence)
         draft = ""
+    }
+}
+
+/// The sermon timer, always to hand under the stage preview: the time left
+/// (green, red once it's past 0:00), start and pause, back to the start, a
+/// minute more or less, and an exact length. Each change shows on the stage
+/// at once, running or not.
+struct SermonTimerControl: View {
+    let controls: ServiceControls
+    @State private var settingLength = false
+    @State private var minutesText = ""
+
+    var body: some View {
+        let timer = controls.sermonTimer
+        let running = timer?.isRunning == true
+        HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("SERMON")
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(1)
+                    .foregroundStyle(.secondary)
+                Button {
+                    minutesText = "\(Int(((timer?.durationSeconds ?? SermonTimer.defaultSeconds) / 60).rounded()))"
+                    settingLength = true
+                } label: {
+                    SermonTimeReadout(timer: timer)
+                }
+                .buttonStyle(.plain)
+                .help("Set the time left")
+                .popover(isPresented: $settingLength, arrowEdge: .bottom) { lengthForm }
+            }
+            Spacer(minLength: 4)
+            Group {
+                Button("−1") { controls.adjustSermonTimer(byMinutes: -1) }
+                    .help("A minute less")
+                Button("+1") { controls.adjustSermonTimer(byMinutes: 1) }
+                    .help("A minute more")
+                Button { controls.toggleSermonTimer() } label: {
+                    Image(systemName: running ? "pause.fill" : "play.fill")
+                        .frame(width: 14)
+                }
+                .help(running ? "Pause the sermon timer" : "Start the sermon timer")
+                Button { controls.resetSermonTimer() } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .help("Back to the full length, stopped")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .monospacedDigit()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    private var lengthForm: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Sermon Timer").font(.headline)
+            HStack(spacing: 6) {
+                TextField("Minutes", text: $minutesText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 56)
+                    .onSubmit(setLength)
+                Text("minutes")
+            }
+            Text("Shows this much time now, and keeps running if it is.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Cancel") { settingLength = false }
+                Button("Set", action: setLength)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(typedMinutes == nil)
+            }
+        }
+        .padding(12)
+        .frame(width: 230)
+    }
+
+    private var typedMinutes: Int? {
+        Int(minutesText.trimmingCharacters(in: .whitespaces)).flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    private func setLength() {
+        guard let minutes = typedMinutes else { return }
+        controls.setSermonTimer(minutes: minutes)
+        settingLength = false
+    }
+}
+
+/// The sermon timer's digits: the only part that ticks, so the card around
+/// it isn't redrawn twice a second.
+private struct SermonTimeReadout: View {
+    let timer: TimerSnapshot?
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+            let overtime = timer?.isOvertime(at: context.date) == true
+            Text(timer?.displayString(at: context.date) ?? TimerSnapshot.timecode(SermonTimer.defaultSeconds))
+                .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(overtime ? Color.red : Color.green)
+        }
     }
 }

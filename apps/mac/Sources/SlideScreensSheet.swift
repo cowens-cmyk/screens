@@ -39,6 +39,7 @@ struct SlideScreensSheet: View {
                 }
                 Picker("Stage", selection: $stage) {
                     Text("Keep current").tag("")
+                    Text(StageWording.audience).tag(StageLayouts.audienceID)
                     ForEach(model.entries(of: .confidenceLayout), id: \.id) { Text($0.name).tag($0.id) }
                 }
             }

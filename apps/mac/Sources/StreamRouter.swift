@@ -6,7 +6,9 @@ import RenderEngine
 import SlideScene
 
 /// What goes over the camera on the Livestream screen, in StreamPrecedence's
-/// order: a choice made on the live slide wins (its Full Screen takes over the
+/// order: a playing video comes first (full screen while it plays, then
+/// nothing over the camera until the next slide); then a choice made on the
+/// live slide wins (its Full Screen takes over the
 /// stream even when the switch is on Transparent, and its Nothing clears the
 /// stream even on Full Screen); then the Transparent · Lower Third · Full
 /// Screen switch (ShowSetup.streamMode); then, on Lower Third, the theme's
@@ -24,6 +26,10 @@ final class StreamRouter {
     private var liveTheme: Theme?
     private var liveSlide: Slide?
 
+    /// A video's temporary hold on the stream. Kept here, not in the switch,
+    /// so the operator's saved Show Setup choice never changes.
+    private(set) var video = StreamVideoOverride()
+
     /// Looks (output presets) were taken out of the app. A Look left active
     /// from before would otherwise route screens nobody can see any more.
     private static let retiredActiveLookKey = "activeOutputPresetID"
@@ -38,6 +44,7 @@ final class StreamRouter {
         }
         armThemeMutationWatch()
         ShowSetup.shared.onChange = { [weak self] in self?.republishStream() }
+        ShowSetup.shared.onStreamModeChosen = { [weak self] in self?.video.modeChosen() }
         republishStream()
     }
 
@@ -68,7 +75,9 @@ final class StreamRouter {
             case .off: .transparent
             }
             let choice: StreamChoice?
-            switch StreamPrecedence.decide(global: global, slide: liveSlide?.streamDesign?.mode) {
+            switch StreamPrecedence.decide(
+                global: global, slide: liveSlide?.streamDesign?.mode, video: video.phase
+            ) {
             case .nothing: choice = nil
             case .clear: choice = .clear
             case .audience: choice = .audience
@@ -153,11 +162,27 @@ final class StreamRouter {
     func noteStreamDesign(_ design: StreamDesign?, forSlides slideIDs: Set<String>) {
         guard let id = liveSlide?.id, slideIDs.contains(id) else { return }
         liveSlide?.streamDesign = design
-        noteLiveTheme(liveTheme, slide: liveSlide)
+        noteLiveTheme(liveTheme, slide: liveSlide, wentLive: false)
     }
 
-    /// Called as each slide goes live, so Lower Third follows the slide's theme.
-    func noteLiveTheme(_ theme: Theme?, slide: Slide? = nil) {
+    /// A video that plays once went up on the audience screen.
+    func videoStarted(_ mediaID: String) {
+        video.videoStarted(mediaID)
+        republishStream()
+    }
+
+    /// That video ended, was held on its last frame, cleared or replaced.
+    func videoEnded(_ mediaID: String) {
+        let before = video
+        video.videoEnded(mediaID)
+        if video != before { republishStream() }
+    }
+
+    /// Called as each slide goes live, so Lower Third follows the slide's
+    /// theme. A slide going live also ends a video's hold on the stream; a
+    /// change to the live slide's own choice (`wentLive` false) doesn't.
+    func noteLiveTheme(_ theme: Theme?, slide: Slide? = nil, wentLive: Bool = true) {
+        if wentLive { video.slideWentLive() }
         liveTheme = theme
         liveSlide = slide
         let needed = ([theme?.streamLowerThirdThemeId, slide?.streamDesign?.themeId] + (theme?.streamDesigns ?? []).map(\.themeId))

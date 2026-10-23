@@ -50,6 +50,27 @@ final class ActionRouter {
         stream.noteStreamDesign(design, forSlides: slideIDs)
     }
 
+    /// A slide's stage choice changed from its right-click menu: when that
+    /// slide is live, the stage follows at once.
+    func noteStageLayout(_ layoutID: String?, forSlides slideIDs: Set<String>) {
+        guard let live = controls.liveSlideID, slideIDs.contains(live) else { return }
+        if let layoutID {
+            confidenceMonitor?.apply(layoutID: layoutID, toScreen: nil)
+        } else {
+            confidenceMonitor?.endAudiencePick()
+        }
+    }
+
+    /// A video that plays once is up: the livestream carries it full screen.
+    func videoStarted(_ mediaID: String) {
+        stream.videoStarted(mediaID)
+    }
+
+    /// The video is over: the livestream goes clear until the next slide.
+    func videoEnded(_ mediaID: String) {
+        stream.videoEnded(mediaID)
+    }
+
     /// Runs the presentation type's default actions when a presentation of
     /// that type goes live (not on every slide within it).
     func presentationDidGoLive(_ presentation: Presentation) {
@@ -64,6 +85,10 @@ final class ActionRouter {
     func slideDidFire(_ slide: Slide, contextID: String?) {
         if let layoutID = slide.stageLayoutId, !layoutID.isEmpty {
             confidenceMonitor?.apply(layoutID: layoutID, toScreen: nil)
+        } else {
+            // Show on Stage Display is that slide's alone: the next slide
+            // without it puts the stage back.
+            confidenceMonitor?.endAudiencePick()
         }
         guard let actions = slide.actions, !actions.isEmpty else { return }
         let protected = SlideSceneBuilder.protectedLayers(for: slide, mediaLayer: mediaLayer)

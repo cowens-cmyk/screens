@@ -16,8 +16,9 @@ public enum StageSource: Sendable, Equatable {
 /// from values copied out of the locked boxes.
 ///
 /// The order of precedence:
-/// 1. A foreground video that is live and not finished takes the stage over:
-///    the video and a large countdown of the time left.
+/// 1. A video that is live and not finished takes the stage over: a large
+///    countdown of the time left above the video. Nothing else is changed
+///    for it, so when it ends the stage shows exactly what it did before.
 /// 2. A layout picked for this screen (a slide's stage layout, a Set Stage
 ///    Layout action, or the screen's own pick) — until the stage mode changes.
 /// 3. The stage mode: its layout, or the audience screen for Mirror.
@@ -63,8 +64,9 @@ public enum StageScenes {
         }
     }
 
-    /// The live foreground video (layer Videos), while it has time left. A
-    /// paused video keeps the stage — it is still on the audience screen.
+    /// The live video (a foreground one, or one playing once on the
+    /// background layer), while it has time left. A paused video keeps the
+    /// stage — it is still on the audience screen.
     public static func activeVideo(in info: ConfidenceInfo, at date: Date) -> VideoCountdown? {
         guard let video = info.videoCountdown, video.duration > 0,
               video.remaining(at: date) > 0
@@ -83,8 +85,23 @@ public enum StageScenes {
         return .white
     }
 
-    /// The video as the audience sees it, scaled into the upper part of the
-    /// frame, with its name and the time left below.
+    /// Where the countdown sits: across the top, as large as it fits.
+    public static func countdownFrame(in canvasSize: CGSize) -> CGRect {
+        CGRect(
+            x: canvasSize.width * 0.03, y: canvasSize.height * 0.035,
+            width: canvasSize.width * 0.94, height: canvasSize.height * 0.30)
+    }
+
+    /// Where the video goes: under the countdown and smaller than the
+    /// screen, so the time left is what reads first.
+    public static func videoArea(in canvasSize: CGSize) -> CGRect {
+        CGRect(
+            x: canvasSize.width * 0.10, y: canvasSize.height * 0.36,
+            width: canvasSize.width * 0.80, height: canvasSize.height * 0.53)
+    }
+
+    /// The time left in big digits across the top, the video as the
+    /// audience sees it under that, and its name in small type below.
     public static func videoScene(
         audience: RenderScene, video: VideoCountdown, canvasSize: CGSize, at date: Date
     ) -> RenderScene {
@@ -92,9 +109,18 @@ public enum StageScenes {
         let width = canvasSize.width
         let height = canvasSize.height
         let unit = height / 1080
-        let area = CGRect(
-            x: width * 0.03, y: height * 0.03, width: width * 0.94, height: height * 0.64)
-        let preview = aspectFit(audience.canvasSize, in: area)
+        let preview = aspectFit(audience.canvasSize, in: videoArea(in: canvasSize))
+
+        let remaining = video.remaining(at: date)
+        scene.addItem(RenderItem(
+            id: "stage-video-countdown",
+            frame: countdownFrame(in: canvasSize),
+            content: .text(StyledText(
+                string: countdownText(remaining: remaining), fontSize: 300 * unit,
+                color: countdownColor(remaining: remaining), alignment: .center,
+                tabularFigures: true, autoShrink: true, minFontSize: 60 * unit
+            ))
+        ), to: .slide)
 
         // A dark plate so a letterboxed or not-yet-decoded video still reads
         // as a picture frame.
@@ -102,40 +128,32 @@ public enum StageScenes {
             id: "stage-video-plate", frame: preview,
             content: .solid(SceneColor(red: 0.08, green: 0.08, blue: 0.08))
         ), to: .stillGraphics)
-        for item in videoItems(of: audience, into: preview) {
+        for item in videoItems(of: audience, layer: video.layer, into: preview) {
             scene.addItem(item, to: .videos)
         }
 
-        let remaining = video.remaining(at: date)
         let name = video.isPlaying ? video.name : "\(video.name) · Paused"
         scene.addItem(RenderItem(
             id: "stage-video-name",
-            frame: CGRect(x: width * 0.03, y: height * 0.685, width: width * 0.94, height: height * 0.075),
+            frame: CGRect(x: width * 0.10, y: height * 0.905, width: width * 0.80, height: height * 0.06),
             content: .text(StyledText(
-                string: name, fontSize: 52 * unit, color: dimmed, alignment: .center,
-                autoShrink: true, minFontSize: 24 * unit
-            ))
-        ), to: .slide)
-        scene.addItem(RenderItem(
-            id: "stage-video-countdown",
-            frame: CGRect(x: width * 0.03, y: height * 0.76, width: width * 0.94, height: height * 0.22),
-            content: .text(StyledText(
-                string: countdownText(remaining: remaining), fontSize: 220 * unit,
-                color: countdownColor(remaining: remaining), alignment: .center,
-                tabularFigures: true, autoShrink: true, minFontSize: 48 * unit
+                string: name, fontSize: 40 * unit, color: dimmed, alignment: .center,
+                autoShrink: true, minFontSize: 20 * unit
             ))
         ), to: .slide)
         return scene
     }
 
-    /// The audience scene's foreground-video items, mapped from its canvas
-    /// into `rect`.
-    static func videoItems(of audience: RenderScene, into rect: CGRect) -> [RenderItem] {
+    /// The audience scene's items on the video's layer, mapped from its
+    /// canvas into `rect`.
+    static func videoItems(
+        of audience: RenderScene, layer: LayerKind = .videos, into rect: CGRect
+    ) -> [RenderItem] {
         let source = audience.canvasSize
         guard source.width > 0, source.height > 0 else { return [] }
         let scaleX = rect.width / source.width
         let scaleY = rect.height / source.height
-        let items = audience.layers.filter { $0.kind == .videos }.flatMap(\.items)
+        let items = audience.layers.filter { $0.kind == layer }.flatMap(\.items)
         return items.map { item in
             var item = item
             item.id = "stage-\(item.id)"

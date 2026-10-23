@@ -2224,6 +2224,10 @@ final class AppModel {
         modify(MediaItem.self, id: id, mutate)
     }
 
+    func updateConfidenceLayout(_ id: String, _ mutate: @escaping @Sendable (inout ConfidenceLayout) -> Void) {
+        modify(ConfidenceLayout.self, id: id, mutate)
+    }
+
     func overlay(_ id: String) -> Overlay? {
         resident.overlays.value(id)
     }

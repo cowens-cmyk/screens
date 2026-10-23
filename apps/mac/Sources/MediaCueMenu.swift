@@ -60,7 +60,12 @@ struct MediaCueMenuItems: View {
             }
         }
         if let item = model.media(mediaID) {
-
+            if item.mediaKind == .video {
+                // First, so a video's ending is one right-click away wherever
+                // it's shown: the plan, the fire view, the library.
+                VideoEndMenu(model: model, mediaID: mediaID)
+                Divider()
+            }
             Button("Media Settings…") { state.settingsTargetID = mediaID }
             Button("Rename…") {
                 state.renameText = item.name

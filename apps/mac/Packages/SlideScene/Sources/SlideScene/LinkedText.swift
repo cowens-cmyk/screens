@@ -259,7 +259,11 @@ public enum LinkedText {
 
     static func timer(for link: TextLink, in info: ConfidenceInfo) -> TimerSnapshot? {
         if let id = link.timerId, !id.isEmpty {
-
+            // The Message layout names the sermon timer by its fixed id; one
+            // made before that id existed answers to its name.
+            if id == SermonTimer.id {
+                return SermonTimer.find(in: info.timers, id: \.id, name: \.name)
+            }
             return info.timers.first { $0.id == id }
         }
         return ConfidenceSceneBuilder.primaryTimer(info.timers)

@@ -43,12 +43,13 @@ struct PlanMessageSheet: View {
                 Section("Message") {
                     if let message {
                         LabeledContent("Presentation", value: message.name)
-                        Stepper(value: Binding(
-                            get: { Int((message.sermonTimerSeconds ?? 35 * 60) / 60) },
-                            set: { minutes in
-                                model.updatePresentation(message.id) { $0.sermonTimerSeconds = Double(minutes * 60) }
-                            }), in: 5...120, step: 5) {
-                            LabeledContent("Sermon timer", value: "\(Int((message.sermonTimerSeconds ?? 35 * 60) / 60)) min")
+                        LabeledContent("Sermon timer") {
+                            SermonMinutesField(minutes: Binding(
+                                get: { SermonTimer.minutes(for: message) },
+                                set: { minutes in
+                                    let seconds = SermonTimer.seconds(minutes: minutes)
+                                    model.updatePresentation(message.id) { $0.sermonTimerSeconds = seconds }
+                                }))
                         }
                     } else {
                         Button("Add a Message to This Plan", action: addMessage)
@@ -62,7 +63,7 @@ struct PlanMessageSheet: View {
                               ? "Lower thirds from \(series?.name ?? "the series")"
                               : "This series has no lower thirds — set them in the theme editor")
                     check("Stage", ok: message != nil,
-                          detail: "Sermon timer (\(Int((message?.sermonTimerSeconds ?? 35 * 60) / 60)) min, red past 0:00) and the clock")
+                          detail: "Sermon timer (\(SermonTimer.minutes(for: message)) min, red past 0:00) and the clock")
                 }
             }
             .formStyle(.grouped)
