@@ -138,7 +138,7 @@ import Testing
         let app = try #require(sweep.file("MxUSlidesApp.swift"))
         let placed: Set<String> = [
             "\"main\"", "\"module\"", "\"serviceControls\"", "\"preview\"", "\"outputs\"",
-            "\"liveAssist\"",
+            "\"liveAssist\"", "\"assistant\"",
         ]
         let scenePattern = /(?:Window|WindowGroup)\((?:"[^"]*",\s*)?id:\s*("[^"]+")/
         var unplaced: [String] = []
@@ -149,5 +149,7 @@ import Testing
         }
         #expect(unplaced.isEmpty, "decide what run-only shows in: \(unplaced)")
         #expect(app.text.contains("RunOnlyLockedPlaceholder(surface: \"Settings\")"))
+        // The Assistant edits the library, so run-only locks it.
+        #expect(app.text.contains("RunOnlyLockedPlaceholder(surface: \"Assistant\")"))
     }
 }
