@@ -1369,6 +1369,15 @@ final class ServiceControls {
             )
             .applyingMediaEffects { appModel.mediaSceneEffects(id: $0) }
         }
+        // The picture stands in for the slide, so it leaves with it: a
+        // cleared slide clears the picture too.
+        for (key, mediaID) in slideImageOverrides where state.liveSlide != nil {
+            let size = appModel.media(mediaID).flatMap { item -> CGSize? in
+                guard let width = item.pixelWidth, let height = item.pixelHeight else { return nil }
+                return CGSize(width: width, height: height)
+            }
+            variants[key] = StreamLowerThirdImage.scene(replacingSlideOf: base, mediaID: mediaID, imageSize: size)
+        }
         render.setLiveScenes(base, variants: variants)
         syncScreenVideo()
         syncMedia()
@@ -1380,9 +1389,13 @@ final class ServiceControls {
 
     private var slideThemeOverrides: [String: Theme] = [:]
 
-    func setSlideThemeOverrides(_ overrides: [String: Theme]) {
-        guard overrides != slideThemeOverrides else { return }
+    /// A slide's lower-third picture for the livestream, by routing key.
+    private var slideImageOverrides: [String: String] = [:]
+
+    func setSlideThemeOverrides(_ overrides: [String: Theme], images: [String: String] = [:]) {
+        guard overrides != slideThemeOverrides || images != slideImageOverrides else { return }
         slideThemeOverrides = overrides
+        slideImageOverrides = images
 
         state.slideThemeOverrides = overrides.sorted { $0.key < $1.key }.map(\.value)
         apply()
@@ -1477,6 +1490,7 @@ final class ServiceControls {
             slideThemeOverrides: Array(slideThemeOverrides.values)
         )
         .merging(confidenceMediaWants) { show, _ in show }
+        .merging(slideImageOverrides.values.map { ($0, Bool?.none) }) { show, _ in show }
         let wanted = MonitoringMedia.wanted(onAir: onAir, monitoring: previewMediaWants)
         let wantedIDs = Set(wanted.keys)
 

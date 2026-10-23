@@ -4076,6 +4076,9 @@
         },
         "slideId": {
           "type": "string"
+        },
+        "mediaId": {
+          "type": "string"
         }
       },
       "required": [

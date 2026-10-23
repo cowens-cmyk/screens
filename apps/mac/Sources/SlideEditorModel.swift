@@ -2108,24 +2108,44 @@ final class SlideEditorModel {
 
     @discardableResult
     func insertMediaSlide(mediaID: String, beforeSlideID: String?) -> Bool {
-        guard !isThemeEditor,
-            let item = appModel.media(mediaID)
-        else { return false }
-        let slide = Slide(
-            id: UUID().uuidString, name: item.name, objects: [],
-            background: CueMedia.droppedAsNewSlide(for: item))
+        insertMediaSlides(mediaIDs: [mediaID], beforeSlideID: beforeSlideID)
+    }
+
+    /// New slides from pictures or videos, in order, then the livestream
+    /// question for them.
+    @discardableResult
+    func insertMediaSlides(mediaIDs: [String], beforeSlideID: String?) -> Bool {
+        guard !isThemeEditor else { return false }
+        let added = mediaIDs.compactMap { appModel.media($0) }.map { item in
+            Slide(
+                id: UUID().uuidString, name: item.name, objects: [],
+                background: CueMedia.droppedAsNewSlide(for: item))
+        }
+        guard !added.isEmpty else { return false }
         updateDocument { presentation in
-            var inserted = slide
             let index = beforeSlideID.flatMap { id in
                 presentation.slides.firstIndex { $0.id == id }
             } ?? presentation.slides.count
             let neighbor = index < presentation.slides.count
                 ? presentation.slides[index] : presentation.slides.last
-            inserted.sectionId = neighbor?.sectionId
-            presentation.slides.insert(inserted, at: index)
+            let inserted = added.map { slide in
+                var slide = slide
+                slide.sectionId = neighbor?.sectionId
+                return slide
+            }
+            presentation.slides.insert(contentsOf: inserted, at: index)
         }
+        let asked = LivestreamPromptRequest.make(
+            appModel, presentationID: presentation.id, added: added
+        ) { [weak self] design, ids in
+            for id in ids { self?.updateSlide(id) { $0.streamDesign = design } }
+        }
+        if let asked { livestreamPrompt = livestreamPrompt.map { $0.adding(asked) } ?? asked }
         return true
     }
+
+    /// The livestream question for slides just made from pictures or videos.
+    var livestreamPrompt: LivestreamPromptRequest?
 
     func removeBackground() {
         switch backgroundLocation {

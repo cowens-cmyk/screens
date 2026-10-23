@@ -4797,6 +4797,11 @@
           "name": "slideId",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "mediaId",
+          "type": "string",
+          "optional": true
         }
       ]
     },

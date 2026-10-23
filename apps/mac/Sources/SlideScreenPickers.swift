@@ -18,6 +18,8 @@ enum StreamWording {
     static let lowerThird = "Lower Third"
     static let fullScreen = "Full Screen (takes over the stream)"
     static let nothing = "Nothing (camera only)"
+    static let lowerThirdImage = "Lower-Third Image…"
+    static let removeLowerThirdImage = "Remove Lower-Third Image"
 }
 
 /// A slide's stage choice that shows the audience screen, worded the same
@@ -34,8 +36,8 @@ extension StreamDesign {
     static let slideFullScreen = StreamDesign(category: "", mode: .audience)
     static let slideNothing = StreamDesign(category: "", mode: .clear)
 
-    /// Lower Third without a named design.
-    var isThemeLowerThird: Bool { mode == .design && (themeId ?? "").isEmpty }
+    /// Lower Third without a named design or picture.
+    var isThemeLowerThird: Bool { mode == .design && (themeId ?? "").isEmpty && lowerThirdImageID == nil }
 }
 
 /// What the livestream shows for this slide.
@@ -53,6 +55,13 @@ struct SlideStreamPicker: View {
                 Button(StreamWording.lowerThird) { set(.slideLowerThird) }
                 Button(StreamWording.fullScreen) { set(.slideFullScreen) }
                 Button(StreamWording.nothing) { set(.slideNothing) }
+                Divider()
+                Button(StreamWording.lowerThirdImage) {
+                    LowerThirdImagePicker.choose(model.appModel) { set(.lowerThirdImage($0)) }
+                }
+                if current?.lowerThirdImageID != nil {
+                    Button(StreamWording.removeLowerThirdImage) { set(nil) }
+                }
                 Divider()
                 ForEach(designs, id: \.id) { theme in
                     Menu(theme.name) {
@@ -77,6 +86,9 @@ struct SlideStreamPicker: View {
 
     private var label: String {
         guard let current else { return StreamWording.themeDefault }
+        if let image = current.lowerThirdImageID {
+            return model.appModel.media(image)?.name ?? "Lower-Third Image"
+        }
         switch current.mode {
         case .clear: return StreamWording.nothing
         case .audience: return StreamWording.fullScreen

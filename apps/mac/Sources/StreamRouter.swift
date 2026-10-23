@@ -9,8 +9,9 @@ import SlideScene
 /// order: a playing video comes first (full screen while it plays, then
 /// nothing over the camera until the next slide); then a choice made on the
 /// live slide wins (its Full Screen takes over the
-/// stream even when the switch is on Transparent, and its Nothing clears the
-/// stream even on Full Screen); then the Transparent · Lower Third · Full
+/// stream even when the switch is on Transparent, its Nothing clears the
+/// stream even on Full Screen, and its lower-third picture goes over the
+/// camera in place of the slide); then the Transparent · Lower Third · Full
 /// Screen switch (ShowSetup.streamMode); then, on Lower Third, the theme's
 /// pick for the slide's category, then the theme's lower-third theme, and
 /// otherwise the camera stays clear. Every other screen carries every layer.
@@ -65,6 +66,7 @@ final class StreamRouter {
         var routing: [String: Set<String>] = [:]
         var themeRouting: [String: String] = [:]
         var overrides: [String: Theme] = [:]
+        var images: [String: String] = [:]
         let setup = ShowSetup.shared
         let stream = setup.streamTarget
         if !stream.isEmpty {
@@ -76,13 +78,17 @@ final class StreamRouter {
             }
             let choice: StreamChoice?
             switch StreamPrecedence.decide(
-                global: global, slide: liveSlide?.streamDesign?.mode, video: video.phase
+                global: global, design: liveSlide?.streamDesign, video: video.phase
             ) {
             case .nothing: choice = nil
             case .clear: choice = .clear
             case .audience: choice = .audience
             case .slideDesign: choice = slideChoice()
             case .themeRoute: choice = themeChoice()
+            case .slideImage(let mediaID):
+                // A picture that's left the library falls back to the
+                // slide's Lower Third, its theme's.
+                choice = appModel.media(mediaID) == nil ? themeChoice(lowerThirdOnly: true) : .image(mediaID: mediaID)
             }
             switch choice {
             case nil:
@@ -95,17 +101,26 @@ final class StreamRouter {
                 routing[stream] = overlays.union([LayerKind.slide.rawValue])
                 themeRouting[stream] = key
                 overrides[key] = theme
+            case .image(let mediaID):
+                routing[stream] = overlays.union([LayerKind.slide.rawValue])
+                themeRouting[stream] = Self.imageKey
+                images[Self.imageKey] = mediaID
             }
         }
         outputs.setLayerRouting(routing)
         outputs.setSlideThemeRouting(themeRouting)
-        controls?.setSlideThemeOverrides(overrides)
+        controls?.setSlideThemeOverrides(overrides, images: images)
     }
+
+    /// The stream's copy of the live scene with the slide's lower-third
+    /// picture in place of the slide.
+    private static let imageKey = "stream-slide-image"
 
     enum StreamChoice {
         case clear
         case audience
         case design(key: String, theme: Theme)
+        case image(mediaID: String)
     }
 
     /// The design the live slide asked for. A slide that picked Lower Third
