@@ -502,6 +502,10 @@ struct PlanShell: View {
                 .disabled(model.currentServiceID == nil)
                 .help("When this service starts and when its countdown starts")
                 bibleMenu
+                Button { openWindow(id: "assistant") } label: {
+                    Label("Assistant", systemImage: "sparkles")
+                }
+                .help("Assistant (⇧⌘A)")
             }
             // Everything not used every minute of a service lives in one menu.
             Menu {
