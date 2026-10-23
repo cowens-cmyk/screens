@@ -88,7 +88,7 @@ New items go after the selected item, or at the end.
 - **Edit…** opens it in the editor.
 - **Color** › None, Red, Orange, Yellow, Green, Blue, Purple.
 - **Slideshow** submenu (presentations): Off, or 3, 5, 8, 10, 15, 20, 30 or 60 seconds per slide; then **Loop back to the first slide** or **Go to the next item after the last slide**.
-- **When Video Ends** (videos): Stop, Go to Next Slide, Hold Last Frame, Fade to Black, or Loop Instead.
+- **When Video Ends** (videos, first in the menu; also on a video's tile and on slide cue media): **Next Item** (the default for videos that play once), **Hold Last Frame**, **Fade to Black**, **Stop**, or **Loop Instead**.
 - **Rename…** renames the item in the library too, everywhere it is used.
 - **Arrangement** (songs with arrangements): Default or a named arrangement for this plan.
 - **Apply Theme…**
@@ -178,7 +178,7 @@ A theme holds full-screen designs named by category (Title, Bible, Sermon Points
 
 **Message & Sermon Series** (plan header book button, or More › Message & Series…):
 - **Series**: choose the series theme, or **New Series…**. The series sets the look of the message on every screen.
-- **Message**: **Import Notes…**, or **Add a Message to This Plan**. Once there is a message, **Sermon timer** sets its length (5 to 120 minutes in steps of 5; 35 by default).
+- **Message**: **Import Notes…**, or **Add a Message to This Plan**. Once there is a message, **Sermon timer** sets its length in minutes (typed, or ±5; 40 by default).
 - **Every screen** checks Audience (message slides use the series), Livestream (the series has lower thirds), Stage (sermon timer and clock).
 
 **New Sermon Series** (from that sheet or Settings › Bible › Sermon import): type the **Series name** and **Create Series Theme**; Claude designs the background, lower-third bar, fonts and colors from the name (about a minute). Or turn on **Use artwork from Claude Design**: **Copy Claude Design Prompt**, paste it into Claude Design, then **Import Claude Design Download…** (or drop the ZIP); background, lower third, fonts and colors fill in and can be adjusted.
@@ -186,6 +186,8 @@ A theme holds full-screen designs named by category (Title, Bible, Sermon Points
 A series theme has five full-screen designs: **Title**, **Point**, **Scripture**, **Point + Scripture** and **Worship**, with a matching lower third for each except Title. On the livestream the Title slide leaves the camera clear.
 
 **Sermon import** (File › Import Sermon… ⌘⇧I, Add Item › Message Notes…, or Import Notes…): pick the **Series** (or **New Series from These Notes**), drop the notes (PDF or Pages) or **Choose File…**. Claude lists the slides as Title, Point, Scripture or Point + Scripture; edit, reorder, delete or **Add Slide**. Choose **Put slides in** (a new presentation, or an existing one, optionally **Replace that presentation's slides**), then **Build Slides**. Opened for a plan, the result becomes that plan's message.
+
+**Templates.** Right-click a plan › **Save as Template…** asks "How long is the message?" (minutes, 40 by default) and keeps that length on the template's message; plans made from the template start the sermon timer at that length.
 
 **Point Slides…** (⌘⇧P): type or paste points; a blank line starts the next slide. Uses the theme's Sermon Points design.
 
@@ -208,20 +210,30 @@ The livestream screen is keyed over the camera. Three things decide what it show
 - **Full Screen (takes over the stream)**: the audience slide.
 - **Nothing (camera only)**: camera with overlays and alerts still on top (nothing at all when the switch is on Transparent).
 
+**A slide's own lower-third picture.** Right-click › Livestream › **Lower-Third Image…** gives one slide its own PNG for the stream (for example an announcement graphic's lower-third version). A 16:9 PNG fills the stream frame; other shapes sit at the bottom, full width. The room still shows the full slide. **Remove Lower-Third Image** goes back to Theme Default. It also appears in Screens… and the editor's Livestream picker.
+
+**"What do you want on the livestream?"** When picture or video slides are added (dropped into the slide grid or the editor's slide list), a sheet asks: **Lower-Third Image…**, **Full Screen**, **Nothing**, or **Theme Default**, with **Apply to all N new slides** and **Don't ask again for this presentation** (remembered on this Mac). Text slides and slides that already have a choice are not asked about.
+
+**Videos.** While a video that plays once is on screen, the livestream shows it full screen whatever the switch says (the Livestream card shows a "Video" badge). When it ends, is held on its last frame, cleared or replaced, the stream goes clear (nothing over the camera) until the next slide goes live and its own rules apply. Picking a Livestream mode by hand ends this early. Looping background videos never do this.
+
 A song's or presentation's own Livestream theme (song editor › Screens) picks which theme's lower thirds it uses. Slide actions can also change the switch (Add Action › Livestream).
 
 ## Stage display
 
 The Stage card's menu sets the stage mode:
 - **Worship**: lyrics, next slide, clock and key.
-- **Message**: sermon timer, clock, slide and notes.
-- **Mirror**: what the audience sees.
+- **Message**: a large sermon countdown (40:00 by default) under a small "MESSAGE" caption, green while time is left and red, still counting, past 0:00; under it "TIME" and the clock in white.
+- **Show Audience Screen** (a toggle in the menu, and the one-click button on the Stage card): the stage shows exactly what the audience sees; clicking again returns to the previous mode. Right-click a slide › **Show on Stage Display** does this for that slide only.
 
-A playing video takes over the stage with its time left until it ends. The stage follows what goes live: a song switches it to Worship; the message switches it to Message and starts the "Sermon" countdown (the message's timer length, red past 0:00). It does not switch while on Mirror or when the presentation has its own stage layout.
+A video that plays once takes over the stage while it plays: a large m:ss countdown of time left across the top (orange in the last 10 s, red in the last 5 s), the video smaller under it, its name below. When it ends the stage shows whatever it showed before. Timers never stop for a video; a running sermon timer is simply shown again.
+
+The stage follows what goes live: a song switches it to Worship; the message switches it to Message and starts the "Sermon" countdown at the message's timer length. It does not switch while showing the audience screen or when the presentation has its own stage layout.
+
+**Sermon timer control** (always in the Stage card): time left (green, red past zero), **−1** / **+1** minute, play/pause and reset. Click the time to type an exact number of minutes. Changes apply instantly, even while it runs, and the stage updates at once.
 
 **Stage messages.** Type in **Message to stage** under the Stage preview and **Send**. It shows as a red bar across the top of the stage screen until cleared; the card shows it with a **Clear** button. The phone remote's Stage tab can send them too.
 
-**Edit Stage Display…** (More menu or the Stage card menu) opens the current mode's layout in the editor: the Worship layout for Worship and Mirror, the Message layout for Message. The stage editor adds **Add Live Info**: Current Slide, Next Slide, Clock, Timer, Stage Message, Song Key, Slide Notes, Group Name, Video Countdown, Next Service Item. Stage layouts also live in Library › Confidence (Edit Confidence, ⌘6).
+**Edit Stage Display…** (More menu or the Stage card menu) opens the current mode's layout in the editor: the Worship layout for Worship and the audience screen, the Message layout for Message. The stage editor adds **Add Live Info**: Current Slide, Next Slide, Clock, Timer, Stage Message, Song Key, Slide Notes, Group Name, Video Countdown, Next Service Item. Stage layouts also live in Library › Confidence (Edit Confidence, ⌘6).
 
 A slide can bring up a specific layout (Screens… › Stage, or Add Action › Stage Layout). Settings › Present › **Confidence NEXT skips blank slides** controls the next-slide preview.
 
@@ -242,6 +254,12 @@ A slide can bring up a specific layout (Screens… › Stage, or Add Action › 
 ## Countdown and Schedule Service
 
 Every service opens with a countdown video, different each week, first in the plan. **Schedule Service** (toolbar) opens a sheet with one row per service time: **Service starts** (date and time) and **Countdown starts** (follows the service time by the video's length, adjustable in 5-second steps). **Add Service Time** adds a row. The sheet shows the countdown video and its length, with **Choose Video** / **Change**. Times default to what is already scheduled, else Shepherd's service times, else 10:30 on the plan's date. **Schedule** saves one-time triggers in the Scheduler that bring up the plan and play the countdown so it ends at the service time; at zero the plan moves on by itself.
+
+## Pre-service restart (Service Day)
+
+At the top of the Schedule board, the **Service Day** card (for example "Sunday Services") restarts the pre-service slideshow before each service, in case the last slide of the previous service was left up. **Set Up** / **Edit** opens a sheet: the days (Sunday by default), the service times (8:00, 9:30 and 11:15 by default; add or remove), a **Restart pre-service at** time for each (30 minutes before the first service, 25 before the others by default), which presentation is the pre-service slideshow, **Clear the screens first** (on by default; this also stops audio), and **Advance every 10 seconds and loop** when the slideshow doesn't loop yet. It saves weekly triggers in a **Service Day** folder. The card shows the next service day at a glance: pre-service restarts, countdown starts and service times.
+
+A restart is skipped (and noted in History) if a slide changed in the last 3 minutes, or a video, the countdown or the message is live, unless what's up is the plan's very last slide. A skipped restart isn't retried later.
 
 ## Scheduler (Schedule mode)
 

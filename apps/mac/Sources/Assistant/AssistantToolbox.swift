@@ -421,14 +421,23 @@ final class AssistantToolbox {
             throw Failure("mode must be theme_default, lower_third, full_screen or nothing.")
         }
         let ids = Set(targets.map(\.id))
-        let design = mode.design
+        var chosen = mode.design
+        if let imageID = input["lower_third_image_id"]?.string, !imageID.isEmpty {
+            guard mode == .lowerThird else { throw Failure("lower_third_image_id needs mode lower_third.") }
+            guard let media = model.media(imageID), media.mediaKind == .image else {
+                throw Failure("lower_third_image_id must be a picture in the media library.")
+            }
+            chosen = .lowerThirdImage(media.id)
+        }
+        let design = chosen
         model.updateSlides(presentationID: deck.id, undoLabel: "Livestream") { presentation in
             for index in presentation.slides.indices where ids.contains(presentation.slides[index].id) {
                 presentation.slides[index].streamDesign = design
             }
         }
         router?.noteStreamDesign(design, forSlides: ids)
-        return (["ok": true], "Set livestream to \(mode.title) on \(count(ids.count, "slide")) in \(deck.name)")
+        let what = design?.lowerThirdImageID.flatMap { model.media($0)?.name }.map { "the lower-third picture \($0)" } ?? mode.title
+        return (["ok": true], "Set livestream to \(what) on \(count(ids.count, "slide")) in \(deck.name)")
     }
 
     private func setAutoAdvance(_ input: AssistantJSON) async throws -> (AssistantJSON, String?) {

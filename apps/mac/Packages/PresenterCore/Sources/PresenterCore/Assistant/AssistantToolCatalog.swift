@@ -210,11 +210,14 @@ public enum AssistantToolCatalog {
         AssistantToolSpec(
             name: "set_slide_livestream",
             description: "Sets what the livestream shows for one or more slides (the slide's right-click › Livestream choice). "
-                + "A slide's own choice beats the Show Setup switch.",
+                + "A slide's own choice beats the Show Setup switch. With lower_third_image_id (a picture in the media "
+                + "library, usually a transparent PNG), the stream shows that picture for these slides instead of the "
+                + "theme's lower third; mode must then be lower_third.",
             schema: object([
                 "presentation_id": string("The presentation id.", nonEmpty: true),
                 "slide_ids": strings("The slides to change.", maxItems: 2000),
                 "mode": livestream,
+                "lower_third_image_id": string("Media library id of the slide's own lower-third picture."),
             ], required: ["presentation_id", "slide_ids", "mode"])),
         AssistantToolSpec(
             name: "set_auto_advance",
