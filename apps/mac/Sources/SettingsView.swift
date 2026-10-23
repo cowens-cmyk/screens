@@ -407,6 +407,14 @@ struct AppSettingsView: View {
                 stacked: true
             ))
             rows.append(SettingsRowSpec(
+                id: "api.assistant", category: .api,
+                title: "Assistant",
+                caption: "Window › Assistant (⇧⌘A) answers questions about Screens and makes changes to plans and slides with Claude.",
+                keywords: "assistant claude anthropic api key model opus sonnet ai chat help pre-service announcements events",
+                control: AnyView(AssistantSettingsForm()),
+                stacked: true
+            ))
+            rows.append(SettingsRowSpec(
                 id: "bible.themes", category: .bible,
                 title: "Scripture and points themes",
                 caption: "Used by the Scripture and Points buttons in the top bar.",

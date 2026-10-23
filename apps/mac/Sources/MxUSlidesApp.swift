@@ -93,6 +93,8 @@ struct MxUSlidesApp: App {
 
     @State private var serviceTracking: ServiceTimingController?
 
+    @State private var assistant: AssistantSession?
+
     init() {
 
         BackupSettings.applyPending()
@@ -125,6 +127,7 @@ struct MxUSlidesApp: App {
         _renderContext = State(initialValue: render)
         _appModel = State(initialValue: model)
         ShareOpenQueue.model = model
+        var assistantRouter: ActionRouter?
         if let render {
             let controls = ServiceControls(appModel: model, render: render)
             let stream = StreamRouter(
@@ -138,6 +141,7 @@ struct MxUSlidesApp: App {
                 confidenceMonitor: confidence
             )
             controls.actionRouter = router
+            assistantRouter = router
             AnthemLink.shared.attach(model: model, controls: controls)
             _actionRouter = State(initialValue: router)
             _confidenceMonitor = State(initialValue: confidence)
@@ -174,6 +178,7 @@ struct MxUSlidesApp: App {
             controls.serviceTracking = tracking
             _serviceTracking = State(initialValue: tracking)
         }
+        _assistant = State(initialValue: AssistantSession(model: model, router: assistantRouter))
     }
 
     var body: some Scene {
@@ -313,6 +318,20 @@ struct MxUSlidesApp: App {
         }
         .defaultSize(width: 400, height: 600)
         .keyboardShortcut("l", modifiers: [.command, .option])
+
+        // Opened from Window › Assistant or the main window's toolbar
+        // (openWindow(id: "assistant")). It edits the library, so Run-Only
+        // locks it like Settings.
+        Window("Assistant", id: "assistant") {
+            if presentLayout.runOnly {
+                RunOnlyLockedPlaceholder(surface: "Assistant")
+                    .background(NonRestorableWindow())
+            } else if let assistant {
+                AssistantView(session: assistant)
+            }
+        }
+        .defaultSize(width: 460, height: 700)
+        .keyboardShortcut("a", modifiers: [.command, .shift])
     }
 
     @Environment(\.openWindow) private var openWindow

@@ -71,6 +71,10 @@ That rewrites `PresenterCore/Sources/PresenterCore/Generated/Models.swift` and `
 
 With Settings › Local API enabled, the app serves a REST and WebSocket API on port 6980, authenticated by scoped bearer tokens created in the same pane. `GET /v1/status` returns the live slide; `scripts/*.mjs` show it driving a show. The route table and OpenAPI document live in `apps/mac/Packages/LocalAPI`.
 
+### Assistant
+
+Window › Assistant (⇧⌘A) is a chat with Claude that answers questions about Screens and changes plans and slides through tools that run on the Mac (`apps/mac/Sources/Assistant`; the request building, streaming, tool schemas and event matching are tested in `PresenterCore/Sources/PresenterCore/Assistant`). It uses the Anthropic API key from Settings › Network & API › Assistant, the same one Sermon import uses, and Claude Opus 5.5 unless Sonnet 5.5 is chosen there. What it knows about the app comes from `apps/mac/Sources/Assistant/ScreensGuide.md`, which is bundled and loaded into its system prompt. When a feature changes, update `ScreensGuide.md` so the in-app assistant stays current.
+
 ### Perf and diagnostics scripts
 
 - `apps/mac/scripts/perf/run.sh` runs the scripted editor and animation perf check against a staged build and compares with `baseline.json`.

@@ -52,7 +52,13 @@ targets:
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
           node "$SRCROOT/scripts/prepare-dependencies.mjs" --check
     sources:
-      - Sources
+      - path: Sources
+        excludes:
+          - "Assistant/ScreensGuide.md"
+      # The in-app Assistant's knowledge of Screens, loaded into its system
+      # prompt at runtime.
+      - path: Sources/Assistant/ScreensGuide.md
+        buildPhase: resources
       - HelperShared
       - Assets.xcassets
     dependencies:
