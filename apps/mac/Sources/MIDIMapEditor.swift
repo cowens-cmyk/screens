@@ -47,6 +47,14 @@ private struct MIDIMapEditor: View {
                 .frame(width: 280)
             }
             HStack {
+                // Anthem's own source already reads with Anthem's numbers
+                // (Settings › Anthem); this is for Anthem sent through a bus.
+                Menu("Preset: \(MIDIInputPreset.matching(store.map)?.displayName ?? "Custom")") {
+                    ForEach(MIDIInputPreset.allCases, id: \.self) { preset in
+                        Button(preset.displayName) { store.map = preset.map }
+                    }
+                }
+                .fixedSize()
                 Spacer()
                 Button("Reset to Defaults") { store.map.notes = [:] }
                     

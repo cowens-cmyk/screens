@@ -511,13 +511,17 @@ final class MIDIOutService: @unchecked Sendable {
             MIDIReceived(virtualSource, &packetList)
         }
         if explicitUID == nil, let targets = targetUIDs, targets.isEmpty { return }
+        // Screens' own "Screens" destination is its input: sending there
+        // would play every cue back into Screens.
+        let own = MIDIInService.shared.ownDestinationUID
         for index in 0..<MIDIGetNumberOfDestinations() {
             let destination = MIDIGetDestination(index)
-            if explicitUID != nil || targetUIDs != nil {
+            if explicitUID != nil || targetUIDs != nil || own != 0 {
                 var uid: Int32 = 0
                 guard MIDIObjectGetIntegerProperty(
                     destination, kMIDIPropertyUniqueID, &uid) == noErr
                 else { continue }
+                if own != 0, uid == own { continue }
                 if let explicitUID {
                     guard uid == explicitUID else { continue }
                 } else if let targets = targetUIDs {

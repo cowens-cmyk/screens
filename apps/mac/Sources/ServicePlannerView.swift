@@ -441,6 +441,7 @@ struct RunOrderList: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            AnthemMismatchBadge(model: model, serviceID: serviceID, itemID: item.id)
             lightingBadges(item, position: position)
         }
         .overlay(
@@ -895,6 +896,7 @@ struct RunOrderList: View {
                 }
             }
             Spacer()
+            AnthemPlanSummary(model: model, serviceID: serviceID)
             if let service = try? model.service(serviceID) {
                 Text(itemCountLabel(service))
                     .font(.caption.monospacedDigit())

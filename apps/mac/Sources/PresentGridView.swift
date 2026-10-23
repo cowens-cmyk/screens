@@ -136,6 +136,9 @@ struct PresentGridView: View {
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(.quaternary, in: Capsule())
             }
+            if let serviceID, let serviceItem {
+                AnthemMismatchBadge(model: model, serviceID: serviceID, itemID: serviceItem.id, labeled: true)
+            }
             SongKeyChip(model: model, controls: controls, presentation: presentation)
             SlideShowChip(model: model, controls: controls, presentation: presentation)
             LyricFollowChip(controls: controls, presentation: presentation)
