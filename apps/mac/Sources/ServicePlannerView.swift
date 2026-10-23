@@ -1,6 +1,7 @@
 import PresenterCore
 import SlideScene
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct RunOrderList: View {
     let model: AppModel
@@ -73,6 +74,16 @@ struct RunOrderList: View {
                     Divider()
                     addBar
                 }
+            }
+            // A SongSelect or ChordPro file dropped anywhere on the plan
+            // (between rows places it; see onInsert).
+            .dropDestination(for: URL.self) { urls, _ in
+                let lyrics = urls.filter { LyricsFetcher.lyricExtensions.contains($0.pathExtension.lowercased()) }
+                guard !runOnly, !lyrics.isEmpty else { return false }
+                for url in lyrics {
+                    LyricsFetcher.shared.importDropped(url, planID: serviceID, beforeItemID: nil, model: model)
+                }
+                return true
             }
             .onAppear {
                 loadCollapsed()
@@ -148,10 +159,22 @@ struct RunOrderList: View {
                         .draggablePayload(runOnly ? nil : "svc::" + item.id)
                 }
             }
-            .onInsert(of: [.plainText, .text]) { index, providers in
+            .onInsert(of: [.plainText, .text, .fileURL]) { index, providers in
                 guard !runOnly else { return }
                 let anchorID = visible.indices.contains(index) ? visible[index].id : nil
                 for provider in providers {
+                    // A SongSelect or ChordPro file from Finder.
+                    if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                            guard let url, LyricsFetcher.lyricExtensions.contains(url.pathExtension.lowercased())
+                            else { return }
+                            Task { @MainActor in
+                                LyricsFetcher.shared.importDropped(
+                                    url, planID: serviceID, beforeItemID: anchorID, model: model)
+                            }
+                        }
+                        continue
+                    }
                     _ = provider.loadObject(ofClass: NSString.self) { object, _ in
                         guard let payload = object as? String else { return }
                         Task { @MainActor in
@@ -379,15 +402,7 @@ struct RunOrderList: View {
             // A planned song with no presentation in the library: flag it so
             // it gets imported or linked before Sunday.
             if item.itemKind == .info, item.refId.isEmpty, item.mxuSongTitle != nil {
-                Label("No slides", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption2.weight(.semibold))
-                    .labelStyle(.titleAndIcon)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Color.orange.opacity(0.18), in: Capsule())
-                    .foregroundStyle(.orange)
-                    .lineLimit(1)
-                    .help("No presentation for this song in the library. Import it with Song Search (⌘⇧L); the next sync links it.")
+                getLyricsButton(item)
             }
 
             if changed {
@@ -490,6 +505,38 @@ struct RunOrderList: View {
 
     private func displayName(_ item: ServiceItem) -> String {
         model.entry(item.refId)?.name ?? item.name
+    }
+
+    /// A planned song with no slides: one click fetches them, from Shepherd
+    /// or SongSelect (see LyricsFetcher).
+    @ViewBuilder
+    private func getLyricsButton(_ item: ServiceItem) -> some View {
+        let fetcher = LyricsFetcher.shared
+        if fetcher.waitingItemID == item.id {
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Button("Cancel") { fetcher.cancel() }
+                    .buttonStyle(.borderless)
+                    .font(.caption2)
+            }
+            .help(fetcher.status ?? "")
+        } else {
+            Button {
+                Task { await fetcher.getLyrics(for: item, planID: serviceID, model: model) }
+            } label: {
+                Label("Get Lyrics", systemImage: "text.badge.plus")
+                    .font(.caption2.weight(.semibold))
+                    .labelStyle(.titleAndIcon)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Color.orange.opacity(0.18), in: Capsule())
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+            }
+            .buttonStyle(.plain)
+            .disabled(runOnly || fetcher.waitingItemID != nil)
+            .help("No slides for this song yet. Looks in Shepherd; if it isn't there, opens SongSelect and imports the lyrics file you download.")
+        }
     }
 
     @ViewBuilder
