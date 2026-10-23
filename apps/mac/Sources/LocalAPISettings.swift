@@ -1,3 +1,5 @@
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import LocalAPI
 import SwiftUI
 
@@ -98,6 +100,79 @@ struct LocalAPIAddressRow: View {
                 }
             }
         }
+    }
+}
+
+/// The phone remote's address as a QR code, so a phone on the same Wi-Fi
+/// opens it with the camera. With the default key the code carries it
+/// (`?token=`, which the page moves out of the address bar), so the phone
+/// connects without typing anything; the caption says so.
+struct LocalAPIRemoteQRRow: View {
+    let api: LocalAPIController
+
+    static func remoteURL(address: String, token: String?) -> String {
+        guard let token, let encoded = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=#")))
+        else { return "http://\(address)/remote" }
+        return "http://\(address)/remote?token=\(encoded)"
+    }
+
+    var body: some View {
+        if !api.running {
+            Text("Turn on the Local API to show the code")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if let address = api.lanAddress {
+            let token = api.defaultKeySecret
+            let url = Self.remoteURL(address: address, token: token)
+            HStack(alignment: .top, spacing: 14) {
+                if let image = QRCode.image(for: url) {
+                    Image(decorative: image, scale: 1)
+                        .interpolation(.none)
+                        .resizable()
+                        .frame(width: 148, height: 148)
+                        .padding(8)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text(verbatim: "http://\(address)/remote")
+                            .font(.system(size: 11).monospaced())
+                            .textSelection(.enabled)
+                        CopyGlyphButton(value: "http://\(address)/remote")
+                    }
+                    if token != nil {
+                        Label("This code contains the access code. Anyone who scans it can run the slides — don't show it on a screen the room can see.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("No default key, so the phone asks for an access code from Manage Keys.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text("On iPhone: Share › Add to Home Screen keeps it as an app.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } else {
+            Text("This Mac isn't on a network yet")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+enum QRCode {
+    /// A crisp black-on-white code, one pixel per module; scale it up with
+    /// `.interpolation(.none)`.
+    static func image(for text: String) -> CGImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(text.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        return CIContext(options: [.useSoftwareRenderer: true]).createCGImage(output, from: output.extent)
     }
 }
 

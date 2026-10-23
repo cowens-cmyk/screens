@@ -36,6 +36,9 @@ enum WindowBridge {
     static var openMain: (() -> Void)?
 
     static var openPreview: ((String) -> Void)?
+    /// Next (1) or Back (-1) through the whole plan, exactly as the arrow
+    /// keys do; Simple Mode's big buttons use it.
+    static var advance: ((Int) -> Void)?
     static var previewScreens: (() -> [(id: String, name: String)])?
 }
 
@@ -170,6 +173,9 @@ struct MxUSlidesApp: App {
             )
             keyIn.attach()
             _keyIn = State(initialValue: keyIn)
+            WindowBridge.advance = { [weak keyIn] steps in
+                keyIn?.perform(steps > 0 ? .nextSlide : .previousSlide)
+            }
             ShepherdSync.shared.attach(model)
             PlanTimeBridge.shared.start(model)
             LiveAssist.shared.attach(model: model, controls: controls)

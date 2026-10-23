@@ -16,7 +16,7 @@ public enum OpenAPIDocument {
                     "200": .object([
                         "description": "Success",
                         "content": .object([
-                            "application/json": .object(["schema": route.responseSchema])
+                            route.responseContentType: .object(["schema": route.responseSchema])
                         ]),
                     ]),
                     "default": .object([
@@ -270,6 +270,11 @@ public enum OpenAPIDocument {
         ]),
         "MediaTransportCommand": obj(["action": str, "position": num], required: ["action"]),
         "AddServiceItemCommand": obj(["refId": str, "index": int], required: ["refId"]),
+        "BoothMessageCommand": obj(["text": str, "from": str], required: ["text"]),
+        "BoothMessage": obj([
+            "id": str, "text": str, "from": str,
+            "sentAt": .object(["type": "string", "format": "date-time"]),
+        ], required: ["id", "text", "sentAt"]),
         "ServerInfo": obj([
             "name": str, "product": str, "apiVersion": str, "schemaVersion": int,
         ], required: ["name", "product", "apiVersion", "schemaVersion"]),

@@ -132,6 +132,12 @@ struct APIWebSocketHandler: WSMessageHandler {
         )
         do {
             let response = try await match.route.handler(context)
+            // A picture can't ride inside a JSON frame; the page fetches it over HTTP.
+            guard response.isJSON else {
+                let error = APIError(status: 400, code: "http_only", message: "Fetch this over HTTP.")
+                reply(status: error.status, data: encode(error))
+                return
+            }
             reply(status: response.status, data: response.body)
         } catch let error as APIError {
             reply(status: error.status, data: encode(error))

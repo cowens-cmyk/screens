@@ -1301,6 +1301,14 @@ final class ServiceControls {
 
     var nextSlideText: String? { nextSlideInfo?.body }
 
+    /// The slide Next fires, blank or not: the phone remote draws it.
+    struct NextSlideCue {
+        let slide: Slide
+        let presentation: Presentation?
+    }
+
+    private(set) var nextSlideCue: NextSlideCue?
+
     private(set) var slidePosition: ConfidenceInfo.SlidePosition?
     private(set) var currentItemName: String?
     private(set) var nextItemName: String?
@@ -1355,6 +1363,7 @@ final class ServiceControls {
 
     func refreshNextSlide() {
         let context = fireContext()
+        nextSlideCue = context.upcoming.first.map { NextSlideCue(slide: $0.slide, presentation: $0.presentation) }
         nextSlideInfo = ConfidenceSceneBuilder.nextSlide(
             in: context.upcoming.map(\.slide), skippingBlanks: nextSkipsBlanks
         ).map { next in

@@ -47,10 +47,21 @@ public struct APIRequestContext: Sendable {
 public struct APIHandlerResponse: Sendable {
     public var status: Int
     public var body: Data
+    /// JSON everywhere except the remote's slide pictures.
+    public var contentType: String
 
-    public init(status: Int = 200, body: Data) {
+    public init(status: Int = 200, body: Data, contentType: String = APIHandlerResponse.jsonType) {
         self.status = status
         self.body = body
+        self.contentType = contentType
+    }
+
+    public static let jsonType = "application/json"
+
+    public var isJSON: Bool { contentType == Self.jsonType }
+
+    public static func image(_ data: Data, contentType: String = "image/jpeg") -> APIHandlerResponse {
+        APIHandlerResponse(status: 200, body: data, contentType: contentType)
     }
 
     public static func json(_ value: some Encodable, status: Int = 200) -> APIHandlerResponse {
@@ -75,14 +86,17 @@ public struct APIRoute: Sendable {
     public var tag: String
     public var requestSchema: JSONValue?
     public var responseSchema: JSONValue
+    public var responseContentType: String
     public var handler: @Sendable (APIRequestContext) async throws -> APIHandlerResponse
 
     public init(
         _ method: String, _ path: String, scope: APIScope,
         operationId: String, summary: String, tag: String,
         requestSchema: JSONValue? = nil, responseSchema: JSONValue,
+        responseContentType: String = APIHandlerResponse.jsonType,
         handler: @escaping @Sendable (APIRequestContext) async throws -> APIHandlerResponse
     ) {
+        self.responseContentType = responseContentType
         self.method = method
         self.path = path
         self.scope = scope

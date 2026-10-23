@@ -31,6 +31,8 @@ struct PlanShell: View {
     @State private var schedulePlanID: String?
     /// The plan being saved as a template, while its message length is asked.
     @State private var templatePlanID: String?
+    @State private var simpleModePIN: PinFlow?
+    @State private var confirmingSimpleMode = false
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -67,6 +69,98 @@ struct PlanShell: View {
     private var runOnly: Bool { layout?.runOnly ?? false }
 
     var body: some View {
+        face
+            .sheet(item: Binding(get: { messagePlanID.map(IdentifiedID.init) }, set: { messagePlanID = $0?.id })) { plan in
+                PlanMessageSheet(model: model, planID: plan.id)
+            }
+            .sheet(item: Binding(get: { notesPlanID.map(IdentifiedID.init) }, set: { notesPlanID = $0?.id })) { plan in
+                SermonImportSheet(model: model, planID: plan.id)
+            }
+            .sheet(item: Binding(get: { templatePlanID.map(IdentifiedID.init) }, set: { templatePlanID = $0?.id })) { item in
+                if let plan = model.resident.services.value(item.id) {
+                    SermonLengthPrompt(initialMinutes: TemplateSermonLength.suggestedMinutes(for: plan, model: model)) { minutes in
+                        saveTemplate(from: plan, sermonSeconds: SermonTimer.seconds(minutes: minutes))
+                    }
+                }
+            }
+            .sheet(item: Binding(get: { schedulePlanID.map(IdentifiedID.init) }, set: { schedulePlanID = $0?.id })) { plan in
+                ScheduleServiceSheet(model: model, planID: plan.id)
+            }
+            .sheet(isPresented: $scriptureShown) {
+                ScriptureSheet(model: model, render: render) { id in addToPlan(id) }
+            }
+            .sheet(isPresented: $creatingPlan) {
+                NewServiceSheet(model: model) { id in model.currentServiceID = id }
+            }
+            .sheet(isPresented: $controlsShown) {
+                if let controls {
+                    ShowControlsPanel(model: model, controls: controls)
+                        .frame(width: 380, height: 480)
+                        .safeAreaInset(edge: .bottom) {
+                            HStack { Spacer(); Button("Done") { controlsShown = false }.keyboardShortcut(.defaultAction) }
+                                .padding(12)
+                        }
+                }
+            }
+            .fileImporter(isPresented: $addingVideo, allowedContentTypes: [.movie, .video, .image], allowsMultipleSelection: true) { result in
+                guard case .success(let urls) = result else { return }
+                Task { await addMedia(urls) }
+            }
+            .animation(HopeMotion.ui(reduced: reduceMotion), value: model.currentServiceID)
+            .onChange(of: model.currentServiceID) { _, _ in itemID = nil; ensureCountdowns() }
+            .onChange(of: plans.upcoming.map(\.id)) { ensureCountdowns() }
+            .onChange(of: itemID) { _, _ in songSlideEditor = false }
+            .task {
+                await model.resident.ready([.service])
+                ensureCountdowns()
+                // A plan remembered from a library that's since been wiped.
+                if let id = model.currentServiceID, model.resident.services.value(id) == nil {
+                    model.currentServiceID = nil
+                }
+            }
+    }
+
+    /// Simple Mode (the run-only lock) swaps the whole workspace for the
+    /// volunteer view; everything from here down serves both.
+    private var face: some View {
+        Group {
+            if runOnly {
+                SimpleModeView(model: model, render: render, controls: controls, layout: layout)
+            } else {
+                workspace
+            }
+        }
+        // Notes from the phone remote's stage view, over either face.
+        .overlay(alignment: .top) { BoothMessageBanner() }
+        .tint(HopeStyle.blue)
+        .preferredColorScheme(.dark)
+        // The menu bar's commands (File › New, Import, the Present menu, …)
+        // find the library and the show through these.
+        .focusedSceneValue(\.libraryModel, model)
+        .focusedSceneValue(\.serviceControls, controls)
+        .focusedSceneValue(\.presentWorkspaceImport, runOnly ? nil : workspaceImportAction)
+        .focusedSceneValue(\.presentLibrarySearch, findInLibraryAction)
+        .focusedSceneValue(\.presentNewSlide, mode == .present && !runOnly ? Self.presentNewSlideAction : nil)
+        .focusedSceneValue(\.presentScripture, runOnly ? nil : MenuAction("scripture") { scriptureShown = true })
+        .focusedSceneValue(\.presentSimpleMode, runOnly || layout == nil ? nil : MenuAction("simpleMode") { requestSimpleMode() })
+        .environment(\.runOnly, runOnly)
+        .sheet(item: $simpleModePIN) { flow in
+            // The first time only: the passcode that will let someone out again.
+            PasscodeSheet(flow: flow, verify: { _ in false }) { pin in
+                layout?.setPIN(pin)
+                layout?.enterRunOnly()
+            }
+        }
+        .confirmationDialog("Switch to Simple Mode?", isPresented: $confirmingSimpleMode) {
+            Button("Simple Mode") { layout?.enterRunOnly() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Volunteers can run the slides but not change anything. Leaving Simple Mode asks for the passcode.")
+        }
+    }
+
+    /// The full app: plans and library, the slides, every screen.
+    private var workspace: some View {
         // Every column gets a fixed minimum and is free to shrink inside it:
         // content that reports its own changing minimum size makes the split
         // view re-run constraints forever, and AppKit then ends the app.
@@ -108,64 +202,17 @@ struct PlanShell: View {
             .navigationTitle(model.currentServiceID.flatMap { model.resident.services.value($0)?.name } ?? "Screens")
         }
         .toolbar { toolbar }
-        .tint(HopeStyle.blue)
-        .preferredColorScheme(.dark)
-        // The menu bar's commands (File › New, Import, the Present menu, …)
-        // find the library and the show through these.
-        .focusedSceneValue(\.libraryModel, model)
-        .focusedSceneValue(\.serviceControls, controls)
-        .focusedSceneValue(\.presentWorkspaceImport, workspaceImportAction)
-        .focusedSceneValue(\.presentLibrarySearch, findInLibraryAction)
-        .focusedSceneValue(\.presentNewSlide, mode == .present ? Self.presentNewSlideAction : nil)
-        .focusedSceneValue(\.presentScripture, runOnly ? nil : MenuAction("scripture") { scriptureShown = true })
-        .environment(\.runOnly, runOnly)
-        .sheet(item: Binding(get: { messagePlanID.map(IdentifiedID.init) }, set: { messagePlanID = $0?.id })) { plan in
-            PlanMessageSheet(model: model, planID: plan.id)
-        }
-        .sheet(item: Binding(get: { notesPlanID.map(IdentifiedID.init) }, set: { notesPlanID = $0?.id })) { plan in
-            SermonImportSheet(model: model, planID: plan.id)
-        }
-        .sheet(item: Binding(get: { templatePlanID.map(IdentifiedID.init) }, set: { templatePlanID = $0?.id })) { item in
-            if let plan = model.resident.services.value(item.id) {
-                SermonLengthPrompt(initialMinutes: TemplateSermonLength.suggestedMinutes(for: plan, model: model)) { minutes in
-                    saveTemplate(from: plan, sermonSeconds: SermonTimer.seconds(minutes: minutes))
-                }
-            }
-        }
-        .sheet(item: Binding(get: { schedulePlanID.map(IdentifiedID.init) }, set: { schedulePlanID = $0?.id })) { plan in
-            ScheduleServiceSheet(model: model, planID: plan.id)
-        }
-        .sheet(isPresented: $scriptureShown) {
-            ScriptureSheet(model: model, render: render) { id in addToPlan(id) }
-        }
-        .sheet(isPresented: $creatingPlan) {
-            NewServiceSheet(model: model) { id in model.currentServiceID = id }
-        }
-        .sheet(isPresented: $controlsShown) {
-            if let controls {
-                ShowControlsPanel(model: model, controls: controls)
-                    .frame(width: 380, height: 480)
-                    .safeAreaInset(edge: .bottom) {
-                        HStack { Spacer(); Button("Done") { controlsShown = false }.keyboardShortcut(.defaultAction) }
-                            .padding(12)
-                    }
-            }
-        }
-        .fileImporter(isPresented: $addingVideo, allowedContentTypes: [.movie, .video, .image], allowsMultipleSelection: true) { result in
-            guard case .success(let urls) = result else { return }
-            Task { await addMedia(urls) }
-        }
-        .animation(HopeMotion.ui(reduced: reduceMotion), value: model.currentServiceID)
-        .onChange(of: model.currentServiceID) { _, _ in itemID = nil; ensureCountdowns() }
-        .onChange(of: plans.upcoming.map(\.id)) { ensureCountdowns() }
-        .onChange(of: itemID) { _, _ in songSlideEditor = false }
-        .task {
-            await model.resident.ready([.service])
-            ensureCountdowns()
-            // A plan remembered from a library that's since been wiped.
-            if let id = model.currentServiceID, model.resident.services.value(id) == nil {
-                model.currentServiceID = nil
-            }
+    }
+
+    /// Simple Mode from the toolbar or View menu: the first time sets the
+    /// passcode (the same one Settings › Run-Only uses), after that it asks
+    /// once so a stray click doesn't lock the booth.
+    private func requestSimpleMode() {
+        guard let layout else { return }
+        if layout.hasPIN {
+            confirmingSimpleMode = true
+        } else {
+            simpleModePIN = .set
         }
     }
 
@@ -512,6 +559,9 @@ struct PlanShell: View {
                 if let planID = model.currentServiceID, !runOnly {
                     Button("Message & Series…", systemImage: "text.book.closed") { messagePlanID = planID }
                 }
+                if !runOnly, layout != nil {
+                    Button("Simple Mode…", systemImage: "lock") { requestSimpleMode() }
+                }
                 if controls != nil {
                     Button("Timers & Macros…", systemImage: "timer") { controlsShown = true }
                 }
@@ -520,7 +570,7 @@ struct PlanShell: View {
             } label: {
                 Label("More", systemImage: "ellipsis")
             }
-            .help("Message & Series, Timers & Macros, Screen Setup")
+            .help("Message & Series, Simple Mode, Timers & Macros, Screen Setup")
             Button { withAnimation(HopeMotion.ui(reduced: reduceMotion)) { screensShown.toggle() } } label: {
                 Label("Screens", systemImage: "sidebar.right")
             }

@@ -229,6 +229,29 @@ final class FakeBridge: LocalAPIBridge {
     func addServiceItem(serviceId: String, refId: String, index: Int?) throws {
         calls.append("addItem:\(serviceId):\(refId)")
     }
+
+    /// A JPEG's first bytes, so a test can tell the picture came through untouched.
+    static let frameBytes = Data([0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02])
+    var hasNextSlide = true
+
+    func showFrame(_ which: APIShowFrame) async throws -> Data {
+        calls.append("frame:\(which.rawValue)")
+        if which == .next && !hasNextSlide { throw APIError.notFound("No next slide.") }
+        return Self.frameBytes
+    }
+
+    var booth: [APIBoothMessage] = []
+
+    func sendBoothMessage(_ command: APIBoothMessageCommand) throws -> APIBoothMessage {
+        let message = APIBoothMessage(
+            id: "m\(booth.count + 1)", text: command.text, from: command.from,
+            sentAt: Date(timeIntervalSince1970: 1_000))
+        booth.insert(message, at: 0)
+        calls.append("booth:\(command.text)")
+        return message
+    }
+
+    func boothMessages() -> [APIBoothMessage] { booth }
 }
 
 @MainActor

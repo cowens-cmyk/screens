@@ -28,16 +28,16 @@ struct PasscodeSheet: View {
 
     private var title: String {
         switch flow {
-        case .set: "Set Run-Only Passcode"
+        case .set: "Set a Passcode"
         case .verify: "Enter Passcode"
-        case .change: "Change Run-Only Passcode"
+        case .change: "Change Passcode"
         }
     }
 
     private var caption: String {
         switch flow {
-        case .set: "4–6 digits. Exiting run-only mode — and reaching editing — will ask for it."
-        case .verify: "Run-only mode stays on until the passcode is entered."
+        case .set: "4–6 digits. Leaving Simple Mode asks for it, so volunteers can run the slides but not change them."
+        case .verify: "Simple Mode stays on until the passcode is entered."
         case .change: "Enter the current passcode, then the new one (4–6 digits) twice."
         }
     }
@@ -123,10 +123,10 @@ struct RunOnlyLockedPlaceholder: View {
             Image(systemName: "lock.fill")
                 .font(.system(size: 20))
                 .foregroundStyle(.tertiary)
-            Text("\(surface) is locked in run-only mode.")
+            Text("\(surface) is locked in Simple Mode.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Text("Exit run-only from the lock in the titlebar.")
+            Text("Exit Simple Mode from the main window's toolbar.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -157,9 +157,9 @@ struct RunOnlyEntrySheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Enter Run-Only Mode")
+            Text("Enter Simple Mode")
                 .font(.headline)
-            Text("Volunteers can run slides, clears, and the Service Controls tabs checked below. Everything else stays locked until the passcode is entered.")
+            Text("The main window becomes the volunteer view: the plan, big slides, Back, Next and Clear All. Service Controls windows show only the tabs checked below. Everything else stays locked until the passcode is entered.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -179,7 +179,7 @@ struct RunOnlyEntrySheet: View {
                 }
             }
             if needsPIN {
-                Text("Set a 4–6 digit passcode. Leaving run-only asks for it.")
+                Text("Set a 4–6 digit passcode. Leaving Simple Mode asks for it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 SecureField("Passcode", text: $pin)
@@ -196,7 +196,7 @@ struct RunOnlyEntrySheet: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
-                Button("Enter Run-Only", action: submit)
+                Button("Enter Simple Mode", action: submit)
                     .keyboardShortcut(.defaultAction)
             }
         }

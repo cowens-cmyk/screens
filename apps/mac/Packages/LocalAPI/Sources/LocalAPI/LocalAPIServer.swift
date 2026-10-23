@@ -92,6 +92,31 @@ public final class LocalAPIServer: @unchecked Sendable {
             }
         }
 
+        // What a phone needs to keep the remote on its home screen. No auth:
+        // none of it says anything about the show.
+        await http.appendRoute(HTTPRoute("GET \(RemotePage.manifestPath)")) { _ in
+            HTTPResponse(
+                statusCode: .ok,
+                headers: [HTTPHeader("Content-Type"): "application/manifest+json"],
+                body: Data(RemotePage.manifest(serviceName: serviceName).utf8)
+            )
+        }
+        for (path, size) in RemoteIcon.paths {
+            await http.appendRoute(HTTPRoute("GET \(path)")) { _ in
+                guard let png = RemoteIcon.png(size: size) else {
+                    return HTTPResponse(statusCode: .notFound)
+                }
+                return HTTPResponse(
+                    statusCode: .ok,
+                    headers: [
+                        HTTPHeader("Content-Type"): "image/png",
+                        HTTPHeader("Cache-Control"): "max-age=86400",
+                    ],
+                    body: png
+                )
+            }
+        }
+
         let router = self.router
         let events = self.events
         let tokens = self.tokens
@@ -162,7 +187,11 @@ public final class LocalAPIServer: @unchecked Sendable {
 
     private static func jsonResponse(_ payload: APIHandlerResponse) -> HTTPResponse {
         var headers = corsHeaders()
-        headers[.contentType] = "application/json"
+        headers[.contentType] = payload.contentType
+        if !payload.isJSON {
+            // The remote asks again when the show changes; a stale slide must never show.
+            headers[HTTPHeader("Cache-Control")] = "no-store"
+        }
         return HTTPResponse(
             statusCode: HTTPStatusCode(payload.status, phrase: ""),
             headers: headers,

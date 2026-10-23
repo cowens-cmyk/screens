@@ -302,14 +302,14 @@ struct AppSettingsView: View {
             ))
             rows.append(SettingsRowSpec(
                 id: "present.runOnly", category: .present,
-                title: "Run-Only Mode",
-                caption: "Strips every editing affordance — volunteers run slides, clears, and the Service Controls tabs you pick on entry. Exiting asks for the passcode.",
-                keywords: "run only volunteer lock passcode pin kiosk",
+                title: "Simple Mode",
+                caption: "The volunteer view: the plan, big slides, Back, Next and Clear All, with nothing that edits. Also in the main window's More menu. Leaving asks for the passcode.",
+                keywords: "simple mode run only volunteer lock passcode pin kiosk",
                 control: AnyView(HStack(spacing: 6) {
                     if layout.hasPIN {
                         Button("Change Passcode…") { pinFlow = .change }
                     }
-                    Button("Enter Run-Only Mode…") { requestRunOnly(applying: nil) }
+                    Button("Enter Simple Mode…") { requestRunOnly(applying: nil) }
                 })
             ))
         }
@@ -483,6 +483,14 @@ struct AppSettingsView: View {
                 caption: "Phone & tablet remote: open http://<this address>/ in Safari or Chrome on the same Wi-Fi and paste a Control access key from the row below. Companion and Stream Deck use the same address.",
                 keywords: "api address ip port connect companion stream deck remote host default key",
                 control: AnyView(LocalAPIAddressRow(api: api))
+            ),
+            SettingsRowSpec(
+                id: "api.remote", category: .api,
+                title: "Phone remote",
+                caption: "Scan with a phone or iPad on the same Wi-Fi. It opens the remote: the booth's Back and Next with the slides as pictures, or the stage's sermon timer and notes to the booth.",
+                keywords: "remote phone iphone ipad qr code scan pastor worship leader booth message home screen",
+                control: AnyView(LocalAPIRemoteQRRow(api: api)),
+                stacked: true
             ),
             SettingsRowSpec(
                 id: "api.tokens", category: .api,

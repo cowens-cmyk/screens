@@ -727,3 +727,52 @@ public struct APIServerInfo: Codable, Sendable {
         self.schemaVersion = schemaVersion
     }
 }
+
+/// Which picture GET /v1/show/frames/{which} draws for the phone remote.
+public enum APIShowFrame: String, Codable, Sendable, CaseIterable {
+    /// The audience screen as it stands.
+    case live
+    /// The slide Next fires.
+    case next
+}
+
+/// A note to the booth from the remote's Pastor view, shown as a banner on
+/// the Mac running the service.
+public struct APIBoothMessageCommand: Codable, Sendable, Equatable {
+    public var text: String
+    public var from: String?
+
+    public init(text: String, from: String? = nil) {
+        self.text = text
+        self.from = from
+    }
+
+    public static let maxLength = 200
+    public static let maxFromLength = 40
+
+    /// The message as the booth sees it: trimmed, never empty, short enough
+    /// to read at a glance.
+    public func validated() throws -> APIBoothMessageCommand {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw APIError.badRequest("Type a message.") }
+        guard text.count <= Self.maxLength else {
+            throw APIError.badRequest("Keep it under \(Self.maxLength) characters.")
+        }
+        let from = from?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxFromLength)
+        return APIBoothMessageCommand(text: text, from: from.flatMap { $0.isEmpty ? nil : String($0) })
+    }
+}
+
+public struct APIBoothMessage: Codable, Sendable, Equatable {
+    public var id: String
+    public var text: String
+    public var from: String?
+    public var sentAt: Date
+
+    public init(id: String, text: String, from: String?, sentAt: Date) {
+        self.id = id
+        self.text = text
+        self.from = from
+        self.sentAt = sentAt
+    }
+}

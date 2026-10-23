@@ -210,11 +210,14 @@ struct ViewCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     @AppStorage(PresentLayoutController.lockedKey) private var runOnly = false
+    @FocusedValue(\.presentSimpleMode) private var presentSimpleMode
 
     var body: some Commands {
         CommandGroup(before: .sidebar) {
             Button("Present") { modeRaw = AppMode.present.rawValue }
                 .keyboardShortcut(command: .modePresent)
+            Button("Simple Mode…") { presentSimpleMode?() }
+                .disabled(presentSimpleMode == nil || runOnly)
 
             Button("Edit") { modeRaw = AppMode.edit.rawValue }
                 .keyboardShortcut(command: .modeEdit)
@@ -1749,6 +1752,9 @@ extension FocusedValues {
     @Entry var presentNewSlide: MenuAction?
 
     @Entry var presentWorkspaceImport: MenuAction?
+
+    /// View › Simple Mode…: the main window's entry into the volunteer view.
+    @Entry var presentSimpleMode: MenuAction?
 
     @Entry var serviceControls: ServiceControls?
 

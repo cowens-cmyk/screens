@@ -15,6 +15,7 @@ import Testing
         let named: Set<String> = [
             "AppShell.swift", "ServicePlannerView.swift", "ServiceContinuousView.swift",
             "PresentGridView.swift", "LivePanel.swift", "ServiceControlsPanel.swift", "MediaCueMenu.swift",
+            "SimpleModeView.swift",
         ]
         return sweep.files.filter { file in
             !Self.notShownInRunOnly.contains(file.name) && (
@@ -131,6 +132,39 @@ import Testing
         #expect(settings.contains("RunOnlyEntrySheet("))
         #expect(settings.contains("settingsWindow?.close()"))
         #expect(settings.contains("Button(\"Change Passcode…\") { pinFlow = .change }"))
+    }
+
+    /// Simple Mode is the run-only lock's face in the main window: the whole
+    /// workspace gives way to it, nothing in it edits, the keys that run the
+    /// show still do, and leaving asks for the passcode.
+    @Test func simpleModeReplacesTheWorkspaceAndNeverEdits() throws {
+        let sweep = try SourceSweep.app()
+        let shell = try #require(sweep.file("PlanShell.swift")).text
+        #expect(shell.contains("if runOnly {\n                SimpleModeView(model: model, render: render, controls: controls, layout: layout)"))
+        #expect(shell.contains(".focusedSceneValue(\\.presentSimpleMode, runOnly || layout == nil ? nil :"))
+        #expect(shell.contains(".focusedSceneValue(\\.presentNewSlide, mode == .present && !runOnly"))
+        #expect(shell.contains("layout?.enterRunOnly()"))
+
+        let simple = try #require(sweep.file("SimpleModeView.swift"))
+        let code = simple.codeLines.joined(separator: "\n")
+        for editing in [
+            ".contextMenu", ".dropDestination(", ".onDrop(", ".draggable", "DatePicker(", "TextField(",
+            "updateService(", "createInDrive(", "openInEditor(", "AppMode.edit", "openWindow(id:",
+            "LibrarySidebar(", "SchedulerView(", "ServiceControlsPanel(", "openSettings",
+        ] {
+            #expect(!code.contains(editing), "Simple Mode reaches \(editing)")
+        }
+        #expect(code.contains(".onPresentFireKeys"), "the arrows, Space and Return run the show")
+        #expect(code.contains("WindowBridge.advance?("))
+        #expect(code.contains("flow: .verify"))
+        #expect(code.contains("layout?.exitRunOnly(openWindow: openWindow, dismissWindow: dismissWindow)"))
+
+        let app = try #require(sweep.file("MxUSlidesApp.swift")).text
+        #expect(app.contains("keyIn?.perform(steps > 0 ? .nextSlide : .previousSlide)"))
+        #expect(try #require(sweep.file("AppShell.swift")).text.contains(".disabled(presentSimpleMode == nil || runOnly)"))
+        // A relaunch comes back in Simple Mode.
+        let controller = try #require(sweep.file("PresentLayoutController.swift")).text
+        #expect(controller.contains("runOnly = UserDefaults.standard.bool(forKey: Self.lockedKey)"))
     }
 
     @Test func everyWindowSceneIsPlaced() throws {

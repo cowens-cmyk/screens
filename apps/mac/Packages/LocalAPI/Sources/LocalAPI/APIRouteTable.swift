@@ -42,6 +42,44 @@ public enum APIRouteTable {
         })
 
         routes.append(APIRoute(
+            "GET", "/v1/show/frames/{which}", scope: .view,
+            operationId: "getShowFrame",
+            summary: "A small JPEG (480 wide) for the phone remote: `live` is the audience screen, `next` the slide Next fires. Videos and live inputs draw black. 404 when there is no next slide.",
+            tag: "Show",
+            responseSchema: .object(["type": "string", "format": "binary"]),
+            responseContentType: "image/jpeg"
+        ) { context in
+            let raw = try context.pathParameter("which")
+            guard let which = APIShowFrame(rawValue: raw) else {
+                throw APIError.badRequest(
+                    "Unknown frame '\(raw)'. Frames: \(APIShowFrame.allCases.map(\.rawValue).joined(separator: ", "))."
+                )
+            }
+            return .image(try await bridge.showFrame(which))
+        })
+
+        routes.append(APIRoute(
+            "POST", "/v1/booth/messages", scope: .control,
+            operationId: "sendBoothMessage",
+            summary: "Send a short note to the booth (\"Mic issue\", \"Ready\"). It shows as a banner in the Mac's main window and is logged.",
+            tag: "Booth",
+            requestSchema: .ref("BoothMessageCommand"), responseSchema: .ref("BoothMessage")
+        ) { context in
+            let command = try context.decode(APIBoothMessageCommand.self).validated()
+            return .json(try await bridge.sendBoothMessage(command), status: 201)
+        })
+
+        routes.append(APIRoute(
+            "GET", "/v1/booth/messages", scope: .view,
+            operationId: "listBoothMessages",
+            summary: "Notes sent to the booth since the app opened, newest first.",
+            tag: "Booth",
+            responseSchema: .array([.ref("BoothMessage")])
+        ) { _ in
+            .json(await bridge.boothMessages())
+        })
+
+        routes.append(APIRoute(
             "GET", "/v1/timers", scope: .view,
             operationId: "listTimers", summary: "All timers with run state.", tag: "Timers",
             responseSchema: .array([.ref("TimerStatus")])

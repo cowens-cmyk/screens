@@ -41,4 +41,11 @@ public protocol LocalAPIBridge: AnyObject, Sendable {
     func updateDocument(kind: APIDocumentKind, id: String, body: Data) async throws
     func deleteDocument(kind: APIDocumentKind, id: String) async throws
     func addServiceItem(serviceId: String, refId: String, index: Int?) throws
+
+    /// The audience screen or the next slide as a small JPEG for the phone remote.
+    func showFrame(_ which: APIShowFrame) async throws -> Data
+    /// Shows a validated note from the remote in the booth and logs it.
+    func sendBoothMessage(_ command: APIBoothMessageCommand) throws -> APIBoothMessage
+    /// The notes sent this session, newest first.
+    func boothMessages() -> [APIBoothMessage]
 }

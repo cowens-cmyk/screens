@@ -1,5 +1,6 @@
 import Foundation
 import LocalAPI
+import QuartzCore
 import PresenterCore
 import RenderEngine
 import SlideScene
@@ -11,6 +12,8 @@ final class AppAPIBridge: LocalAPIBridge {
     private let render: RenderContext
 
     private weak var scheduler: SchedulerController?
+
+    private let frames = RemoteFrames()
 
     init(
         appModel: AppModel, controls: ServiceControls,
@@ -151,7 +154,10 @@ final class AppAPIBridge: LocalAPIBridge {
             service: service.map {
                 APIShowStatus.ServiceRef(id: $0.id, name: $0.name)
             },
-            nextSlide: APIShowStatus.NextSlide(text: controls.nextSlideText),
+            nextSlide: APIShowStatus.NextSlide(
+                text: controls.nextSlideText,
+                presentationId: controls.nextSlideCue?.presentation?.id,
+                slideId: controls.nextSlideCue?.slide.id),
             position: APIShowStatus.Position(
                 currentItemName: controls.currentItemName, nextItemName: controls.nextItemName)
         )
@@ -760,6 +766,37 @@ final class AppAPIBridge: LocalAPIBridge {
             }
         }
         controls.refreshNextSlide()
+    }
+
+    // MARK: Phone remote
+
+    func showFrame(_ which: APIShowFrame) async throws -> Data {
+        let scene: RenderScene
+        var hostTime: CFTimeInterval = 0
+        switch which {
+        case .live:
+            scene = render.liveScene
+            hostTime = CACurrentMediaTime() + 10
+        case .next:
+            guard let cue = controls.nextSlideCue else { throw APIError.notFound("No next slide.") }
+            let theme = cue.presentation.flatMap { appModel.theme(for: cue.slide, in: $0) }
+            scene = SlideSceneBuilder.peakLook(SlideSceneBuilder.scene(
+                for: cue.slide, theme: theme, presentation: cue.presentation,
+                canvasSize: SlideSceneBuilder.canvasSize(for: cue.presentation),
+                animationContext: .settled))
+        }
+        guard let jpeg = await frames.jpeg(slot: which.rawValue, scene: scene, at: hostTime, render: render) else {
+            throw APIError(status: 503, code: "render_failed", message: "Couldn't draw the picture.")
+        }
+        return jpeg
+    }
+
+    func sendBoothMessage(_ command: APIBoothMessageCommand) throws -> APIBoothMessage {
+        BoothMessages.shared.receive(try command.validated())
+    }
+
+    func boothMessages() -> [APIBoothMessage] {
+        BoothMessages.shared.log
     }
 
     @discardableResult
