@@ -247,8 +247,14 @@ A slide can bring up a specific layout (Screens… › Stage, or Add Action › 
 
 **Listening for scripture** (Live Assist): the app listens to the pastor's microphone and spots spoken references ("turn to Genesis 32").
 - Start it from Bible › **Listen for Scripture**, slide right-click › **Start Listening for Scripture**, or More › Timers & Macros… › **Sermon** tab › **Listen to Sermon**. The Sermon tab lists passages **Mentioned** (click one to show it), a **Transcript**, and **Show passages automatically**.
-- **Window › Live Assist** (⌥⌘L): microphone and channel, **Start Listening** for lyric following with a confidence meter, **Take Over (pause 8 s)** (Escape), and **Scripture Detection**.
+- **Window › Live Assist** (⌥⌘L): microphone and channel, **Start Listening**, **Lyric Follow** (**Follow every song**, **Advance automatically**, a confidence meter, where it thinks the singer is, **Take Over (pause 8 s)** (Escape)), and **Scripture Detection**.
 - Settings › Show Setup › Live Assist: input, **Advance lyrics as they're sung**, the confidence threshold, **Watch for spoken Bible references**.
+
+**Lyric follow** (Live Assist): Screens listens to the worship input and keeps its place in the live song as it's sung.
+- Turn it on per song with the **Follow** chip next to the song's name in the slide grid (click it again to stop; its arrow has **Follow Every Song**, **Advance Automatically**, **Stop Listening**). Turning it on starts the worship mic; the first time, macOS asks for the microphone and speech recognition.
+- The chip shows **Listening**, **Next: 6 Chorus** (the expected next slide, which gets a pulsing dashed teal outline in the grid) or **Paused**.
+- At or above the confidence threshold it puts the next slide up as the last word of the slide is sung, or as the next slide's first words are sung. It follows the arrangement, including repeated choruses, and goes to the chorus if the band goes back to it unplanned. Below the threshold, or with **Advance lyrics as they're sung** off, it only outlines the slide.
+- Clicking a slide or using the arrow keys pauses it for 8 seconds (taking the outlined slide doesn't). It only acts while a song is live, never on other presentations, and never moves onto a blank slide by itself.
 - Slide actions **Turn On Microphone (Listen for Scripture)** and **Turn Off Microphone** start and stop it from a slide.
 
 ## Countdown and Schedule Service

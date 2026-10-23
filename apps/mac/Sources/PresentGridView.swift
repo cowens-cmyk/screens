@@ -138,6 +138,7 @@ struct PresentGridView: View {
             }
             SongKeyChip(model: model, controls: controls, presentation: presentation)
             SlideShowChip(model: model, controls: controls, presentation: presentation)
+            LyricFollowChip(controls: controls, presentation: presentation)
             Spacer()
 
         }
@@ -851,6 +852,7 @@ struct SlideGridBody: View {
                     slide: slide, in: presentation, arrangementId: arrangementId,
                     contextID: contextID, occurrence: index
                 )
+                LiveAssist.shared.operatorTookOver(firing: index, contextID: contextID)
             }
         }
     }
@@ -1826,6 +1828,8 @@ struct SlideTile: View {
                 tileShape.strokeBorder(.separator, lineWidth: 1)
             }
         }
+        // Its own view, so a new suggestion redraws one outline, not every tile.
+        .overlay { FollowSuggestionOutline(controls: controls, contextID: contextID, index: index, shape: tileShape) }
         .contentShape(Rectangle())
         .onTapGesture(perform: fire)
 
@@ -2550,6 +2554,130 @@ struct SlideShowChip: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(.quaternary, in: Capsule())
+    }
+}
+
+/// Lyric follow for one song, beside its name: turns following on, and shows
+/// what it's doing (Listening, Next: 6 Chorus, Paused). Only on songs.
+struct LyricFollowChip: View {
+    let controls: ServiceControls?
+    let presentation: Presentation
+
+    @Environment(\.openWindow) private var openWindow
+
+    private enum Shown: Equatable { case off, starting, micOff, listening, next(String), paused }
+
+    private var shown: Shown {
+        let assist = LiveAssist.shared
+        guard assist.isFollowing(presentation.id) else { return .off }
+        if assist.starting { return .starting }
+        guard assist.hearsWorship else { return .micOff }
+        guard controls?.state.liveSlide?.presentation?.id == presentation.id else { return .listening }
+        if assist.isPaused { return .paused }
+        if let suggestion = assist.suggestion, suggestion.presentationID == presentation.id,
+           controls?.liveContextID == suggestion.contextID, controls?.liveOccurrence == suggestion.fromOccurrence {
+            return .next(suggestion.label)
+        }
+        return .listening
+    }
+
+    var body: some View {
+        if LiveAssist.isSong(presentation) {
+            let assist = LiveAssist.shared
+            let shown = shown
+            Menu {
+                Toggle("Follow This Song", isOn: Binding(
+                    get: { assist.followedSongIDs.contains(presentation.id) },
+                    set: { _ in assist.toggleFollow(presentation) }))
+                Toggle("Follow Every Song", isOn: Binding(
+                    get: { assist.followsEverySong }, set: { assist.followsEverySong = $0 }))
+                Toggle("Advance Automatically", isOn: Binding(
+                    get: { assist.advancesAutomatically }, set: { assist.advancesAutomatically = $0 }))
+                Divider()
+                if assist.listening {
+                    Button("Stop Listening") { assist.stop() }
+                }
+                Button("Live Assist…") { openWindow(id: "liveAssist") }
+            } label: {
+                label(shown)
+            } primaryAction: {
+                primary(shown)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(help(shown, status: assist.status))
+        }
+    }
+
+    private func primary(_ shown: Shown) {
+        let assist = LiveAssist.shared
+        switch shown {
+        case .off: assist.toggleFollow(presentation)
+        case .micOff: assist.listenForLyrics()
+        default:
+            if assist.followedSongIDs.contains(presentation.id) {
+                assist.toggleFollow(presentation)
+            } else {
+                assist.followsEverySong = false
+            }
+        }
+    }
+
+    private func label(_ shown: Shown) -> some View {
+        let (text, tint): (String, Color?) = switch shown {
+        case .off: ("Follow", nil)
+        case .starting: ("Starting…", .secondary)
+        case .micOff: ("Follow: Mic Off", .orange)
+        case .listening: ("Listening", .green)
+        case .next(let slide): ("Next: \(slide)", HopeStyle.teal)
+        case .paused: ("Paused", .orange)
+        }
+        return Label(text, systemImage: shown == .off ? "waveform" : "waveform.circle.fill")
+            .labelStyle(.titleAndIcon)
+            .font(.caption)
+            .lineLimit(1)
+            .foregroundStyle(tint ?? .secondary)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(tint.map { AnyShapeStyle($0.opacity(0.15)) } ?? AnyShapeStyle(.quaternary), in: Capsule())
+    }
+
+    private func help(_ shown: Shown, status: String) -> String {
+        switch shown {
+        case .off: "Follow this song: listen to the worship mic and outline the next slide as it's sung"
+        case .micOff: "\(status). Click to listen again."
+        case .paused: "Paused for 8 s after a slide was changed by hand"
+        default: "Following this song. Click to stop. Changing a slide by hand pauses it for 8 s."
+        }
+    }
+}
+
+/// The slide lyric follow expects next: a pulsing dashed outline, apart from
+/// the live slide's solid amber one.
+struct FollowSuggestionOutline: View {
+    let controls: ServiceControls?
+    let contextID: String?
+    let index: Int
+    let shape: RoundedRectangle
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dim = false
+
+    /// The suggestion is read first, so with none up no tile watches the live slide here.
+    private var shows: Bool {
+        guard let suggestion = LiveAssist.shared.suggestion, let contextID,
+              suggestion.contextID == contextID, suggestion.slideIndex == index, let controls
+        else { return false }
+        return controls.liveContextID == contextID && controls.liveOccurrence == suggestion.fromOccurrence
+    }
+
+    var body: some View {
+        if shows {
+            shape.strokeBorder(HopeStyle.teal, style: StrokeStyle(lineWidth: 2.5, dash: [7, 4]))
+                .opacity(dim ? 0.35 : 1)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: dim)
+                .onAppear { dim = true }
+                .allowsHitTesting(false)
+        }
     }
 }
 

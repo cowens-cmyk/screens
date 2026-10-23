@@ -546,6 +546,7 @@ struct ServiceContinuousView: View {
                 }
                 SongKeyChip(model: model, controls: controls, presentation: presentation)
                 SlideShowChip(model: model, controls: controls, presentation: presentation)
+                LyricFollowChip(controls: controls, presentation: presentation)
             } accessory: {
 
                 if presentation.sections?.isEmpty == false {
