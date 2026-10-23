@@ -55,12 +55,18 @@
 	<string>$(MXU_GIT_COMMIT)</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Screens asks Keynote to export decks so they can be imported.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_anthem-show._tcp</string>
+		<string>_mxu-slides._tcp</string>
+		<string>_ndi._tcp</string>
+	</array>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Screens can fire slides and macros when events on your calendar start.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Screens shows cameras and capture devices on your screens as live video inputs.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Screens uses your local network to discover and receive NDI video sources, and announces its Local API so remotes and control surfaces can find this Mac.</string>
+	<string>Screens uses your local network to discover and receive NDI video sources, read Anthem's setlist, and announce its Local API so remotes and control surfaces can find this Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Screens can include a capture device's audio when it is used as a live input.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
