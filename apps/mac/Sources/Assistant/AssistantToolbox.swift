@@ -24,6 +24,13 @@ final class AssistantToolbox {
     /// The pictures attached so far in this conversation, by id.
     var attachments: [String: AssistantAttachment] = [:]
     private var eventCache: (day: String, at: Date, result: ChurchEventsFetcher.Result)?
+    /// The last lyrics check of each song presentation: the corrected words
+    /// wait here for apply_lyric_fixes, so lyrics never have to travel
+    /// through the conversation to be applied.
+    var lyricChecks: [String: LyricsCheck.Report] = [:]
+    /// Messages built from notes, by attachment file and plan, so asking
+    /// twice doesn't read the notes (or build the slides) twice.
+    var builtMessages: [String: String] = [:]
 
     init(model: AppModel, router: ActionRouter?) {
         self.model = model
@@ -69,6 +76,13 @@ final class AssistantToolbox {
         case "fetch_church_events": try await fetchEvents(input)
         case "match_slides_to_events": try await matchSlides(input)
         case "import_announcement_cards": try await importCards(input)
+        case "sync_shepherd": try await syncShepherd()
+        case "check_service_readiness": try await checkReadiness(input)
+        case "import_songs_from_shepherd": try await importSongs(input)
+        case "build_message_from_notes": try await buildMessage(input)
+        case "apply_sunday_setup": try await applySundaySetup(input)
+        case "check_song_lyrics": try await checkSongLyrics(input)
+        case "apply_lyric_fixes": try await applyLyricFixes(input)
         default: throw Failure("There is no tool named \(name).")
         }
     }
@@ -107,6 +121,10 @@ final class AssistantToolbox {
             detail += "\n\nThe countdown video starts so it ends at each time."
             if !existing.isEmpty { detail += " Replaces \(count(existing.count, "countdown")) already scheduled." }
             return ("Schedule \(plan.name)?", detail)
+        case "apply_sunday_setup":
+            return try await sundaySetupConfirmation(input)
+        case "apply_lyric_fixes":
+            return try await lyricFixesConfirmation(input)
         default:
             return ("Run \(name)?", "")
         }
@@ -155,6 +173,10 @@ final class AssistantToolbox {
             }
             if item.mxuItemHexId != nil { fields["from_shepherd"] = true }
             if item.mxuItemHexId != nil, item.refId.isEmpty, item.itemKind == .presentation { fields["no_slides"] = true }
+            if let song = item.mxuSongTitle {
+                fields["song"] = .string(song)
+                if item.refId.isEmpty { fields["no_slides"] = true }
+            }
             return .object(fields)
         }
         var fields: [String: AssistantJSON] = [
@@ -206,18 +228,7 @@ final class AssistantToolbox {
         let plan = try await service(input["plan_id"]?.string)
         let times = try serviceTimes(input)
         let (item, seconds) = try countdownVideo(plan)
-        for old in model.residentScheduleTriggers where ServiceCountdown.isCountdownTrigger(old, planID: plan.id) {
-            model.deleteScheduleTrigger(old.id)
-        }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE MMM d, h:mm:ss a"
-        var rows: [AssistantJSON] = []
-        for time in times {
-            let start = ServiceCountdown.start(serviceTime: time, videoSeconds: seconds)
-            model.createScheduleTrigger(ServiceCountdown.trigger(
-                planID: plan.id, planName: plan.name, countdownItemID: item.id, start: start, serviceTime: time))
-            rows.append(["service": .string(formatter.string(from: time)), "countdown_starts": .string(formatter.string(from: start))])
-        }
+        let rows = scheduleCountdowns(plan, item: item, videoSeconds: seconds, times: times)
         return (["plan": .string(plan.name), "scheduled": .array(rows)], "Scheduled \(plan.name) (\(count(times.count, "service")))")
     }
 
@@ -478,7 +489,7 @@ final class AssistantToolbox {
 
     // MARK: Events
 
-    private func events(includeRecentPast: Bool = true) async throws -> ChurchEventsFetcher.Result {
+    func events(includeRecentPast: Bool = true) async throws -> ChurchEventsFetcher.Result {
         let today = Self.today
         if includeRecentPast, let cache = eventCache, cache.day == today, cache.at.timeIntervalSinceNow > -600 {
             return cache.result
@@ -581,7 +592,7 @@ final class AssistantToolbox {
 
     // MARK: Lookups
 
-    private func presentation(_ id: String?) async throws -> Presentation {
+    func presentation(_ id: String?) async throws -> Presentation {
         guard let id, !id.isEmpty else { throw Failure("presentation_id is required.") }
         guard let deck = await model.presentationsFilled([id])[id] else {
             throw Failure("No presentation has the id \(id). Use list_presentations to find it.")
@@ -589,7 +600,7 @@ final class AssistantToolbox {
         return deck
     }
 
-    private func service(_ id: String?) async throws -> Service {
+    func service(_ id: String?) async throws -> Service {
         guard let id, !id.isEmpty else { throw Failure("plan_id is required.") }
         await model.resident.ready([.service])
         guard let plan = try? model.service(id) else {
@@ -605,14 +616,14 @@ final class AssistantToolbox {
         return theme
     }
 
-    private func planItem(_ id: String?, in plan: Service) throws -> ServiceItem {
+    func planItem(_ id: String?, in plan: Service) throws -> ServiceItem {
         guard let item = plan.items.first(where: { $0.id == id }) else {
             throw Failure("\(plan.name) has no item with the id \(id ?? ""). Use get_plan.")
         }
         return item
     }
 
-    private func slides(_ ids: [String], in deck: Presentation) throws -> [Slide] {
+    func slides(_ ids: [String], in deck: Presentation) throws -> [Slide] {
         let missing = ids.filter { id in !deck.slides.contains { $0.id == id } }
         guard missing.isEmpty else {
             throw Failure("\(deck.name) has no slide with the id \(missing.joined(separator: ", ")). Use get_presentation.")
@@ -621,7 +632,7 @@ final class AssistantToolbox {
         return deck.slides.filter { wanted.contains($0.id) }
     }
 
-    private func serviceTimes(_ input: AssistantJSON) throws -> [Date] {
+    func serviceTimes(_ input: AssistantJSON) throws -> [Date] {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = .current
@@ -636,7 +647,7 @@ final class AssistantToolbox {
         return times.sorted()
     }
 
-    private func countdownVideo(_ plan: Service) throws -> (item: ServiceItem, seconds: Double?) {
+    func countdownVideo(_ plan: Service) throws -> (item: ServiceItem, seconds: Double?) {
         guard let item = ServiceCountdown.item(in: plan) else {
             throw Failure("\(plan.name) has no countdown item. Plans get one first in the run order; the user can add the countdown in the plan.")
         }
@@ -703,12 +714,12 @@ final class AssistantToolbox {
             .filter { !$0.isEmpty }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func mediaName(of slide: Slide) -> String? {
+    func mediaName(of slide: Slide) -> String? {
         let ids = [slide.background?.mediaId] + slide.objects.map(\.mediaId)
         return ids.compactMap { $0 }.compactMap { model.media($0)?.name }.first
     }
 
-    private func label(of slide: Slide, in deck: Presentation) -> String {
+    func label(of slide: Slide, in deck: Presentation) -> String {
         let index = (deck.slides.firstIndex { $0.id == slide.id } ?? 0) + 1
         let words = slide.name.isEmpty ? Self.text(of: slide).split(separator: "\n").first.map(String.init) ?? "" : slide.name
         return words.isEmpty ? "Slide \(index)" : "Slide \(index): \(words)"
@@ -723,7 +734,7 @@ final class AssistantToolbox {
         value.rounded() == value ? "\(Int(value)) seconds" : "\(value) seconds"
     }
 
-    private func count(_ n: Int, _ noun: String, _ plural: String? = nil) -> String {
+    func count(_ n: Int, _ noun: String, _ plural: String? = nil) -> String {
         "\(n) \(n == 1 ? noun : (plural ?? noun + "s"))"
     }
 }

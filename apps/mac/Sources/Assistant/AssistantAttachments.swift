@@ -16,6 +16,9 @@ struct AssistantAttachment: Identifiable, Sendable, Equatable {
     var fileURL: URL
     /// JPEG for the model, at most 1568 pixels on the long side.
     var preview: Data
+    /// For a page of a PDF, a copy of the whole PDF: sermon notes go to
+    /// Import Sermon's reader as the document, not as page pictures.
+    var sourcePDF: URL?
 
     var block: AssistantJSON {
         ["type": "image", "source": [
@@ -46,8 +49,11 @@ enum AssistantAttachments {
                 let own = folder.appendingPathComponent("\(index + 1)", isDirectory: true)
                 try? FileManager.default.createDirectory(at: own, withIntermediateDirectories: true)
                 let pages: [(label: String, file: URL)]
+                var sourcePDF: URL?
                 if url.pathExtension.lowercased() == "pdf" {
                     pages = renderPDF(url, into: own)
+                    let copy = own.appendingPathComponent("source-\(name)")
+                    if (try? FileManager.default.copyItem(at: url, to: copy)) != nil { sourcePDF = copy }
                 } else {
                     let copy = own.appendingPathComponent(name)
                     pages = (try? FileManager.default.copyItem(at: url, to: copy)) == nil ? [] : [(name, copy)]
@@ -55,7 +61,8 @@ enum AssistantAttachments {
                 for page in pages where made.count < limit {
                     guard let preview = jpegPreview(of: page.file) else { continue }
                     made.append(AssistantAttachment(
-                        id: "att_\(first + made.count)", label: page.label, fileURL: page.file, preview: preview))
+                        id: "att_\(first + made.count)", label: page.label, fileURL: page.file, preview: preview,
+                        sourcePDF: sourcePDF))
                 }
             }
             return made

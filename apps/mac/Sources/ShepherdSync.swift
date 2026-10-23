@@ -93,9 +93,7 @@ final class ShepherdSync {
         defer { isSyncing = false }
         do {
             await model.resident.ready([.service])
-            let candidates = ((try? await model.client.presentationMatchKeys()) ?? []).map {
-                ServiceLinkLogic.Candidate(id: $0.id, name: $0.name, ccliNumber: $0.ccliNumber, ccliSongTitle: $0.ccliTitle)
-            }
+            let candidates = await Self.linkCandidates(model)
             let (from, to) = Self.window(weeks: weeksAhead)
             var plans = try await client.plans(from: from, to: to, serviceType: serviceType.isEmpty ? nil : serviceType)
             if sundaysOnly { plans = plans.filter(Self.isSunday) }
@@ -209,13 +207,28 @@ final class ShepherdSync {
     private static func librarySong(
         for song: PlanFeed.Item, candidates: [ServiceLinkLogic.Candidate]
     ) -> (refId: String, arrangementId: String?)? {
-        var probe = ServiceItem(id: "", itemKind: .info, name: song.title, refId: "")
-        probe.mxuSongTitle = song.song?.title ?? song.title
-        probe.mxuCcliNumber = song.song?.ccliNumber
+        librarySong(title: song.song?.title ?? song.title, ccli: song.song?.ccliNumber, candidates: candidates)
+            .map { ($0, nil) }
+    }
+
+    /// The library presentation for a song title and CCLI number, as sync
+    /// links them. The Assistant uses it to link before importing.
+    static func librarySong(title: String, ccli: Int?, candidates: [ServiceLinkLogic.Candidate]) -> String? {
+        var probe = ServiceItem(id: "", itemKind: .info, name: title, refId: "")
+        probe.mxuSongTitle = title
+        probe.mxuCcliNumber = ccli
         guard case .link(_, let refId) = ServiceLinkLogic.resolve(
             item: probe, serviceTypeName: nil, rules: ServiceLinkRules(id: "", rules: []), candidates: candidates)
         else { return nil }
-        return (refId, nil)
+        return refId
+    }
+
+    /// What sync matches songs against: every presentation's name, CCLI
+    /// number and CCLI title.
+    static func linkCandidates(_ model: AppModel) async -> [ServiceLinkLogic.Candidate] {
+        ((try? await model.client.presentationMatchKeys()) ?? []).map {
+            ServiceLinkLogic.Candidate(id: $0.id, name: $0.name, ccliNumber: $0.ccliNumber, ccliSongTitle: $0.ccliTitle)
+        }
     }
 
     /// The next service's keys become each song's display key, so chords and

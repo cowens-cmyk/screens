@@ -118,6 +118,8 @@ final class AssistantSession {
         history = AssistantHistory()
         lines = []
         toolbox.attachments = [:]
+        toolbox.lyricChecks = [:]
+        toolbox.builtMessages = [:]
     }
 
     // MARK: The loop
