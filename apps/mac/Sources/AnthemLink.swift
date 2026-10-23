@@ -148,12 +148,12 @@ final class AnthemLink {
                 "host_description": "Screens \(version)", "api_version": "v1",
             ])
         } else if parts == ["v1", "libraries"] {
-            return json([["id": ["uuid": "screens", "name": "Screens", "index": 0]]])
+            return json(ProPresenterCompat.libraries(libraryItems(model)))
         } else if count == 3, p[0] == "v1", p[1] == "library" {
-            let items = model.entries(of: .presentation)
-                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-                .enumerated().map { ["uuid": $1.id, "name": $1.name, "index": $0] as [String: Any] }
-            return json(["update_type": "all", "items": items])
+            let items = ProPresenterCompat.libraryItems(libraryItems(model), named: p[2])
+            // Anthem reads `updateType`; ProPresenter itself says
+            // `update_type`. Both, so either reader is happy.
+            return json(["updateType": "all", "update_type": "all", "items": items])
         } else if parts == ["v1", "playlists"] {
             let plans = model.resident.services.values.filter { $0.isTemplate != true }
                 .sorted { $0.serviceDate > $1.serviceDate }
@@ -168,15 +168,10 @@ final class AnthemLink {
         } else if count == 3, p[0] == "v1", p[1] == "playlist" {
             let id = p[2]
             guard let plan = model.resident.services.value(id) else { return (404, Data()) }
-            let items = plan.items.enumerated().map { index, item -> [String: Any] in
-                var entry: [String: Any] = [
-                    "id": ["uuid": item.id, "name": item.name, "index": index],
-                    "type": item.itemKind == .presentation ? "presentation" : item.itemKind == .header ? "header" : "media",
-                ]
-                if item.itemKind == .presentation {
-                    entry["presentation_info"] = ["presentation_uuid": item.refId]
-                }
-                return entry
+            let items = plan.items.enumerated().map { index, item in
+                ProPresenterCompat.playlistItem(
+                    item, index: index,
+                    presentation: item.itemKind == .presentation ? model.presentation(item.refId) : nil)
             }
             return json(["id": ["uuid": plan.id, "name": plan.name, "index": 0], "items": items])
         } else if parts == ["v1", "presentation", "active"] {
@@ -191,21 +186,44 @@ final class AnthemLink {
         } else if count == 5, p[0] == "v1", p[1] == "presentation", p[4] == "trigger" {
             let id = p[2]
             guard let slideIndex = Int(p[3]) else { return (404, Data()) }
-            return trigger(presentationID: id == "active" ? controls?.livePresentationID : id, index: slideIndex)
+            guard let presentationID = id == "active" ? controls?.livePresentationID : id else { return (404, Data()) }
+            return cue(presentationID: presentationID, index: slideIndex, itemID: nil)
                 ? (204, Data()) : (404, Data())
         }
         return (404, Data())
     }
 
-    /// Shows slide `index`, from the current plan when the presentation is in it.
-    private func trigger(presentationID: String?, index: Int) -> Bool {
-        guard let model, let controls, let presentationID,
+    private func libraryItems(_ model: AppModel) -> [ProPresenterCompat.LibraryItem] {
+        model.entries(of: .presentation).map { .init(id: $0.id, name: $0.name, folder: $0.subkind) }
+    }
+
+    /// The current plan's items in the order /v1/playlist lists them, so
+    /// Anthem's Select Playlist Item over MIDI picks the item it would over
+    /// the network.
+    func playlistItems() -> [ServiceItem]? {
+        model?.currentServiceID.flatMap { model?.resident.services.value($0) }?.items
+    }
+
+    /// Shows slide `index` of the presentation's own slide order — the
+    /// order /v1/presentation describes — for a network trigger or Anthem's
+    /// MIDI Trigger Slide alike. In the current plan it shows as that plan
+    /// item, at the arrangement's next place for that slide, so the grid
+    /// lights the tile the band is on.
+    @discardableResult
+    func cue(presentationID: String, index: Int, itemID: String?) -> Bool {
+        guard let model, let controls,
               let presentation = model.presentation(presentationID),
               presentation.slides.indices.contains(index) else { return false }
         let slide = presentation.slides[index]
-        let item = model.currentServiceID.flatMap { model.resident.services.value($0) }?
-            .items.first { $0.refId == presentationID }
-        controls.fire(slide: slide, in: presentation, contextID: item?.id)
+        let items = playlistItems() ?? []
+        let item = itemID.flatMap { id in items.first { $0.id == id } }
+            ?? (controls.liveContextID).flatMap { id in items.first { $0.id == id && $0.refId == presentationID } }
+            ?? items.first { $0.refId == presentationID }
+        let arranged = model.arrangedSlides(presentation, arrangementId: item?.arrangementId).map(\.id)
+        let current = controls.liveContextID == item?.id ? controls.liveOccurrence : nil
+        controls.fire(
+            slide: slide, in: presentation, arrangementId: item?.arrangementId, contextID: item?.id,
+            occurrence: item == nil ? nil : AnthemCue.occurrence(of: slide.id, in: arranged, current: current))
         let section = (presentation.sections ?? []).first { $0.id == slide.sectionId }?.name
         lastCue = [presentation.name, section].compactMap { $0 }.joined(separator: " · ")
         lastCueAt = .now
@@ -242,6 +260,96 @@ struct AnthemSettingsForm: View {
                 if let error = link.error {
                     Text(error).font(.caption).foregroundStyle(.red)
                 }
+            }
+            Divider().padding(.vertical, 2)
+            AnthemFeedSettings()
+            Divider().padding(.vertical, 2)
+            AnthemMIDISettings()
+        }
+    }
+}
+
+/// Settings › Anthem: reading Anthem's setlist and song orders.
+private struct AnthemFeedSettings: View {
+    @Bindable private var feed = AnthemFeed.shared
+    @State private var address = AnthemFeed.shared.manualAddress
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Match song orders to Anthem's setlist", isOn: $feed.enabled)
+            if feed.enabled {
+                HStack(spacing: 6) {
+                    Circle().fill(dotColor).frame(width: 8, height: 8)
+                    Text(statusText).font(.caption)
+                }
+                LabeledContent("Anthem address") {
+                    TextField("Found automatically", text: $address)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 220)
+                        .onSubmit { feed.manualAddress = address }
+                }
+                .font(.caption)
+                Text("Leave empty to find Anthem on the network. Otherwise its Mac's address, port \(AnthemShow.defaultPort) unless you add one.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Toggle("Ignore instrumental sections", isOn: $feed.ignoreInstrumental)
+                    .help("Intros, turnarounds and other band-only parts with no blank slide in Screens don't count as a difference.")
+                Toggle("Match Anthem automatically", isOn: $feed.autoMatch)
+                Text("Upcoming plans only. A song that differs gets an arrangement named Anthem in Anthem's order. Edit › Undo puts it back.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onDisappear {
+            if address != feed.manualAddress { feed.manualAddress = address }
+        }
+    }
+
+    private var dotColor: Color {
+        switch feed.connection {
+        case .connected: .green
+        case .searching: .secondary
+        case .notFound, .off: .orange
+        }
+    }
+
+    private var statusText: String {
+        switch feed.connection {
+        case .off: "Off"
+        case .searching: "Looking for Anthem…"
+        case .notFound: "Anthem not found"
+        case .connected(let name):
+            if let setlist = feed.setlist {
+                "\(name) · \(setlist.name), \(setlist.entries.count) songs"
+            } else {
+                "\(name) · no setlist open"
+            }
+        }
+    }
+}
+
+/// Settings › Anthem: Anthem's MIDI fallback.
+private struct AnthemMIDISettings: View {
+    @Bindable private var feed = AnthemFeed.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Listen to Anthem's MIDI", isOn: $feed.followMIDI)
+            if feed.followMIDI {
+                HStack(spacing: 6) {
+                    Circle().fill(feed.midiConnected ? Color.green : Color.secondary).frame(width: 8, height: 8)
+                    Text(feed.midiConnected ? "Connected to Anthem's MIDI source" : "Anthem's MIDI source isn't open")
+                        .font(.caption)
+                }
+                Picker("Notes", selection: $feed.midiUsesAnthemNotes) {
+                    Text("Anthem's").tag(true)
+                    Text("MIDI input map").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                Text("Anthem's notes, channel 1: Next 13, Previous 14, Select Item 19, Trigger Slide 20 (velocity is the slide number). Other apps can send to the Screens MIDI destination; those use the MIDI input map.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

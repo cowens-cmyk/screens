@@ -14,7 +14,52 @@ final class MIDIInService: @unchecked Sendable {
     private var handler: (@Sendable (Int32, UInt8, UInt8, UInt8) -> Void)?
     private let lock = NSLock()
 
+    /// Anthem's virtual source is listened to without being added under
+    /// MIDI devices, whenever it is there.
+    private var followAnthem = false
+    private var anthemUIDs = Set<Int32>()
+    /// The "Screens" virtual destination any app on this Mac can send to.
+    private var destination = MIDIEndpointRef()
+    private var destinationUID: Int32 = 0
+    /// Told when Anthem's source comes or goes.
+    var onAnthemChange: (@Sendable (Bool) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return anthemChange }
+        set { lock.lock(); anthemChange = newValue; lock.unlock() }
+    }
+    private var anthemChange: (@Sendable (Bool) -> Void)?
+
     private init() {}
+
+    /// Creates the client and the "Screens" destination at launch, so other
+    /// apps can pick Screens before anything is set up here.
+    func start() {
+        lock.lock()
+        _ = ensureReady()
+        lock.unlock()
+        syncConnections()
+    }
+
+    func setFollowAnthem(_ follow: Bool) {
+        lock.lock()
+        followAnthem = follow
+        lock.unlock()
+        syncConnections()
+    }
+
+    /// Whether a message came from Anthem's own source.
+    func isAnthemSource(_ uid: Int32) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return anthemUIDs.contains(uid)
+    }
+
+    /// The "Screens" destination's unique ID, so MIDI out never sends into
+    /// its own input. Zero before it exists.
+    var ownDestinationUID: Int32 {
+        lock.lock()
+        defer { lock.unlock() }
+        return destinationUID
+    }
 
     func setHandler(_ handler: @escaping @Sendable (Int32, UInt8, UInt8, UInt8) -> Void) {
         lock.lock()
@@ -31,19 +76,31 @@ final class MIDIInService: @unchecked Sendable {
 
     private func syncConnections() {
         lock.lock()
-        defer { lock.unlock() }
+        let hadAnthem = !anthemUIDs.isEmpty
+        let change = anthemChange
+        defer {
+            let hasAnthem = !anthemUIDs.isEmpty
+            lock.unlock()
+            if hasAnthem != hadAnthem { change?(hasAnthem) }
+        }
 
-        guard !wanted.isEmpty || ready else { return }
+        guard !wanted.isEmpty || followAnthem || ready else { return }
         guard ensureReady() else { return }
         var present: [Int32: MIDIEndpointRef] = [:]
+        var anthem = Set<Int32>()
         for index in 0..<MIDIGetNumberOfSources() {
             let source = MIDIGetSource(index)
             guard source != 0 else { continue }
             var uid: Int32 = 0
             guard MIDIObjectGetIntegerProperty(source, kMIDIPropertyUniqueID, &uid) == noErr
             else { continue }
+            if Self.name(of: source).map(AnthemMIDI.isAnthemSource(name:)) == true {
+                anthem.insert(uid)
+                if followAnthem { present[uid] = source }
+            }
             if wanted.contains(uid) { present[uid] = source }
         }
+        anthemUIDs = anthem
         for (uid, endpoint) in connected where present[uid] != endpoint {
             MIDIPortDisconnectSource(port, endpoint)
             connected[uid] = nil
@@ -72,8 +129,32 @@ final class MIDIInService: @unchecked Sendable {
                   { [weak self] packetList, refCon in self?.receive(packetList, refCon) }
               ) == noErr
         else { return false }
+        // Messages sent to "Screens" arrive as if from a source whose ID is
+        // the destination's own, and read with the MIDI input map.
+        if MIDIDestinationCreateWithBlock(
+            client, "Screens" as CFString, &destination,
+            { [weak self] packetList, _ in self?.receiveAtDestination(packetList) }
+        ) == noErr {
+            MIDIObjectGetIntegerProperty(destination, kMIDIPropertyUniqueID, &destinationUID)
+        } else {
+            destination = 0
+        }
         ready = true
         return true
+    }
+
+    private static func name(of endpoint: MIDIEndpointRef) -> String? {
+        var nameRef: Unmanaged<CFString>?
+        guard MIDIObjectGetStringProperty(endpoint, kMIDIPropertyDisplayName, &nameRef) == noErr,
+              let value = nameRef?.takeRetainedValue() else { return nil }
+        return value as String
+    }
+
+    private func receiveAtDestination(_ packetList: UnsafePointer<MIDIPacketList>) {
+        lock.lock()
+        let uid = destinationUID
+        lock.unlock()
+        receive(packetList, UnsafeMutableRawPointer(bitPattern: Int(uid)))
     }
 
     private func receive(_ packetList: UnsafePointer<MIDIPacketList>, _ refCon: UnsafeMutableRawPointer?) {
@@ -118,6 +199,7 @@ final class MIDIInController {
             }
         }
         MIDIInService.shared.setSources(MIDIDeviceInventory.shared.items.inputSourceUIDs)
+        MIDIInService.shared.start()
         LightkeyLink.shared.start()
     }
 
@@ -128,14 +210,23 @@ final class MIDIInController {
         }), !device.acceptsChannel(ofStatus: status) {
             return
         }
-        guard let (command, velocity) = MIDICommandMapStore.shared.map.resolve(
+        // Anthem counts its notes one up from ProPresenter's stock numbers,
+        // so its own source reads with Anthem's map unless Settings › Anthem
+        // says otherwise.
+        let fromAnthem = MIDIInService.shared.isAnthemSource(sourceUid)
+        let map = fromAnthem && AnthemFeed.shared.midiUsesAnthemNotes
+            ? MIDIInputPreset.anthem.map : MIDICommandMapStore.shared.map
+        guard let (command, velocity) = map.resolve(
             status: status, data1: data1, data2: data2
         ) else { return }
-        DiagnosticsStore.shared.note("midi.in", detail: "\(command.rawValue) v\(velocity)")
-        handle(command, velocity: velocity)
+        DiagnosticsStore.shared.note("midi.in", detail: "\(fromAnthem ? "anthem " : "")\(command.rawValue) v\(velocity)")
+        handle(command, velocity: velocity, fromAnthem: fromAnthem)
     }
 
-    func handle(_ command: MIDICommand, velocity: Int) {
+    /// `fromAnthem`: Anthem picks plan items and slides by the numbers
+    /// Screens' ProPresenter answers gave it (AnthemLink), so those two
+    /// commands index the same lists here.
+    func handle(_ command: MIDICommand, velocity: Int, fromAnthem: Bool = false) {
 
         let index = velocity - 1
         switch command {
@@ -173,7 +264,8 @@ final class MIDIInController {
             selectedServiceItemID = nil
             try? bridge.selectService(id: services[index].id)
         case .selectServiceItem:
-            guard let items = currentServiceItems() else { return miss(command, "no service") }
+            guard let items = fromAnthem ? AnthemLink.shared.playlistItems() : currentServiceItems()
+            else { return miss(command, "no service") }
             guard items.indices.contains(index) else { return miss(command, "index \(index)") }
             let item = items[index]
             if item.itemKind == .media {
@@ -185,6 +277,17 @@ final class MIDIInController {
             }
             selectedServiceItemID = item.id
         case .triggerSlide:
+            if fromAnthem {
+                // The presentation's own slide order, as /v1/presentation
+                // lists it: the same index over MIDI and over the network.
+                let selection = selectedServiceItem()
+                guard let presentationID = selection?.presentation.id ?? controls.livePresentationID
+                else { return miss(command, "nothing live or selected") }
+                if !AnthemLink.shared.cue(presentationID: presentationID, index: index, itemID: selection?.item.id) {
+                    miss(command, "index \(index)")
+                }
+                return
+            }
 
             if let selection = selectedServiceItem() {
                 let slides = SlideSceneBuilder.arrangedSlides(

@@ -434,8 +434,8 @@ struct AppSettingsView: View {
         rows.append(SettingsRowSpec(
             id: "anthem.link", category: .shepherd,
             title: "Anthem",
-            caption: "The tracks change the slides: Anthem sends each section's cue to Screens the way it would to ProPresenter.",
-            keywords: "anthem tracks multitrack cue slides network propresenter band",
+            caption: "Anthem leads: the tracks change the slides, and each song's order follows Anthem's setlist.",
+            keywords: "anthem tracks multitrack cue slides network propresenter band setlist arrangement order section match midi",
             control: AnyView(AnthemSettingsForm()),
             stacked: true
         ))

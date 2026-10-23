@@ -232,7 +232,10 @@ final class MIDIDeviceInventory {
     }
 
     static func destinationEndpoints() -> [MIDIEndpoint] {
-        endpoints(count: MIDIGetNumberOfDestinations(), at: MIDIGetDestination)
+        // Not Screens' own input: nothing here should send into it.
+        let own = MIDIInService.shared.ownDestinationUID
+        return endpoints(count: MIDIGetNumberOfDestinations(), at: MIDIGetDestination)
+            .filter { own == 0 || $0.uid != own }
     }
 
     static func sourceEndpoints() -> [MIDIEndpoint] {

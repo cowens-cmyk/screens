@@ -110,6 +110,17 @@ Settings › Shepherd & Anthem › Shepherd:
 
 Upcoming Shepherd plans become Screens plans. Headers stay headers. Songs link to presentations already in the library (matched by CCLI number or title); a song with none is flagged and gets the Get Lyrics button. Sync never creates songs on its own. Re-syncing keeps items added in Screens and anything linked by hand. The next service's song keys become each song's display key, so stage chords match what the band plays.
 
+## Anthem
+
+Anthem (the band's tracks app) leads; Screens follows. Settings › Shepherd & Anthem › Anthem:
+- **Let Anthem change the slides**: Screens answers Anthem the way ProPresenter would, on port 50001. In Anthem › Settings › ProPresenter, choose Network and enter this Mac's address. Anthem's slide numbers are each presentation's own slide order.
+- **Match song orders to Anthem's setlist**: Screens finds Anthem on the network (or at **Anthem address**) and reads its open setlist every 10 seconds. The status line says the setlist it has, or "Anthem not found" when Anthem is off.
+- **Ignore instrumental sections** (on by default): intros, turnarounds and other band-only parts don't count as a difference unless Screens has a blank slide for them.
+- **Match Anthem automatically** (off by default): upcoming plans get Anthem's order without asking.
+- **Listen to Anthem's MIDI** (on by default) and **Notes**: Screens connects to Anthem's MIDI source when it is open and reads Anthem's numbers (channel 1: Next 13, Previous 14, Select Item 19, Trigger Slide 20). Other apps can send to the **Screens** MIDI destination, which uses the MIDI input map.
+
+Songs are matched by CCLI number, then title. A song whose arrangement differs from the order Anthem plays shows an orange ⚠ on its plan row and **⚠ Anthem** above its slide grid; hover for the difference ("Anthem: V1 C V2 C B C C — Screens: V1 C V2 C B C"), click for **Match Anthem**. That sets the plan item to an arrangement named **Anthem** in Anthem's order, reusing the song's sections (a repeated chorus is the same chorus). Edit › Undo puts it back. A section Anthem plays that the song has no slides for is listed ("Screens has no Tag — add it in the editor"); Screens never makes slides up. The plan's bottom bar says how many songs differ, or "Matches Anthem". Only the plan Anthem's setlist is for gets marks: the current plan or an upcoming one sharing most of its songs.
+
 ## Songs
 
 - **Song Search…** (⌘⇧L): search Shepherd's song library by title or CCLI number, pick the **Arrangement** and **Key** ("Chart key" keeps the chart's), see the song order, choose the lyrics theme, then **Import Song**. If the song is already in the library: **Open Library Copy**, **Replace Library Copy** (services using it keep it), or **Import Again**.
@@ -324,7 +335,7 @@ Settings › Network & API: **Local API** on/off, **Port**, **Connect at** (open
 ## Other integrations
 
 - **MIDI** (Settings › MIDI): MIDI devices, Lightkey, and a **MIDI input map** for incoming notes (ProPresenter's numbers by default).
-- **Anthem** (Settings › Shepherd & Anthem): the multitrack app sends each section's cue to change slides.
+- **Anthem** (Settings › Shepherd & Anthem): the tracks change the slides and song orders follow Anthem's setlist; see Anthem above.
 - **Audio/Video Inputs** (Settings): cameras, NDI sources, web pages and audio inputs, used by Live Input objects and Live Assist.
 
 ## Settings overview

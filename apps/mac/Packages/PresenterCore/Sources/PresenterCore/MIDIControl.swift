@@ -381,6 +381,55 @@ public struct MIDICommandMap: Codable, Equatable, Sendable {
     }
 }
 
+/// Ready-made input maps. ProPresenter's stock numbers stay the default;
+/// Anthem's ProPresenter MIDI fallback counts the same commands one note
+/// higher (Next 13, Previous 14, Select Playlist Item 19, Trigger Slide 20,
+/// all on channel 1), so it gets a map of its own rather than a changed
+/// stock map.
+public enum MIDIInputPreset: String, CaseIterable, Sendable {
+    case proPresenter
+    case anthem
+
+    public var displayName: String {
+        switch self {
+        case .proPresenter: "ProPresenter (stock)"
+        case .anthem: "Anthem"
+        }
+    }
+
+    public var map: MIDICommandMap {
+        switch self {
+        case .proPresenter:
+            return MIDICommandMap()
+        case .anthem:
+            // Every command one note up keeps the whole map free of
+            // collisions, and lands Anthem's four exactly.
+            var map = MIDICommandMap(channel: 1)
+            for command in MIDICommand.allCases {
+                map.setNote(command.defaultNote + 1, for: command)
+            }
+            return map
+        }
+    }
+
+    /// The preset this map is, if it is one.
+    public static func matching(_ map: MIDICommandMap) -> MIDIInputPreset? {
+        allCases.first { $0.map == map }
+    }
+}
+
+/// Anthem's virtual MIDI source, which Screens listens to without being
+/// set up when it appears.
+public enum AnthemMIDI {
+    public static let sourceName = "Anthem"
+
+    public static func isAnthemSource(name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        return trimmed.caseInsensitiveCompare(sourceName) == .orderedSame
+            || trimmed.lowercased().hasPrefix(sourceName.lowercased() + " ")
+    }
+}
+
 public enum MIDIParse {
     public struct ChannelMessage: Equatable, Sendable {
         public var status: UInt8
