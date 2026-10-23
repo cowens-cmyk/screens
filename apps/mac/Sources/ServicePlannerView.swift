@@ -406,6 +406,7 @@ struct RunOrderList: View {
             }
             if item.isCountdown == true, !runOnly {
                 CountdownVideoMenu(model: model, planID: serviceID, item: item)
+                    .fixedSize()
             }
 
             if changed {

@@ -33,17 +33,19 @@ struct CountdownVideoMenu: View {
                 }
             }
         } label: {
-            Text(item.refId.isEmpty ? "Choose Video" : "Change")
-                .font(.caption2.weight(.semibold))
+            // Small enough to sit beside the name in the narrow plan column;
+            // orange until this week's video is chosen.
+            Image(systemName: item.refId.isEmpty ? "film.fill" : "film")
+                .font(.system(size: 10, weight: .semibold))
                 .padding(.horizontal, 6)
-                .padding(.vertical, 1)
+                .padding(.vertical, 2)
                 .background((item.refId.isEmpty ? Color.orange : Color.secondary).opacity(0.18), in: Capsule())
                 .foregroundStyle(item.refId.isEmpty ? Color.orange : Color.secondary)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("This service's countdown video")
+        .help(item.refId.isEmpty ? "Choose this service's countdown video" : "Change the countdown video")
     }
 
     private func choose(_ mediaID: String) {
