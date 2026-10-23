@@ -4632,6 +4632,47 @@
         }
       ]
     },
+    "ServiceDayTime": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "serviceTime",
+          "type": "string"
+        },
+        {
+          "name": "restartTime",
+          "type": "string"
+        }
+      ]
+    },
+    "ServiceDaySettings": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "services",
+          "type": "list:ServiceDayTime"
+        },
+        {
+          "name": "days",
+          "type": "list:int",
+          "optional": true
+        },
+        {
+          "name": "preServicePresentationId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "clearFirst",
+          "type": "bool",
+          "optional": true
+        }
+      ]
+    },
     "SlideBuildingSettings": {
       "kind": "record",
       "fields": [
@@ -4672,6 +4713,11 @@
         {
           "name": "sermonThemeId",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "serviceDay",
+          "type": "ServiceDaySettings",
           "optional": true
         }
       ]

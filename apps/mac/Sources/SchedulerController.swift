@@ -17,6 +17,19 @@ final class SchedulerController {
             case late
 
             case missed
+
+            /// Due, but left alone: a pre-service restart while a service
+            /// was still going.
+            case skipped
+
+            var label: String {
+                switch self {
+                case .fired: "fired"
+                case .late: "late"
+                case .missed: "missed"
+                case .skipped: "skipped"
+                }
+            }
         }
 
         enum Source: String, Codable, Equatable {
@@ -31,10 +44,12 @@ final class SchedulerController {
         let at: Date
         let outcome: Outcome
         let source: Source
+        /// Why it was skipped.
+        let detail: String?
 
         init(
             triggerID: String, name: String, at: Date,
-            outcome: Outcome, source: Source
+            outcome: Outcome, source: Source, detail: String? = nil
         ) {
             id = UUID()
             self.triggerID = triggerID
@@ -42,6 +57,7 @@ final class SchedulerController {
             self.at = at
             self.outcome = outcome
             self.source = source
+            self.detail = detail
         }
     }
 
@@ -226,6 +242,7 @@ final class SchedulerController {
         let wake = [result.nextWake, snoozeWake].compactMap { $0 }.min()
         scheduleWake(at: wake, from: now)
         updateTimerWatch(triggers: triggers, board: board)
+        placeServiceDay(triggers, board: board)
     }
 
     private func scheduleWake(at date: Date?, from now: Date) {
@@ -356,6 +373,17 @@ final class SchedulerController {
     }
 
     private func fireNow(_ trigger: ScheduleTrigger, source: RunRecord.Source, late: Bool) {
+        // A pre-service restart that comes due while a service is still
+        // going leaves it alone. Run Now is the operator asking: it goes.
+        if source != .manual, ServiceDay.isRestartTrigger(trigger),
+           case .skip(let reason) = PreServiceGuard.decide(preServiceSituation(for: trigger)) {
+            DiagnosticsStore.shared.note("scheduler.preServiceSkipped", detail: "\(trigger.name) — \(reason)")
+            record(
+                RunRecord(
+                    triggerID: trigger.id, name: trigger.name, at: Date(),
+                    outcome: .skipped, source: source, detail: reason))
+            return
+        }
         let crumb = switch source {
         case .schedule: late ? "scheduler.late" : "scheduler.fired"
         case .timer: "scheduler.timerFired"
@@ -397,6 +425,61 @@ final class SchedulerController {
 
     private func name(of triggerID: String, in triggers: [ScheduleTrigger]) -> String {
         triggers.first { $0.id == triggerID }?.name ?? triggerID
+    }
+
+    // MARK: Service Day
+
+    /// The restart triggers sync from the team; the board is this
+    /// computer's. Each computer gathers them into its Service Day folder.
+    private func placeServiceDay(_ triggers: [ScheduleTrigger], board: SchedulerBoard) {
+        let ids = ServiceDay.restartTriggerIDs(triggers)
+        guard board.placingServiceDay(triggerIDs: ids) != nil else { return }
+        model.updateSchedulerBoard { board in
+            if let placed = board.placingServiceDay(triggerIDs: ids) { board = placed }
+        }
+    }
+
+    /// What's on the screens, for the pre-service guard.
+    private func preServiceSituation(for trigger: ScheduleTrigger) -> PreServiceGuard.Situation {
+        let slideshowID = trigger.actions.first { $0.kind == .firePresentation }?.presentationId
+        var situation = PreServiceGuard.Situation()
+        if let live = controls.state.liveSlide {
+            situation.secondsSinceSlideChange = max(0, CACurrentMediaTime() - live.firedAtHostTime)
+            if let presentation = live.presentation {
+                situation.preServiceIsUp = presentation.id == slideshowID
+                situation.messageIsUp = PresentationTypes.category(of: presentation) == PresentationTypes.sermon
+                situation.finalSlideIsUp = isPlansFinalSlide(live, in: presentation)
+            }
+        }
+        situation.sermonTimerRunning = controls.sermonTimer?.isRunning == true
+        if let video = controls.screenVideoID {
+            situation.videoPlaying = true
+            situation.countdownPlaying = isCountdownVideo(video)
+        }
+        return situation
+    }
+
+    /// The last slide of the current plan's last presentation: where a
+    /// service ends.
+    private func isPlansFinalSlide(_ live: ShowState.LiveSlide, in presentation: Presentation) -> Bool {
+        guard let planID = model.currentServiceID,
+              let plan = model.resident.services.value(planID),
+              let last = plan.items.last(where: { $0.itemKind == .presentation }),
+              last.refId == presentation.id
+        else { return false }
+        let slides = SlideSceneBuilder.arrangedSlides(
+            for: presentation, arrangementId: live.arrangementId ?? last.arrangementId)
+        return slides.last?.id == live.slide.id
+    }
+
+    private func isCountdownVideo(_ mediaID: String) -> Bool {
+        if let planID = model.currentServiceID,
+           let plan = model.resident.services.value(planID),
+           ServiceCountdown.item(in: plan)?.refId == mediaID {
+            return true
+        }
+        let folder = model.media(mediaID)?.folder ?? ""
+        return folder == ServiceCountdown.folder || folder.hasPrefix(ServiceCountdown.folder + "/")
     }
 }
 

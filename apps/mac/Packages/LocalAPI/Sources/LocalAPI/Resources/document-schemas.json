@@ -3934,6 +3934,51 @@
         "id"
       ]
     },
+    "ServiceDayTime": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "serviceTime": {
+          "type": "string"
+        },
+        "restartTime": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "serviceTime",
+        "restartTime"
+      ]
+    },
+    "ServiceDaySettings": {
+      "type": "object",
+      "properties": {
+        "services": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ServiceDayTime"
+          }
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "preServicePresentationId": {
+          "type": "string"
+        },
+        "clearFirst": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "services"
+      ]
+    },
     "SlideBuildingSettings": {
       "type": "object",
       "properties": {
@@ -3963,6 +4008,9 @@
         },
         "sermonThemeId": {
           "type": "string"
+        },
+        "serviceDay": {
+          "$ref": "#/components/schemas/ServiceDaySettings"
         }
       },
       "required": [
