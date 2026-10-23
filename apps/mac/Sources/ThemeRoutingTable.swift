@@ -21,7 +21,7 @@ struct ThemeRoutingTable: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Audience screens show these designs as they are. Choose what the livestream shows for each (when Livestream is on Auto).")
+            Text("Audience screens show these designs as they are. Choose what the livestream shows for each when Livestream is on Lower Third. A slide's own Livestream choice wins over these.")
                 .font(.caption).foregroundStyle(.secondary)
             ForEach(categories, id: \.id) { category in
                 HStack(alignment: .firstTextBaseline) {
@@ -35,18 +35,20 @@ struct ThemeRoutingTable: View {
             }
             Divider()
             HStack(alignment: .firstTextBaseline) {
-                Text("Anything else").font(.callout).frame(width: 110, alignment: .leading)
+                Text("Lower thirds").font(.callout).frame(width: 110, alignment: .leading)
                 Image(systemName: "arrow.right").font(.caption2).foregroundStyle(.tertiary)
                 Picker("", selection: Binding(
                     get: { model.streamLowerThirdThemeID },
                     set: { model.setStreamLowerThirdTheme($0) }
                 )) {
-                    Text("Camera clear").tag("")
+                    Text(StreamWording.nothing).tag("")
                     Divider()
                     ForEach(appModel.entries(of: .theme), id: \.id) { Text("\($0.name) — lower thirds").tag($0.id) }
                 }
                 .labelsHidden()
             }
+            Text("Lower Third, and any category not listed, uses these lower thirds.")
+                .font(.caption).foregroundStyle(.tertiary)
             Text("Stage displays follow the stage layout chosen in Show Setup, not the theme.")
                 .font(.caption).foregroundStyle(.tertiary)
         }
@@ -64,10 +66,14 @@ struct ThemeRoutingTable: View {
     private func designMenu(for category: String) -> some View {
         let current = model.streamDesigns.first { $0.category.caseInsensitiveCompare(category) == .orderedSame }
         return Menu {
-            Button("Camera clear") { model.setStreamDesign(.init(category: category, mode: .clear), for: category) }
-            Button("Same as audience (full screen)") {
+            // The same three choices a slide's right-click › Livestream offers.
+            // Lower Third is no entry of its own: it falls to the lower thirds
+            // below, which a design picked further down replaces.
+            Button(StreamWording.lowerThird) { model.setStreamDesign(nil, for: category) }
+            Button(StreamWording.fullScreen) {
                 model.setStreamDesign(.init(category: category, mode: .audience), for: category)
             }
+            Button(StreamWording.nothing) { model.setStreamDesign(.init(category: category, mode: .clear), for: category) }
             Divider()
             ForEach(appModel.entries(of: .theme), id: \.id) { entry in
                 Menu(entry.name) {
@@ -82,8 +88,6 @@ struct ThemeRoutingTable: View {
                     if slides.isEmpty { Text("Loading…") }
                 }
             }
-            Divider()
-            Button("Use “Anything else”") { model.setStreamDesign(nil, for: category) }
         } label: {
             Text(label(current))
                 .lineLimit(1)
@@ -103,10 +107,10 @@ struct ThemeRoutingTable: View {
     }
 
     private func label(_ design: StreamDesign?) -> String {
-        guard let design else { return "Anything else" }
+        guard let design else { return StreamWording.lowerThird }
         switch design.mode {
-        case .clear: return "Camera clear"
-        case .audience: return "Same as audience"
+        case .clear: return StreamWording.nothing
+        case .audience: return StreamWording.fullScreen
         case .design:
             let theme = design.themeId.flatMap { designs[$0] }
             let slide = theme?.slides.first { $0.id == design.slideId }

@@ -607,6 +607,12 @@ struct AddActionMenuItems: View {
                 Button(mode.title) { add(make(.setStageMode) { $0.stageMode = mode.rawValue }) }
             }
         }
+        // The sermon microphone, so the message's first slide can start
+        // listening for scripture and its last can stop.
+        Menu("Microphone") {
+            Button("Turn On Microphone (Listen for Scripture)") { add(make(.listenStart)) }
+            Button("Turn Off Microphone") { add(make(.listenStop)) }
+        }
         Menu("Lightkey Cue") {
             ForEach(1...24, id: \.self) { note in
                 Button("Cue note \(note)") {

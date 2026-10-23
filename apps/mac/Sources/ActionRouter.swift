@@ -45,6 +45,11 @@ final class ActionRouter {
         stream.noteLiveTheme(theme, slide: slide)
     }
 
+    /// A slide's livestream choice changed from its right-click menu.
+    func noteStreamDesign(_ design: StreamDesign?, forSlides slideIDs: Set<String>) {
+        stream.noteStreamDesign(design, forSlides: slideIDs)
+    }
+
     /// Runs the presentation type's default actions when a presentation of
     /// that type goes live (not on every slide within it).
     func presentationDidGoLive(_ presentation: Presentation) {
