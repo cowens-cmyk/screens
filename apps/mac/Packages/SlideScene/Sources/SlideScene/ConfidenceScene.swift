@@ -277,16 +277,19 @@ public struct VideoCountdown: Sendable, Equatable {
     public var position: Double
     public var anchoredAt: Date
     public var isPlaying: Bool
+    /// The layer it plays on, so the stage can show that layer's picture.
+    public var layer: LayerKind
 
     public init(
         name: String, duration: Double, position: Double,
-        anchoredAt: Date, isPlaying: Bool
+        anchoredAt: Date, isPlaying: Bool, layer: LayerKind = .videos
     ) {
         self.name = name
         self.duration = duration
         self.position = position
         self.anchoredAt = anchoredAt
         self.isPlaying = isPlaying
+        self.layer = layer
     }
 
     public func remaining(at date: Date) -> Double {

@@ -61,6 +61,7 @@ final class ServiceControls {
         VideoInputInventory.shared.onConnectedChanged = { [weak self] connected in
             self?.pushConnectedInputVisibility(connected)
         }
+        ensureSermonTimer()
     }
 
     private func pushAudioVisibility() {
@@ -628,10 +629,9 @@ final class ServiceControls {
 
     private func armMediaAdvance(for item: MediaItem, serviceItemID: String) {
         cancelMediaAdvance()
-        // "Next slide" when the video ends is an after-playback advance.
-        let advance = item.endAction == .next && item.mediaKind == .video
-            ? AutoAdvance(delaySeconds: 0, afterPlayback: true) : item.autoAdvance
-        guard let advance else { return }
+        // Next Item when the video ends (a video's default) is an
+        // after-playback advance.
+        guard let advance = item.planAdvance else { return }
         if advance.afterPlayback ?? false, item.mediaKind == .video {
             mediaAdvanceWatch = (serviceItemID, item.id, Date())
             autoAdvancePending = AutoAdvancePending(
@@ -665,8 +665,7 @@ final class ServiceControls {
         guard let watch = mediaAdvanceWatch,
               isMediaLive(watch.mediaID),
               let watched = appModel.media(watch.mediaID),
-              let advance = watched.endAction == .next
-                ? AutoAdvance(delaySeconds: 0, afterPlayback: true) : watched.autoAdvance
+              let advance = watched.planAdvance
         else { return cancelMediaAdvance() }
         let now = Date()
         let lead = MediaAutoAdvance.leadSeconds(fromDelay: advance.delaySeconds)
@@ -793,9 +792,36 @@ final class ServiceControls {
             armMediaAdvance(for: mediaItem, serviceItemID: id)
             serviceTracking?.noteItemFired(serviceItemID: id)
         }
-        armMediaEnd(mediaItem, on: layer)
+        let playsOnce = mediaItem.mediaKind == .video && !(loopsOverride ?? mediaItem.loops)
+        armMediaEnd(mediaItem, on: layer, playsOnce: playsOnce)
+        if playsOnce {
+            screenVideoID = mediaItem.id
+            actionRouter?.videoStarted(mediaItem.id)
+        }
         appModel.markUsed(mediaItem.id)
         return layer
+    }
+
+    // MARK: A video on the screens
+
+    /// The video media item playing once on the audience screen. While it
+    /// plays the livestream carries it full screen (the stage shows it with
+    /// the time left on its own, from the transport); once it's over the
+    /// stream goes clear until the next slide.
+    private(set) var screenVideoID: String?
+
+    /// Ended, held on its last frame, cleared or replaced: the video's hold
+    /// on the stream is over. Nothing else about the screens is touched, so
+    /// the stage and every timer carry on as they were.
+    private func screenVideoEnded() {
+        guard let id = screenVideoID else { return }
+        screenVideoID = nil
+        actionRouter?.videoEnded(id)
+    }
+
+    /// After every change on air: the video is over once it isn't live.
+    private func syncScreenVideo() {
+        if let id = screenVideoID, !isMediaLive(id) { screenVideoEnded() }
     }
 
     // MARK: Screen defaults for what goes live
@@ -822,14 +848,35 @@ final class ServiceControls {
         }
     }
 
-    static let sermonTimerName = "Sermon"
+    // MARK: The sermon timer
 
-    /// One "Sermon" countdown, set to the message's length (35 minutes unless
-    /// it says otherwise), counting on past 0:00 into red.
+    /// The Sermon countdown, if there is one.
+    var sermonTimer: TimerSnapshot? {
+        SermonTimer.find(in: timers.timers, id: \.id, name: \.name)
+    }
+
+    /// The Sermon countdown's id, made (stopped, at `seconds`) when there
+    /// isn't one, so the Message layout and the Screens column always have it.
+    @discardableResult
+    func ensureSermonTimer(seconds: Double = SermonTimer.defaultSeconds) -> String {
+        if let id = sermonTimer?.id { return id }
+        return timers.addCountdown(id: SermonTimer.id, name: SermonTimer.name, seconds: seconds)
+    }
+
+    /// The live message's length, else 40 minutes.
+    private var sermonLength: Double {
+        guard let live = state.liveSlide?.presentation,
+              PresentationTypes.category(of: live) == PresentationTypes.sermon
+        else { return SermonTimer.defaultSeconds }
+        return SermonTimer.seconds(for: live)
+    }
+
+    /// One "Sermon" countdown, set to the message's length (40 minutes unless
+    /// it says otherwise), counting on past 0:00 into red. One already
+    /// running is left alone: the message going live twice doesn't restart it.
     private func startSermonTimer(for presentation: Presentation) {
-        let seconds = presentation.sermonTimerSeconds ?? 35 * 60
-        let id = timers.timers.first { $0.name == Self.sermonTimerName }?.id
-            ?? timers.addCountdown(name: Self.sermonTimerName, seconds: seconds)
+        let seconds = SermonTimer.seconds(for: presentation)
+        let id = ensureSermonTimer(seconds: seconds)
         guard timers.snapshot(id: id)?.isRunning != true else { return }
         timers.setDuration(id: id, seconds: seconds)
         timers.setKeepsCountingAfterZero(id: id, true)
@@ -837,18 +884,47 @@ final class ServiceControls {
         timers.start(id: id)
     }
 
+    func toggleSermonTimer() {
+        let id = ensureSermonTimer(seconds: sermonLength)
+        timers.setKeepsCountingAfterZero(id: id, true)
+        timers.toggle(id: id)
+    }
+
+    /// Back to its full length, stopped.
+    func resetSermonTimer() {
+        timers.reset(id: ensureSermonTimer(seconds: sermonLength))
+    }
+
+    /// A minute more or less, running or not: only the length moves, so the
+    /// stage shows the change at once and nothing restarts.
+    func adjustSermonTimer(byMinutes minutes: Int) {
+        let id = ensureSermonTimer(seconds: sermonLength)
+        guard let timer = timers.snapshot(id: id) else { return }
+        timers.adjustDuration(
+            id: id, seconds: SermonTimer.adjusted(duration: timer.durationSeconds, byMinutes: minutes))
+    }
+
+    /// Shows exactly this many minutes now, and keeps running if it was.
+    func setSermonTimer(minutes: Int) {
+        let id = ensureSermonTimer(seconds: SermonTimer.seconds(minutes: minutes))
+        timers.setDuration(id: id, seconds: SermonTimer.seconds(minutes: minutes))
+    }
+
     // MARK: When a video ends
 
     private var mediaEndPoll: Timer?
 
-    /// Stop and Fade to Black take the video down when it finishes; Hold
-    /// leaves its last frame up; Next is the after-playback advance.
-    private func armMediaEnd(_ item: MediaItem, on layer: LayerKind) {
+    /// Watches a video that plays once until it finishes. Finishing ends its
+    /// hold on the livestream; Stop and Fade to Black then take it down, Hold
+    /// leaves its last frame up, and Next is the plan's after-playback
+    /// advance. Firing something that isn't such a video leaves the watch
+    /// running: it ends itself once its video is off the screen.
+    private func armMediaEnd(_ item: MediaItem, on layer: LayerKind, playsOnce: Bool) {
+        guard playsOnce else { return }
         mediaEndPoll?.invalidate()
         mediaEndPoll = nil
-        guard item.mediaKind == .video, let action = item.endAction,
-              action == .stop || action == .fadeToBlack else { return }
         let id = item.id
+        let action = item.resolvedEndAction
         let poll = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.mediaEndTick(id: id, layer: layer, action: action) }
         }
@@ -856,8 +932,9 @@ final class ServiceControls {
         mediaEndPoll = poll
     }
 
-    private func mediaEndTick(id: String, layer: LayerKind, action: MediaEndAction) {
+    private func mediaEndTick(id: String, layer: LayerKind, action: MediaEndAction?) {
         guard state.liveMedia[layer]?.mediaId == id else {
+            // Cleared or replaced: apply() already ended its hold.
             mediaEndPoll?.invalidate()
             mediaEndPoll = nil
             return
@@ -866,6 +943,8 @@ final class ServiceControls {
               MediaTransportController.isFinished(transport, at: Date()) else { return }
         mediaEndPoll?.invalidate()
         mediaEndPoll = nil
+        if screenVideoID == id { screenVideoEnded() }
+        guard action == .stop || action == .fadeToBlack else { return }
         settlePending()
         state.clear(layer: layer, atHostTime: CACurrentMediaTime())
         render.nextLiveTransitions[layer] = action == .fadeToBlack
@@ -1291,6 +1370,7 @@ final class ServiceControls {
             .applyingMediaEffects { appModel.mediaSceneEffects(id: $0) }
         }
         render.setLiveScenes(base, variants: variants)
+        syncScreenVideo()
         syncMedia()
         syncLinkedTextClock()
         syncExitSweep()

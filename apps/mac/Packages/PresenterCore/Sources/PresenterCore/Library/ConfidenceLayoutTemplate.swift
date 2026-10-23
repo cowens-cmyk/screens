@@ -63,8 +63,90 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         )
     }
 
-    /// A big sermon countdown, the clock, the current slide and its notes.
+    /// The time left for the message, as big as the screen allows: green
+    /// while there's time, red once it runs past 0:00 (it keeps counting,
+    /// so the preacher sees how far over). The time of day sits under it in
+    /// white. Each has a small caption so nobody mistakes one for the other.
     static func sermon(name: String) -> ConfidenceLayout {
+        var timer = linked("Sermon Timer", .timer, x: 60, y: 120, width: 1800, height: 560,
+                           size: 480, color: messageGreen, tabular: true, shrink: true, minSize: 120)
+        timer.textLink?.timerId = SermonTimer.id
+        // Green the whole way down, then red past zero: no amber step.
+        timer.textLink?.usesWarningColor = false
+        timer.textStyle?.fontName = "HelveticaNeue-Bold"
+        var clock = linked("Clock", .clock, x: 60, y: 800, width: 1800, height: 220,
+                           size: 190, color: white, tabular: true, shrink: true, minSize: 60,
+                           clockFormat: "h:mm")
+        clock.textStyle?.fontName = "HelveticaNeue-Medium"
+        return ConfidenceLayout(
+            id: UUID().uuidString,
+            name: name,
+            objects: [
+                label("MESSAGE", y: 64),
+                timer,
+                rule(y: 712),
+                label("TIME", y: 742),
+                clock,
+            ]
+        )
+    }
+
+    static let messageGreen = "#30D158FF"
+    static let captionGray = "#8E8E93FF"
+
+    /// A small, widely spaced caption across the screen.
+    private static func label(_ text: String, y: Double) -> SlideObject {
+        var object = SlideObject(id: UUID().uuidString, objectKind: .text, name: "Caption", text: text)
+        object.x = 60
+        object.y = y
+        object.width = 1800
+        object.height = 50
+        object.textStyle = TextStyle(
+            fontName: "HelveticaNeue-Bold",
+            fontSize: 34,
+            colorHex: captionGray,
+            tracking: 8,
+            horizontalAlignment: .center,
+            verticalAlignment: .middle
+        )
+        return object
+    }
+
+    /// A short hairline between the timer and the clock.
+    private static func rule(y: Double) -> SlideObject {
+        var object = SlideObject(id: UUID().uuidString, objectKind: .shape, name: "Divider", text: "")
+        object.shapeKind = .rectangle
+        object.x = 810
+        object.y = y
+        object.width = 300
+        object.height = 3
+        object.fill = ObjectFill(fillKind: .solid, colorHex: "#FFFFFF40")
+        return object
+    }
+
+    /// A saved Message layout that is still exactly what the old template
+    /// made (object ids aside) gets the new design's objects. One anybody has
+    /// touched, even slightly, is left alone: nil.
+    public static func upgradedSermonObjects(for layout: ConfidenceLayout) -> [SlideObject]? {
+        guard layout.canvasWidth == nil, layout.canvasHeight == nil, layout.multiView == nil,
+              layout.animationOrder?.isEmpty ?? true,
+              withoutIDs(layout.objects) == withoutIDs(legacySermon(name: layout.name).objects)
+        else { return nil }
+        return sermon(name: layout.name).objects
+    }
+
+    private static func withoutIDs(_ objects: [SlideObject]) -> [SlideObject] {
+        objects.map { object in
+            var object = object
+            object.id = ""
+            return object
+        }
+    }
+
+    /// The Message layout as it was made until October 2026: a sermon
+    /// countdown and clock in outlined boxes over the current slide and its
+    /// notes. Kept only to recognise untouched copies of it.
+    static func legacySermon(name: String) -> ConfidenceLayout {
         ConfidenceLayout(
             id: UUID().uuidString,
             name: name,

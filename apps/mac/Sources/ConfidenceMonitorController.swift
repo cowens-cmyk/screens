@@ -49,6 +49,7 @@ final class ConfidenceMonitorController {
     }
 
     private func stageModeSet() {
+        layoutsBeforeAudience = [:]
         if !assignments.isEmpty {
             assignments.removeAll()
             persist()
@@ -73,9 +74,38 @@ final class ConfidenceMonitorController {
         refresh()
     }
 
+    /// A slide's Show on Stage Display lasts for that slide: the stage goes
+    /// back to its mode (or the layout picked before) when it's gone.
+    func endAudiencePick() {
+        let picked = assignments.filter { $0.value == StageLayouts.audienceID }.map(\.key)
+        guard !picked.isEmpty else { return }
+        for screenID in picked {
+            if let earlier = layoutsBeforeAudience[screenID] {
+                assignments[screenID] = earlier
+            } else {
+                assignments.removeValue(forKey: screenID)
+            }
+        }
+        layoutsBeforeAudience = [:]
+        persist()
+        refresh()
+    }
+
+    /// What each screen had picked before a slide put the audience screen
+    /// on it, so it comes back after.
+    private var layoutsBeforeAudience: [UUID: String] = [:]
+
     func apply(layoutID: String?, toScreen screenID: UUID?) {
         let resolved = (layoutID?.isEmpty ?? true) ? nil : layoutID
-        if let resolved, appModel.indexEntry(resolved) == nil {
+        if resolved == StageLayouts.audienceID {
+            let screens = screenID.map { [$0] } ?? confidenceScreens.map { $0.id }
+            for screen in screens where assignments[screen] != StageLayouts.audienceID {
+                layoutsBeforeAudience[screen] = assignments[screen]
+            }
+        } else {
+            layoutsBeforeAudience = [:]
+        }
+        if let resolved, resolved != StageLayouts.audienceID, appModel.indexEntry(resolved) == nil {
             DiagnosticsStore.shared.note("confidence.layout.missing", detail: resolved)
             return
         }
@@ -108,7 +138,8 @@ final class ConfidenceMonitorController {
     func refresh() {
         var layouts: [UUID: ConfidenceLayout] = [:]
         var pruned = false
-        for (screenID, layoutID) in assignments {
+        upgradeMessageLayoutIfUntouched()
+        for (screenID, layoutID) in assignments where layoutID != StageLayouts.audienceID {
             if let layout = appModel.resident.confidenceLayouts.value(layoutID) {
                 layouts[screenID] = layout
             } else if appModel.client.isReady, appModel.indexEntry(layoutID) == nil {
@@ -146,8 +177,29 @@ final class ConfidenceMonitorController {
         }
         let audience = ShowTargets.mirrorSource(setup: setup, render: render)
             .map { render.outputs.previewProvider(for: $0) }
-        render.stageBox.value = StagePlan(source: source, audience: audience)
+        let mirrored = Set(assignments.filter { $0.value == StageLayouts.audienceID }.keys)
+        render.stageBox.value = StagePlan(source: source, audience: audience, mirroredScreens: mirrored)
         return modeLayout
+    }
+
+    private var checkedMessageLayout = false
+
+    /// The Message layout got a new design (a big sermon timer over the
+    /// clock). A saved copy still exactly as the old template made it takes
+    /// the new design once; one anybody has changed is left as it is.
+    private func upgradeMessageLayoutIfUntouched() {
+        guard !checkedMessageLayout,
+              let layout = appModel.resident.confidenceLayouts.value(StageLayouts.messageID)
+        else { return }
+        checkedMessageLayout = true
+        guard ConfidenceLayoutTemplate.upgradedSermonObjects(for: layout) != nil else { return }
+        DiagnosticsStore.shared.note("stage.messageLayout.upgraded", detail: layout.name)
+        appModel.updateConfidenceLayout(StageLayouts.messageID) { layout in
+            // Checked again on the document itself, in case it changed since.
+            if let objects = ConfidenceLayoutTemplate.upgradedSermonObjects(for: layout) {
+                layout.objects = objects
+            }
+        }
     }
 
     /// Re-plans when the audience screen (the one Mirror shows) changes.

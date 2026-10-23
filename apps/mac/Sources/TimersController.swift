@@ -69,10 +69,11 @@ final class TimersController {
 
     @discardableResult
     func addCountdown(
+        id: String = UUID().uuidString,
         name: String = "Countdown", seconds: TimeInterval, keepsCountingAfterZero: Bool = true
     ) -> String {
         let timer = TimerSnapshot(
-            name: name, mode: .countdown, durationSeconds: max(0, seconds),
+            id: id, name: name, mode: .countdown, durationSeconds: max(0, seconds),
             keepsCountingAfterZero: keepsCountingAfterZero ? nil : false
         )
         timers.append(timer)
@@ -239,6 +240,13 @@ final class TimersController {
             $0.banked = 0
             $0.runningSince = $0.isRunning ? Date() : nil
         }
+    }
+
+    /// A new length that keeps the time already run (unlike setDuration,
+    /// which starts the count again): a countdown nudged a minute while
+    /// running carries on from where it was, a minute longer.
+    func adjustDuration(id: String, seconds: TimeInterval) {
+        mutate(id) { $0.durationSeconds = max(0, seconds) }
     }
 
     func setTarget(id: String, hour: Int, minute: Int) {

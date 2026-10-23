@@ -876,6 +876,7 @@ struct SlideGridBody: View {
         Button("Screens…") { screensTarget = SlideScreensTarget(slideIDs: slideIDs) }
         layoutMenu(slideIDs)
         livestreamMenu(slideIDs)
+        stageToggle(slideIDs)
         listenButton()
         Menu("Add Action") {
             AddActionMenuItems(
@@ -1062,6 +1063,7 @@ struct SlideGridBody: View {
         Button("Screens…") { screensTarget = SlideScreensTarget(slideIDs: [slide.id]) }
         layoutMenu([slide.id])
         livestreamMenu([slide.id])
+        stageToggle([slide.id])
         listenButton()
         Divider()
         Button("Edit…") {
@@ -1222,6 +1224,24 @@ struct SlideGridBody: View {
             }
         }
         actionRouter?.noteStreamDesign(design, forSlides: ids)
+    }
+
+    /// Show on Stage Display: while these slides are up, the stage shows the
+    /// audience screen too. The slides' own stage choice, so the Screens
+    /// sheet and the editor's Stage picker show it as Audience Screen.
+    private func stageToggle(_ slideIDs: [String]) -> some View {
+        let slides = presentation.slides.filter { slideIDs.contains($0.id) }
+        let on = !slides.isEmpty && slides.allSatisfy { $0.stageLayoutId == StageLayouts.audienceID }
+        return Button((on ? "✓ " : "") + StageWording.showOnStage) {
+            let ids = Set(slideIDs)
+            let layoutID = on ? nil : StageLayouts.audienceID
+            model.updateSlides(presentationID: presentation.id, undoLabel: "Stage Display") { deck in
+                for index in deck.slides.indices where ids.contains(deck.slides[index].id) {
+                    deck.slides[index].stageLayoutId = layoutID
+                }
+            }
+            actionRouter?.noteStageLayout(layoutID, forSlides: ids)
+        }
     }
 
     /// Listens to the pastor and puts each passage they mention on screen

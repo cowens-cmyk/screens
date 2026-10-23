@@ -474,7 +474,7 @@ struct RunOrderList: View {
                     SlideshowMenu(model: model, presentationID: item.refId)
                 }
                 if item.itemKind == .media {
-                    VideoEndMenu(model: model, mediaID: item.refId)
+                    // When Video Ends heads this menu for a video.
                     MediaCueMenuItems(
                         model: model, actionRouter: controls?.actionRouter,
                         mediaID: item.refId, state: mediaMenuState,
@@ -973,17 +973,19 @@ struct LibrarySearchSheet: View {
     }
 }
 
-/// Right-click › When Video Ends: stop, next slide, hold the last frame, or
-/// fade to black. Choosing one stops the video looping.
+/// Right-click › When Video Ends: go to the next item (a video's default),
+/// hold the last frame, fade to black, or stop. Choosing one stops the video
+/// looping. On every video's right-click: plan rows, the fire view and the
+/// media library.
 struct VideoEndMenu: View {
     let model: AppModel
     let mediaID: String
 
     var body: some View {
-        let current = model.media(mediaID)?.endAction
+        let current = model.media(mediaID)?.resolvedEndAction
         Menu("When Video Ends") {
-            ForEach([(MediaEndAction.stop, "Stop"), (.next, "Go to Next Slide"),
-                     (.hold, "Hold Last Frame"), (.fadeToBlack, "Fade to Black")], id: \.0) { action, title in
+            ForEach([(MediaEndAction.next, "Next Item (Default)"), (.hold, "Hold Last Frame"),
+                     (.fadeToBlack, "Fade to Black"), (.stop, "Stop")], id: \.0) { action, title in
                 Toggle(title, isOn: Binding(
                     get: { current == action },
                     set: { _ in

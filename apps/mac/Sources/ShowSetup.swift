@@ -38,7 +38,7 @@ final class ShowSetup {
             switch self {
             case .worship: "Worship"
             case .message: "Message"
-            case .mirror: "Mirror"
+            case .mirror: "Audience Screen"
             }
         }
     }
@@ -50,6 +50,23 @@ final class ShowSetup {
         }
     }
     var onStageChange: (() -> Void)?
+
+    /// The mode to go back to when Show Audience Screen is turned off.
+    @ObservationIgnored private var modeBeforeAudience: StageMode = .worship
+
+    /// Whatever the audience screen shows, on the stage display too: one
+    /// click on, one click back to the mode it was in.
+    var showsAudienceOnStage: Bool {
+        get { stageMode == .mirror }
+        set {
+            if newValue, stageMode != .mirror {
+                modeBeforeAudience = stageMode
+                stageMode = .mirror
+            } else if !newValue, stageMode == .mirror {
+                stageMode = modeBeforeAudience
+            }
+        }
+    }
 
     /// The live presentation's own stage layout, which wins over the mode's.
     var stageLayoutOverride: String? { didSet { onStageChange?() } }
@@ -68,12 +85,16 @@ final class ShowSetup {
     var streamMode: StreamMode {
         didSet {
             UserDefaults.standard.set(streamMode.rawValue, forKey: "show.streamMode")
+            onStreamModeChosen?()
             changed()
         }
     }
 
     /// Called when the stream routing needs recomputing.
     var onChange: (() -> Void)?
+    /// Called when someone (or an action) picks a livestream mode, which
+    /// ends a playing video's hold on the stream.
+    var onStreamModeChosen: (() -> Void)?
 
     private init() {
         let defaults = UserDefaults.standard

@@ -12,6 +12,9 @@ struct StagePlan: Sendable {
     /// The audience screen's routed scene, for Mirror and for the video
     /// preview. Nil falls back to the main live scene.
     var audience: (@Sendable () -> RenderScene)?
+    /// Stage screens a slide's Show on Stage Display put on the audience
+    /// screen, over the mode.
+    var mirroredScreens: Set<UUID> = []
 
     static let initial = StagePlan(source: .layout(ConfidenceSceneBuilder.builtInLayout), audience: nil)
 }
@@ -22,6 +25,9 @@ struct StagePlan: Sendable {
 enum StageLayouts {
     static let worshipID = "screens.stage.worship"
     static let messageID = "screens.stage.message"
+    /// Not a layout: a slide's stage choice that shows the audience screen
+    /// (right-click › Show on Stage Display).
+    static let audienceID = "screens.stage.audience"
 
     /// The layout a mode shows. Mirror has none; its editor entry point opens
     /// the worship layout.

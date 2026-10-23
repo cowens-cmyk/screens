@@ -151,6 +151,7 @@ final class MediaTransportController {
     private func pushCountdown(force: Bool = false) -> Bool {
         let now = Date()
         var wanted: [String: VideoCountdown] = [:]
+        var playsOnce: Set<LayerKind> = []
         for layer in Set(rows.map(\.candidate.layer)) {
             guard let target = TransportTarget.countdownTarget(
                 candidates: rows.map(\.candidate), layer: layer
@@ -161,13 +162,21 @@ final class MediaTransportController {
                 duration: target.state.duration,
                 position: target.state.position(at: now),
                 anchoredAt: now,
-                isPlaying: target.state.isPlaying
+                isPlaying: target.state.isPlaying,
+                layer: layer
             )
+            if !target.candidate.isLooping { playsOnce.insert(layer) }
         }
+        // The stage's video: the foreground one, else a video playing once on
+        // the background layer (videos come in as Background, and one that
+        // doesn't loop is there to be watched, not to sit behind lyrics).
+        let stageVideo = wanted[TransportTarget.defaultLayer.rawValue]
+            ?? (playsOnce.contains(.loopingVideos) ? wanted[LayerKind.loopingVideos.rawValue] : nil)
         var info = render.confidenceInfo
         let current = info.videoCountdowns
 
         let tracking = Set(wanted.keys) == Set(current.keys)
+            && stageVideo?.layer == info.videoCountdown?.layer
             && wanted.allSatisfy { key, next in
                 current[key].map { held in
                     next.name == held.name
@@ -179,7 +188,7 @@ final class MediaTransportController {
         let writes = force || !tracking
         if writes {
             info.videoCountdowns = wanted
-            info.videoCountdown = wanted[TransportTarget.defaultLayer.rawValue]
+            info.videoCountdown = stageVideo
             render.confidenceInfo = info
         }
         return writes

@@ -20,6 +20,13 @@ enum StreamWording {
     static let nothing = "Nothing (camera only)"
 }
 
+/// A slide's stage choice that shows the audience screen, worded the same
+/// in the editor's Stage picker, the Screens sheet and the right-click menu.
+enum StageWording {
+    static let audience = "Audience Screen (for this slide)"
+    static let showOnStage = "Show on Stage Display"
+}
+
 extension StreamDesign {
     /// A slide's Lower Third names no design: it takes its theme's lower
     /// third for its category, so it follows theme edits.
@@ -112,6 +119,7 @@ struct SlideStagePicker: View {
             }
         )) {
             Text("Keep current").tag("")
+            Text(StageWording.audience).tag(StageLayouts.audienceID)
             Divider()
             ForEach(model.appModel.entries(of: .confidenceLayout), id: \.id) { Text($0.name).tag($0.id) }
         }
