@@ -65,11 +65,12 @@ struct PlanShell: View {
         // content that reports its own changing minimum size makes the split
         // view re-run constraints forever, and AppKit then ends the app.
         NavigationSplitView(columnVisibility: $columns) {
-            // The library inside needs 272 to lay out; narrower clips it.
+            // Narrow like ProPresenter's: the library's tab row folds extra
+            // tabs into its ··· menu, so 180 is enough.
             sidebar
-                .frame(minWidth: 272, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .frame(minWidth: 180, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .clipped()
-                .navigationSplitViewColumnWidth(min: 272, ideal: 300, max: 420)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 360)
         } detail: {
             // The screens sit beside the slides at a fixed width rather than
             // in a split-view inspector: next to a two-column split, the
@@ -170,7 +171,7 @@ struct PlanShell: View {
     }
 
     private var topPaneHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Picker("Show", selection: $topPane.animation(HopeMotion.ui(reduced: reduceMotion))) {
                 Text("Plans").tag(TopPane.plans)
                 Text("Library").tag(TopPane.library)
@@ -186,8 +187,8 @@ struct PlanShell: View {
                     .help("New plan")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 
     private var planList: some View {
@@ -215,6 +216,8 @@ struct PlanShell: View {
             }
         }
         .listStyle(.sidebar)
+        .font(.system(size: 12))
+        .environment(\.defaultMinListRowHeight, 22)
     }
 
     private func planRow(_ plan: Service) -> some View {
@@ -335,8 +338,8 @@ struct PlanShell: View {
                             .help("This plan's message, sermon series and what every screen shows")
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
                 RunOrderList(
                     model: model, controls: controls, serviceID: planID, render: render,
                     selectedItemID: $itemID, planAdds: PlanAddActions(

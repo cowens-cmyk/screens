@@ -204,8 +204,8 @@ struct MxUSlidesApp: App {
                 .overlay(alignment: .bottom) {
                     GoToSlideHUD(keyIn: keyIn).padding(.bottom, 48)
                 }
-                // Sidebar 272 + plan 230 + slides 300 + screens 300.
-                .frame(minWidth: 1120, minHeight: 640)
+                // Sidebar 180 + slides 320 + screens 360, with room to spare.
+                .frame(minWidth: 1000, minHeight: 640)
 
                 .sheet(isPresented: $showWelcome) {
                     OnboardingView(

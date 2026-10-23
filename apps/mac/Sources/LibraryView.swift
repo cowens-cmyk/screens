@@ -1212,8 +1212,10 @@ struct LibrarySidebar: View {
                     Button {
                         creatingFolder = true
                     } label: {
-                        Label("New Folder", systemImage: "folder.badge.plus")
+                        Label("Folder", systemImage: "folder.badge.plus")
+                            .lineLimit(1)
                     }
+                    .help("New Folder")
                     .disabled(folderPath == nil || (folderPath.map(isUnfiled) ?? false))
                 }
                 Spacer()
