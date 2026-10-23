@@ -130,6 +130,16 @@ final class AssistantToolbox {
         }
     }
 
+    /// For a tool that only sometimes replaces (`confirmsWhenReplacing`):
+    /// what to approve when this call would replace something, nil when it
+    /// only adds and goes ahead.
+    func replacingConfirmation(for name: String, input: AssistantJSON) async throws -> (title: String, detail: String)? {
+        switch name {
+        case "build_message_from_notes": try await messageConfirmation(input)
+        default: nil
+        }
+    }
+
     // MARK: Plans
 
     private func listPlans(_ input: AssistantJSON) async throws -> (AssistantJSON, String?) {

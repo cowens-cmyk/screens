@@ -2565,11 +2565,12 @@ struct LyricFollowChip: View {
 
     @Environment(\.openWindow) private var openWindow
 
-    private enum Shown: Equatable { case off, starting, micOff, listening, next(String), paused }
+    private enum Shown: Equatable { case off, starting, micOff, sermonMic, listening, next(String), paused }
 
     private var shown: Shown {
         let assist = LiveAssist.shared
         guard assist.isFollowing(presentation.id) else { return .off }
+        if assist.sermonMicInUse { return .sermonMic }
         if assist.starting { return .starting }
         guard assist.hearsWorship else { return .micOff }
         guard controls?.state.liveSlide?.presentation?.id == presentation.id else { return .listening }
@@ -2594,6 +2595,9 @@ struct LyricFollowChip: View {
                 Toggle("Advance Automatically", isOn: Binding(
                     get: { assist.advancesAutomatically }, set: { assist.advancesAutomatically = $0 }))
                 Divider()
+                if shown == .sermonMic {
+                    Button("Use the Worship Mic") { assist.listenForLyrics(overSermon: true) }
+                }
                 if assist.listening {
                     Button("Stop Listening") { assist.stop() }
                 }
@@ -2614,6 +2618,7 @@ struct LyricFollowChip: View {
         switch shown {
         case .off: assist.toggleFollow(presentation)
         case .micOff: assist.listenForLyrics()
+        case .sermonMic: assist.listenForLyrics(overSermon: true)
         default:
             if assist.followedSongIDs.contains(presentation.id) {
                 assist.toggleFollow(presentation)
@@ -2628,6 +2633,7 @@ struct LyricFollowChip: View {
         case .off: ("Follow", nil)
         case .starting: ("Starting…", .secondary)
         case .micOff: ("Follow: Mic Off", .orange)
+        case .sermonMic: ("Follow: Sermon Mic in Use", .orange)
         case .listening: ("Listening", .green)
         case .next(let slide): ("Next: \(slide)", HopeStyle.teal)
         case .paused: ("Paused", .orange)
@@ -2645,6 +2651,7 @@ struct LyricFollowChip: View {
         switch shown {
         case .off: "Follow this song: listen to the worship mic and outline the next slide as it's sung"
         case .micOff: "\(status). Click to listen again."
+        case .sermonMic: "The sermon mic is listening for scripture. Click to switch to the worship mic; scripture detection stops."
         case .paused: "Paused for 8 s after a slide was changed by hand"
         default: "Following this song. Click to stop. Changing a slide by hand pauses it for 8 s."
         }

@@ -83,7 +83,7 @@ enum PhotoSeries {
     static func draft(from url: URL, variant: Int, stage: (Stage) -> Void) async throws -> PhotoSeriesDraft {
         stage(.reading)
         let art = try await Task.detached { try SeriesArt.load(url) }.value
-        let families = SeriesFonts.families
+        let families = await SeriesFonts.families()
         var note: String?
         var analysis: ArtAnalysis
         var readByClaude = false

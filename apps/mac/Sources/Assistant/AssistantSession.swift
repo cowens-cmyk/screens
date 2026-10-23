@@ -218,16 +218,18 @@ final class AssistantSession {
         if let problem = AssistantToolInput.validate(call.input, against: spec.schema) {
             return .error(id: call.id, "Invalid input: \(problem).")
         }
-        if spec.needsConfirmation {
-            let ask: (title: String, detail: String)
+        if spec.needsConfirmation || spec.confirmsWhenReplacing {
+            let ask: (title: String, detail: String)?
             do {
-                ask = try await toolbox.confirmation(for: call.name, input: call.input)
+                ask = spec.needsConfirmation
+                    ? try await toolbox.confirmation(for: call.name, input: call.input)
+                    : try await toolbox.replacingConfirmation(for: call.name, input: call.input)
             } catch let failure as AssistantToolbox.Failure {
                 return .error(id: call.id, failure.message)
             } catch {
                 return .error(id: call.id, error.localizedDescription)
             }
-            guard await confirm(ask.title, detail: ask.detail) else {
+            if let ask, !(await confirm(ask.title, detail: ask.detail)) {
                 lines.append(Line(kind: .activity(failed: true), text: "Cancelled: \(ask.title.trimmingCharacters(in: CharacterSet(charactersIn: "?")))"))
                 return AssistantToolResult(id: call.id, content: "The user cancelled. Nothing was changed.")
             }

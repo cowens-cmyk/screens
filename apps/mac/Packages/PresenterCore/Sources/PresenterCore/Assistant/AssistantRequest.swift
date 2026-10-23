@@ -46,12 +46,20 @@ public struct AssistantToolSpec: Sendable, Equatable {
     public var schema: AssistantJSON
     /// Destructive tools stop for the user's Approve before they run.
     public var needsConfirmation: Bool
+    /// Tools that add, and only sometimes replace: the app works out from
+    /// the input and the library whether this call replaces something, and
+    /// asks for Approve only then.
+    public var confirmsWhenReplacing: Bool
 
-    public init(name: String, description: String, schema: AssistantJSON, needsConfirmation: Bool = false) {
+    public init(
+        name: String, description: String, schema: AssistantJSON, needsConfirmation: Bool = false,
+        confirmsWhenReplacing: Bool = false
+    ) {
         self.name = name
         self.description = description
         self.schema = schema
         self.needsConfirmation = needsConfirmation
+        self.confirmsWhenReplacing = confirmsWhenReplacing
     }
 
     /// Streamed requests set eager input streaming on every client tool, so

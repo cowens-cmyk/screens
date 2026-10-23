@@ -71,6 +71,10 @@ struct AssistantRequestTests {
         }
         let confirmed = Set(AssistantToolCatalog.all.filter(\.needsConfirmation).map(\.name))
         #expect(confirmed == ["delete_slides", "remove_plan_item", "schedule_service", "apply_sunday_setup", "apply_lyric_fixes"])
+        // Builds a first message freely; replacing one waits for Approve.
+        let sometimes = Set(AssistantToolCatalog.all.filter(\.confirmsWhenReplacing).map(\.name))
+        #expect(sometimes == ["build_message_from_notes"])
+        #expect(confirmed.isDisjoint(with: sometimes))
         for wanted in ["list_plans", "get_plan", "list_presentations", "get_presentation", "create_presentation",
                        "add_slides", "reorder_slides", "set_slide_text", "set_slide_livestream", "set_auto_advance",
                        "add_item_to_plan", "fetch_church_events", "import_announcement_cards", "list_media", "list_themes"] {

@@ -194,20 +194,41 @@ struct SeriesArt: @unchecked Sendable {
 /// Fonts for a series made from a photo.
 @MainActor
 enum SeriesFonts {
+    private static var scan: Task<[String], Never>?
+
     /// Installed families that can set a title or a paragraph: Latin
-    /// letters, not symbols, emoji or the system's hidden faces.
-    static let families: [String] = {
+    /// letters, not symbols, emoji or the system's hidden faces. Every
+    /// family is opened to check, which takes a moment with many fonts
+    /// installed, so it's done once and off the main thread.
+    static func families() async -> [String] {
+        if let scan { return await scan.value }
+        let task = Task.detached(priority: .userInitiated) { scanFamilies() }
+        scan = task
+        return await task.value
+    }
+
+    /// Starts the scan before it's needed.
+    static func prepare() {
+        guard scan == nil else { return }
+        scan = Task.detached(priority: .utility) { scanFamilies() }
+    }
+
+    /// Core Text rather than NSFontManager: it can be asked from any thread.
+    nonisolated static func scanFamilies() -> [String] {
         let skip = ["emoji", "symbol", "dingbat", "wingding", "webding", "ornament", "lastresort", "braille",
                     "math", "icons"]
         let latin = CharacterSet(charactersIn: "AZaz09")
-        return NSFontManager.shared.availableFontFamilies.filter { family in
+        let names = CTFontManagerCopyAvailableFontFamilyNames() as? [String] ?? []
+        return names.filter { family in
             let lower = family.lowercased()
             guard !family.hasPrefix("."), !skip.contains(where: lower.contains) else { return false }
-            guard let face = (NSFontManager.shared.availableMembers(ofFontFamily: family)?.first?.first as? String)
-                .flatMap({ NSFont(name: $0, size: 12) }) else { return false }
-            return face.coveredCharacterSet.isSuperset(of: latin)
+            let descriptor = CTFontDescriptorCreateWithAttributes([kCTFontFamilyNameAttribute: family] as CFDictionary)
+            let face = CTFontCreateWithFontDescriptor(descriptor, 12, nil)
+            // A family Core Text can't open comes back as a stand-in.
+            guard CTFontCopyFamilyName(face) as String == family else { return false }
+            return (CTFontCopyCharacterSet(face) as CharacterSet).isSuperset(of: latin)
         }
-    }()
+    }
 
     /// The family's face nearest the weight, upright or italic, as a
     /// PostScript name. Falls back to the family's regular face, then to

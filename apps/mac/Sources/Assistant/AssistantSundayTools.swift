@@ -171,19 +171,27 @@ extension AssistantToolbox {
             let title = item.mxuSongTitle ?? item.name
             var row: [String: AssistantJSON] = ["item_id": .string(item.id), "title": .string(title)]
             // A copy already in the library is linked rather than imported again.
+            // Earlier songs' imports wait on Shepherd, so someone may have
+            // given this one slides meanwhile; link only leaves those alone.
             if let ref = ShepherdSync.librarySong(title: title, ccli: item.mxuCcliNumber, candidates: candidates) {
-                LyricsFetcher.shared.link(item.id, planID: plan.id, to: ref, model: model)
-                row["status"] = "linked_library_copy"
-                row["presentation_id"] = .string(ref)
-                linked += 1
+                if LyricsFetcher.shared.link(item.id, planID: plan.id, to: ref, model: model) {
+                    row["status"] = "linked_library_copy"
+                    row["presentation_id"] = .string(ref)
+                    linked += 1
+                } else {
+                    row["status"] = "already_has_slides"
+                    linked += 1
+                }
             } else if !sync.isConfigured {
                 row["status"] = "shepherd_not_set_up"
             } else {
-                switch await LyricsFetcher.importFromShepherd(item: item, title: title, model: model) {
+                switch await LyricsFetcher.importFromShepherd(item: item, title: title, planID: plan.id, model: model) {
                 case .imported(let id):
-                    LyricsFetcher.shared.link(item.id, planID: plan.id, to: id, model: model)
                     row["status"] = "imported_from_shepherd"
                     row["presentation_id"] = .string(id)
+                    linked += 1
+                case .alreadyLinked:
+                    row["status"] = "already_has_slides"
                     linked += 1
                 case .notConfigured: row["status"] = "shepherd_not_set_up"
                 case .notFound: row["status"] = "not_in_shepherd"
@@ -204,7 +212,21 @@ extension AssistantToolbox {
 
     // MARK: Message
 
-    func buildMessage(_ input: AssistantJSON) async throws -> (AssistantJSON, String?) {
+    /// What build_message_from_notes works from, checked before anything
+    /// is asked or read.
+    struct MessageBuild {
+        var pdf: URL
+        var fileName: String
+        var plan: Service
+        var series: Theme
+        /// The message this one replaces, when it has slides.
+        var replacing: (name: String, slides: Int)?
+        /// A message these notes already built for this plan, still in place.
+        var built: (id: String, deck: Presentation)?
+        var key: String
+    }
+
+    func messageBuild(_ input: AssistantJSON) async throws -> MessageBuild {
         let attachmentID = input["attachment"]?.string ?? ""
         guard let attachment = attachments[attachmentID] else {
             throw Failure("No attachment \(attachmentID). Attached so far: \(attachments.keys.sorted().joined(separator: ", ")). Ask the user to attach the notes PDF with the paperclip.")
@@ -213,12 +235,13 @@ extension AssistantToolbox {
             throw Failure("\(attachment.label) isn't a PDF. The notes need to be a PDF here; a Pages file can go through File › Import Sermon….")
         }
         let plan = try await service(input["plan_id"]?.string)
+        let fileName = String(pdf.lastPathComponent.dropFirst("source-".count))
 
         let key = pdf.path + "|" + plan.id
-        if let built = builtMessages[key], plan.messagePresentationId == built,
-           let deck = await model.presentationsFilled([built])[built] {
-            return (["presentation_id": .string(built), "name": .string(deck.name),
-                     "slides": .number(Double(deck.slides.count)), "already_built": true], nil)
+        var built: (id: String, deck: Presentation)?
+        if let id = builtMessages[key], plan.messagePresentationId == id,
+           let deck = await model.presentationsFilled([id])[id] {
+            built = (id, deck)
         }
 
         // The series first: no point reading the notes without one.
@@ -234,24 +257,56 @@ extension AssistantToolbox {
             throw Failure("\(seriesID) isn't a sermon series theme. list_themes marks them with sermon_series.")
         }
 
-        if let current = await SermonMessage.current(in: plan.id, model: model), let deck = current.presentation,
-           Self.contentSlides(deck) > 0, input["replace_existing"]?.bool != true {
-            throw Failure("\(plan.name) already has a message, \"\(deck.name)\" (\(count(Self.contentSlides(deck), "slide"))). Ask the user before replacing it, then call again with replace_existing true.")
+        var replacing: (name: String, slides: Int)?
+        if built == nil, let current = await SermonMessage.current(in: plan.id, model: model), let deck = current.presentation,
+           Self.contentSlides(deck) > 0 {
+            guard input["replace_existing"]?.bool == true else {
+                throw Failure("\(plan.name) already has a message, \"\(deck.name)\" (\(count(Self.contentSlides(deck), "slide"))). Ask the user before replacing it, then call again with replace_existing true; the app asks them to approve.")
+            }
+            replacing = (deck.name, Self.contentSlides(deck))
         }
+        return MessageBuild(pdf: pdf, fileName: fileName, plan: plan, series: series,
+                            replacing: replacing, built: built, key: key)
+    }
 
-        let data = try Data(contentsOf: pdf)
-        let fileName = String(pdf.lastPathComponent.dropFirst("source-".count))
-        let outline = try await ClaudeClient.outline(fromPDF: data, fileName: fileName)
-        let theme = await SermonMessage.seriesTheme(seriesID, model: model)
+    /// Building a first message adds; replacing one with slides, or moving
+    /// the plan off the series it has, waits for Approve.
+    func messageConfirmation(_ input: AssistantJSON) async throws -> (title: String, detail: String)? {
+        let build = try await messageBuild(input)
+        guard build.built == nil else { return nil }
+        var parts: [String] = []
+        if let old = build.replacing {
+            parts.append("Replaces \"\(old.name)\" (\(count(old.slides, "slide"))) with slides from \(build.fileName).")
+        }
+        if let current = build.plan.sermonThemeId, !current.isEmpty, current != build.series.id {
+            await model.themesFilled([current])
+            parts.append("Series: \(model.theme(current)?.name ?? "the plan's series") → \(build.series.name)")
+        }
+        guard !parts.isEmpty else { return nil }
+        let title = build.replacing != nil
+            ? "Replace the message in \(build.plan.name)?" : "Change the series of \(build.plan.name)?"
+        return (title, parts.joined(separator: "\n"))
+    }
+
+    func buildMessage(_ input: AssistantJSON) async throws -> (AssistantJSON, String?) {
+        let build = try await messageBuild(input)
+        if let built = build.built {
+            return (["presentation_id": .string(built.id), "name": .string(built.deck.name),
+                     "slides": .number(Double(built.deck.slides.count)), "already_built": true], nil)
+        }
+        let plan = build.plan
+        let data = try Data(contentsOf: build.pdf)
+        let outline = try await ClaudeClient.outline(fromPDF: data, fileName: build.fileName)
+        let theme = await SermonMessage.seriesTheme(build.series.id, model: model)
         let slides = await SermonSlides.build(outline, theme: theme)
-        guard !slides.isEmpty else { throw Failure("Claude found no slides in \(fileName).") }
-        let id = await SermonMessage.place(slides, title: outline.title, seriesID: seriesID, inPlan: plan.id, model: model)
-        builtMessages[key] = id
+        guard !slides.isEmpty else { throw Failure("Claude found no slides in \(build.fileName).") }
+        let id = await SermonMessage.place(slides, title: outline.title, seriesID: build.series.id, inPlan: plan.id, model: model)
+        builtMessages[build.key] = id
         let rows: [AssistantJSON] = outline.slides.prefix(60).map { item in
             let words = [item.text, item.reference].filter { !$0.isEmpty }.joined(separator: " — ")
             return .string("\(item.kind.label): \(String(words.prefix(120)))")
         }
-        return (["presentation_id": .string(id), "title": .string(outline.title), "series": .string(series.name),
+        return (["presentation_id": .string(id), "title": .string(outline.title), "series": .string(build.series.name),
                  "slides": .number(Double(slides.count)), "outline": .array(rows)],
                 "Built the message for \(plan.name) (\(count(slides.count, "slide")))")
     }
@@ -462,19 +517,24 @@ extension AssistantToolbox {
                 }
                 let arrangement = ShepherdSongMatch.arrangement(
                     in: detail, id: item?.mxuSourceArrangementId, name: item?.mxuArrangementName)
-                let reference = LyricsCheck.referenceSections(
-                    lyrics: detail.lyrics, chordChart: arrangement?.chordChart ?? detail.chordChart)
                 row["shepherd_song"] = .string(detail.ccliNumber.map { "\(detail.title) (CCLI \($0))" } ?? detail.title)
-                guard !reference.isEmpty else {
+                // The line and word alignment is quadratic in a song's lines
+                // and words; a dozen songs' worth stays off the main thread.
+                let lyrics = detail.lyrics
+                let chart = arrangement?.chordChart ?? detail.chordChart
+                let slides = deck.slides.map(Self.lyricText(of: deck))
+                let planned = item.map { _ in ShepherdSongMatch.sequence(of: detail, arrangement: arrangement) }
+                let order = Self.arrangementOrder(deck, arrangementID: item?.arrangementId)
+                let compared = await Task.detached(priority: .userInitiated) { () -> LyricsCheck.Report? in
+                    let reference = LyricsCheck.referenceSections(lyrics: lyrics, chordChart: chart)
+                    guard !reference.isEmpty else { return nil }
+                    return LyricsCheck.compare(slides: slides, reference: reference, planned: planned, slideOrder: order)
+                }.value
+                guard let report = compared else {
                     row["no_lyrics_in_shepherd"] = true
                     rows.append(.object(row))
                     continue
                 }
-                let report = LyricsCheck.compare(
-                    slides: deck.slides.map(Self.lyricText(of: deck)),
-                    reference: reference,
-                    planned: item.map { _ in ShepherdSongMatch.sequence(of: detail, arrangement: arrangement) },
-                    slideOrder: Self.arrangementOrder(deck, arrangementID: item?.arrangementId))
                 lyricChecks[deck.id] = report
                 if report.wordsMatch && report.order?.matches != false { clean += 1 }
                 let numbers = Dictionary(deck.slides.enumerated().map { ($1.id, $0 + 1) }, uniquingKeysWith: { a, _ in a })
@@ -490,26 +550,46 @@ extension AssistantToolbox {
         return (.object(fields), "Checked the lyrics of \(count(rows.count, "song")) (\(clean) match)")
     }
 
+    /// One slide apply_lyric_fixes will change: its words before and
+    /// after, and its text box as it will be, chords and styles moved with
+    /// their words.
+    struct LyricFix {
+        var slide: Slide
+        var from: String
+        var to: String
+        var box: SlideObject
+        /// The box's text when this was worked out, so a later edit isn't
+        /// written over.
+        var boxText: String
+        var note: String?
+    }
+
     /// The slide-number fixes apply_lyric_fixes will make, checked against
-    /// the slides as they are now.
-    func pendingLyricFixes(
-        _ input: AssistantJSON
-    ) async throws -> (deck: Presentation, fixes: [(slide: Slide, from: String, to: String)], skipped: [String]) {
+    /// the slides as they are now. A slide named brings the slides with the
+    /// same words along.
+    func pendingLyricFixes(_ input: AssistantJSON) async throws -> (deck: Presentation, fixes: [LyricFix], skipped: [String]) {
         let deck = try await presentation(input["presentation_id"]?.string)
         guard let report = lyricChecks[deck.id] else {
             throw Failure("There's no lyrics check for \(deck.name) yet. Call check_song_lyrics first.")
         }
         let caps = input["include_capitalization"]?.bool ?? false
-        var fixes: [(slide: Slide, from: String, to: String)] = []
-        var skipped: [String] = []
+        var wanted: [LyricsCheck.Fix] = []
         for id in input["slide_ids"]?.array?.compactMap(\.string) ?? [] {
             guard let slide = deck.slides.first(where: { $0.id == id }) else {
                 throw Failure("\(deck.name) has no slide with the id \(id).")
             }
-            let name = label(of: slide, in: deck)
-            guard let fix = report.fixes.first(where: { $0.slideID == id }) else {
-                throw Failure("The last check has no fix for \(name).")
+            let together = report.fixes(with: id)
+            guard !together.isEmpty else {
+                throw Failure("The last check has no fix for \(label(of: slide, in: deck)).")
             }
+            for fix in together where !wanted.contains(where: { $0.slideID == fix.slideID }) { wanted.append(fix) }
+        }
+        var fixes: [LyricFix] = []
+        var skipped: [String] = []
+        for fix in wanted {
+            // A copy deleted since the check is simply not there to fix.
+            guard let slide = deck.slides.first(where: { $0.id == fix.slideID }) else { continue }
+            let name = label(of: slide, in: deck)
             let target = caps ? fix.withCapitalization : fix.words
             let now = Self.lyricText(of: deck)(slide).lines.joined(separator: "\n")
             if now == target {
@@ -518,8 +598,14 @@ extension AssistantToolbox {
                 skipped.append("\(name): changed since the check")
             } else if target == fix.original {
                 skipped.append("\(name): only capitals differ")
+            } else if let index = Self.lyricBox(in: slide),
+                      let box = LyricsCheck.rewrite(slide.objects[index], to: target, addedLines: fix.addedLines) {
+                let chorded = !(box.chords ?? []).isEmpty
+                fixes.append(LyricFix(
+                    slide: slide, from: now, to: target, box: box, boxText: slide.objects[index].text,
+                    note: chorded && !fix.addedLines.isEmpty ? "the added line has no chords" : nil))
             } else {
-                fixes.append((slide, now, target))
+                skipped.append("\(name): its chords or text animations wouldn't stay on their words, so change it by hand")
             }
         }
         return (deck, fixes, skipped)
@@ -532,7 +618,7 @@ extension AssistantToolbox {
         }
         var lines: [String] = []
         for fix in pending.fixes {
-            lines.append(label(of: fix.slide, in: pending.deck))
+            lines.append(label(of: fix.slide, in: pending.deck) + (fix.note.map { " (\($0))" } ?? ""))
             let before = fix.from.components(separatedBy: "\n")
             let after = fix.to.components(separatedBy: "\n")
             for change in after.difference(from: before).sorted(by: { Self.offset($0) < Self.offset($1) }) {
@@ -551,17 +637,19 @@ extension AssistantToolbox {
         let pending = try await pendingLyricFixes(input)
         guard !pending.fixes.isEmpty else { throw Failure("Nothing to fix: \(pending.skipped.joined(separator: "; ")).") }
         for fix in pending.fixes {
-            let text = fix.to
+            let box = fix.box
+            let before = fix.boxText
             model.updateSlide(presentationID: pending.deck.id, slideID: fix.slide.id, undoLabel: "Fix Lyrics") { slide in
-                if let index = slide.objects.firstIndex(where: { $0.objectKind == .text && !$0.text.isEmpty })
-                    ?? slide.objects.firstIndex(where: { $0.objectKind == .text }) {
-                    slide.objects[index].text = text
-                }
+                guard let index = slide.objects.firstIndex(where: { $0.id == box.id }),
+                      slide.objects[index].text == before else { return }
+                slide.objects[index] = box
             }
         }
         var fields: [String: AssistantJSON] = [
             "fixed": AssistantJSON(pending.fixes.map { label(of: $0.slide, in: pending.deck) }),
         ]
+        let notes = pending.fixes.compactMap { fix in fix.note.map { "\(label(of: fix.slide, in: pending.deck)): \($0)" } }
+        if !notes.isEmpty { fields["notes"] = AssistantJSON(notes) }
         if !pending.skipped.isEmpty { fields["skipped"] = AssistantJSON(pending.skipped) }
         return (.object(fields), "Fixed the words on \(count(pending.fixes.count, "slide")) of \(pending.deck.name)")
     }
@@ -574,11 +662,18 @@ extension AssistantToolbox {
         let names = Dictionary((deck.sections ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         return { slide in
             let boxes = slide.objects.filter { $0.objectKind == .text && !$0.text.isEmpty }
-            let lines = boxes.map(\.text).joined(separator: "\n").components(separatedBy: .newlines)
+            // "\r\n" is one break, as chords and style runs count lines.
+            let lines = LyricsCheck.lines(of: boxes.map(\.text).joined(separator: "\n"))
             return LyricsCheck.SlideText(
                 id: slide.id, section: slide.sectionId.flatMap { names[$0] }, lines: boxes.isEmpty ? [] : lines,
                 editable: boxes.count <= 1)
         }
+    }
+
+    /// The text box a fix writes: the slide's one box with words.
+    static func lyricBox(in slide: Slide) -> Int? {
+        slide.objects.firstIndex { $0.objectKind == .text && !$0.text.isEmpty }
+            ?? slide.objects.firstIndex { $0.objectKind == .text }
     }
 
     /// The section names in the order the plan plays the song: the plan

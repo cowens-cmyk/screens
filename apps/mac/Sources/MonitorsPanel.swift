@@ -412,9 +412,14 @@ extension View {
 }
 
 /// A message to whoever is on stage: typed, sent, shown as a red bar across
-/// the top of the stage screen until cleared.
+/// the top of the stage screen until cleared. Sending (or Escape) hands the
+/// keyboard back to the window, so Space and the arrows move the slides
+/// again rather than typing into the field.
 struct StageMessageField: View {
     let controls: ServiceControls
+    /// After a send or Escape: where the show's keys go back to, when the
+    /// window's own handling isn't enough (Simple Mode's focus).
+    var onDone: () -> Void = {}
     @State private var draft = ""
 
     private var onStage: String? {
@@ -429,6 +434,7 @@ struct StageMessageField: View {
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
                     .onSubmit(send)
+                    .onExitCommand { done() }
                 Button("Send", action: send)
                     .controlSize(.small)
                     .disabled(trimmed.isEmpty)
@@ -456,6 +462,29 @@ struct StageMessageField: View {
         guard !trimmed.isEmpty else { return }
         controls.fireAlert(id: "stage-message", message: trimmed, behavior: .persist, target: .confidence)
         draft = ""
+        done()
+    }
+
+    private func done() {
+        KeyboardFocus.release()
+        onDone()
+    }
+}
+
+/// Typing in a small field beside the show shouldn't keep the show's keys:
+/// while a text field has the keyboard, Space and the arrows type instead of
+/// moving the slides.
+@MainActor
+enum KeyboardFocus {
+    /// Ends typing in the key window, and in the main window once a popover
+    /// over it has closed.
+    static func release() {
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        Task { @MainActor in
+            for window in [NSApp.keyWindow, NSApp.mainWindow].compactMap({ $0 }) where window.firstResponder is NSText {
+                window.makeFirstResponder(nil)
+            }
+        }
     }
 }
 
@@ -465,6 +494,8 @@ struct StageMessageField: View {
 /// at once, running or not.
 struct SermonTimerControl: View {
     let controls: ServiceControls
+    /// After the minutes are set or the form closes, as StageMessageField's.
+    var onDone: () -> Void = {}
     @State private var settingLength = false
     @State private var minutesText = ""
 
@@ -485,7 +516,12 @@ struct SermonTimerControl: View {
                 }
                 .buttonStyle(.plain)
                 .help("Set the time left")
-                .popover(isPresented: $settingLength, arrowEdge: .bottom) { lengthForm }
+                .popover(isPresented: $settingLength, arrowEdge: .bottom) {
+                    lengthForm.onDisappear {
+                        KeyboardFocus.release()
+                        onDone()
+                    }
+                }
             }
             Spacer(minLength: 4)
             Group {

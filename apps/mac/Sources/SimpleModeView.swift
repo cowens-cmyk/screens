@@ -339,8 +339,9 @@ struct SimpleModeView: View {
                     }
                 }
                 if let controls {
-                    section("Message to Stage") { StageMessageField(controls: controls) }
-                    section("Sermon Timer") { SermonTimerControl(controls: controls) }
+                    // Typing there takes the keys; sending gives them back.
+                    section("Message to Stage") { StageMessageField(controls: controls) { keysHere = true } }
+                    section("Sermon Timer") { SermonTimerControl(controls: controls) { keysHere = true } }
                 }
             }
             .padding(16)

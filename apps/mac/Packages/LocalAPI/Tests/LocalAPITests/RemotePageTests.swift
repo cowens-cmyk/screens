@@ -1,5 +1,6 @@
 import FlyingFox
 import Foundation
+import JavaScriptCore
 import Testing
 
 @testable import LocalAPI
@@ -20,6 +21,27 @@ struct RemotePageTests {
         #expect(page.components(separatedBy: "<script").count == page.components(separatedBy: "</script>").count)
         #expect(page.contains("Sunday &lt;AM&gt;"))
         #expect(!page.contains("__SERVICE_NAME__"))
+    }
+
+    /// A code the Mac turned down leaves the address and storage both, and
+    /// is passed over when the address still has it (a home-screen app opens
+    /// at the address it was added with). Connect writes the new code to both.
+    @Test func aRejectedCodeLeavesTheAddressAndStaysOut() throws {
+        let page = RemotePage.html(serviceName: "Sunday")
+        for needle in [
+            "REJECTED=\"remoteRejected\"", "if(sent===token){refuse(sent);",
+            "(t?\"#t=\"+encodeURIComponent(t):\"\")", "no.indexOf(t)<0", "setCode(v)",
+        ] {
+            #expect(page.contains(needle), "missing \(needle)")
+        }
+        #expect(!page.contains("store(KEY,t);q.delete"), "the old init kept the fragment's code over a rejection")
+        let start = try #require(page.range(of: "<script>\n"))
+        let end = try #require(page.range(of: "</script>", range: start.upperBound..<page.endIndex))
+        let script = String(page[start.upperBound..<end.lowerBound])
+        let context = try #require(JSContext())
+        context.setObject(script, forKeyedSubscript: "source" as NSString)
+        context.evaluateScript("new Function(source)")
+        #expect(context.exception == nil, "the remote's script doesn't parse: \(String(describing: context.exception))")
     }
 
     @Test func rootAndRemoteRoutesServeThePageWithoutAuth() async throws {

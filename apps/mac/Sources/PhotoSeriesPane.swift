@@ -64,7 +64,10 @@ struct PhotoSeriesPane: View {
             open(url)
             return true
         } isTargeted: { dropTargeted = $0 }
-        .onAppear { run.photo = photo }
+        .onAppear {
+            run.photo = photo
+            SeriesFonts.prepare()
+        }
         .onChange(of: photo) { _, url in
             // Colors picked for other art don't carry over.
             overrides = PhotoSeriesOverrides()

@@ -197,24 +197,36 @@ textarea,input[type=text]{-webkit-user-select:text;user-select:text}
 <script>
 (function(){
 "use strict";
-var KEY="remoteToken", ROLE="remoteRole", token="", role="", status=null, ws=null, pollTimer=null, wsFails=0, retry=1000, deck=null, deckId=null, lastFire=0, activeTab="show", timerList=[];
+var KEY="remoteToken", ROLE="remoteRole", REJECTED="remoteRejected", token="", role="", status=null, ws=null, pollTimer=null, wsFails=0, retry=1000, deck=null, deckId=null, lastFire=0, activeTab="show", timerList=[];
 var frames={live:{want:"",have:"",busy:false,url:""},next:{want:"",have:"",busy:false,url:""}};
 var $=function(id){return document.getElementById(id)};
 var all=function(sel){return Array.prototype.slice.call(document.querySelectorAll(sel))};
 var serviceName=document.body.getAttribute("data-service")||"";
 
 function store(k,v){try{if(v===null)localStorage.removeItem(k);else if(v!==undefined)localStorage.setItem(k,v);return localStorage.getItem(k)}catch(e){return null}}
+// The code lives in the address's fragment as well as in storage: it never
+// reaches a server or a referrer from there, and a phone that keeps the
+// remote on its home screen keeps the code with it (home-screen apps get
+// storage of their own). The two are kept the same, and a code the Mac
+// turned down is remembered as such: a home-screen app opens at the address
+// it was added with, so its old code would otherwise come back every time.
+function rejected(){try{return JSON.parse(store(REJECTED)||"[]")}catch(e){return []}}
+function setCode(t){
+  token=t||"";store(KEY,t?t:null);
+  if(t)store(REJECTED,JSON.stringify(rejected().filter(function(r){return r!==t})));
+  var q=new URLSearchParams(location.search);q.delete("token");var s=q.toString();
+  history.replaceState(null,"",location.pathname+(s?"?"+s:"")+(t?"#t="+encodeURIComponent(t):""));
+}
+function refuse(t){
+  store(REJECTED,JSON.stringify([t].concat(rejected().filter(function(r){return r!==t})).slice(0,5)));
+  setCode("");
+}
 function init(){
-  var q=new URLSearchParams(location.search), h=new URLSearchParams(location.hash.slice(1)), t=q.get("token")||h.get("t");
-  if(t){
-    store(KEY,t);q.delete("token");var s=q.toString();
-    // The code moves from the query to the fragment: it never reaches a
-    // server or a referrer from there, and a phone that keeps the remote on
-    // its home screen keeps the code with it (home-screen apps get storage
-    // of their own).
-    history.replaceState(null,"",location.pathname+(s?"?"+s:"")+"#t="+encodeURIComponent(t));
-  }
-  token=store(KEY)||"";
+  // A code in the query (the QR link) is the newest, then the fragment,
+  // then storage; one the Mac turned down is passed over.
+  var q=new URLSearchParams(location.search), h=new URLSearchParams(location.hash.slice(1)), no=rejected();
+  var found=[q.get("token"),h.get("t"),store(KEY)].filter(function(t){return t&&no.indexOf(t)<0});
+  setCode(found[0]||"");
   role=store(ROLE)||"";
   all(".title").forEach(function(e){e.textContent=serviceName});
   if(!token)gate();else if(!role)pickRole();else start();
@@ -226,7 +238,7 @@ function gate(msg){
 function pickRole(){hideAll();$("roles").style.display="block"}
 all(".role").forEach(function(b){b.onclick=function(){role=b.getAttribute("data-role");store(ROLE,role);start()}});
 all(".swap").forEach(function(b){b.onclick=function(){pickRole()}});
-$("tokenGo").onclick=function(){var v=$("tokenIn").value.trim();if(!v)return;token=v;store(KEY,v);if(!role)pickRole();else start()};
+$("tokenGo").onclick=function(){var v=$("tokenIn").value.trim();if(!v)return;setCode(v);if(!role)pickRole();else start()};
 function start(){
   hideAll();
   $(role==="stage"?"stage":"app").style.display="flex";
@@ -241,10 +253,15 @@ function stop(){
 function toast(m,good){var e=$("toast");e.textContent=m;e.className="show"+(good?" good":"");clearTimeout(toast.t);toast.t=setTimeout(function(){e.className=""},2600)}
 
 function api(method,path,body){
-  var o={method:method,headers:{"Authorization":"Bearer "+token}};
+  var sent=token, o={method:method,headers:{"Authorization":"Bearer "+sent}};
   if(body!==undefined){o.headers["Content-Type"]="application/json";o.body=JSON.stringify(body)}
   return fetch(path,o).then(function(r){
-    if(r.status===401){store(KEY,null);token="";gate("That access code was not accepted.");throw new Error("unauthorized")}
+    if(r.status===401){
+      // Only the code this call carried is dropped: a new one typed in
+      // while it was on its way stays.
+      if(sent===token){refuse(sent);gate("That access code was not accepted.")}
+      throw new Error("unauthorized");
+    }
     return r.text().then(function(t){
       var j=null;try{j=t?JSON.parse(t):null}catch(e){}
       if(!r.ok)throw new Error((j&&j.message)||("Error "+r.status));

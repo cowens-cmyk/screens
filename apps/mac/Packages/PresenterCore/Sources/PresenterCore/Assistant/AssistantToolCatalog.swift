@@ -324,13 +324,15 @@ public enum AssistantToolCatalog {
                 + "presentation becomes the plan's message. Takes about a minute. The attachment must be a PDF page the user "
                 + "attached (any page of it; the whole PDF is read). Uses the plan's series unless series_id is given; fails "
                 + "when neither names a sermon series, so ask the user. Won't replace a message that has slides unless "
-                + "replace_existing is true.",
+                + "replace_existing is true. Replacing a message that has slides, or changing a series the plan already "
+                + "has, waits for the user's Approve; a first message goes ahead.",
             schema: object([
                 "attachment": string("Attachment id of the notes, e.g. att_1.", nonEmpty: true),
                 "plan_id": string("The plan id.", nonEmpty: true),
                 "series_id": string("Sermon series theme id (list_themes marks them); leave out for the plan's series."),
                 "replace_existing": boolean("Replace a message that already has slides. Default false; ask the user first."),
-            ], required: ["attachment", "plan_id"])),
+            ], required: ["attachment", "plan_id"]),
+            confirmsWhenReplacing: true),
         AssistantToolSpec(
             name: "apply_sunday_setup",
             description: "Applies the changes Build Sunday gathered, after the user approves one summary of all of them: the "
@@ -364,8 +366,9 @@ public enum AssistantToolCatalog {
         AssistantToolSpec(
             name: "apply_lyric_fixes",
             description: "Fixes a song's slides with the corrected words from the last check_song_lyrics of that "
-                + "presentation. The user sees each changed line and must approve. A slide edited since the check is "
-                + "skipped; check again first.",
+                + "presentation. The user sees each changed line and must approve. A slide with the same words as "
+                + "another (same_words_as_slide) is fixed with it, whichever id is given. A slide edited since the "
+                + "check is skipped; check again first. So is one whose chords wouldn't stay on their words.",
             schema: object([
                 "presentation_id": string("The song presentation id.", nonEmpty: true),
                 "slide_ids": strings("Slides to fix, from the check's fixes.", maxItems: 400),

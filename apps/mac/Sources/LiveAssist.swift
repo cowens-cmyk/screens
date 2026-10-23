@@ -328,6 +328,16 @@ final class LiveAssist {
     /// Listening on the worship input, which is what following hears.
     var hearsWorship: Bool { listening && mode == .worship }
 
+    /// The input listening or starting, nil when the mic is off.
+    var openInput: LyricFollower.Input? {
+        guard listening || starting else { return nil }
+        return mode == .sermon ? .sermon : .worship
+    }
+
+    /// The pastor's mic is listening for scripture: Follow waits for the
+    /// operator rather than taking it over.
+    var sermonMicInUse: Bool { openInput == .sermon }
+
     /// Turns Follow on or off for one song; on starts listening if needed.
     func toggleFollow(_ presentation: Presentation) {
         if followedSongIDs.contains(presentation.id) {
@@ -343,8 +353,14 @@ final class LiveAssist {
     }
 
     /// Starts the worship input if it isn't already what's being heard.
-    func listenForLyrics() {
-        guard !hearsWorship, !(starting && mode == .worship) else { return }
+    /// While the sermon input listens for scripture it stays on unless
+    /// `overSermon` (the operator's click on the Follow chip): turning
+    /// Follow on never quietly stops scripture detection.
+    func listenForLyrics(overSermon: Bool = false) {
+        guard LyricFollower.micStep(open: openInput, operatorChose: overSermon) == .startWorship else { return }
+        if openInput == .sermon {
+            DiagnosticsStore.shared.note("liveAssist.follow", detail: "sermon mic switched to worship by the operator")
+        }
         listeningForFollow = true
         Task { await startWorship() }
     }
@@ -493,6 +509,16 @@ struct LiveAssistView: View {
             Section("Lyric Follow") {
                 Toggle("Follow every song", isOn: $assist.followsEverySong)
                 Toggle("Advance automatically", isOn: $assist.advancesAutomatically)
+                if assist.sermonMicInUse, assist.followsEverySong || !assist.followedSongIDs.isEmpty {
+                    HStack {
+                        Text("The sermon mic is listening for scripture, so Follow is waiting.")
+                            .font(.caption).foregroundStyle(.orange)
+                        Spacer()
+                        Button("Use the Worship Mic") { assist.listenForLyrics(overSermon: true) }
+                            .controlSize(.small)
+                            .help("Stops sermon listening and scripture detection")
+                    }
+                }
                 if !assist.followsEverySong {
                     Text("Or turn on Follow for one song in its slide grid header.")
                         .font(.caption).foregroundStyle(.secondary)

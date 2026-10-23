@@ -87,8 +87,9 @@ public enum AssistantJob: Equatable, Sendable, Identifiable {
     8. Finish with a short "Ready for Sunday" checklist: one line each for Songs, Message, Pre-service, Countdown \
     and Schedule, starting with ✓ when it's done or ⚠ with what's left.
 
-    Syncing, importing songs and building the message add things and don't need my approval. Don't call \
-    delete_slides or schedule_service separately during this job.
+    Syncing, importing songs and building a first message add things and don't need my approval; replacing a \
+    message or changing the plan's series asks me to approve it. Don't call delete_slides or schedule_service \
+    separately during this job.
     """
 
     static func checkLyricsInstruction(song: String?) -> String {

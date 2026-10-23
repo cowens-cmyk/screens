@@ -199,6 +199,12 @@ public enum LyricsCheck {
         public var original: String
         public var words: String
         public var withCapitalization: String
+        /// The lines of the fixed words (from 0) that are new, missing lines
+        /// put back; every other line is an old line, in order.
+        public var addedLines: [Int] = []
+        /// For a slide with the same words as an earlier one (a chorus
+        /// copied out again), that slide: the two are fixed together.
+        public var copyOf: String?
 
         public var changesWords: Bool { words != original }
     }
@@ -208,7 +214,7 @@ public enum LyricsCheck {
         public var slideLines = 0
         public var matchedLines = 0
         /// Slides with the same words as an earlier slide (a chorus copied
-        /// out again), compared once.
+        /// out again), compared once and fixed alike.
         public var repeatedSlides = 0
         public var issues: [LineIssue] = []
         public var missingLines: [MissingLine] = []
@@ -246,17 +252,20 @@ public enum LyricsCheck {
         let position = Dictionary(slides.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         // Each distinct slide once, grouped by section in first-seen order.
-        var seen = Set<String>()
+        var seen: [String: String] = [:]
+        var copies: [String: [SlideText]] = [:]
         var groups: [SlideGroup] = []
         var unique: [SlideText] = []
         for slide in slides {
             let lines = slide.lines.map { $0.trimmingCharacters(in: .whitespaces) }
             guard lines.contains(where: { $0.contains(where: { $0.isLetter || $0.isNumber }) }) else { continue }
             let key = lines.map { words(in: $0).map(\.loose).joined(separator: " ") }.joined(separator: "/")
-            guard seen.insert(key).inserted else {
+            if let first = seen[key] {
                 report.repeatedSlides += 1
+                copies[first, default: []].append(slide)
                 continue
             }
+            seen[key] = slide.id
             unique.append(slide)
             let parsed = lines.enumerated().compactMap { index, text -> SlideLine? in
                 let found = words(in: text)
@@ -348,6 +357,8 @@ public enum LyricsCheck {
 
         // Line by line within each pair.
         var lineFixes: [LineKey: (words: String, caps: String)] = [:]
+        // The lyric line each slide line was paired with, for fixing copies.
+        var pairedRefs: [LineKey: RefLine] = [:]
         var insertions: [String: [(at: Int, text: String)]] = [:]
         for pair in pairs {
             let ref = refs[pair.ref].lines
@@ -360,6 +371,7 @@ public enum LyricsCheck {
                     let line = lines[s]
                     lastSlideLine = line
                     let compared = compareWords(ref[r], line)
+                    pairedRefs[LineKey(slideID: line.slideID, line: line.index)] = ref[r]
                     if compared.changes.isEmpty {
                         report.matchedLines += 1
                     } else {
@@ -400,32 +412,48 @@ public enum LyricsCheck {
         report.order = order(planned: planned, slideOrder: slideOrder, sections: slides.compactMap(\.section))
         report.capitalization = capitalization(of: unique)
 
-        // The fixed words, slide by slide.
+        // The fixed words, slide by slide. A copy of a slide gets the same
+        // fix, worked out against its own lines: its capitals or
+        // punctuation can differ from the first one's.
         for slide in unique {
             let pending = insertions[slide.id] ?? []
             let changed = pending.isEmpty ? slide.lines.indices.contains { lineFixes[LineKey(slideID: slide.id, line: $0)] != nil } : true
             guard changed else { continue }
-            guard slide.editable else {
-                report.notEditable.append(slide.id)
-                continue
-            }
-            var words: [String] = []
-            var caps: [String] = []
-            for index in 0...slide.lines.count {
-                for insertion in pending where insertion.at == index {
-                    words.append(insertion.text)
-                    caps.append(insertion.text)
+            for copy in [slide] + (copies[slide.id] ?? []) {
+                guard copy.editable else {
+                    report.notEditable.append(copy.id)
+                    continue
                 }
-                guard index < slide.lines.count else { break }
-                let fix = lineFixes[LineKey(slideID: slide.id, line: index)]
-                words.append(fix?.words ?? slide.lines[index])
-                caps.append(fix?.caps ?? slide.lines[index])
+                var words: [String] = []
+                var caps: [String] = []
+                var added: [Int] = []
+                for index in 0...copy.lines.count {
+                    for insertion in pending where insertion.at == index {
+                        added.append(words.count)
+                        words.append(insertion.text)
+                        caps.append(insertion.text)
+                    }
+                    guard index < copy.lines.count else { break }
+                    let key = LineKey(slideID: slide.id, line: index)
+                    var fix = lineFixes[key]
+                    if copy.id != slide.id {
+                        fix = pairedRefs[key].flatMap { ref in
+                            let text = copy.lines[index].trimmingCharacters(in: .whitespaces)
+                            let line = SlideLine(slideID: copy.id, index: index, text: text, words: Self.words(in: text), section: copy.section)
+                            let compared = compareWords(ref, line)
+                            return compared.changes.isEmpty ? nil : (compared.words, compared.caps)
+                        }
+                    }
+                    words.append(fix?.words ?? copy.lines[index])
+                    caps.append(fix?.caps ?? copy.lines[index])
+                }
+                let original = copy.lines.joined(separator: "\n")
+                let fix = Fix(
+                    slideID: copy.id, original: original,
+                    words: words.joined(separator: "\n"), withCapitalization: caps.joined(separator: "\n"),
+                    addedLines: added, copyOf: copy.id == slide.id ? nil : slide.id)
+                if fix.words != original || fix.withCapitalization != original { report.fixes.append(fix) }
             }
-            let original = slide.lines.joined(separator: "\n")
-            let fix = Fix(
-                slideID: slide.id, original: original,
-                words: words.joined(separator: "\n"), withCapitalization: caps.joined(separator: "\n"))
-            if fix.words != original || fix.withCapitalization != original { report.fixes.append(fix) }
         }
         return report
     }
@@ -854,11 +882,13 @@ extension LyricsCheck.Report {
         }
         if !fixes.isEmpty {
             fields["fixes"] = .array(fixes.map { fix in
-                [
+                var row: [String: AssistantJSON] = [
                     "slide": number(fix.slideID), "slide_id": .string(fix.slideID),
                     "changes_words": .bool(fix.changesWords),
                     "changes_capitals": .bool(fix.withCapitalization != fix.words),
                 ]
+                if let first = fix.copyOf { row["same_words_as_slide"] = number(first) }
+                return .object(row)
             })
         }
         if !notEditable.isEmpty {

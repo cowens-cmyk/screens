@@ -8,12 +8,23 @@ import UniformTypeIdentifiers
 /// small JPEGs drawn off screen on demand and kept until the scene changes,
 /// so a phone asking again (or a second phone) costs nothing.
 ///
+/// Drawing takes the compositor the screens draw with, so a picture waits
+/// until the show has been still for a moment and any transition is over:
+/// a slide change is exactly when phones ask, and exactly when the screens
+/// need every frame. Requests that arrive while one waits share it, and a
+/// newer scene takes over a picture not yet drawn. The phone keeps showing
+/// the picture it has until then.
+///
 /// Videos and live inputs draw black. Pulling a frame from a playing video
 /// here would take it from the screens' own draw; a still kept for the slide
 /// thumbnails stands in where there is one.
 @MainActor
 final class RemoteFrames {
     static let width = 480
+    /// How long the scene must stay the same before it's drawn.
+    static let settle: Duration = .milliseconds(600)
+    /// The longest a picture waits for the show to be still.
+    static let longestWait: Duration = .seconds(4)
 
     private struct Kept {
         let scene: RenderScene
@@ -21,7 +32,8 @@ final class RemoteFrames {
     }
 
     private var kept: [String: Kept] = [:]
-    private var inFlight: [String: (scene: RenderScene, task: Task<Data?, Never>)] = [:]
+    /// The picture each slot will draw next, and when its scene was first asked for.
+    private var pending: [String: (scene: RenderScene, since: ContinuousClock.Instant, task: Task<Data?, Never>)] = [:]
 
     private nonisolated static let queue = DispatchQueue(label: "com.example.mxuslides.remoteFrames", qos: .utility)
 
@@ -30,8 +42,38 @@ final class RemoteFrames {
     /// kept half drawn.
     func jpeg(slot: String, scene: RenderScene, at hostTime: CFTimeInterval = 0, render: RenderContext) async -> Data? {
         if let hit = kept[slot], hit.scene == scene { return hit.jpeg }
-        if let running = inFlight[slot], running.scene == scene { return await running.task.value }
+        if let waiting = pending[slot], waiting.scene == scene { return await waiting.task.value }
 
+        let since = ContinuousClock.now
+        let task = Task { @MainActor [weak self] () -> Data? in
+            guard let self else { return nil }
+            await self.waitForStill(since: since, transitions: render.transitions)
+            // Asked for again with a newer scene while waiting: that one answers.
+            if let newer = self.pending[slot], newer.scene != scene { return await newer.task.value }
+            let jpeg = await Self.draw(scene, at: hostTime, render: render)
+            if self.pending[slot]?.scene == scene { self.pending[slot] = nil }
+            if let jpeg { self.kept[slot] = Kept(scene: scene, jpeg: jpeg) }
+            return jpeg
+        }
+        pending[slot] = (scene, since, task)
+        return await task.value
+    }
+
+    /// Until the scene has stood for `settle` and no transition is running,
+    /// or `longestWait` has passed.
+    private func waitForStill(since: ContinuousClock.Instant, transitions: SceneTransitionEngine) async {
+        let deadline = since + Self.longestWait
+        while ContinuousClock.now < deadline {
+            var wait = since + Self.settle - ContinuousClock.now
+            if let end = transitions.transitionEnd() {
+                wait = max(wait, .milliseconds(Int((end.timeIntervalSinceNow * 1000).rounded(.up)) + 100))
+            }
+            guard wait > .zero else { return }
+            try? await Task.sleep(for: min(wait, deadline - ContinuousClock.now))
+        }
+    }
+
+    private static func draw(_ scene: RenderScene, at hostTime: CFTimeInterval, render: RenderContext) async -> Data? {
         let media = render.media
         let drawn = scene.remappingMediaIDs { id in
             if media.hasStill(id: ThumbnailStore.thumbMediaPrefix + id) { return ThumbnailStore.thumbMediaPrefix + id }
@@ -40,19 +82,12 @@ final class RemoteFrames {
         let compositor = render.compositor
         let width = Self.width
         let height = max(1, Int((CGFloat(width) * scene.canvasSize.height / max(1, scene.canvasSize.width)).rounded()))
-        let task = Task.detached(priority: .utility) { () -> Data? in
-            await withCheckedContinuation { continuation in
-                Self.queue.async {
-                    let frame = try? compositor.renderFrame(scene: drawn, width: width, height: height, at: hostTime)
-                    continuation.resume(returning: frame?.cgImage.flatMap(Self.encode))
-                }
+        return await withCheckedContinuation { continuation in
+            Self.queue.async {
+                let frame = try? compositor.renderFrame(scene: drawn, width: width, height: height, at: hostTime)
+                continuation.resume(returning: frame?.cgImage.flatMap(Self.encode))
             }
         }
-        inFlight[slot] = (scene, task)
-        let jpeg = await task.value
-        if inFlight[slot]?.scene == scene { inFlight[slot] = nil }
-        if let jpeg { kept[slot] = Kept(scene: scene, jpeg: jpeg) }
-        return jpeg
     }
 
     /// Flattened into 8-bit sRGB first: the compositor's frames are wide-gamut

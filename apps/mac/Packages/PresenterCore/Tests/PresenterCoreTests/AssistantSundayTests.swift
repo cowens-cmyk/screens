@@ -157,6 +157,98 @@ struct LyricsCheckTests {
         #expect(report.wordsMatch)
     }
 
+    @Test func aRepeatedSlideGetsTheSameFix() {
+        let slides = Self.slides { slides in
+            slides[0].lines[0] = "Amazing grase, how sweet the sound"
+            // The copy has its own capitals and punctuation; they stay.
+            slides.append(LyricsCheck.SlideText(id: "again", section: "Verse 1",
+                                                lines: ["amazing grase how sweet the sound", "That saved a wretch like me"]))
+        }
+        let report = LyricsCheck.compare(slides: slides, reference: Self.reference)
+        #expect(report.repeatedSlides == 1)
+        let copy = report.fixes.first { $0.slideID == "again" }
+        #expect(copy?.copyOf == "Verse 1-0")
+        #expect(copy?.words == "amazing grace how sweet the sound\nThat saved a wretch like me")
+        #expect(report.fixes(with: "again").map(\.slideID) == ["Verse 1-0", "again"], "either id fixes both")
+        #expect(report.fixes(with: "Verse 1-0").map(\.slideID) == ["Verse 1-0", "again"])
+        let numbers = Dictionary(slides.enumerated().map { ($1.id, $0 + 1) }, uniquingKeysWith: { a, _ in a })
+        #expect(report.json(slideNumbers: numbers).jsonString.contains("\"same_words_as_slide\":1"))
+    }
+
+    @Test func aMissingLineIsMarkedAsAdded() {
+        let slides = Self.slides { $0[1].lines = ["I once was lost but now am found"] }
+        let fix = LyricsCheck.compare(slides: slides, reference: Self.reference).fixes.first { $0.slideID == "Verse 1-1" }
+        #expect(fix?.addedLines == [1])
+    }
+
+    @Test func returnsInTheTextAreLineBreaks() {
+        #expect(LyricsCheck.lines(of: "One\r\nTwo\rThree\nFour") == ["One", "Two", "Three", "Four"])
+    }
+
+    // MARK: Chords and styles through a fix
+
+    static func box(_ chordPro: String, runs: [TextStyleRun] = []) -> SlideObject {
+        let extracted = ChordMath.extract(chordPro)
+        return SlideObject(id: "box", objectKind: .text, name: "Lyrics", text: extracted.text,
+                           chords: extracted.chords, styleRuns: runs.isEmpty ? nil : runs)
+    }
+
+    static func chordPro(_ object: SlideObject) -> String {
+        ChordMath.bracketed(object.text, chords: object.chords ?? [])
+    }
+
+    @Test func chordsStayOnTheirWordsThroughAFix() throws {
+        let object = Self.box("[G]Amazing [C]gra[G]se how [G]sweet the sound\nThat saved a [D]wretch [G]me")
+        let fixed = try #require(LyricsCheck.rewrite(
+            object, to: "Amazing grace how sweet the sound\nThat saved a wretch like me\nI once was lost", addedLines: [2]))
+        #expect(Self.chordPro(fixed) == "[G]Amazing [C]gra[G]ce how [G]sweet the sound\nThat saved a [D]wretch like [G]me\nI once was lost")
+    }
+
+    @Test func aFixFromTheCheckKeepsTheChords() throws {
+        let slides = Self.slides { $0[0].lines = ["Amazing grase how sweet the sound", "That saved a wretch me"] }
+        let fix = try #require(LyricsCheck.compare(slides: slides, reference: Self.reference).fixes.first)
+        let object = Self.box("[G]Amazing [G7]grase how [C]sweet the [G]sound\nThat saved a [Em]wretch [D]me")
+        #expect(object.text == fix.original)
+        let fixed = try #require(LyricsCheck.rewrite(object, to: fix.words, addedLines: fix.addedLines))
+        #expect(Self.chordPro(fixed) == "[G]Amazing [G7]grace how [C]sweet the [G]sound\nThat saved a [Em]wretch like [D]me")
+    }
+
+    @Test func aReplacedWordKeepsItsChord() throws {
+        let object = Self.box("Through many dangers toils and [D]traps")
+        let fixed = try #require(LyricsCheck.rewrite(object, to: "Through many dangers toils and snares", addedLines: []))
+        #expect(Self.chordPro(fixed) == "Through many dangers toils and [D]snares")
+    }
+
+    @Test func aChordOnAWordTakenOutStopsTheFix() {
+        let object = Self.box("That saved a [D]poor wretch like me")
+        #expect(LyricsCheck.rewrite(object, to: "That saved a wretch like me", addedLines: []) == nil)
+        #expect(LyricsCheck.rewrite(object, to: "That saved a poor wretch like me", addedLines: [0]) == nil,
+                "a line count that doesn't add up")
+    }
+
+    @Test func styleRunsMoveWithTheirWordsOrGo() throws {
+        let object = Self.box("Amazing grase how sweet the sound\nThat saved a wretch me", runs: [
+            TextStyleRun(line: 0, column: 8, length: 5, underline: true),       // "grase"
+            TextStyleRun(line: 0, column: 2, length: 3, colorHex: "#FF0000"),   // inside "Amazing"
+            TextStyleRun(line: 1, column: 0, length: 22, fontSize: 80),         // the whole line
+            TextStyleRun(line: 1, column: 13, length: 6, strikethrough: true),  // "wretch"
+        ])
+        let fixed = try #require(LyricsCheck.rewrite(
+            object, to: "Amazing grace how sweet the sound\nThat saved a wretch like me", addedLines: []))
+        #expect(fixed.styleRuns == [
+            TextStyleRun(line: 0, column: 8, length: 5, underline: true),
+            TextStyleRun(line: 1, column: 0, length: 27, fontSize: 80),
+            TextStyleRun(line: 1, column: 13, length: 6, strikethrough: true),
+        ])
+    }
+
+    @Test func linesAfterAnAddedLineMoveDown() throws {
+        let object = Self.box("[G]I once was lost\n[D]Was blind", runs: [TextStyleRun(line: 1, column: 0, length: 9, underline: true)])
+        let fixed = try #require(LyricsCheck.rewrite(object, to: "[new]\nI once was lost\nWas blind", addedLines: [0]))
+        #expect(fixed.chords == [ChordPlacement(line: 1, column: 0, symbol: "G"), ChordPlacement(line: 2, column: 0, symbol: "D")])
+        #expect(fixed.styleRuns == [TextStyleRun(line: 2, column: 0, length: 9, underline: true)])
+    }
+
     @Test func swappedSectionNamesAreNoticed() {
         let slides = Self.slides { slides in
             for index in slides.indices {
