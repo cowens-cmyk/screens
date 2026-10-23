@@ -65,7 +65,7 @@ enum HopeStyle {
         case .presentation:
             guard let presentation else { return .presentation }
             if PresentationTypes.category(of: presentation) == PresentationTypes.sermon { return .message }
-            if presentation.presentationKind == .song { return .song }
+            if PresentationTypes.category(of: presentation) == PresentationTypes.worship { return .song }
             if presentation.autoAdvance != nil { return .slideshow }
             return .presentation
         default:

@@ -113,6 +113,19 @@ struct ProDocumentMapperTests {
         #expect(ProDocumentMapper.map(songDocument(), fallbackName: "Song").groupHotKeys.isEmpty)
     }
 
+    @Test func songsAreFiledAsWorshipButStayDesignedDecks() {
+        let song = ProDocumentMapper.map(songDocument(), fallbackName: "Song").presentation
+        #expect(song.category == PresentationTypes.worship)
+        #expect(song.presentationKind == .deck)
+
+        var plain = songDocument()
+        plain.ccli = RVData_Presentation.CCLI()
+        plain.arrangements = []
+        plain.clearSelectedArrangement()
+        let deck = ProDocumentMapper.map(plain, fallbackName: "Deck").presentation
+        #expect(deck.category == nil)
+    }
+
     @Test func unnamedGroupsImportNoSectionUnlessArranged() {
         var doc = songDocument()
         doc.cueGroups = [group("GRP-NONE", "", cueIDs: ["CUE-V1", "CUE-V2", "CUE-C1"], color: nil)]
@@ -1592,5 +1605,62 @@ struct ProDocumentMapperTests {
             #expect(byID[id]?.animation == .move, "Reveal out = move out")
             #expect(byID[id]?.edge == nil && byID[id]?.offsetX == 1832, "outs share the rigid vector too")
         }
+    }
+
+    /// ProPresenter stores two-line lyric boxes a point or two shorter than the
+    /// text laid out in them and draws the overflow instead of clipping it. The
+    /// import grows the box around its vertical anchor so nothing is clipped and
+    /// the text stays where it was.
+    private func shortLyricBox(
+        vertical: RVData_Graphics.Text.VerticalAlignment,
+        scale: RVData_Graphics.Text.ScaleBehavior = .none,
+        height: Double = 147.5625
+    ) -> RVData_Presentation {
+        var element = textElement(id: "FIT-1", rtfText: "Line one\\\nLine two", fontName: "Helvetica-Bold", size: 51.563)
+        element.element.bounds.origin.y = 60
+        element.element.bounds.size.height = height
+        element.element.text.verticalAlignment = vertical
+        element.element.text.scaleBehavior = scale
+        element.element.text.attributes.paragraphStyle.lineHeightMultiple = 1.2
+        element.element.text.attributes.capitalization = .allCaps
+        var doc = RVData_Presentation()
+        doc.cues = [slideCue(id: "FIT-CUE", elements: [element])]
+        return doc
+    }
+
+    @Test func growsTextBoxThatProPresenterLetsOverflow() throws {
+        let object = try #require(
+            ProDocumentMapper.map(shortLyricBox(vertical: .middle), fallbackName: "fit").presentation.slides.first?.objects.first)
+        let style = try #require(object.textStyle)
+        let height = try #require(object.height)
+        let y = try #require(object.y)
+        let needed = try #require(ProTextFit.measuredHeight(object.text, style: style, runs: object.styleRuns ?? [], width: 1744))
+
+        #expect(needed > 147.5625, "the synthetic box reproduces the overflow")
+        #expect(height >= needed)
+        #expect(abs((y + height / 2) - (60 + 147.5625 / 2)) < 0.001, "middle-anchored text keeps its centre")
+        #expect(object.x == 88 && object.width == 1744)
+    }
+
+    @Test func growsTopAndBottomAnchoredBoxesAwayFromTheirAnchor() throws {
+        let top = try #require(
+            ProDocumentMapper.map(shortLyricBox(vertical: .top), fallbackName: "fit").presentation.slides.first?.objects.first)
+        #expect(top.y == 60)
+        #expect((top.height ?? 0) > 147.5625)
+
+        let bottom = try #require(
+            ProDocumentMapper.map(shortLyricBox(vertical: .bottom), fallbackName: "fit").presentation.slides.first?.objects.first)
+        #expect(abs((bottom.y ?? 0) + (bottom.height ?? 0) - (60 + 147.5625)) < 0.001, "bottom edge stays put")
+    }
+
+    @Test func leavesFittingAndShrinkToFitBoxesAlone() throws {
+        let roomy = try #require(
+            ProDocumentMapper.map(shortLyricBox(vertical: .middle, height: 300), fallbackName: "fit").presentation.slides.first?.objects.first)
+        #expect(roomy.y == 60 && roomy.height == 300)
+
+        let shrinks = try #require(
+            ProDocumentMapper.map(shortLyricBox(vertical: .middle, scale: .scaleFontDown), fallbackName: "fit").presentation.slides.first?.objects.first)
+        #expect(shrinks.y == 60 && shrinks.height == 147.5625)
+        #expect(shrinks.textStyle?.autoShrink == true)
     }
 }

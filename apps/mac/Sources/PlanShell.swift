@@ -18,8 +18,7 @@ struct PlanShell: View {
     @AppStorage("shell.screensShown") private var screensShown = true
     @AppStorage("shell.topPane") private var topPane = TopPane.plans
     @State private var itemID: String?
-    /// The left column was folded away for Edit (so it comes back after).
-    @State private var foldedForEdit = false
+    @State private var columns = NavigationSplitViewVisibility.all
     @State private var creatingPlan = false
     @State private var controlsShown = false
     @State private var addingVideo = false
@@ -65,7 +64,7 @@ struct PlanShell: View {
         // Every column gets a fixed minimum and is free to shrink inside it:
         // content that reports its own changing minimum size makes the split
         // view re-run constraints forever, and AppKit then ends the app.
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columns) {
             // The library inside needs 272 to lay out; narrower clips it.
             sidebar
                 .frame(minWidth: 272, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
@@ -94,19 +93,8 @@ struct PlanShell: View {
             }
             // Edit folds the left column away so the slide canvas gets the
             // room; Present and Schedule bring it back.
-            // Uses the split view's own toggle: driving columnVisibility
-            // instead made the window open 300 points wider every launch.
-            .onChange(of: modeRaw) {
-                // Only with something to edit; otherwise the left column is
-                // where you'd pick it.
-                if mode == .edit, !foldedForEdit, selectedRefID != nil {
-                    foldedForEdit = true
-                    NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
-                } else if mode != .edit, foldedForEdit {
-                    foldedForEdit = false
-                    NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
-                }
-            }
+            .onChange(of: modeRaw, initial: true) { syncSidebar() }
+            .onChange(of: itemID) { syncSidebar() }
             .navigationTitle(model.currentServiceID.flatMap { model.resident.services.value($0)?.name } ?? "Screens")
         }
         .toolbar { toolbar }
@@ -424,6 +412,19 @@ struct PlanShell: View {
             HopeEmptyState(title: "Nothing to Edit", symbol: "pencil.and.scribble",
                            message: "Pick an item in the plan, or something in the library.",
                            colors: [HopeStyle.amber, HopeStyle.stagePurple])
+        }
+    }
+
+    /// Edit folds the left column away when something is open, so the slide
+    /// canvas gets the room; everywhere else it shows. `columns` only reads
+    /// the state: setting it grew the window by the column's width each time
+    /// the column came back, while the split view's own toggle doesn't.
+    private func syncSidebar() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            let fold = mode == .edit && selectedRefID != nil
+            let hidden = columns == .detailOnly
+            guard fold != hidden else { return }
+            NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
         }
     }
 

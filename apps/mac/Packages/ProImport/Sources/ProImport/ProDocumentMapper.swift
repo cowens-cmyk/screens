@@ -138,6 +138,13 @@ public enum ProDocumentMapper {
             displayKey: displayKey
         )
 
+        // A ProPresenter song (CCLI details, arrangements or a key) stays a
+        // designed deck, so its slides keep their look, but is filed as
+        // worship: the stage then shows lyrics and the plan marks it a song.
+        if ccli != nil || !arrangements.isEmpty || musicKey != nil {
+            presentation.category = PresentationTypes.worship
+        }
+
         if case .slideShowDuration(let duration)? = doc.slideShow, duration > 0 {
             presentation.autoAdvance = AutoAdvance(delaySeconds: duration, loopToStart: true)
         }
@@ -709,6 +716,8 @@ public enum ProDocumentMapper {
             )
             if !runs.isEmpty { object.styleRuns = runs }
         }
+        // ProPresenter draws overflowing text past the box instead of clipping it.
+        ProTextFit.growToFit(&object, scaleBehavior: element.text.scaleBehavior)
         return object
     }
 

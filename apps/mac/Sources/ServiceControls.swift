@@ -800,7 +800,7 @@ final class ServiceControls {
 
     // MARK: Screen defaults for what goes live
 
-    /// A song puts the stage on Worship (chords, current and next slide, key,
+    /// A song (or anything filed as worship) puts the stage on Worship (chords, current and next slide, key,
     /// time); the message puts it on Message (sermon timer and clock) and
     /// starts the sermon timer. A presentation's own stage layout or
     /// livestream theme wins.
@@ -816,7 +816,8 @@ final class ServiceControls {
         if isMessage {
             setup.stageMode = .message
             startSermonTimer(for: presentation)
-        } else if presentation.presentationKind == .song {
+        } else if PresentationTypes.category(of: presentation) == PresentationTypes.worship {
+            // Songs, and songs imported from ProPresenter (filed as worship).
             setup.stageMode = .worship
         }
     }
