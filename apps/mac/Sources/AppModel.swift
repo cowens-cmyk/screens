@@ -382,7 +382,7 @@ final class AppModel {
         try backfillCCLIIndex(prepared, rootURL: root)
         try seedBasics(prepared, rootURL: root)
         try seedUsageHistory(prepared, rootURL: root)
-        try upgradeSermonSeries(prepared, rootURL: root)
+        upgradeSermonSeries(prepared, rootURL: root)
     }
 
     private func libraryOpened(rootURL root: URL) {
@@ -492,12 +492,21 @@ final class AppModel {
 
     /// Series made before Title and Worship designs existed get them, in
     /// each series' own look. The upgrade skips anything already done, so
-    /// the marker only saves reading every theme on each launch.
-    @LibraryActor private static func upgradeSermonSeries(_ prepared: Library, rootURL: URL) throws {
+    /// the marker only saves reading every theme on each launch. Nothing
+    /// here may stop the library opening: a theme that fails is noted and
+    /// skipped (the sermon import upgrades a series as it's used), and a
+    /// library whose themes can't be listed tries again next launch.
+    @LibraryActor private static func upgradeSermonSeries(_ prepared: Library, rootURL: URL) {
         let marker = rootURL.appendingPathComponent(".upgraded-sermon-series-v1")
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }
-        try prepared.upgradeSermonSeriesThemes()
-        FileManager.default.createFile(atPath: marker.path, contents: nil)
+        do {
+            try prepared.upgradeSermonSeriesThemes { id, error in
+                DiagnosticsStore.shared.note("library.sermonSeriesUpgrade.failed", detail: "\(id): \(error)")
+            }
+            FileManager.default.createFile(atPath: marker.path, contents: nil)
+        } catch {
+            DiagnosticsStore.shared.note("library.sermonSeriesUpgrade.failed", detail: "\(error)")
+        }
     }
 
     /// The Worship, Scripture and Points themes (each tied to its own lower
@@ -1227,8 +1236,9 @@ final class AppModel {
         updateService(serviceID) { $0.items.append(header) }
     }
 
+    /// Taking out a plan's countdown is remembered, so it isn't put back.
     func removeServiceItem(_ serviceID: String, itemID: String) {
-        updateService(serviceID) { $0.items.removeAll { $0.id == itemID } }
+        updateService(serviceID) { ServiceCountdown.remove(itemID: itemID, from: &$0) }
     }
 
     func runOfShow(_ service: Service) -> [ServiceItem] {

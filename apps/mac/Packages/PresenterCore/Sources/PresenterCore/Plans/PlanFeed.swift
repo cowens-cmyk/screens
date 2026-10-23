@@ -99,6 +99,7 @@ public enum PlanItemSync {
             item.colorHex = old?.colorHex
             item.outputPresetId = old?.outputPresetId
             item.hiddenInPresenter = old?.hiddenInPresenter
+            item.isCountdown = old?.isCountdown
 
             switch planItem.itemType {
             case "header":
@@ -135,7 +136,13 @@ public enum PlanItemSync {
                     item.arrangementId = old.arrangementId
                 }
             default:
-                if let rule = ServiceLinkLogic.matchingRule(
+                // The countdown's video changes every week and is picked
+                // in Screens: a standing rule for "COUNTDOWN" mustn't put
+                // last week's back.
+                if let old, old.isCountdown == true, !old.refId.isEmpty {
+                    item.itemKind = old.itemKind
+                    item.refId = old.refId
+                } else if let rule = ServiceLinkLogic.matchingRule(
                     name: planItem.title, serviceTypeName: serviceTypeName, in: rules) {
                     item.itemKind = rule.itemKind
                     item.refId = rule.refId

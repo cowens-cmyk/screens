@@ -39,6 +39,53 @@ struct ServiceCountdownTests {
         #expect(ServiceCountdown.ensuringCountdown(template) == nil)
     }
 
+    @Test func aCountdownThePlanAlreadyHasIsMarkedNotDoubled() {
+        let welcome = ServiceItem(id: "w", itemKind: .header, name: "Countdown", refId: "")
+        let shepherd = ServiceItem(id: "c", itemKind: .info, name: "COUNTDOWN", refId: "")
+        let song = ServiceItem(id: "s", itemKind: .presentation, name: "Song", refId: "p")
+        let plan = Service(id: "plan", name: "Sunday", serviceDate: "2026-10-25", items: [welcome, shepherd, song])
+        #expect(ServiceCountdown.change(for: plan) == .mark(itemID: "c"), "a header named Countdown is only a heading")
+        let marked = ServiceCountdown.ensuringCountdown(plan)!
+        #expect(marked.items.count == 3)
+        #expect(ServiceCountdown.item(in: marked)?.id == "c")
+        #expect(ServiceCountdown.change(for: marked) == nil)
+
+        // Linked to a countdown video, or a presentation named Countdown.
+        let video = ServiceItem(id: "v", itemKind: .media, name: "Opener", refId: "cd-video")
+        let linked = Service(id: "plan", name: "Sunday", serviceDate: "2026-10-25", items: [song, video])
+        #expect(ServiceCountdown.change(for: linked, isCountdownLink: { $0.refId == "cd-video" }) == .mark(itemID: "v"))
+        var fresh = ServiceItem(id: "new", itemKind: .media, name: "Countdown", refId: "")
+        fresh.isCountdown = true
+        #expect(ServiceCountdown.change(for: linked, makeID: { "new" }) == .insert(fresh))
+
+        #expect(ServiceCountdown.looksLikeCountdown("Count Down"))
+        #expect(ServiceCountdown.looksLikeCountdown("countdown:"))
+        #expect(!ServiceCountdown.looksLikeCountdown("Countdown to Christmas"))
+        #expect(ServiceCountdown.isCountdownFolder("Countdowns/Fall"))
+        #expect(!ServiceCountdown.isCountdownFolder("Countdowns Old"))
+        #expect(!ServiceCountdown.isCountdownFolder(nil))
+    }
+
+    @Test func aRemovedCountdownStaysRemoved() {
+        let song = ServiceItem(id: "s", itemKind: .presentation, name: "Song", refId: "p")
+        var plan = ServiceCountdown.ensuringCountdown(
+            Service(id: "plan", name: "Sunday", serviceDate: "2026-10-25", items: [song]))!
+        ServiceCountdown.remove(itemID: "s", from: &plan)
+        #expect(plan.countdownRemoved == nil, "taking out anything else isn't remembered")
+        let countdown = ServiceCountdown.item(in: plan)!
+        ServiceCountdown.remove(itemID: countdown.id, from: &plan)
+        #expect(plan.items.isEmpty)
+        #expect(plan.countdownRemoved == true)
+        #expect(ServiceCountdown.change(for: plan) == nil, "not put back")
+        // A change worked out before the removal doesn't land after it.
+        var stale = plan
+        #expect(!ServiceCountdown.apply(.insert(countdown), to: &stale))
+        // An item that plainly is the countdown (Shepherd sent it again) is
+        // still marked.
+        plan.items = [ServiceItem(id: "c", itemKind: .info, name: "Countdown", refId: "")]
+        #expect(ServiceCountdown.change(for: plan) == .mark(itemID: "c"))
+    }
+
     @Test func triggerPlaysThePlansCountdownAtItsStart() {
         let start = date("2026-10-25T10:24:50")
         let trigger = ServiceCountdown.trigger(

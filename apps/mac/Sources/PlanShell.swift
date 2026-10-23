@@ -530,17 +530,29 @@ struct PlanShell: View {
 
     // MARK: Countdown
 
-    /// Every upcoming service opens with a countdown: a plan without one gets
-    /// an empty Countdown item first, to be given this week's video.
+    /// Every upcoming service (not a template, not a past plan) opens with
+    /// a countdown. An item the plan already has that is one (Shepherd's
+    /// "COUNTDOWN", or one linked to a countdown video or presentation) is
+    /// marked as it; otherwise the plan gets an empty Countdown item first,
+    /// to be given this week's video, unless its countdown was taken out.
     private func ensureCountdowns() {
         guard !runOnly else { return }
         for plan in plans.upcoming {
-            guard let ensured = ServiceCountdown.ensuringCountdown(plan) else { continue }
-            let countdown = ensured.items[0]
+            guard let change = ServiceCountdown.change(for: plan, isCountdownLink: isCountdownLink) else { continue }
             model.updateService(plan.id) { service in
-                guard ServiceCountdown.item(in: service) == nil else { return }
-                service.items.insert(countdown, at: 0)
+                ServiceCountdown.apply(change, to: &service)
             }
+        }
+    }
+
+    /// Linked to a video in Media › Countdowns, or to a presentation named
+    /// Countdown.
+    private func isCountdownLink(_ item: ServiceItem) -> Bool {
+        guard !item.refId.isEmpty else { return false }
+        switch item.itemKind {
+        case .media: return ServiceCountdown.isCountdownFolder(model.media(item.refId)?.folder)
+        case .presentation: return model.entry(item.refId).map { ServiceCountdown.looksLikeCountdown($0.name) } == true
+        default: return false
         }
     }
 

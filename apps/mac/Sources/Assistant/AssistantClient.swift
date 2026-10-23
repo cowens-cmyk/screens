@@ -67,6 +67,7 @@ enum AssistantClient {
                     }
                     if stream.finished { break }
                 }
+                try stream.requireFinished()
             } catch let error as AssistantStream.StreamError {
                 throw Failure.stream(error.message)
             }

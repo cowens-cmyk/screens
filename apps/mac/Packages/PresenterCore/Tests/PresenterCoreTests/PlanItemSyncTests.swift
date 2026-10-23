@@ -52,6 +52,32 @@ private func planItem(
     #expect(items.last?.id == "local", "a local item stays after the synced item it followed")
 }
 
+@Test func resyncKeepsTheCountdownAndItsVideo() {
+    let rules = ServiceLinkRules(id: "r", rules: [
+        ServiceLinkRule(id: "1", normalizedName: "countdown", serviceTypeName: nil,
+                        itemKind: .media, refId: "last-weeks-video"),
+    ])
+    var countdown = ServiceItem(id: "cd", itemKind: .media, name: "COUNTDOWN", refId: "this-weeks-video")
+    countdown.mxuSourceItemId = "1"
+    countdown.isCountdown = true
+    let items = PlanItemSync.items(
+        for: [planItem("1", "COUNTDOWN", type: "item"), planItem("2", "Welcome", type: "item")],
+        serviceTypeName: nil, rules: rules, existing: [countdown]
+    ) { _ in nil }
+    #expect(items[0].id == "cd")
+    #expect(items[0].isCountdown == true, "kept across the sync, like color and hidden")
+    #expect(items[0].refId == "this-weeks-video", "the video picked in Screens, not the standing rule's")
+    #expect(items[1].isCountdown == nil)
+
+    // Not yet given a video: the rule still fills it in.
+    countdown.refId = ""
+    let unpicked = PlanItemSync.items(
+        for: [planItem("1", "COUNTDOWN", type: "item")],
+        serviceTypeName: nil, rules: rules, existing: [countdown]
+    ) { _ in nil }
+    #expect(unpicked[0].refId == "last-weeks-video" && unpicked[0].isCountdown == true)
+}
+
 @Test func arrangementFollowsPlanSequence() {
     let sections = [
         PresentationSection(id: "v1", name: "Verse 1"),

@@ -291,11 +291,13 @@ struct SermonImportSheet: View {
         // A series that missed the launch upgrade (restored or synced in
         // later) gets its Title and Worship designs now.
         if let current = theme, let upgraded = SermonSeriesTheme.upgraded(current) {
-            let designs = upgraded.slides
-            let routes = upgraded.streamDesigns
+            // Worked out again on the stored theme, so an edit (or a sync)
+            // since it was read isn't written over. The slides built here
+            // find their designs by name, so new ids there don't matter.
             model.updateTheme(seriesID) { stored in
-                stored.slides = designs
-                stored.streamDesigns = routes
+                guard let fresh = SermonSeriesTheme.upgraded(stored) else { return }
+                stored.slides = fresh.slides
+                stored.streamDesigns = fresh.streamDesigns
                 stored.isSermonSeries = true
             }
             theme = upgraded

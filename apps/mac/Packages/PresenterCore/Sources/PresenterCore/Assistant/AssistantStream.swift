@@ -142,6 +142,15 @@ public struct AssistantStream: Sendable {
         }
     }
 
+    /// Throws unless the reply came to its end. A connection that closes
+    /// early leaves blocks half-written, a tool call's input among them, so
+    /// nothing of it may be used.
+    public func requireFinished() throws {
+        guard finished else {
+            throw StreamError(type: "incomplete", message: "The connection closed early.")
+        }
+    }
+
     /// The reply's content blocks in order. Blocks still open (a cancelled
     /// stream) are finished as they stand.
     public mutating func content() -> [AssistantJSON] {

@@ -218,6 +218,16 @@ struct AssistantStreamTests {
         #expect(stream.replyText() == "Half")
         #expect(!stream.finished)
     }
+
+    @Test func aReplyCutOffMidToolCallIsAnError() throws {
+        let (cut, _) = try feed(Array(reply.prefix(while: { !$0.contains("content_block_stop\",\"index\":2") })))
+        #expect(!cut.finished)
+        #expect(throws: AssistantStream.StreamError(type: "incomplete", message: "The connection closed early.")) {
+            try cut.requireFinished()
+        }
+        let (whole, _) = try feed(reply)
+        #expect(throws: Never.self) { try whole.requireFinished() }
+    }
 }
 
 struct AssistantToolInputTests {

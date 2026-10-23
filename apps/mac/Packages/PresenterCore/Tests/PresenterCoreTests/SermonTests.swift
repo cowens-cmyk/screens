@@ -150,6 +150,19 @@ private func legacySeries() -> Theme {
     #expect(try library.upgradeSermonSeriesThemes() == 0)
 }
 
+@LibraryActor @Test func aThemeThatWontOpenDoesntStopTheUpgrade() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let library = try Library(rootURL: root)
+    let old = legacySeries()
+    _ = try library.create(old, seed: .init(id: old.id))
+    try Data("not a document".utf8).write(to: library.store.url(kind: .theme, id: "0-broken"))
+    var failed: [String] = []
+    #expect(try library.upgradeSermonSeriesThemes { id, _ in failed.append(id) } == 1)
+    #expect(failed == ["0-broken"])
+    #expect(try library.open(Theme.self, id: old.id).value.isSermonSeries == true)
+}
+
 @Test func importedMessageTakesTheOldMessagesPlace() {
     func item(_ id: String, _ ref: String) -> ServiceItem {
         ServiceItem(id: id, itemKind: .presentation, name: id, refId: ref)

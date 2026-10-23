@@ -138,6 +138,17 @@ public enum ServiceDay {
         trigger.notes?.hasPrefix(triggerNotePrefix) == true
     }
 
+    /// Why a service trigger was left alone on a Mac that doesn't run the
+    /// service, for the scheduler's history.
+    public static let notThisMacReason = "Not this Mac's job."
+
+    /// The restarts and scheduled countdowns sync to every Mac, but only
+    /// the one running the service should take its screens; on the others
+    /// they're skipped. Every other trigger fires everywhere as before.
+    public static func firesOnlyOnServiceMac(_ trigger: ScheduleTrigger) -> Bool {
+        isRestartTrigger(trigger) || trigger.notes?.hasPrefix(ServiceCountdown.triggerNotePrefix) == true
+    }
+
     /// The service time a restart trigger belongs to.
     public static func serviceID(of trigger: ScheduleTrigger) -> String? {
         guard isRestartTrigger(trigger), let notes = trigger.notes else { return nil }
@@ -312,33 +323,49 @@ public extension SchedulerBoard {
     }
 }
 
-/// Whether a scheduled pre-service restart may take the screens. Between
-/// services the screens hold the last service's final slide, the slideshow,
-/// or nothing; anything else that changed in the last few minutes means
-/// someone is presenting (a service running long), and is left alone. So is
-/// a video or the countdown playing, and the message with its timer running.
+/// Whether a scheduled pre-service restart may take the screens. It goes
+/// ahead only over what a finished service leaves: nothing, the end of the
+/// plan, or the slideshow itself stopped. Anything else may be a service
+/// running long (a prayer or communion slide can sit for many minutes), so
+/// it's left alone; the one exception is a slide in the plan's last item
+/// that nobody has touched for twenty minutes.
 public enum PreServiceGuard {
+    /// The slideshow advancing within this long is running already.
     public static let quietSeconds: TimeInterval = 180
+    /// A slide in the plan's last item left up this long is the end of a
+    /// service nobody cleared.
+    public static let longQuietSeconds: TimeInterval = 20 * 60
 
     public struct Situation: Equatable, Sendable {
         /// Since the live slide went up; nil with no slide up.
         public var secondsSinceSlideChange: TimeInterval?
+        /// Media up without a slide: a picture, a held video, a camera.
+        /// Looping backgrounds don't count.
+        public var otherContentIsUp = false
         public var preServiceIsUp = false
-        /// The last slide of the plan's last presentation.
+        /// The plan reached its end: the last slide of its last
+        /// presentation is up, or its last item (a video) has finished.
         public var finalSlideIsUp = false
+        /// The live slide belongs to the plan's last presentation.
+        public var slideIsInLastItem = false
         public var messageIsUp = false
         public var sermonTimerRunning = false
+        /// A video is playing: one fired on its own, a slide's background
+        /// or a video inside a slide. A looping background doesn't count.
         public var videoPlaying = false
         public var countdownPlaying = false
 
         public init(
-            secondsSinceSlideChange: TimeInterval? = nil, preServiceIsUp: Bool = false,
-            finalSlideIsUp: Bool = false, messageIsUp: Bool = false, sermonTimerRunning: Bool = false,
+            secondsSinceSlideChange: TimeInterval? = nil, otherContentIsUp: Bool = false,
+            preServiceIsUp: Bool = false, finalSlideIsUp: Bool = false, slideIsInLastItem: Bool = false,
+            messageIsUp: Bool = false, sermonTimerRunning: Bool = false,
             videoPlaying: Bool = false, countdownPlaying: Bool = false
         ) {
             self.secondsSinceSlideChange = secondsSinceSlideChange
+            self.otherContentIsUp = otherContentIsUp
             self.preServiceIsUp = preServiceIsUp
             self.finalSlideIsUp = finalSlideIsUp
+            self.slideIsInLastItem = slideIsInLastItem
             self.messageIsUp = messageIsUp
             self.sermonTimerRunning = sermonTimerRunning
             self.videoPlaying = videoPlaying
@@ -354,19 +381,28 @@ public enum PreServiceGuard {
 
     public static func decide(_ situation: Situation) -> Decision {
         if situation.countdownPlaying { return .skip("The countdown was playing.") }
+        let age = situation.secondsSinceSlideChange
+        if situation.preServiceIsUp {
+            // Still advancing: it's running already. Stuck: start it over.
+            if let age, age < quietSeconds { return .skip("The pre-service slides were already running.") }
+            return .restart
+        }
         if situation.videoPlaying { return .skip("A video was playing.") }
         if situation.messageIsUp, situation.sermonTimerRunning, !situation.finalSlideIsUp {
             return .skip("The message was up with its timer running.")
         }
-        guard let age = situation.secondsSinceSlideChange else { return .restart }
-        let recent = age < quietSeconds
-        if situation.preServiceIsUp {
-            // Still advancing: it's running already. Stuck: start it over.
-            return recent ? .skip("The pre-service slides were already running.") : .restart
+        if situation.finalSlideIsUp { return .restart }
+        guard let age else {
+            return situation.otherContentIsUp ? .skip("Something was still on the screens.") : .restart
         }
-        if recent, !situation.finalSlideIsUp {
-            return .skip("A slide changed in the last 3 minutes.")
-        }
-        return .restart
+        if situation.slideIsInLastItem, age >= longQuietSeconds { return .restart }
+        return .skip("A slide from the service was still up.")
+    }
+
+    /// Whether a video on the screens counts as playing. A looping one only
+    /// counts when it was put up on its own: a looping background never
+    /// ends, so it says nothing about a service still going.
+    public static func countsAsPlaying(isPlaying: Bool, isLooping: Bool, foreground: Bool) -> Bool {
+        isPlaying && (!isLooping || foreground)
     }
 }

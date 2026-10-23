@@ -373,17 +373,22 @@ final class SchedulerController {
     }
 
     private func fireNow(_ trigger: ScheduleTrigger, source: RunRecord.Source, late: Bool) {
-        // A pre-service restart that comes due while a service is still
-        // going leaves it alone. Run Now is the operator asking: it goes.
-        if source != .manual, ServiceDay.isRestartTrigger(trigger),
-           case .skip(let reason) = PreServiceGuard.decide(preServiceSituation(for: trigger)) {
-            DiagnosticsStore.shared.note("scheduler.preServiceSkipped", detail: "\(trigger.name) — \(reason)")
-            record(
-                RunRecord(
-                    triggerID: trigger.id, name: trigger.name, at: Date(),
-                    outcome: .skipped, source: source, detail: reason))
+        // The restarts and countdowns sync to every Mac; only the one that
+        // runs the service takes the screens with them. Run Now is the
+        // operator asking: it goes, here or anywhere.
+        if source != .manual, ServiceDay.firesOnlyOnServiceMac(trigger), !ServiceStation.runsService {
+            skip(trigger, source: source, reason: ServiceDay.notThisMacReason)
             return
         }
+        // A pre-service restart that comes due while a service is still
+        // going leaves it alone.
+        if source != .manual, ServiceDay.isRestartTrigger(trigger),
+           case .skip(let reason) = PreServiceGuard.decide(preServiceSituation(for: trigger)) {
+            skip(trigger, source: source, reason: reason)
+            return
+        }
+        // The next service's message starts its timer from the top.
+        if ServiceDay.isRestartTrigger(trigger) { controls.resetSermonTimer() }
         let crumb = switch source {
         case .schedule: late ? "scheduler.late" : "scheduler.fired"
         case .timer: "scheduler.timerFired"
@@ -403,6 +408,14 @@ final class SchedulerController {
             DiagnosticsStore.shared.note("scheduler.archived", detail: trigger.name)
             model.updateScheduleTrigger(trigger.id) { $0.archived = true }
         }
+    }
+
+    private func skip(_ trigger: ScheduleTrigger, source: RunRecord.Source, reason: String) {
+        DiagnosticsStore.shared.note("scheduler.serviceTriggerSkipped", detail: "\(trigger.name) — \(reason)")
+        record(
+            RunRecord(
+                triggerID: trigger.id, name: trigger.name, at: Date(),
+                outcome: .skipped, source: source, detail: reason))
     }
 
     private func record(_ entry: RunRecord) {
@@ -443,33 +456,36 @@ final class SchedulerController {
     private func preServiceSituation(for trigger: ScheduleTrigger) -> PreServiceGuard.Situation {
         let slideshowID = trigger.actions.first { $0.kind == .firePresentation }?.presentationId
         var situation = PreServiceGuard.Situation()
+        let plan = model.currentServiceID.flatMap { model.resident.services.value($0) }
+        let fireable = plan.map(model.fireableItems) ?? []
+        let lastPresentation = fireable.last { $0.itemKind == .presentation }
         if let live = controls.state.liveSlide {
             situation.secondsSinceSlideChange = max(0, CACurrentMediaTime() - live.firedAtHostTime)
             if let presentation = live.presentation {
                 situation.preServiceIsUp = presentation.id == slideshowID
                 situation.messageIsUp = PresentationTypes.category(of: presentation) == PresentationTypes.sermon
-                situation.finalSlideIsUp = isPlansFinalSlide(live, in: presentation)
+                if let lastPresentation, lastPresentation.refId == presentation.id {
+                    situation.slideIsInLastItem = true
+                    // The last slide of the plan's last presentation: where
+                    // a service ends.
+                    let slides = SlideSceneBuilder.arrangedSlides(
+                        for: presentation, arrangementId: live.arrangementId ?? lastPresentation.arrangementId)
+                    situation.finalSlideIsUp = slides.last?.id == live.slide.id
+                }
             }
+        } else {
+            situation.otherContentIsUp = controls.otherMediaIsUp
+        }
+        let playing = controls.playingVideoIDs()
+        situation.videoPlaying = !playing.isEmpty
+        situation.countdownPlaying = playing.contains(where: isCountdownVideo)
+        // A plan that ends on a video has ended once that video has played.
+        if let last = fireable.last, last.itemKind == .media, !last.refId.isEmpty,
+           controls.isMediaLive(last.refId), !playing.contains(last.refId) {
+            situation.finalSlideIsUp = true
         }
         situation.sermonTimerRunning = controls.sermonTimer?.isRunning == true
-        if let video = controls.screenVideoID {
-            situation.videoPlaying = true
-            situation.countdownPlaying = isCountdownVideo(video)
-        }
         return situation
-    }
-
-    /// The last slide of the current plan's last presentation: where a
-    /// service ends.
-    private func isPlansFinalSlide(_ live: ShowState.LiveSlide, in presentation: Presentation) -> Bool {
-        guard let planID = model.currentServiceID,
-              let plan = model.resident.services.value(planID),
-              let last = plan.items.last(where: { $0.itemKind == .presentation }),
-              last.refId == presentation.id
-        else { return false }
-        let slides = SlideSceneBuilder.arrangedSlides(
-            for: presentation, arrangementId: live.arrangementId ?? last.arrangementId)
-        return slides.last?.id == live.slide.id
     }
 
     private func isCountdownVideo(_ mediaID: String) -> Bool {
@@ -478,8 +494,26 @@ final class SchedulerController {
            ServiceCountdown.item(in: plan)?.refId == mediaID {
             return true
         }
-        let folder = model.media(mediaID)?.folder ?? ""
-        return folder == ServiceCountdown.folder || folder.hasPrefix(ServiceCountdown.folder + "/")
+        return ServiceCountdown.isCountdownFolder(model.media(mediaID)?.folder)
+    }
+}
+
+/// Whether this Mac runs the service: plays the scheduled countdowns and
+/// restarts the pre-service slides. The triggers sync to every Mac, so this
+/// is kept on each Mac alone (never synced). It's off until this Mac saves
+/// the Service Day setup or schedules a service, so another Mac (an office
+/// computer, the lobby) never takes its own screens over on Sunday.
+enum ServiceStation {
+    static let runsServiceKey = "serviceDay.runsOnThisMac"
+
+    static var runsService: Bool {
+        get { UserDefaults.standard.object(forKey: runsServiceKey) as? Bool ?? false }
+        set { UserDefaults.standard.set(newValue, forKey: runsServiceKey) }
+    }
+
+    /// Where the setup sheets start: on, unless this Mac has been set off.
+    static var sheetDefault: Bool {
+        UserDefaults.standard.object(forKey: runsServiceKey) as? Bool ?? true
     }
 }
 

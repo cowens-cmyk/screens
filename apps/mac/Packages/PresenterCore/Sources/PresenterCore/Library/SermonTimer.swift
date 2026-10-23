@@ -36,6 +36,20 @@ public enum SermonTimer {
     public static func adjusted(duration: Double, byMinutes minutes: Int) -> Double {
         max(0, duration + Double(minutes * 60))
     }
+
+    /// A running timer started this long ago belongs to an earlier service.
+    public static let staleSeconds: Double = 45 * 60
+    /// A running timer this far past zero belongs to an earlier service.
+    public static let staleOvertimeSeconds: Double = 5 * 60
+
+    /// Whether a running Sermon timer should start over as the message goes
+    /// live. Going back to the message within a service leaves it running;
+    /// one still going from the service before (started more than 45
+    /// minutes ago, or longer than the message itself, or more than five
+    /// minutes into overtime) starts again.
+    public static func restartsWhenMessageGoesLive(elapsed: Double, remaining: Double, duration: Double) -> Bool {
+        elapsed > max(staleSeconds, duration) || remaining < -staleOvertimeSeconds
+    }
 }
 
 extension MediaItem {
@@ -51,6 +65,16 @@ extension MediaItem {
     /// The advance a plan runs for this item: Next as an advance the moment
     /// the video ends, else the item's own auto-advance.
     public var planAdvance: AutoAdvance? {
+        planAdvance(asCountdown: false)
+    }
+
+    /// The plan's countdown always goes on to the next item when its video
+    /// ends (it's played once, whatever the video's own settings), unless
+    /// the video has an auto-advance of its own.
+    public func planAdvance(asCountdown: Bool) -> AutoAdvance? {
+        if asCountdown, mediaKind == .video {
+            return autoAdvance ?? AutoAdvance(delaySeconds: 0, afterPlayback: true)
+        }
         if resolvedEndAction == .next { return AutoAdvance(delaySeconds: 0, afterPlayback: true) }
         return autoAdvance
     }
