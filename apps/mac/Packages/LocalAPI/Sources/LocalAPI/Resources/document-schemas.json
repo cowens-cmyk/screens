@@ -2042,6 +2042,9 @@
         },
         "isTemplate": {
           "type": "boolean"
+        },
+        "countdownRemoved": {
+          "type": "boolean"
         }
       },
       "required": [

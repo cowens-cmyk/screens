@@ -9,6 +9,7 @@ struct ServiceDayCard: View {
     let scheduler: SchedulerController?
 
     @State private var editing = false
+    @AppStorage(ServiceStation.runsServiceKey) private var runsHere = false
 
     private var settings: ServiceDaySettings? { model.slideBuilding.serviceDay }
 
@@ -76,9 +77,16 @@ struct ServiceDayCard: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        Text("A restart is skipped if a slide changed in the last 3 minutes, or a video, the countdown or the message is live.")
+        Toggle("Run on this Mac", isOn: $runsHere)
+            .toggleStyle(.checkbox)
+            .controlSize(.mini)
+            .font(.system(size: 9))
+            .help("Play the countdowns and restart the pre-service slides from this Mac. Other Macs skip them.")
+        Text(runsHere
+            ? "A restart goes ahead only over empty screens, the end of the plan or stopped pre-service slides, or after 20 minutes on the plan's last item. Otherwise it's skipped."
+            : "This Mac skips the countdowns and pre-service restarts.")
             .font(.system(size: 8))
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(runsHere ? Color.secondary.opacity(0.7) : Color.orange)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -141,6 +149,7 @@ struct ServiceDaySheet: View {
     @State private var slideshowID = ""
     @State private var clearFirst = true
     @State private var makeLoop = true
+    @State private var runsHere = ServiceStation.sheetDefault
     @State private var search = ""
     @State private var loaded = false
 
@@ -175,6 +184,8 @@ struct ServiceDaySheet: View {
 
             Toggle("Clear the screens first", isOn: $clearFirst)
                 .help("Clears everything on the screens, and audio, before the slides start")
+            Toggle("Run on this Mac", isOn: $runsHere)
+                .help("Restart the slides and play the countdowns from this Mac. Other Macs skip them.")
 
             HStack {
                 if existing != nil {
@@ -335,6 +346,7 @@ struct ServiceDaySheet: View {
             services: ServiceDay.sorted(services), days: days,
             preServicePresentationId: slideshowID.isEmpty ? nil : slideshowID, clearFirst: clearFirst)
         model.updateSlideBuilding { $0.serviceDay = settings }
+        ServiceStation.runsService = runsHere
         apply(ServiceDay.changes(from: model.residentScheduleTriggers, to: settings))
         if makeLoop, let fix = loopFix {
             model.updatePresentation(slideshowID) { $0.autoAdvance = fix }

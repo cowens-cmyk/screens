@@ -325,20 +325,27 @@ public enum SermonSeriesTheme {
 public extension Library {
 
     /// Brings every sermon series in the library up to the five designs
-    /// (see SermonSeriesTheme.upgraded). Other themes are left alone.
+    /// (see SermonSeriesTheme.upgraded). Other themes are left alone. It
+    /// runs as the library opens, so one theme that can't be read or saved
+    /// is reported to `failed` and passed over rather than keeping the
+    /// library shut; the import upgrades that series when it's next used.
     @discardableResult
-    func upgradeSermonSeriesThemes() throws -> Int {
+    func upgradeSermonSeriesThemes(failed: (_ themeID: String, _ error: any Error) -> Void = { _, _ in }) throws -> Int {
         var upgraded = 0
         for id in try store.ids(of: .theme) {
-            let document = try open(Theme.self, id: id)
-            guard let theme = SermonSeriesTheme.upgraded(document.value) else { continue }
-            try document.update { stored in
-                stored.slides = theme.slides
-                stored.streamDesigns = theme.streamDesigns
-                stored.isSermonSeries = true
+            do {
+                let document = try open(Theme.self, id: id)
+                guard let theme = SermonSeriesTheme.upgraded(document.value) else { continue }
+                try document.update { stored in
+                    stored.slides = theme.slides
+                    stored.streamDesigns = theme.streamDesigns
+                    stored.isSermonSeries = true
+                }
+                try save(document)
+                upgraded += 1
+            } catch {
+                failed(id, error)
             }
-            try save(document)
-            upgraded += 1
         }
         return upgraded
     }

@@ -20,7 +20,7 @@ struct CountdownVideoMenu: View {
         let lists = videos
         Menu {
             if lists.countdowns.isEmpty {
-                Text("Put countdown videos in Media › \\(ServiceCountdown.folder)")
+                Text("Put countdown videos in Media › \(ServiceCountdown.folder)")
             }
             ForEach(lists.countdowns.prefix(20), id: \.id) { entry in
                 Button(entry.name) { choose(entry.id) }
@@ -46,15 +46,15 @@ struct CountdownVideoMenu: View {
         .help("This service's countdown video")
     }
 
+    /// The video itself is left as it is: the plan moves on from its
+    /// countdown at zero whatever the video is set to do elsewhere.
     private func choose(_ mediaID: String) {
         let itemID = item.id
         model.updateService(planID) { plan in
             guard let index = plan.items.firstIndex(where: { $0.id == itemID }) else { return }
+            // A countdown that came from Shepherd starts as a plain item.
+            plan.items[index].itemKind = .media
             plan.items[index].refId = mediaID
-        }
-        // At zero the plan moves on to its next item by itself.
-        if model.media(mediaID)?.endAction != .next {
-            model.updateMedia(mediaID) { $0.endAction = .next }
         }
     }
 }
@@ -69,6 +69,7 @@ struct ScheduleServiceSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var times: [Row] = []
+    @State private var runsHere = ServiceStation.sheetDefault
 
     struct Row: Identifiable, Equatable {
         let id = UUID()
@@ -138,6 +139,9 @@ struct ScheduleServiceSheet: View {
                 times.append(Row(service: next, countdown: ServiceCountdown.start(serviceTime: next, videoSeconds: videoSeconds)))
             }
             .buttonStyle(.borderless)
+
+            Toggle("Run on this Mac", isOn: $runsHere)
+                .help("Play the countdowns from this Mac. Other Macs skip them.")
 
             HStack {
                 Spacer()
@@ -218,6 +222,7 @@ struct ScheduleServiceSheet: View {
 
     private func save() {
         guard let plan, let item = countdownItem else { return }
+        ServiceStation.runsService = runsHere
         for old in model.residentScheduleTriggers where ServiceCountdown.isCountdownTrigger(old, planID: planID) {
             model.deleteScheduleTrigger(old.id)
         }

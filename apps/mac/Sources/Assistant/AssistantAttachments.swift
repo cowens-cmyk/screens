@@ -36,15 +36,20 @@ enum AssistantAttachments {
         return await Task.detached(priority: .userInitiated) {
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             var made: [AssistantAttachment] = []
-            for url in urls {
+            for (index, url) in urls.enumerated() {
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                 let name = url.lastPathComponent
+                // A folder of its own per file: two files of the same name
+                // (or two PDFs' page images) can't overwrite each other,
+                // and the name the Media library takes stays the file's own.
+                let own = folder.appendingPathComponent("\(index + 1)", isDirectory: true)
+                try? FileManager.default.createDirectory(at: own, withIntermediateDirectories: true)
                 let pages: [(label: String, file: URL)]
                 if url.pathExtension.lowercased() == "pdf" {
-                    pages = renderPDF(url, into: folder)
+                    pages = renderPDF(url, into: own)
                 } else {
-                    let copy = folder.appendingPathComponent("\(made.count + 1)-\(name)")
+                    let copy = own.appendingPathComponent(name)
                     pages = (try? FileManager.default.copyItem(at: url, to: copy)) == nil ? [] : [(name, copy)]
                 }
                 for page in pages where made.count < limit {

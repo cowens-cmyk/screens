@@ -62,3 +62,32 @@ private func video(loops: Bool = false, endAction: MediaEndAction? = nil, autoAd
     still.mediaKind = .image
     #expect(still.resolvedEndAction == nil)
 }
+
+@Test func theCountdownAlwaysMovesThePlanOn() {
+    let next = AutoAdvance(delaySeconds: 0, afterPlayback: true)
+    #expect(video(loops: true).planAdvance(asCountdown: true) == next, "played once whatever the video says")
+    #expect(video(endAction: .hold).planAdvance(asCountdown: true) == next)
+    #expect(video(endAction: .stop).planAdvance(asCountdown: true) == next)
+    let ownAdvance = AutoAdvance(delaySeconds: 5)
+    #expect(video(autoAdvance: ownAdvance).planAdvance(asCountdown: true) == ownAdvance)
+    #expect(video(loops: true).planAdvance(asCountdown: false) == nil, "an ordinary looping video never moves on")
+    var still = video()
+    still.mediaKind = .image
+    #expect(still.planAdvance(asCountdown: true) == nil)
+}
+
+@Test func aTimerLeftFromTheServiceBeforeStartsAgain() {
+    func restarts(elapsedMinutes: Double, duration: Double = 2400) -> Bool {
+        let elapsed = elapsedMinutes * 60
+        return SermonTimer.restartsWhenMessageGoesLive(elapsed: elapsed, remaining: duration - elapsed, duration: duration)
+    }
+    #expect(!restarts(elapsedMinutes: 10), "back to the message in the same service")
+    #expect(!restarts(elapsedMinutes: 44))
+    #expect(restarts(elapsedMinutes: 46), "over 45 minutes, and more than five past zero")
+    #expect(restarts(elapsedMinutes: 90), "the first service's timer at the second service")
+    #expect(!restarts(elapsedMinutes: 50, duration: 3600), "a longer message keeps going within its length")
+    #expect(restarts(elapsedMinutes: 66, duration: 3600))
+    // A nudged-short timer more than five minutes past zero starts again.
+    #expect(SermonTimer.restartsWhenMessageGoesLive(elapsed: 30 * 60, remaining: -6 * 60, duration: 24 * 60))
+    #expect(!SermonTimer.restartsWhenMessageGoesLive(elapsed: 30 * 60, remaining: -4 * 60, duration: 26 * 60))
+}

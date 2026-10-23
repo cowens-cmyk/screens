@@ -1385,8 +1385,9 @@ public struct Service: Codable, Sendable, Equatable, Identifiable {
     public var sermonThemeId: String?
     public var messagePresentationId: String?
     public var isTemplate: Bool?
+    public var countdownRemoved: Bool?
 
-    public init(id: String, name: String, serviceDate: String, items: [ServiceItem], origin: String? = nil, mxuPlanHexId: String? = nil, mxuServiceTypeName: String? = nil, mxuPlanVersion: String? = nil, mxuPlanTimes: [MxUPlanTime]? = nil, mxuTimeOrders: [MxUPlanTimeOrder]? = nil, mxuSyncedOrder: [String]? = nil, mxuDerivedName: String? = nil, mxuSyncPaused: Bool? = nil, versions: [ServiceVersion]? = nil, sermonThemeId: String? = nil, messagePresentationId: String? = nil, isTemplate: Bool? = nil) {
+    public init(id: String, name: String, serviceDate: String, items: [ServiceItem], origin: String? = nil, mxuPlanHexId: String? = nil, mxuServiceTypeName: String? = nil, mxuPlanVersion: String? = nil, mxuPlanTimes: [MxUPlanTime]? = nil, mxuTimeOrders: [MxUPlanTimeOrder]? = nil, mxuSyncedOrder: [String]? = nil, mxuDerivedName: String? = nil, mxuSyncPaused: Bool? = nil, versions: [ServiceVersion]? = nil, sermonThemeId: String? = nil, messagePresentationId: String? = nil, isTemplate: Bool? = nil, countdownRemoved: Bool? = nil) {
         self.id = id
         self.name = name
         self.serviceDate = serviceDate
@@ -1404,6 +1405,7 @@ public struct Service: Codable, Sendable, Equatable, Identifiable {
         self.sermonThemeId = sermonThemeId
         self.messagePresentationId = messagePresentationId
         self.isTemplate = isTemplate
+        self.countdownRemoved = countdownRemoved
     }
 }
 

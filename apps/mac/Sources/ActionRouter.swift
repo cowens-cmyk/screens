@@ -41,8 +41,10 @@ final class ActionRouter {
         (confidenceMonitor?.confidenceScreens ?? []).map { ($0.id.uuidString, $0.name) }
     }
 
-    func noteLiveTheme(_ theme: Theme?, slide: Slide?) {
-        stream.noteLiveTheme(theme, slide: slide)
+    /// `wentLive` false: the slide advanced by itself under a video that
+    /// still holds the livestream.
+    func noteLiveTheme(_ theme: Theme?, slide: Slide?, wentLive: Bool = true) {
+        stream.noteLiveTheme(theme, slide: slide, wentLive: wentLive)
     }
 
     /// A slide's livestream choice changed from its right-click menu.

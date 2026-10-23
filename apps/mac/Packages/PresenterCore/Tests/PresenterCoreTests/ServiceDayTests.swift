@@ -214,24 +214,53 @@ struct ServiceDayTests {
 
     // MARK: The guard
 
-    @Test func theRestartTakesQuietScreens() {
+    @Test func theRestartTakesWhatAFinishedServiceLeaves() {
         typealias S = PreServiceGuard.Situation
         #expect(PreServiceGuard.decide(S()) == .restart, "nothing up")
-        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 600)) == .restart, "left up and walked away")
         #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 30, finalSlideIsUp: true)) == .restart, "the service just ended")
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 5000, finalSlideIsUp: true, slideIsInLastItem: true)) == .restart, "left up and walked away")
+        #expect(PreServiceGuard.decide(S(otherContentIsUp: true, finalSlideIsUp: true)) == .restart, "the plan's closing video has played")
         #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 900, preServiceIsUp: true)) == .restart, "the slideshow stopped: start it over")
-        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 600, messageIsUp: true)) == .restart, "the message left up, its timer stopped")
-        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 30, finalSlideIsUp: true, messageIsUp: true, sermonTimerRunning: true)) == .restart, "the message ended the service")
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 900, preServiceIsUp: true, videoPlaying: true)) == .restart, "its own video doesn't hold it")
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 30, finalSlideIsUp: true, slideIsInLastItem: true, messageIsUp: true, sermonTimerRunning: true)) == .restart, "the message ended the service")
+        // The plan's last item left untouched for twenty minutes.
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: PreServiceGuard.longQuietSeconds, slideIsInLastItem: true)) == .restart)
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: PreServiceGuard.longQuietSeconds - 1, slideIsInLastItem: true)) != .restart)
     }
 
     @Test func theRestartLeavesAServiceThatsStillGoing() {
         typealias S = PreServiceGuard.Situation
-        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 60)) == .skip("A slide changed in the last 3 minutes."))
-        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: PreServiceGuard.quietSeconds - 1)) != .restart)
-        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: PreServiceGuard.quietSeconds)) == .restart)
-        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 900, messageIsUp: true, sermonTimerRunning: true)) == .skip("The message was up with its timer running."))
+        let midService = PreServiceGuard.Decision.skip("A slide from the service was still up.")
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 60)) == midService)
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 600)) == midService, "a prayer slide up for ten minutes")
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 3600)) == midService, "only the plan's last item has the long-quiet way out")
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 600, slideIsInLastItem: true)) == midService)
+        #expect(PreServiceGuard.decide(S(otherContentIsUp: true)) == .skip("Something was still on the screens."))
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 5000, slideIsInLastItem: true, messageIsUp: true, sermonTimerRunning: true)) == .skip("The message was up with its timer running."))
         #expect(PreServiceGuard.decide(S(videoPlaying: true)) == .skip("A video was playing."))
-        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 900, finalSlideIsUp: true, videoPlaying: true, countdownPlaying: true)) == .skip("The countdown was playing."))
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 900, finalSlideIsUp: true, videoPlaying: true)) == .skip("A video was playing."), "a video in the last slide still going")
+        #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 900, preServiceIsUp: true, videoPlaying: true, countdownPlaying: true)) == .skip("The countdown was playing."))
         #expect(PreServiceGuard.decide(S(secondsSinceSlideChange: 5, preServiceIsUp: true)) == .skip("The pre-service slides were already running."))
+    }
+
+    @Test func aLoopingBackgroundIsNotAVideoPlaying() {
+        #expect(PreServiceGuard.countsAsPlaying(isPlaying: true, isLooping: false, foreground: false), "a slide's background video playing once")
+        #expect(!PreServiceGuard.countsAsPlaying(isPlaying: true, isLooping: true, foreground: false), "a motion background")
+        #expect(PreServiceGuard.countsAsPlaying(isPlaying: true, isLooping: true, foreground: true), "a looping video put up on its own")
+        #expect(!PreServiceGuard.countsAsPlaying(isPlaying: false, isLooping: false, foreground: true), "paused or finished")
+    }
+
+    @Test func onlyTheServicesOwnTriggersWaitForTheServiceMac() {
+        let restart = ServiceDay.triggers(for: settings([("08:00", "07:30")]), makeID: ids())[0]
+        #expect(ServiceDay.firesOnlyOnServiceMac(restart))
+        let countdown = ServiceCountdown.trigger(
+            planID: "plan", planName: "Sunday", countdownItemID: "cd",
+            start: date("2026-10-25T10:24:50"), serviceTime: date("2026-10-25T10:30:00"), calendar: calendar)
+        #expect(ServiceDay.firesOnlyOnServiceMac(countdown))
+        var other = countdown
+        other.notes = "lights"
+        #expect(!ServiceDay.firesOnlyOnServiceMac(other))
+        other.notes = nil
+        #expect(!ServiceDay.firesOnlyOnServiceMac(other))
     }
 }

@@ -99,7 +99,7 @@ Select several items to Hide or Remove them together. Dragging a slide from the 
 
 **Items that aren't linked.** A Shepherd item with no presentation shows "Not Linked" in the center. A planned song with no slides in the library shows an orange **Get Lyrics** button: it looks in Shepherd first; if the song isn't there it opens SongSelect in the browser and imports the lyrics file once it lands in Downloads.
 
-**Countdown.** Every upcoming plan gets a **Countdown** item first, automatically. Its **Choose Video** / **Change** button picks this week's video from the **Countdowns** folder in Media (newest first) or **Other Videos**. Choosing a video sets it to go to the next item when it ends.
+**Countdown.** Every upcoming plan gets a **Countdown** item first, automatically. A plan that already has one (Shepherd's "COUNTDOWN" item, or an item linked to a video in the Countdowns folder or a presentation named Countdown) has that item marked as its countdown instead. Its **Choose Video** / **Change** button picks this week's video from the **Countdowns** folder in Media (newest first) or **Other Videos**. The countdown always plays once and goes on to the next item when it ends; the video's own settings are not changed. Removing the countdown item from a plan keeps it removed.
 
 ## Shepherd sync
 
@@ -229,7 +229,7 @@ A video that plays once takes over the stage while it plays: a large m:ss countd
 
 The stage follows what goes live: a song switches it to Worship; the message switches it to Message and starts the "Sermon" countdown at the message's timer length. It does not switch while showing the audience screen or when the presentation has its own stage layout.
 
-**Sermon timer control** (always in the Stage card): time left (green, red past zero), **−1** / **+1** minute, play/pause and reset. Click the time to type an exact number of minutes. Changes apply instantly, even while it runs, and the stage updates at once.
+**Sermon timer control** (always in the Stage card): time left (green, red past zero), **−1** / **+1** minute, play/pause and reset. Reset stops it at the message's full length (40 minutes unless the message says otherwise). Click the time to type an exact number of minutes. Changes apply instantly, even while it runs, and the stage updates at once. A timer still running from the service before (started over 45 minutes ago, or more than 5 minutes past zero) starts again when the message goes live; each pre-service restart also resets it.
 
 **Stage messages.** Type in **Message to stage** under the Stage preview and **Send**. It shows as a red bar across the top of the stage screen until cleared; the card shows it with a **Clear** button. The phone remote's Stage tab can send them too.
 
@@ -253,13 +253,15 @@ A slide can bring up a specific layout (Screens… › Stage, or Add Action › 
 
 ## Countdown and Schedule Service
 
-Every service opens with a countdown video, different each week, first in the plan. **Schedule Service** (toolbar) opens a sheet with one row per service time: **Service starts** (date and time) and **Countdown starts** (follows the service time by the video's length, adjustable in 5-second steps). **Add Service Time** adds a row. The sheet shows the countdown video and its length, with **Choose Video** / **Change**. Times default to what is already scheduled, else Shepherd's service times, else 10:30 on the plan's date. **Schedule** saves one-time triggers in the Scheduler that bring up the plan and play the countdown so it ends at the service time; at zero the plan moves on by itself.
+Every service opens with a countdown video, different each week, first in the plan. **Schedule Service** (toolbar) opens a sheet with one row per service time: **Service starts** (date and time) and **Countdown starts** (follows the service time by the video's length, adjustable in 5-second steps). **Add Service Time** adds a row. The sheet shows the countdown video and its length, with **Choose Video** / **Change**. Times default to what is already scheduled, else Shepherd's service times, else 10:30 on the plan's date. **Schedule** saves one-time triggers in the Scheduler that bring up the plan and play the countdown so it ends at the service time; playing it clears the slides (stopping the pre-service slideshow), and at zero the plan moves on by itself. **Run on this Mac** says whether this Mac plays the countdowns.
 
 ## Pre-service restart (Service Day)
 
 At the top of the Schedule board, the **Service Day** card (for example "Sunday Services") restarts the pre-service slideshow before each service, in case the last slide of the previous service was left up. **Set Up** / **Edit** opens a sheet: the days (Sunday by default), the service times (8:00, 9:30 and 11:15 by default; add or remove), a **Restart pre-service at** time for each (30 minutes before the first service, 25 before the others by default), which presentation is the pre-service slideshow, **Clear the screens first** (on by default; this also stops audio), and **Advance every 10 seconds and loop** when the slideshow doesn't loop yet. It saves weekly triggers in a **Service Day** folder. The card shows the next service day at a glance: pre-service restarts, countdown starts and service times.
 
-A restart is skipped (and noted in History) if a slide changed in the last 3 minutes, or a video, the countdown or the message is live, unless what's up is the plan's very last slide. A skipped restart isn't retried later.
+**Run on this Mac** (in the card and both sheets) is kept per Mac and not synced. The countdowns and restarts sync to every Mac, but only a Mac with it on plays them; the others skip them and note "Not this Mac's job" in History. It turns on when a Mac saves the Service Day setup or schedules a service, and is off on other Macs until then. Run Now always runs.
+
+A restart goes ahead only when the screens are empty, show the end of the plan (the last slide of its last presentation, or its closing video finished), or show the pre-service slideshow stopped for 3 minutes or more; or when a slide in the plan's last item has been left up for 20 minutes. Anything else is skipped and noted in History: a video playing (a looping background doesn't count), the countdown, the message with its timer running, or any other slide from the service. A skipped restart isn't retried later.
 
 ## Scheduler (Schedule mode)
 

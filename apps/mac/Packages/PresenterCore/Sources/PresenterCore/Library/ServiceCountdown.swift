@@ -16,16 +16,81 @@ public enum ServiceCountdown {
         service.items.first { $0.isCountdown == true }
     }
 
-    /// The plan with a countdown first: an empty one (to be given its video)
-    /// when it has none. Templates and plans already holding one are left as
-    /// they are.
-    public static func ensuringCountdown(_ service: Service) -> Service? {
-        guard item(in: service) == nil, service.isTemplate != true else { return nil }
-        var plan = service
-        var countdown = ServiceItem(id: UUID().uuidString, itemKind: .media, name: itemName, refId: "")
+    /// "Countdown", "COUNTDOWN" or "Count Down": an item (or a presentation)
+    /// named as the countdown.
+    public static func looksLikeCountdown(_ name: String) -> Bool {
+        name.lowercased().filter(\.isLetter) == "countdown"
+    }
+
+    /// The Countdowns folder in Media, or a folder inside it.
+    public static func isCountdownFolder(_ path: String?) -> Bool {
+        guard let path else { return false }
+        return path == folder || path.hasPrefix(folder + "/")
+    }
+
+    /// How a plan gets its countdown.
+    public enum Change: Equatable, Sendable {
+        /// An item the plan already has is its countdown: Shepherd's
+        /// "COUNTDOWN", or one linked to a countdown video or presentation.
+        case mark(itemID: String)
+        /// An empty Countdown first, to be given this week's video.
+        case insert(ServiceItem)
+    }
+
+    /// What gives a plan its countdown; nil when it needs nothing. A
+    /// template, a plan that has one, and a plan whose countdown was taken
+    /// out are left as they are, though an item that plainly is the
+    /// countdown is still marked as one rather than a second added.
+    /// `isCountdownLink` says whether an item is linked to a video in the
+    /// Countdowns folder or a presentation named Countdown.
+    public static func change(
+        for service: Service, isCountdownLink: (ServiceItem) -> Bool = { _ in false },
+        makeID: () -> String = { UUID().uuidString }
+    ) -> Change? {
+        guard service.isTemplate != true, item(in: service) == nil else { return nil }
+        if let existing = service.items.first(where: { item in
+            item.itemKind != .header && (looksLikeCountdown(item.name) || isCountdownLink(item))
+        }) {
+            return .mark(itemID: existing.id)
+        }
+        guard service.countdownRemoved != true else { return nil }
+        var countdown = ServiceItem(id: makeID(), itemKind: .media, name: itemName, refId: "")
         countdown.isCountdown = true
-        plan.items.insert(countdown, at: 0)
-        return plan
+        return .insert(countdown)
+    }
+
+    /// Applies a change to the plan as it stands now: false when there's
+    /// nothing left to do (it has a countdown by now, or the item is gone).
+    @discardableResult
+    public static func apply(_ change: Change, to service: inout Service) -> Bool {
+        guard item(in: service) == nil else { return false }
+        switch change {
+        case .mark(let itemID):
+            guard let index = service.items.firstIndex(where: { $0.id == itemID }) else { return false }
+            service.items[index].isCountdown = true
+        case .insert(let countdown):
+            guard service.countdownRemoved != true else { return false }
+            service.items.insert(countdown, at: 0)
+        }
+        return true
+    }
+
+    /// The plan with its countdown (see `change(for:)`), nil when it needs
+    /// nothing.
+    public static func ensuringCountdown(
+        _ service: Service, isCountdownLink: (ServiceItem) -> Bool = { _ in false }
+    ) -> Service? {
+        guard let change = change(for: service, isCountdownLink: isCountdownLink) else { return nil }
+        var plan = service
+        return apply(change, to: &plan) ? plan : nil
+    }
+
+    /// Takes an item out of the plan. Taking out its countdown is
+    /// remembered, so the plan isn't given another.
+    public static func remove(itemID: String, from service: inout Service) {
+        let removedCountdown = service.items.contains { $0.id == itemID && $0.isCountdown == true }
+        service.items.removeAll { $0.id == itemID }
+        if removedCountdown { service.countdownRemoved = true }
     }
 
     /// When the countdown starts so it ends at the service time: the video's

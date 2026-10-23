@@ -119,9 +119,11 @@ final class ServiceControls {
 
     private(set) var mediaFireContexts: [String: String] = [:]
 
+    /// `autoAdvanced` marks a fire made by a slide's own timing rather than
+    /// by anyone: see land().
     func fire(
         slide: Slide, in presentation: Presentation, arrangementId: String? = nil,
-        contextID: String? = nil, occurrence: Int? = nil
+        contextID: String? = nil, occurrence: Int? = nil, autoAdvanced: Bool = false
     ) {
 
         settlePending()
@@ -136,7 +138,9 @@ final class ServiceControls {
                 self.pendingHandoff = nil
                 self.nextFireArrivesSettled = settled
                 defer { self.nextFireArrivesSettled = false }
-                self.fire(slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID, occurrence: occurrence)
+                self.fire(
+                    slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID,
+                    occurrence: occurrence, autoAdvanced: autoAdvanced)
             }
             return
         }
@@ -144,7 +148,9 @@ final class ServiceControls {
         let themeID = presentation.themeId(for: slide)
         switch appModel.resident.themes.fireRead(themeID) {
         case .now(let theme):
-            land(slide: slide, in: presentation, theme: theme, arrangementId: arrangementId, contextID: contextID, occurrence: occurrence)
+            land(
+                slide: slide, in: presentation, theme: theme, arrangementId: arrangementId,
+                contextID: contextID, occurrence: occurrence, autoAdvanced: autoAdvanced)
         case .afterFill:
             let settled = nextFireArrivesSettled
             pendingHandoff = Task { @MainActor [weak self] in
@@ -154,7 +160,8 @@ final class ServiceControls {
                     self.nextFireArrivesSettled = settled
                     self.land(
                         slide: slide, in: presentation, theme: self.appModel.theme(themeID),
-                        arrangementId: arrangementId, contextID: contextID, occurrence: occurrence)
+                        arrangementId: arrangementId, contextID: contextID, occurrence: occurrence,
+                        autoAdvanced: autoAdvanced)
                     self.nextFireArrivesSettled = false
                 }
             }
@@ -163,7 +170,7 @@ final class ServiceControls {
 
     private func land(
         slide: Slide, in presentation: Presentation, theme: Theme?, arrangementId: String?,
-        contextID: String?, occurrence: Int?
+        contextID: String?, occurrence: Int?, autoAdvanced: Bool = false
     ) {
 
         let deckWasLive = livePresentationID == presentation.id
@@ -171,7 +178,12 @@ final class ServiceControls {
             applyScreenDefaults(for: presentation)
             actionRouter?.presentationDidGoLive(presentation)
         }
-        actionRouter?.noteLiveTheme(theme, slide: slide)
+        // A slide that advanced by itself while a video plays once on the
+        // screens (a looping slideshow the video went up over) isn't anyone
+        // taking over: the video keeps the livestream, and its plan keeps
+        // its move to the next item when it ends.
+        let underVideo = autoAdvanced && screenVideoID.map(isMediaLive) == true
+        actionRouter?.noteLiveTheme(theme, slide: slide, wentLive: !underVideo)
 
         if let own = RenderContext.sceneTransition(from: slide.transition) {
             render.nextLiveTransitions[.slide] = own
@@ -209,7 +221,7 @@ final class ServiceControls {
 
         actionRouter?.slideDidFire(slide, contextID: contextID)
         LightkeyLink.shared.slideWentLive(slide, in: presentation)
-        armAutoAdvance(for: slide, in: presentation)
+        armAutoAdvance(for: slide, in: presentation, keepingMediaAdvance: underVideo)
 
         if !deckWasLive {
             appModel.markUsed(presentation.id)
@@ -418,10 +430,12 @@ final class ServiceControls {
         return nil
     }
 
-    private func armAutoAdvance(for slide: Slide, in presentation: Presentation?) {
+    private func armAutoAdvance(
+        for slide: Slide, in presentation: Presentation?, keepingMediaAdvance: Bool = false
+    ) {
         cancelAutoAdvance()
 
-        cancelMediaAdvance()
+        if !keepingMediaAdvance { cancelMediaAdvance() }
 
         guard SlideSceneBuilder.effectiveAutoAdvance(
             slide: slide, presentation: presentation
@@ -558,7 +572,7 @@ final class ServiceControls {
         ), slides.indices.contains(next) {
             fire(
                 slide: slides[next], in: presentation, arrangementId: live.arrangementId,
-                contextID: liveContextID, occurrence: next
+                contextID: liveContextID, occurrence: next, autoAdvanced: true
             )
             return
         }
@@ -616,7 +630,7 @@ final class ServiceControls {
 
     private var mediaAdvanceTimer: Timer?
     private var mediaAdvancePoll: Timer?
-    private var mediaAdvanceWatch: (serviceItemID: String, mediaID: String, armedAt: Date)?
+    private var mediaAdvanceWatch: (serviceItemID: String, mediaID: String, armedAt: Date, countdown: Bool)?
 
     private func cancelMediaAdvance() {
         mediaAdvanceTimer?.invalidate()
@@ -627,13 +641,13 @@ final class ServiceControls {
         clearAdvanceVisibility()
     }
 
-    private func armMediaAdvance(for item: MediaItem, serviceItemID: String) {
+    private func armMediaAdvance(for item: MediaItem, serviceItemID: String, countdown: Bool) {
         cancelMediaAdvance()
-        // Next Item when the video ends (a video's default) is an
-        // after-playback advance.
-        guard let advance = item.planAdvance else { return }
+        // Next Item when the video ends (a video's default, and always the
+        // countdown's) is an after-playback advance.
+        guard let advance = item.planAdvance(asCountdown: countdown) else { return }
         if advance.afterPlayback ?? false, item.mediaKind == .video {
-            mediaAdvanceWatch = (serviceItemID, item.id, Date())
+            mediaAdvanceWatch = (serviceItemID, item.id, Date(), countdown)
             autoAdvancePending = AutoAdvancePending(
                 mediaID: item.id, delaySeconds: advance.delaySeconds
             )
@@ -665,7 +679,7 @@ final class ServiceControls {
         guard let watch = mediaAdvanceWatch,
               isMediaLive(watch.mediaID),
               let watched = appModel.media(watch.mediaID),
-              let advance = watched.planAdvance
+              let advance = watched.planAdvance(asCountdown: watch.countdown)
         else { return cancelMediaAdvance() }
         let now = Date()
         let lead = MediaAutoAdvance.leadSeconds(fromDelay: advance.delaySeconds)
@@ -770,17 +784,35 @@ final class ServiceControls {
             mediaFireContexts[mediaItem.id] = nil
         }
 
+        // The plan's countdown plays once and then moves the plan on,
+        // whatever the video is set to elsewhere.
+        let countdown = contextID.map(isCountdownItem) ?? false
+        let loops: Bool? = countdown && mediaItem.mediaKind == .video ? false : loopsOverride
+        let playsOnce = mediaItem.mediaKind == .video && !(loops ?? mediaItem.loops)
+
+        // A plan's video that plays once (its countdown above all) takes
+        // the screens from the slides: left running, the looping pre-service
+        // slideshow's next advance would land over it and call off its move
+        // to the next item.
+        if contextID != nil, playsOnce {
+            cancelAutoAdvance()
+            if state.liveSlide != nil { clear(layer: .slide) }
+        }
+
         if let own = RenderContext.sceneTransition(from: mediaItem.transition) {
             render.nextLiveTransitions[layer] = own
         }
         state.fire(
             media: CueMedia(
-                mediaId: mediaItem.id, loops: loopsOverride,
+                mediaId: mediaItem.id, loops: loops,
                 classification: mediaItem.classification, scaleMode: mediaItem.scaleMode),
             on: layer)
         apply()
 
-        if mediaItem.classification != .background {
+        // A video that plays once starts from the top even when it's filed
+        // as a background (as imports are): the countdown played at the
+        // service before would otherwise come back already finished.
+        if mediaItem.classification != .background || playsOnce {
             restart(mediaID: mediaItem.id)
         }
 
@@ -789,11 +821,10 @@ final class ServiceControls {
         case .direct: cancelMediaAdvance()
         case .playlistWalk: break
         case .serviceItem(let id):
-            armMediaAdvance(for: mediaItem, serviceItemID: id)
+            armMediaAdvance(for: mediaItem, serviceItemID: id, countdown: countdown)
             serviceTracking?.noteItemFired(serviceItemID: id)
         }
-        let playsOnce = mediaItem.mediaKind == .video && !(loopsOverride ?? mediaItem.loops)
-        armMediaEnd(mediaItem, on: layer, playsOnce: playsOnce)
+        armMediaEnd(mediaItem, on: layer, playsOnce: playsOnce, countdown: countdown)
         if playsOnce {
             screenVideoID = mediaItem.id
             actionRouter?.videoStarted(mediaItem.id)
@@ -822,6 +853,53 @@ final class ServiceControls {
     /// After every change on air: the video is over once it isn't live.
     private func syncScreenVideo() {
         if let id = screenVideoID, !isMediaLive(id) { screenVideoEnded() }
+    }
+
+    /// Whether a plan item is the current plan's countdown.
+    private func isCountdownItem(_ serviceItemID: String) -> Bool {
+        guard let planID = appModel.currentServiceID,
+              let plan = appModel.resident.services.value(planID)
+        else { return false }
+        return plan.items.contains { $0.id == serviceItemID && $0.isCountdown == true }
+    }
+
+    // MARK: What's on the screens, for the pre-service restart
+
+    /// The videos playing on the audience screen now: ones put up on their
+    /// own, the live slide's background, and videos inside the slide. A
+    /// looping background doesn't count (see PreServiceGuard).
+    func playingVideoIDs(at date: Date = Date()) -> [String] {
+        var candidates = state.liveMedia.map { (id: $0.value.mediaId, foreground: $0.key == .videos) }
+        if let live = state.liveSlide {
+            if let background = SlideSceneBuilder.effectiveBackground(
+                slide: live.slide, presentation: live.presentation, arrangementId: live.arrangementId) {
+                candidates.append((id: background.mediaId, foreground: false))
+            }
+            for object in live.slide.objects.map(SlideObjectNormalization.normalized) {
+                if let id = SlideSceneBuilder.fillMediaID(object) { candidates.append((id: id, foreground: false)) }
+            }
+        }
+        var seen = Set<String>()
+        return candidates.compactMap { candidate in
+            guard !candidate.id.isEmpty, seen.insert(candidate.id).inserted,
+                  let transport = render.media.transport(id: candidate.id)
+            else { return nil }
+            let playing = transport.isPlaying && !MediaTransportController.isFinished(transport, at: date)
+            return PreServiceGuard.countsAsPlaying(
+                isPlaying: playing, isLooping: transport.isLooping, foreground: candidate.foreground)
+                ? candidate.id : nil
+        }
+    }
+
+    /// Something up besides slides and backgrounds: a picture or video put
+    /// up on its own (one held on its last frame too), or a camera. A
+    /// looping video or a picture on the background layer doesn't count.
+    var otherMediaIsUp: Bool {
+        state.liveMedia.contains { layer, cue in
+            guard layer == .loopingVideos else { return true }
+            guard let transport = render.media.transport(id: cue.mediaId) else { return false }
+            return !transport.isLooping
+        }
     }
 
     // MARK: Screen defaults for what goes live
@@ -863,21 +941,37 @@ final class ServiceControls {
         return timers.addCountdown(id: SermonTimer.id, name: SermonTimer.name, seconds: seconds)
     }
 
-    /// The live message's length, else 40 minutes.
+    /// The message's length: the live message's, else the current plan's
+    /// message's, else 40 minutes.
     private var sermonLength: Double {
-        guard let live = state.liveSlide?.presentation,
-              PresentationTypes.category(of: live) == PresentationTypes.sermon
+        if let live = state.liveSlide?.presentation,
+           PresentationTypes.category(of: live) == PresentationTypes.sermon {
+            return SermonTimer.seconds(for: live)
+        }
+        guard let planID = appModel.currentServiceID,
+              let plan = appModel.resident.services.value(planID),
+              let index = PlanMessage.itemIndex(in: plan, isSermon: { id in
+                  appModel.presentation(id).map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
+              })
         else { return SermonTimer.defaultSeconds }
-        return SermonTimer.seconds(for: live)
+        return SermonTimer.seconds(for: appModel.presentation(plan.items[index].refId))
     }
 
     /// One "Sermon" countdown, set to the message's length (40 minutes unless
     /// it says otherwise), counting on past 0:00 into red. One already
-    /// running is left alone: the message going live twice doesn't restart it.
+    /// running is left alone, so going back to the message within a service
+    /// doesn't restart it; one left running from the service before starts
+    /// again.
     private func startSermonTimer(for presentation: Presentation) {
         let seconds = SermonTimer.seconds(for: presentation)
         let id = ensureSermonTimer(seconds: seconds)
-        guard timers.snapshot(id: id)?.isRunning != true else { return }
+        if let timer = timers.snapshot(id: id), timer.isRunning {
+            let now = Date()
+            guard SermonTimer.restartsWhenMessageGoesLive(
+                elapsed: timer.elapsed(at: now), remaining: timer.value(at: now), duration: timer.durationSeconds)
+            else { return }
+            DiagnosticsStore.shared.note("sermonTimer.restarted", detail: "still running from an earlier service")
+        }
         timers.setDuration(id: id, seconds: seconds)
         timers.setKeepsCountingAfterZero(id: id, true)
         timers.reset(id: id)
@@ -890,9 +984,13 @@ final class ServiceControls {
         timers.toggle(id: id)
     }
 
-    /// Back to its full length, stopped.
+    /// Back to the message's full length, stopped: minutes nudged on or off
+    /// go too.
     func resetSermonTimer() {
-        timers.reset(id: ensureSermonTimer(seconds: sermonLength))
+        let seconds = sermonLength
+        let id = ensureSermonTimer(seconds: seconds)
+        timers.reset(id: id)
+        timers.setDuration(id: id, seconds: seconds)
     }
 
     /// A minute more or less, running or not: only the length moves, so the
@@ -919,12 +1017,14 @@ final class ServiceControls {
     /// leaves its last frame up, and Next is the plan's after-playback
     /// advance. Firing something that isn't such a video leaves the watch
     /// running: it ends itself once its video is off the screen.
-    private func armMediaEnd(_ item: MediaItem, on layer: LayerKind, playsOnce: Bool) {
+    private func armMediaEnd(_ item: MediaItem, on layer: LayerKind, playsOnce: Bool, countdown: Bool = false) {
         guard playsOnce else { return }
         mediaEndPoll?.invalidate()
         mediaEndPoll = nil
         let id = item.id
-        let action = item.resolvedEndAction
+        // The countdown is never taken down at zero: the plan's next item
+        // replaces it.
+        let action: MediaEndAction? = countdown ? .next : item.resolvedEndAction
         let poll = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.mediaEndTick(id: id, layer: layer, action: action) }
         }
