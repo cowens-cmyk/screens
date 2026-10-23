@@ -27,13 +27,14 @@ struct SlideScreensSheet: View {
                 .font(.headline)
             Form {
                 Picker("Audience", selection: $audience) {
-                    Text("Theme default").tag("")
+                    Text(StreamWording.themeDefault).tag("")
                     designOptions(prefix: "design")
                 }
                 Picker("Livestream", selection: $stream) {
-                    Text("Theme default").tag("default")
-                    Text("Camera clear").tag("clear")
-                    Text("Same as audience (full screen)").tag("audience")
+                    Text(StreamWording.themeDefault).tag("default")
+                    Text(StreamWording.lowerThird).tag("lowerThird")
+                    Text(StreamWording.fullScreen).tag("audience")
+                    Text(StreamWording.nothing).tag("clear")
                     designOptions(prefix: "design")
                 }
                 Picker("Stage", selection: $stage) {
@@ -62,6 +63,7 @@ struct SlideScreensSheet: View {
                     switch own.mode {
                     case .clear: stream = "clear"
                     case .audience: stream = "audience"
+                    case .design where own.isThemeLowerThird: stream = "lowerThird"
                     case .design:
                         let name = themes.first { $0.id == own.themeId }?.slides.first { $0.id == own.slideId }?.name ?? ""
                         stream = "design|\(own.themeId ?? "")|\(name)"
@@ -102,9 +104,10 @@ struct SlideScreensSheet: View {
                     deck.slides[index].themeId = nil
                 }
                 switch streamParts.first {
-                case "clear": deck.slides[index].streamDesign = StreamDesign(category: "", mode: .clear)
-                case "audience": deck.slides[index].streamDesign = StreamDesign(category: "", mode: .audience)
-                case "design":
+                case "clear": deck.slides[index].streamDesign = .slideNothing
+                case "audience": deck.slides[index].streamDesign = .slideFullScreen
+                case "lowerThird": deck.slides[index].streamDesign = .slideLowerThird
+                case "design" where streamParts.count == 3:
                     deck.slides[index].streamDesign = StreamDesign(
                         category: "", mode: .design, themeId: streamParts[1], slideId: streamSlideID)
                 default: deck.slides[index].streamDesign = nil

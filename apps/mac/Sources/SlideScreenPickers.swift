@@ -10,6 +10,27 @@ private func targetSlideIDs(_ model: SlideEditorModel) -> [String] {
     return model.currentSlide.map { [$0.id] } ?? []
 }
 
+/// The livestream choices, worded the same on a slide's right-click menu, the
+/// Screens sheet, the editor's Livestream picker and the theme's routing
+/// table, so a slide and its theme read as the same three choices.
+enum StreamWording {
+    static let themeDefault = "Theme Default"
+    static let lowerThird = "Lower Third"
+    static let fullScreen = "Full Screen (takes over the stream)"
+    static let nothing = "Nothing (camera only)"
+}
+
+extension StreamDesign {
+    /// A slide's Lower Third names no design: it takes its theme's lower
+    /// third for its category, so it follows theme edits.
+    static let slideLowerThird = StreamDesign(category: "", mode: .design)
+    static let slideFullScreen = StreamDesign(category: "", mode: .audience)
+    static let slideNothing = StreamDesign(category: "", mode: .clear)
+
+    /// Lower Third without a named design.
+    var isThemeLowerThird: Bool { mode == .design && (themeId ?? "").isEmpty }
+}
+
 /// What the livestream shows for this slide.
 struct SlideStreamPicker: View {
     let model: SlideEditorModel
@@ -20,10 +41,11 @@ struct SlideStreamPicker: View {
     var body: some View {
         LabeledContent("Livestream") {
             Menu {
-                Button("Theme default") { set(nil) }
+                Button(StreamWording.themeDefault) { set(nil) }
                 Divider()
-                Button("Camera clear") { set(StreamDesign(category: "", mode: .clear)) }
-                Button("Same as audience (full screen)") { set(StreamDesign(category: "", mode: .audience)) }
+                Button(StreamWording.lowerThird) { set(.slideLowerThird) }
+                Button(StreamWording.fullScreen) { set(.slideFullScreen) }
+                Button(StreamWording.nothing) { set(.slideNothing) }
                 Divider()
                 ForEach(designs, id: \.id) { theme in
                     Menu(theme.name) {
@@ -47,10 +69,11 @@ struct SlideStreamPicker: View {
     }
 
     private var label: String {
-        guard let current else { return "Theme default" }
+        guard let current else { return StreamWording.themeDefault }
         switch current.mode {
-        case .clear: return "Camera clear"
-        case .audience: return "Same as audience"
+        case .clear: return StreamWording.nothing
+        case .audience: return StreamWording.fullScreen
+        case .design where current.isThemeLowerThird: return StreamWording.lowerThird
         case .design:
             let theme = designs.first { $0.id == current.themeId }
             let slide = theme?.slides.first { $0.id == current.slideId }

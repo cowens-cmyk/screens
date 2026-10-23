@@ -874,6 +874,9 @@ struct SlideGridBody: View {
     private func bulkMenu(slideIDs: [String]) -> some View {
         Text("\(slideIDs.count) Slides")
         Button("Screens…") { screensTarget = SlideScreensTarget(slideIDs: slideIDs) }
+        layoutMenu(slideIDs)
+        livestreamMenu(slideIDs)
+        listenButton()
         Menu("Add Action") {
             AddActionMenuItems(
                 model: model,
@@ -1057,6 +1060,9 @@ struct SlideGridBody: View {
     private func singleMenu(slide: Slide) -> some View {
 
         Button("Screens…") { screensTarget = SlideScreensTarget(slideIDs: [slide.id]) }
+        layoutMenu([slide.id])
+        livestreamMenu([slide.id])
+        listenButton()
         Divider()
         Button("Edit…") {
             model.openInEditor(
@@ -1144,6 +1150,92 @@ struct SlideGridBody: View {
 
         Button("Delete Slide", role: .destructive) {
             deleteSlides([slide.id])
+        }
+    }
+
+    /// Layout › the categories of the slides' theme (Title, Bible, Sermon
+    /// Points…), so a slide can switch design without opening the editor.
+    private func layoutMenu(_ slideIDs: [String]) -> some View {
+        let slides = presentation.slides.filter { slideIDs.contains($0.id) }
+        var categories: [String] = []
+        var current: Set<String> = []
+        for slide in slides {
+            let designs = (model.theme(for: slide, in: presentation)?.slides ?? [])
+                .filter { !($0.folder ?? "").lowercased().contains("third") }
+            for design in designs where !categories.contains(design.name) {
+                categories.append(design.name)
+            }
+            // A slide asking for "Scripture" is on the theme's "Bible".
+            let name = slide.themeSlideName ?? ""
+            current.insert(name.isEmpty ? "" : ThemeCategories.match(name, in: designs)?.name ?? name)
+        }
+        return Menu("Layout") {
+            Button((current == [""] ? "✓ " : "") + StreamWording.themeDefault) { setLayout(nil, of: slideIDs) }
+            if !categories.isEmpty { Divider() }
+            ForEach(categories, id: \.self) { category in
+                Button((current == [category] ? "✓ " : "") + category) { setLayout(category, of: slideIDs) }
+            }
+        }
+    }
+
+    private func setLayout(_ category: String?, of slideIDs: [String]) {
+        let ids = Set(slideIDs)
+        model.updateSlides(presentationID: presentation.id, undoLabel: "Layout") { deck in
+            for index in deck.slides.indices where ids.contains(deck.slides[index].id) {
+                deck.slides[index].themeSlideName = category
+            }
+        }
+    }
+
+    /// Livestream › the same choices as the Screens sheet and the theme's
+    /// routing table. A choice here wins over the Show Setup switch.
+    private func livestreamMenu(_ slideIDs: [String]) -> some View {
+        let current = Set(presentation.slides.filter { slideIDs.contains($0.id) }.map { slide -> String in
+            guard let own = slide.streamDesign else { return "default" }
+            switch own.mode {
+            case .clear: return "clear"
+            case .audience: return "audience"
+            case .design: return own.isThemeLowerThird ? "lowerThird" : "design"
+            }
+        })
+        let choices: [(key: String, title: String, design: StreamDesign?)] = [
+            ("default", StreamWording.themeDefault, nil),
+            ("lowerThird", StreamWording.lowerThird, .slideLowerThird),
+            ("audience", StreamWording.fullScreen, .slideFullScreen),
+            ("clear", StreamWording.nothing, .slideNothing),
+        ]
+        return Menu("Livestream") {
+            ForEach(choices, id: \.key) { choice in
+                Button((current == [choice.key] ? "✓ " : "") + choice.title) {
+                    setStreamDesign(choice.design, of: slideIDs)
+                }
+                if choice.key == "default" { Divider() }
+            }
+        }
+    }
+
+    private func setStreamDesign(_ design: StreamDesign?, of slideIDs: [String]) {
+        let ids = Set(slideIDs)
+        model.updateSlides(presentationID: presentation.id, undoLabel: "Livestream") { deck in
+            for index in deck.slides.indices where ids.contains(deck.slides[index].id) {
+                deck.slides[index].streamDesign = design
+            }
+        }
+        actionRouter?.noteStreamDesign(design, forSlides: ids)
+    }
+
+    /// Listens to the pastor and puts each passage they mention on screen
+    /// as it's said, without opening the Sermon tab.
+    @ViewBuilder
+    private func listenButton() -> some View {
+        let assist = LiveAssist.shared
+        if assist.listening && assist.mode == .sermon {
+            Button("Stop Listening") { assist.stop() }
+        } else {
+            Button("Start Listening for Scripture") {
+                assist.showsAutomatically = true
+                Task { await assist.startSermon() }
+            }
         }
     }
 
