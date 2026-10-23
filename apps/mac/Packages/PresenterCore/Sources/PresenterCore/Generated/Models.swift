@@ -2608,6 +2608,32 @@ public struct StationSettings: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
+public struct ServiceDayTime: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var serviceTime: String
+    public var restartTime: String
+
+    public init(id: String, serviceTime: String, restartTime: String) {
+        self.id = id
+        self.serviceTime = serviceTime
+        self.restartTime = restartTime
+    }
+}
+
+public struct ServiceDaySettings: Codable, Sendable, Equatable {
+    public var services: [ServiceDayTime]
+    public var days: [Int]?
+    public var preServicePresentationId: String?
+    public var clearFirst: Bool?
+
+    public init(services: [ServiceDayTime], days: [Int]? = nil, preServicePresentationId: String? = nil, clearFirst: Bool? = nil) {
+        self.services = services
+        self.days = days
+        self.preServicePresentationId = preServicePresentationId
+        self.clearFirst = clearFirst
+    }
+}
+
 public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var designMap: String?
@@ -2617,8 +2643,9 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
     public var presentationTypeRules: [PresentationTypeRule]?
     public var pointsThemeId: String?
     public var sermonThemeId: String?
+    public var serviceDay: ServiceDaySettings?
 
-    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil) {
+    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil, serviceDay: ServiceDaySettings? = nil) {
         self.id = id
         self.designMap = designMap
         self.messageNotesThemeId = messageNotesThemeId
@@ -2627,6 +2654,7 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
         self.presentationTypeRules = presentationTypeRules
         self.pointsThemeId = pointsThemeId
         self.sermonThemeId = sermonThemeId
+        self.serviceDay = serviceDay
     }
 }
 

@@ -625,7 +625,7 @@ final class AppAPIBridge: LocalAPIBridge {
                 nextFire: scheduler?.upcoming[trigger.id],
 
                 lastFired: scheduler?.history.first {
-                    $0.triggerID == trigger.id && $0.outcome != .missed
+                    $0.triggerID == trigger.id && [.fired, .late].contains($0.outcome)
                 }?.at,
                 archived: trigger.archived == true ? true : nil
             )

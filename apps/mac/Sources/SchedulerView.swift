@@ -98,6 +98,9 @@ struct SchedulerView: View {
                 onChip
             }
             statusRow
+            ServiceDayCard(model: model, scheduler: scheduler)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 4)
             ScrollView {
                 LazyVStack(spacing: 4) {
                     boardNodes
@@ -229,9 +232,10 @@ struct SchedulerView: View {
                                 .lineLimit(1)
                             Spacer()
                             if record.outcome != .fired {
-                                Text(record.outcome == .late ? "late" : "missed")
+                                Text(record.outcome.label)
                                     .font(.system(size: 8))
                                     .foregroundStyle(Color.orange)
+                                    .help(record.detail ?? "")
                             }
                             Text(record.at, format: .dateTime.hour().minute().second())
                                 .font(.system(size: 9).monospacedDigit())
@@ -792,9 +796,10 @@ private struct SchedulerHistorySheet: View {
             }
             Spacer()
             if record.outcome != .fired {
-                Text(record.outcome == .late ? "late" : "missed")
+                Text(record.outcome.label)
                     .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(Color.orange)
+                    .help(record.detail ?? "")
             }
             Text(record.at, format: .dateTime.month(.abbreviated).day().hour().minute())
                 .font(.system(size: 9).monospacedDigit())
