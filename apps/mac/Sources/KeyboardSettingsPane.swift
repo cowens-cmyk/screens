@@ -311,19 +311,29 @@ struct KeyboardMapPane: View {
         Section {
             ForEach(visibleGroups) { group in
                 HStack(spacing: 10) {
-                    Circle()
-                        .fill(GroupColor.color(group.colorHex) ?? Color(.sRGB, white: 0.5))
-                        .frame(width: 10, height: 10)
                     Text(group.name)
                     Spacer()
+                    HexColorField(label: "\(group.name) color", hex: groupColor(group), labelHidden: true)
                     GroupHotKeyChip(model: model, group: group)
                 }
             }
         } header: {
             Text("Group Hot Keys")
         } footer: {
-            Text("Single letters that jump the live song to a section — press again to cycle repeats. These ride the group palette (Settings › Groups edits the same list).")
+            Text("Single letters that jump the live song to a section — press again to cycle repeats. Each group's color shows on its slides; type a hex code to match one exactly.")
         }
+    }
+
+    private func groupColor(_ group: GroupDefinition) -> Binding<String> {
+        Binding(
+            get: { group.colorHex },
+            set: { hex in
+                let id = group.id
+                model.updateGroupPalette { palette in
+                    guard let index = palette.groups.firstIndex(where: { $0.id == id }) else { return }
+                    palette.groups[index].colorHex = hex
+                }
+            })
     }
 
     private var visibleGroups: [GroupDefinition] {

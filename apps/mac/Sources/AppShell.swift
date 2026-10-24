@@ -1870,6 +1870,7 @@ struct SermonMicButton: View {
 struct ThemeEditorMenu: View {
     let model: AppModel
     @Binding var modeRaw: String
+    @State private var fromImage = false
 
     var body: some View {
         Menu {
@@ -1880,6 +1881,7 @@ struct ThemeEditorMenu: View {
             Button("New Theme") {
                 if let id = model.createEntity(in: .themes) { open(id) }
             }
+            Button("New Theme from Image…") { fromImage = true }
         } label: {
             Image(systemName: "paintpalette")
                 .font(.system(size: 13, weight: .medium))
@@ -1891,6 +1893,9 @@ struct ThemeEditorMenu: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Theme editor")
+        .sheet(isPresented: $fromImage) {
+            ThemeFromImageSheet(model: model) { id in open(id) }
+        }
     }
 
     private func open(_ id: String) {

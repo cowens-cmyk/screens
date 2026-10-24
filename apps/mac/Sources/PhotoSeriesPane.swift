@@ -2,13 +2,20 @@ import AppKit
 import PresenterCore
 import SwiftUI
 
-/// New Sermon Series › From a Photo: drop the series graphic, Claude reads
-/// it, and all nine designs appear to check, recolor and keep.
+/// Designs from art in one step: drop a picture or a Claude Design download
+/// and Claude reads it, picks the type, colors, backgrounds and bar, and
+/// every design appears ready to use. Nothing needs choosing before Done;
+/// Edit Colors & Fonts… is there for changing a pick, Try Again for
+/// another read.
 struct PhotoSeriesPane: View {
     let model: AppModel
+    let kind: PhotoSeriesTheme.Kind
     @Binding var name: String
-    /// Set by a drop anywhere on the sheet (or the plan's series picker).
-    @Binding var photo: URL?
+    /// What to build from: one picture, or a download's files. Set by a
+    /// drop here or anywhere on the sheet, or before the sheet opened.
+    @Binding var files: [URL]
+    /// Other ways to start, shown under the drop zone.
+    var alternatives: AnyView?
     let onCancel: () -> Void
     let onCreated: (String) -> Void
 
@@ -20,7 +27,7 @@ struct PhotoSeriesPane: View {
     }
 
     private struct Run: Equatable {
-        var photo: URL?
+        var files: [URL] = []
         var generation = 0
     }
 
@@ -29,13 +36,15 @@ struct PhotoSeriesPane: View {
     @State private var draft: PhotoSeriesDraft?
     @State private var preview: Theme?
     @State private var overrides = PhotoSeriesOverrides()
-    @State private var adjusting = false
+    @State private var editing = false
     @State private var saving = false
     @State private var saveError: String?
     @State private var dropTargeted = false
     /// The name last filled in from the art, so a new read replaces it but
     /// never a name someone typed.
     @State private var filledName = ""
+
+    private let families = NSFontManager.shared.availableFontFamilies
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -48,30 +57,35 @@ struct PhotoSeriesPane: View {
             if let saveError { Text(saveError).font(.caption).foregroundStyle(.red) }
             HStack {
                 if phase == .ready {
-                    Button("Regenerate") { run.generation += 1 }
-                        .help(draft?.readByClaude == true ? "Ask Claude for another take on the art" : "Try another accent from the art")
-                    Button("Choose Another…", action: choose)
+                    Button(editing ? "Hide Colors & Fonts" : "Edit Colors & Fonts…") { editing.toggle() }
+                    if draft?.canTryAgain == true {
+                        Button("Try Again") { run.generation += 1 }
+                            .help(draft?.readByClaude == true ? "Ask Claude for another take on the art" : "Try another accent from the art")
+                    }
                 }
                 Spacer()
-                Button("Cancel", action: onCancel)
-                Button(saving ? "Saving…" : "Use This Series") { Task { await use() } }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(phase != .ready || saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
+                if phase == .ready {
+                    Button(saving ? "Saving…" : "Done") { Task { await done() } }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(saving)
+                }
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first(where: SeriesArt.accepts) else { return false }
-            open(url)
+            guard PhotoSeries.accepts(urls) else { return false }
+            open(urls)
             return true
         } isTargeted: { dropTargeted = $0 }
         .onAppear {
-            run.photo = photo
+            run.files = files
             SeriesFonts.prepare()
         }
-        .onChange(of: photo) { _, url in
-            // Colors picked for other art don't carry over.
+        .onChange(of: files) { _, files in
+            // Picks made for other art don't carry over.
             overrides = PhotoSeriesOverrides()
-            run = Run(photo: url, generation: 0)
+            editing = false
+            run = Run(files: files, generation: 0)
         }
         .task(id: run) { await read() }
         .onChange(of: overrides) { _, _ in rebuildPreview() }
@@ -84,16 +98,19 @@ struct PhotoSeriesPane: View {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.secondary)
-            Text("Drop the series art here").font(.title3.weight(.semibold))
-            Text("The series title graphic, as a JPG, PNG, HEIC or PDF. Screens builds the five designs and four lower thirds to match it.")
+            Text(kind == .general ? "Drop an image here" : "Drop the series art here").font(.title3.weight(.semibold))
+            Text(kind == .general
+                 ? "A graphic (JPG, PNG, HEIC or PDF) or a Claude Design download. Screens picks the fonts, colors and backgrounds and builds Lyrics, Title, Announcements, Bible and Sermon Points designs with three lower thirds."
+                 : "The series graphic (JPG, PNG, HEIC or PDF) or a Claude Design download. Screens picks the fonts, colors and backgrounds and builds the five designs and four lower thirds.")
                 .font(.callout).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
+                .frame(maxWidth: 460)
             Button("Choose File…", action: choose)
             if let error { Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center) }
+            if let alternatives { alternatives.padding(.top, 6) }
         }
         .padding(24)
-        .frame(maxWidth: .infinity, minHeight: 280)
+        .frame(maxWidth: .infinity, minHeight: 300)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
@@ -105,18 +122,25 @@ struct PhotoSeriesPane: View {
         VStack(spacing: 12) {
             ProgressView().controlSize(.large)
             Text(stage).font(.headline)
-            Text(photo?.lastPathComponent ?? "").font(.caption).foregroundStyle(.secondary)
+            Text(workingDetail).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, minHeight: 280)
+        .frame(maxWidth: .infinity, minHeight: 300)
+    }
+
+    private var workingDetail: String {
+        let file = run.files.count == 1 ? run.files[0].lastPathComponent : "\(run.files.count) files"
+        guard !PhotoSeries.isDownload(run.files),
+              !ClaudeClient.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return file }
+        return "\(file)\nClaude is choosing fonts, colors and backgrounds. This usually takes under a minute."
     }
 
     @ViewBuilder
     private var ready: some View {
         if let draft, let preview {
-            TextField("Series name", text: $name)
+            TextField(kind == .general ? "Theme name" : "Series name", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .font(.title3)
-            if !draft.analysis.rationale.isEmpty, draft.readByClaude {
+            if !draft.analysis.rationale.isEmpty, draft.readByClaude || draft.source == .claudeDesign {
                 Text(draft.analysis.rationale).font(.caption).foregroundStyle(.secondary)
             }
             if let note = draft.note {
@@ -124,126 +148,128 @@ struct PhotoSeriesPane: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
+                    if editing { editor(draft) }
+                    let slides = preview.slides ?? []
                     Text("Full screen").font(.subheadline.weight(.semibold))
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                        ForEach(Self.fullScreen) { item in
-                            tile(preview.slides?.first { $0.name == item.category && $0.folder == nil },
-                                 label: item.label, images: draft.previewImages, overCamera: false)
+                        ForEach(slides.filter { $0.folder == nil }, id: \.id) { design in
+                            tile(design, label: design.name, images: draft.previewImages, overCamera: false)
                         }
                     }
                     Text("Livestream lower thirds").font(.subheadline.weight(.semibold)).padding(.top, 4)
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
-                        ForEach(Self.lowerThirds) { item in
-                            tile(preview.slides?.first { $0.name == "\(item.category) (Lower Third)" },
-                                 label: item.label, images: draft.previewImages, overCamera: true)
+                    let lower = slides.filter { $0.folder == BasicTemplates.lowerThirds }
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: max(3, lower.count)),
+                              spacing: 10) {
+                        ForEach(lower, id: \.id) { design in
+                            tile(design, label: design.name.replacingOccurrences(of: " (Lower Third)", with: ""),
+                                 images: draft.previewImages, overCamera: true)
                         }
                     }
-                    Text("The Title slide leaves the camera clear on the livestream.")
+                    Text("The Title slide leaves the camera clear on the livestream. Drop different art to start over.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             .frame(minHeight: 300, maxHeight: 470)
-            DisclosureGroup("Adjust Colors", isExpanded: $adjusting) {
-                HStack(spacing: 18) {
-                    ColorPicker("Text", selection: colorBinding(\.text, resolved: \.text), supportsOpacity: false)
-                    ColorPicker("Accent", selection: colorBinding(\.accent, resolved: \.accent), supportsOpacity: false)
-                    ColorPicker("Lower-third bar", selection: colorBinding(\.bar, resolved: \.bar), supportsOpacity: false)
-                    Spacer()
-                    Button("Reset") { overrides = PhotoSeriesOverrides() }
-                        .disabled(overrides == PhotoSeriesOverrides())
-                }
-                .padding(.top, 6)
-                Text("Lower-third text stays readable on the bar whatever you pick.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
         }
     }
 
-    private func tile(_ design: Slide?, label: String, images: [String: CGImage], overCamera: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Group {
-                if let design {
-                    SeriesDesignPreview(design: design, images: images, overCamera: overCamera)
-                } else {
-                    Color.secondary.opacity(0.1).aspectRatio(16 / 9, contentMode: .fit)
+    /// Everything chosen automatically, open to change: colors as hex or
+    /// from the color well, the three faces and capitals.
+    private func editor(_ draft: PhotoSeriesDraft) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 18) {
+                HexColorField(label: "Text", hex: colorBinding(\.text, resolved: \.text), supportsOpacity: false)
+                HexColorField(label: "Accent", hex: colorBinding(\.accent, resolved: \.accent), supportsOpacity: false)
+                if draft.lowerThird == nil {
+                    HexColorField(label: "Lower-third bar", hex: colorBinding(\.bar, resolved: \.bar), supportsOpacity: false)
                 }
+                Spacer()
             }
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.12)))
+            FontFacePicker(title: "Heading font", families: families,
+                           postScript: fontBinding(\.headingFont, chosen: draft.headingFont))
+            FontFacePicker(title: "Body font", families: families,
+                           postScript: fontBinding(\.bodyFont, chosen: draft.bodyFont))
+            FontFacePicker(title: "Scripture font", families: families,
+                           postScript: fontBinding(\.verseFont, chosen: draft.verseFont))
+            HStack {
+                Toggle("Headings in capitals", isOn: Binding(
+                    get: { overrides.headingCaps ?? draft.analysis.headingAllCaps },
+                    set: { overrides.headingCaps = $0 }))
+                Spacer()
+                Button("Use Automatic Choices") { overrides = PhotoSeriesOverrides() }
+                    .disabled(overrides == PhotoSeriesOverrides())
+            }
+            Text("Lower-third text stays readable on the bar whatever you pick.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
+    }
+
+    private func tile(_ design: Slide, label: String, images: [String: CGImage], overCamera: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            SeriesDesignPreview(design: design, images: images, overCamera: overCamera)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.12)))
             Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
     }
 
-    private struct Slot: Identifiable {
-        var category: String
-        var label: String
-        var id: String { category }
-    }
-
-    private static let fullScreen = [
-        Slot(category: SermonSeriesTheme.titleCategory, label: "Title"),
-        Slot(category: SermonSeriesTheme.scriptureCategory, label: "Bible"),
-        Slot(category: SermonSeriesTheme.pointCategory, label: "Sermon Points"),
-        Slot(category: SermonSeriesTheme.pointScriptureCategory, label: "Point + Scripture"),
-        Slot(category: SermonSeriesTheme.worshipCategory, label: "Worship"),
-    ]
-
-    private static let lowerThirds = [
-        Slot(category: SermonSeriesTheme.scriptureCategory, label: "Bible"),
-        Slot(category: SermonSeriesTheme.pointCategory, label: "Points"),
-        Slot(category: SermonSeriesTheme.pointScriptureCategory, label: "Point + Scripture"),
-        Slot(category: SermonSeriesTheme.worshipCategory, label: "Worship"),
-    ]
-
-    // MARK: Colors
+    // MARK: Picks
 
     private var resolved: PhotoSeriesTheme.Colors? {
-        draft.map { PhotoSeriesTheme.colors(for: $0.input(name: name, titleArtID: nil, backgroundID: nil, overrides: overrides)) }
+        draft.map {
+            PhotoSeriesTheme.colors(for: $0.input(name: name, titleArtID: nil, backgroundID: nil,
+                                                  lowerThirdID: PhotoSeriesDraft.previewLowerThirdID, overrides: overrides))
+        }
     }
 
     private func colorBinding(_ key: WritableKeyPath<PhotoSeriesOverrides, SeriesColor?>,
-                              resolved field: KeyPath<PhotoSeriesTheme.Colors, SeriesColor>) -> Binding<Color> {
-        Binding(
-            get: {
-                let color = overrides[keyPath: key] ?? resolved?[keyPath: field] ?? .white
-                return Color(.sRGB, red: color.red, green: color.green, blue: color.blue)
-            },
-            set: { picked in
-                guard let ns = NSColor(picked).usingColorSpace(.sRGB) else { return }
-                overrides[keyPath: key] = SeriesColor(red: ns.redComponent, green: ns.greenComponent, blue: ns.blueComponent)
-            })
+                              resolved field: KeyPath<PhotoSeriesTheme.Colors, SeriesColor>) -> Binding<String> {
+        HexColorField.binding(Binding(
+            get: { overrides[keyPath: key] ?? resolved?[keyPath: field] ?? .white },
+            set: { overrides[keyPath: key] = $0 }))
+    }
+
+    private func fontBinding(_ key: WritableKeyPath<PhotoSeriesOverrides, String?>, chosen: String) -> Binding<String> {
+        Binding(get: { overrides[keyPath: key] ?? chosen }, set: { overrides[keyPath: key] = $0 })
     }
 
     // MARK: Work
 
     private func choose() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = SeriesArt.types
+        panel.allowedContentTypes = PhotoSeries.fileTypes
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
         panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor in open(url) }
+            guard response == .OK else { return }
+            let urls = panel.urls
+            Task { @MainActor in open(urls) }
         }
     }
 
-    /// The same file again reads it again (after a failure, say).
-    private func open(_ url: URL) {
-        if url == photo { run.generation += 1 } else { photo = url }
+    /// The same files again read them again (after a failure, say).
+    private func open(_ urls: [URL]) {
+        if urls == files { run.generation += 1 } else { files = urls }
     }
 
     private func read() async {
-        guard let url = run.photo else {
+        guard !run.files.isEmpty else {
             phase = .empty
             return
         }
         saveError = nil
+        let download = PhotoSeries.isDownload(run.files)
         do {
-            let made = try await PhotoSeries.draft(from: url, variant: run.generation) { stage in
-                phase = .working(stage == .reading ? "Reading the art…" : "Building designs…")
+            let made = try await PhotoSeries.draft(from: run.files, kind: kind, variant: run.generation) { stage in
+                phase = .working(stage == .building ? "Building designs…"
+                                 : download ? "Opening the download…" : "Reading the art…")
             }
             guard !Task.isCancelled else { return }
             draft = made
             let suggested = made.suggestedName
-            if !suggested.isEmpty, name.trimmingCharacters(in: .whitespaces).isEmpty || name == filledName {
+            if name.trimmingCharacters(in: .whitespaces).isEmpty || name == filledName {
                 name = suggested
                 filledName = suggested
             }
@@ -261,13 +287,14 @@ struct PhotoSeriesPane: View {
         preview = draft?.previewTheme(name: name, overrides: overrides)
     }
 
-    private func use() async {
+    private func done() async {
         guard let draft else { return }
         saving = true
         defer { saving = false }
         saveError = nil
+        let typed = name.trimmingCharacters(in: .whitespaces)
         do {
-            let id = try await PhotoSeries.save(draft, name: name.trimmingCharacters(in: .whitespaces),
+            let id = try await PhotoSeries.save(draft, name: typed.isEmpty ? draft.suggestedName : typed,
                                                 overrides: overrides, model: model)
             onCreated(id)
         } catch {

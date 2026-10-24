@@ -56,6 +56,9 @@ struct RunOrderList: View {
 
     @State private var dropTargetItemID: String?
 
+    /// Series art dropped on the plan, building a new series for it.
+    @State private var seriesArt: SeriesArtDrop?
+
     @State private var mediaMenuState = MediaCueMenuState()
 
     private var renamingItemActive: Binding<Bool> {
@@ -76,14 +79,25 @@ struct RunOrderList: View {
                 }
             }
             // A SongSelect or ChordPro file dropped anywhere on the plan
-            // (between rows places it; see onInsert).
+            // (between rows places it; see onInsert). Series art or a
+            // Claude Design download starts this plan's new sermon series.
             .dropDestination(for: URL.self) { urls, _ in
+                guard !runOnly else { return false }
                 let lyrics = urls.filter { LyricsFetcher.lyricExtensions.contains($0.pathExtension.lowercased()) }
-                guard !runOnly, !lyrics.isEmpty else { return false }
+                if lyrics.isEmpty, PhotoSeries.accepts(urls) {
+                    seriesArt = SeriesArtDrop(files: urls)
+                    return true
+                }
+                guard !lyrics.isEmpty else { return false }
                 for url in lyrics {
                     LyricsFetcher.shared.importDropped(url, planID: serviceID, beforeItemID: nil, model: model)
                 }
                 return true
+            }
+            .sheet(item: $seriesArt) { drop in
+                SermonSeriesSheet(model: model, dropped: drop.files) { id in
+                    model.useSeries(id, forPlan: serviceID)
+                }
             }
             .onAppear {
                 loadCollapsed()
@@ -165,15 +179,20 @@ struct RunOrderList: View {
             .onInsert(of: [.plainText, .text, .fileURL]) { index, providers in
                 guard !runOnly else { return }
                 let anchorID = visible.indices.contains(index) ? visible[index].id : nil
+                let single = providers.count == 1
                 for provider in providers {
                     // A SongSelect or ChordPro file from Finder.
                     if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                         _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                            guard let url, LyricsFetcher.lyricExtensions.contains(url.pathExtension.lowercased())
-                            else { return }
+                            guard let url else { return }
                             Task { @MainActor in
-                                LyricsFetcher.shared.importDropped(
-                                    url, planID: serviceID, beforeItemID: anchorID, model: model)
+                                if LyricsFetcher.lyricExtensions.contains(url.pathExtension.lowercased()) {
+                                    LyricsFetcher.shared.importDropped(
+                                        url, planID: serviceID, beforeItemID: anchorID, model: model)
+                                } else if single, PhotoSeries.accepts([url]) {
+                                    // Series art or a download, as on the rest of the plan.
+                                    seriesArt = SeriesArtDrop(files: [url])
+                                }
                             }
                         }
                         continue

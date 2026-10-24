@@ -200,6 +200,75 @@ public enum SermonSeriesTheme {
         return result == theme ? nil : result
     }
 
+    // MARK: General themes
+
+    /// A general theme's names for lyrics and announcements, as the
+    /// starter themes and ThemeCategories know them.
+    public static let lyricsCategory = "Lyrics"
+    public static let announcementsCategory = "Announcements"
+    static let bodyText = "Body"
+
+    /// A series' look as a general theme, for songs, announcements,
+    /// scripture and points outside the message: Lyrics in place of
+    /// Worship, an Announcements design, no Point + Scripture, and not
+    /// flagged as a series, so the sermon pickers and the series upgrade
+    /// leave it alone. Lyrics comes first, the design a slide with no
+    /// category falls back to.
+    public static func general(from series: Theme) -> Theme {
+        var theme = series
+        let pointScriptureNames = [pointScriptureCategory, "\(pointScriptureCategory) (Lower Third)"]
+        var slides = (series.slides ?? []).filter { slide in
+            !pointScriptureNames.contains { $0.caseInsensitiveCompare(slide.name) == .orderedSame }
+        }
+        for index in slides.indices {
+            if slides[index].name == worshipCategory {
+                slides[index].name = lyricsCategory
+            } else if slides[index].name == "\(worshipCategory) (Lower Third)" {
+                slides[index].name = "\(lyricsCategory) (Lower Third)"
+            }
+        }
+        let full = fullScreen(slides)
+        if let point = full.first(where: { $0.name == pointCategory }), !has(announcementsCategory, in: full) {
+            slides.append(announcementsDesign(
+                from: point, bodyFont: series.fontFamily,
+                verse: full.first { $0.name == scriptureCategory }?.objects.first { $0.name == "Verse" }))
+        }
+        let order = [lyricsCategory, titleCategory, announcementsCategory, scriptureCategory, pointCategory]
+        func rank(_ slide: Slide) -> Int {
+            let name = slide.name.replacingOccurrences(of: " (Lower Third)", with: "")
+            return (isLowerThird(slide) ? order.count : 0) + (order.firstIndex(of: name) ?? order.count - 1)
+        }
+        theme.slides = slides.enumerated()
+            .sorted { rank($0.element) != rank($1.element) ? rank($0.element) < rank($1.element) : $0.offset < $1.offset }
+            .map(\.element)
+        let kept = Set(slides.map(\.id))
+        theme.streamDesigns = series.streamDesigns?.compactMap { route in
+            guard route.slideId.map(kept.contains) ?? true,
+                  route.category.caseInsensitiveCompare(pointScriptureCategory) != .orderedSame else { return nil }
+            var route = route
+            if route.category == worshipCategory { route.category = lyricsCategory }
+            return route
+        }
+        theme.isSermonSeries = nil
+        return theme
+    }
+
+    /// An announcement: a heading in the Point's face and color over a
+    /// paragraph in the body font, in the Point's look.
+    static func announcementsDesign(from point: Slide, bodyFont: String, verse: SlideObject?) -> Slide {
+        let source = pointText(in: point)
+        let frame = box(of: source)
+        let size = source?.textStyle?.fontSize ?? 90
+        var heading = restyled(source, name: titleText, sample: "Announcement", size: size * 0.85, keepCaps: true)
+        place(&heading, x: frame.x, y: 180, w: frame.w, h: 220)
+        var body = restyled(verse ?? source, name: bodyText, sample: "Details, times and where to sign up",
+                            size: 56, keepCaps: false)
+        body.textStyle?.fontName = bodyFont
+        body.textStyle?.horizontalAlignment = heading.textStyle?.horizontalAlignment ?? .center
+        place(&body, x: frame.x, y: 430, w: frame.w, h: 470)
+        return derived(from: point, name: announcementsCategory, texts: [heading, body])
+    }
+
     static func isLowerThird(_ slide: Slide) -> Bool {
         (slide.folder ?? "").caseInsensitiveCompare(BasicTemplates.lowerThirds) == .orderedSame
     }

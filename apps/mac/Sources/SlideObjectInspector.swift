@@ -755,7 +755,7 @@ struct SlideObjectInspector: View {
                 range: 0 ... 5, step: 0.05
             )
             if transition.transitionKind == .fadeColor {
-                HexColorRow(
+                HexColorField(
                     label: "Plate Color",
                     hex: Binding(
                         get: { model.currentSlide?.transition?.colorHex ?? "#000000FF" },
@@ -969,7 +969,7 @@ struct SlideObjectInspector: View {
                     .frame(width: 112)
                     .mixedValue(styleMixed(\.fontSize, default: model.theme?.fontSize ?? 96))
                 Spacer(minLength: 8)
-                HexColorRow(
+                HexColorField(
                     label: "Color",
                     hex: styleWrite(object, \.colorHex, default: model.theme?.textColorHex ?? "#FFFFFFFF"),
                     labelHidden: true
@@ -1240,7 +1240,7 @@ struct SlideObjectInspector: View {
                     ), range: 1...500)
                     .frame(width: 112)
                     Spacer(minLength: 8)
-                    HexColorRow(label: "Color", hex: Binding(
+                    HexColorField(label: "Color", hex: Binding(
                         get: { run?.colorHex ?? base?.colorHex ?? model.theme?.textColorHex ?? "#FFFFFFFF" },
                         set: { hex in model.applyStyleToSelection { $0.colorHex = hex } }
                     ), labelHidden: true)
@@ -1250,7 +1250,7 @@ struct SlideObjectInspector: View {
                     set: { on in model.applyStyleToSelection { $0.highlightColorHex = on ? Self.defaultHighlightHex : nil } }
                 ))
                 if run?.highlightColorHex != nil {
-                    HexColorRow(label: "Highlight Color", hex: Binding(
+                    HexColorField(label: "Highlight Color", hex: Binding(
                         get: { run?.highlightColorHex ?? Self.defaultHighlightHex },
                         set: { hex in model.applyStyleToSelection { $0.highlightColorHex = hex } }
                     ))
@@ -1301,7 +1301,7 @@ struct SlideObjectInspector: View {
                         Text("Numerals").tag(ChordNotation.numerals)
                         Text("Do Re Mi").tag(ChordNotation.doReMi)
                     }
-                    HexColorRow(
+                    HexColorField(
                         label: "Color",
                         hex: styleWrite(object, \.chordColorHex, default: "#FFB826FF")
                     )
@@ -1789,7 +1789,7 @@ struct SlideObjectInspector: View {
                     )
                     .frame(width: 112)
                     Spacer(minLength: 8)
-                    HexColorRow(label: "Color", hex: lineWrite(
+                    HexColorField(label: "Color", hex: lineWrite(
                         object, line: line, \.colorHex,
                         default: current(object).textStyle?.colorHex
                             ?? model.theme?.textColorHex ?? "#FFFFFFFF"
@@ -1866,7 +1866,7 @@ struct SlideObjectInspector: View {
             ))
             .mixedValue(mixed { $0.textStyle?.lineFill })
             if current(object).textStyle?.lineFill != nil {
-                HexColorRow(label: "Color", hex: lineFillColorBinding(object))
+                HexColorField(label: "Color", hex: lineFillColorBinding(object))
                 InspectorPicker("Width", selection: lineFillWrite(object, \.widthMode, default: .fullWidth)) {
                     Text("Full Width").tag(TextLineFillWidthMode.fullWidth)
                     Text("Line Width").tag(TextLineFillWidthMode.lineWidth)
@@ -1958,7 +1958,7 @@ struct SlideObjectInspector: View {
             ))
             .mixedValue(mixed { $0.textStyle?.outline })
             if current(object).textStyle?.outline != nil {
-                HexColorRow(label: "Color", hex: textOutlineWrite(object, \.colorHex))
+                HexColorField(label: "Color", hex: textOutlineWrite(object, \.colorHex))
                 numberField("Width", textOutlineWrite(object, \.width), range: 0...50)
             }
         }
@@ -2027,11 +2027,11 @@ struct SlideObjectInspector: View {
             .mixedValue(mixed { $0.fill })
             switch current(object).fill?.fillKind ?? .solid {
             case .solid:
-                HexColorRow(label: "Color", hex: fillWrite(object, \.colorHex, default: "#FFFFFFFF"))
+                HexColorField(label: "Color", hex: fillWrite(object, \.colorHex, default: "#FFFFFFFF"))
             case .linearGradient:
                 numberField("Angle", fillWrite(object, \.gradientAngleDegrees, default: 0), range: 0...360)
-                HexColorRow(label: "Start", hex: gradientStopHex(object, index: 0))
-                HexColorRow(label: "End", hex: gradientStopHex(object, index: 1))
+                HexColorField(label: "Start", hex: gradientStopHex(object, index: 0))
+                HexColorField(label: "End", hex: gradientStopHex(object, index: 1))
             case .media:
 
                 InspectorPicker("Source", selection: fillSourceBinding(object)) {
@@ -2189,7 +2189,7 @@ struct SlideObjectInspector: View {
             ))
             .mixedValue(mixed { $0.stroke })
             if current(object).stroke != nil {
-                HexColorRow(label: "Color", hex: strokeWrite(object, \.colorHex))
+                HexColorField(label: "Color", hex: strokeWrite(object, \.colorHex))
                 numberField("Width", strokeWrite(object, \.width), range: 0...50)
                 InspectorPicker("Dash", selection: Binding(
                     get: { current(object).stroke?.dashKind ?? .solid },
@@ -2255,7 +2255,7 @@ struct SlideObjectInspector: View {
             ))
             .mixedValue(mixed(read))
             if read(current(object)) != nil {
-                HexColorRow(label: "Color", hex: shadowWrite(object, \.colorHex, read: read, store: store))
+                HexColorField(label: "Color", hex: shadowWrite(object, \.colorHex, read: read, store: store))
                 dialRow {
                     numberField("Blur", shadowWrite(object, \.blurRadius, read: read, store: store), range: 0...100, stacked: true)
                     numberField("Offset X", shadowWrite(object, \.offsetX, read: read, store: store), range: -200...200, stacked: true)
@@ -2777,75 +2777,6 @@ private struct CommittingSlider: View {
                 live = nil
             }
         }
-    }
-}
-
-struct HexColorRow: View {
-    let label: String
-    @Binding var hex: String
-
-    var labelHidden = false
-
-    @State private var draft = ""
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        Group {
-            if labelHidden {
-                controls
-            } else {
-                LabeledContent(label) { controls }
-            }
-        }
-        .onAppear { draft = hex }
-        .onChange(of: hex) { _, newValue in
-            if !focused { draft = newValue }
-        }
-        .onChange(of: focused) { _, isFocused in
-            if !isFocused { commit() }
-        }
-    }
-
-    private var controls: some View {
-        HStack(spacing: 6) {
-            ColorPicker(label, selection: colorBinding, supportsOpacity: true)
-                .labelsHidden()
-            TextField("#RRGGBBAA", text: $draft)
-                .labelsHidden()
-                .font(.caption.monospaced())
-                .multilineTextAlignment(.trailing)
-                .lineLimit(1)
-                .frame(width: 84)
-                .focused($focused)
-                .onSubmit(commit)
-        }
-        .fixedSize()
-    }
-
-    private func commit() {
-        if ColorHex.color(draft) != nil, draft != hex {
-            hex = draft
-        } else {
-            draft = hex
-        }
-    }
-
-    private var colorBinding: Binding<Color> {
-        Binding(
-            get: {
-                guard let color = ColorHex.color(hex) else { return .white }
-                return Color(.sRGB, red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
-            },
-            set: { color in
-                let ns = NSColor(color).usingColorSpace(.sRGB) ?? .white
-                hex = ColorHex.hex(SceneColor(
-                    red: Double(ns.redComponent),
-                    green: Double(ns.greenComponent),
-                    blue: Double(ns.blueComponent),
-                    alpha: Double(ns.alphaComponent)
-                ))
-            }
-        )
     }
 }
 

@@ -57,10 +57,8 @@ public struct SeriesDesign: Codable, Equatable, Sendable {
         return cleaned
     }
 
-    /// Normalizes "#RRGGBB" to the app's "#RRGGBBAA".
+    /// Normalizes "#RRGGBB" (or "#RGB", "#RRGGBBAA") to the app's "#RRGGBBAA".
     public static func color(_ hex: String, fallback: String) -> String {
-        let digits = hex.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "")
-        guard digits.count == 6 || digits.count == 8, digits.allSatisfy(\.isHexDigit) else { return fallback }
-        return "#" + digits.uppercased() + (digits.count == 6 ? "FF" : "")
+        HexColor.normalized(hex) ?? fallback
     }
 }

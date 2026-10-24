@@ -136,21 +136,43 @@ struct SeriesArt: @unchecked Sendable {
         return context.createCGImage(output, from: extent)
     }
 
+    /// A designed background (a Claude Design download's), left sharp:
+    /// untouched at strength 0, otherwise only veiled darker or lighter as
+    /// far as its text needs.
+    static func veiled(_ titleArt: CGImage, tone: ArtAnalysis.Tone, strength: Double) -> CGImage? {
+        guard strength > 0 else { return titleArt }
+        let source = CIImage(cgImage: titleArt)
+        let veil = tone == .dark
+            ? CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.8 * strength))
+            : CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 0.85 * strength))
+        return context.createCGImage(veil.cropped(to: source.extent).composited(over: source), from: source.extent)
+    }
+
     // MARK: Measuring
 
     /// Colors on a grid across part of a 1920×1080 image, given in slide
-    /// points, so text can be checked against what's really behind it.
-    static func samples(of slideImage: CGImage, in box: PhotoSeriesTheme.Box) -> [SeriesColor] {
+    /// points, so text can be checked against what's really behind it. A
+    /// see-through image is measured laid over `backdrop`; without one its
+    /// clear pixels are skipped.
+    static func samples(of slideImage: CGImage, in box: PhotoSeriesTheme.Box, over backdrop: SeriesColor? = nil) -> [SeriesColor] {
         let unit = CGRect(x: box.x / 1920, y: box.y / 1080, width: box.width / 1920, height: box.height / 1080)
-        return samples(of: slideImage, columns: 96, rows: 54, in: unit).enumerated()
+        return samples(of: slideImage, columns: 96, rows: 54, in: unit, over: backdrop).enumerated()
             .filter { $0.offset % 3 == 0 }.map(\.element)
     }
 
     /// Where body text sits on the Point, Scripture and Worship designs.
     static let textArea: PhotoSeriesTheme.Box = (160, 170, 1600, 740)
 
-    private static func samples(of image: CGImage, columns: Int, rows: Int, in unit: CGRect) -> [SeriesColor] {
+    /// Where text sits on the lower thirds.
+    static let barTextArea: PhotoSeriesTheme.Box = (80, 885, 1760, 165)
+
+    private static func samples(of image: CGImage, columns: Int, rows: Int, in unit: CGRect,
+                                over backdrop: SeriesColor? = nil) -> [SeriesColor] {
         guard let context = bitmap(width: columns, height: rows), let data = context.data else { return [] }
+        if let backdrop {
+            context.setFillColor(CGColor(srgbRed: backdrop.red, green: backdrop.green, blue: backdrop.blue, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: columns, height: rows))
+        }
         context.interpolationQuality = .medium
         context.draw(image, in: CGRect(x: 0, y: 0, width: columns, height: rows))
         let bytes = data.bindMemory(to: UInt8.self, capacity: context.bytesPerRow * rows)
@@ -181,6 +203,14 @@ struct SeriesArt: @unchecked Sendable {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        return CGImageDestinationFinalize(destination) ? data as Data : nil
+    }
+
+    /// PNG keeps a lower third's transparency.
+    static func png(_ image: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
         return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 

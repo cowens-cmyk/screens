@@ -1,230 +1,104 @@
 import AppKit
 import PresenterCore
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// New Sermon Series: built from the series art (a photo of it), designed
-/// by Claude from the series name, or imported from Claude Design. Each
-/// becomes a theme with the five message designs and a matching lower third
-/// for each but Title, already tied for the livestream. One theme per series.
+/// New Sermon Series. It opens on the drop zone: drop the series art (or a
+/// Claude Design download) and the five message designs and four lower
+/// thirds are built from it with nothing to choose, then Done. Without art,
+/// Claude designs the series from its name instead. One theme per series.
 struct SermonSeriesSheet: View {
     let model: AppModel
-    /// Art dropped before the sheet opened (on the plan's series picker).
-    var photo: URL?
+    /// Art or a download dropped before the sheet opened (on a plan or the
+    /// Message & Series sheet); the build starts straight away.
+    var dropped: [URL] = []
     /// The new series' theme id, once it's saved.
     var onCreated: (String) -> Void = { _ in }
 
-    enum Source: String, CaseIterable, Identifiable {
-        case photo = "From a Photo"
-        case name = "From the Name"
-        case claudeDesign = "Claude Design"
-        var id: String { rawValue }
-    }
-
     @Environment(\.dismiss) private var dismiss
-    @State private var source = Source.photo
-    @State private var droppedPhoto: URL?
+    @State private var fromName = false
+    @State private var files: [URL] = []
     @State private var name = ""
-    @State private var background: URL?
-    @State private var lowerThird: URL?
-    // PostScript names of the exact faces (e.g. Gotham-Black).
-    @State private var headingFont = "HelveticaNeue-Bold"
-    @State private var bodyFont = "HelveticaNeue"
-    @State private var verseFont = "HelveticaNeue-Italic"
-    @State private var headingCaps = false
-    @State private var textColor = Color.white
-    @State private var accentColor = Color(red: 1, green: 0.7, blue: 0.12)
-    @State private var barTextColor = Color.white
-    @State private var barAccentColor = Color(red: 1, green: 0.7, blue: 0.12)
     @State private var copied = false
     @State private var creating = false
     @State private var error: String?
-    @State private var importNote: String?
-
-    private let families = NSFontManager.shared.availableFontFamilies
-
-    private var ownArtwork: Bool { source == .claudeDesign }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("New Sermon Series").font(.headline)
-            Picker("", selection: $source) {
-                ForEach(Source.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            if source == .photo {
-                PhotoSeriesPane(model: model, name: $name, photo: $droppedPhoto,
-                                onCancel: { dismiss() }, onCreated: finish)
+            Text(fromName ? "New Sermon Series from the Name" : "New Sermon Series").font(.headline)
+            if fromName {
+                nameForm
             } else {
-                designForm
+                PhotoSeriesPane(model: model, kind: .sermonSeries, name: $name, files: $files,
+                                alternatives: AnyView(alternatives),
+                                onCancel: { dismiss() }, onCreated: finish)
             }
         }
         .padding(16)
-        .frame(width: source == .photo ? 780 : 540)
+        .frame(width: fromName ? 540 : 780)
         .dropDestination(for: URL.self) { urls, _ in
-            // A single picture is series art unless the Claude Design
-            // import is open; a ZIP, folder or set of files is a download.
-            if source != .claudeDesign, urls.count == 1, let url = urls.first, SeriesArt.accepts(url) {
-                source = .photo
-                droppedPhoto = url
-            } else {
-                load(urls)
-            }
+            guard PhotoSeries.accepts(urls) else { return false }
+            fromName = false
+            files = urls
             return true
         }
         .onAppear {
-            if let photo { droppedPhoto = photo }
+            if !dropped.isEmpty { files = dropped }
         }
     }
 
+    /// Other ways in, kept out of the way of the drop.
+    private var alternatives: some View {
+        HStack(spacing: 14) {
+            Button("No Art Yet? Design from the Name…") { fromName = true }
+                .buttonStyle(.link)
+            Button(copied ? "Prompt Copied" : "Copy Claude Design Prompt") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(
+                    SeriesExport.exportPrompt(series: name.isEmpty ? "New Series" : name), forType: .string)
+                copied = true
+            }
+            .buttonStyle(.link)
+            .help("Paste into Claude Design after the artwork is made; drop the ZIP it gives you here.")
+        }
+        .font(.callout)
+    }
+
     @ViewBuilder
-    private var designForm: some View {
+    private var nameForm: some View {
         Form {
             TextField("Series name", text: $name)
-            if ownArtwork {
-                HStack {
-                    Button(copied ? "Copied" : "Copy Claude Design Prompt") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(
-                            SeriesExport.exportPrompt(series: name.isEmpty ? "New Series" : name), forType: .string)
-                        copied = true
-                    }
-                    Button("Import Claude Design Download…", action: chooseDownload)
-                    Spacer()
-                }
-                if let importNote {
-                    Text(importNote).font(.caption).foregroundStyle(.secondary)
-                }
-                imageRow("Background (1920×1080)", $background, types: [.jpeg, .png, .heic])
-                imageRow("Lower third (transparent PNG)", $lowerThird, types: [.png])
-                FontFacePicker(title: "Heading font", families: families, postScript: $headingFont)
-                Toggle("Headings in all caps", isOn: $headingCaps)
-                FontFacePicker(title: "Body font", families: families, postScript: $bodyFont)
-                FontFacePicker(title: "Scripture font", families: families, postScript: $verseFont)
-                ColorPicker("Text on background", selection: $textColor, supportsOpacity: false)
-                ColorPicker("Accent on background", selection: $accentColor, supportsOpacity: false)
-                ColorPicker("Text on lower third", selection: $barTextColor, supportsOpacity: false)
-                ColorPicker("Accent on lower third", selection: $barAccentColor, supportsOpacity: false)
-            }
         }
         .formStyle(.grouped)
-        Text(ownArtwork
-             ? "Paste the prompt into Claude Design, download the ZIP it makes, and import or drop it here. Everything below fills in."
-             : "Claude designs the background, lower-third bar, fonts and colors from the series name. Takes about a minute.")
+        Text("Claude designs the background, lower-third bar, fonts and colors from the series name. Takes about a minute.")
             .font(.caption).foregroundStyle(.secondary)
         if let error { Text(error).font(.caption).foregroundStyle(.red) }
         HStack {
+            Button("Use Art Instead") { fromName = false }
             Spacer()
             Button("Cancel") { dismiss() }
-            Button(creating ? (ownArtwork ? "Creating…" : "Designing…") : "Create Series Theme") { Task { await create() } }
+            Button(creating ? "Designing…" : "Create Series Theme") { Task { await create() } }
                 .keyboardShortcut(.defaultAction)
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || creating)
         }
     }
 
     /// Makes the new series current for slide building and tells whoever
-    /// opened the sheet.
+    /// opened the sheet (a plan applies it to its message).
     private func finish(_ themeID: String) {
         model.updateSlideBuilding { $0.sermonThemeId = themeID }
         onCreated(themeID)
         dismiss()
     }
 
-    private func chooseDownload() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.zip, .folder, .png, .jpeg, .json]
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = true
-        panel.begin { response in
-            guard response == .OK else { return }
-            let urls = panel.urls
-            Task { @MainActor in load(urls) }
-        }
-    }
-
-    /// Fills the form from a Claude Design download.
-    private func load(_ urls: [URL]) {
-        do {
-            let found = try ClaudeDesignImport.read(urls)
-            source = .claudeDesign
-            error = nil
-            if let series = found.series, name.trimmingCharacters(in: .whitespaces).isEmpty { name = series }
-            if let url = found.background { background = url }
-            if let url = found.lowerThird { lowerThird = url }
-            if let font = found.headingFont { headingFont = font }
-            if let font = found.bodyFont { bodyFont = font }
-            if let font = found.scriptureFont { verseFont = font }
-            if let caps = found.headingCaps { headingCaps = caps }
-            if let hex = found.textColor { textColor = Self.color(hex) }
-            if let hex = found.accentColor { accentColor = Self.color(hex) }
-            if let hex = found.lowerThirdTextColor { barTextColor = Self.color(hex) }
-            if let hex = found.lowerThirdAccentColor { barAccentColor = Self.color(hex) }
-            var notes = ["Imported. Check the fields, then Create Series Theme."]
-            if !found.missingFonts.isEmpty {
-                notes.append("Not installed, using the fallback: \(found.missingFonts.joined(separator: ", ")).")
-            }
-            if found.background == nil { notes.append("No background found.") }
-            if found.lowerThird == nil { notes.append("No transparent lower third found.") }
-            importNote = notes.joined(separator: " ")
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    static func color(_ hex: String) -> Color {
-        let digits = Array(hex.replacingOccurrences(of: "#", with: ""))
-        func channel(_ at: Int) -> Double {
-            guard digits.count >= at + 2, let value = Int(String(digits[at..<at + 2]), radix: 16) else { return 1 }
-            return Double(value) / 255
-        }
-        return Color(.sRGB, red: channel(0), green: channel(2), blue: channel(4))
-    }
-
-    private func imageRow(_ title: String, _ url: Binding<URL?>, types: [UTType]) -> some View {
-        LabeledContent(title) {
-            HStack {
-                Text(url.wrappedValue?.lastPathComponent ?? "None").foregroundStyle(.secondary).lineLimit(1)
-                Button("Choose…") {
-                    let panel = NSOpenPanel()
-                    panel.allowedContentTypes = types
-                    panel.begin { response in
-                        if response == .OK, let picked = panel.url { url.wrappedValue = picked }
-                    }
-                }
-            }
-        }
-    }
-
     private func create() async {
         creating = true
         defer { creating = false }
         error = nil
-        let seriesName = name.trimmingCharacters(in: .whitespaces)
-        if !ownArtwork {
-            do {
-                finish(try await SeriesGenerator.generate(series: seriesName, hint: "", model: model))
-            } catch {
-                self.error = error.localizedDescription
-            }
-            return
+        do {
+            finish(try await SeriesGenerator.generate(series: name.trimmingCharacters(in: .whitespaces), hint: "", model: model))
+        } catch {
+            self.error = error.localizedDescription
         }
-        var mediaIDs: [URL: String] = [:]
-        for url in [background, lowerThird].compactMap({ $0 }) {
-            if let id = await model.importFiles([url]).first { mediaIDs[url] = id }
-        }
-        let style = SermonSeriesStyle(
-            name: seriesName,
-            backgroundMediaID: background.flatMap { mediaIDs[$0] },
-            lowerThirdMediaID: lowerThird.flatMap { mediaIDs[$0] },
-            font: bodyFont, boldFont: headingFont,
-            textColor: Self.hex(textColor), accentColor: Self.hex(accentColor),
-            verseFont: verseFont,
-            lowerThirdTextColor: Self.hex(barTextColor), lowerThirdAccentColor: Self.hex(barAccentColor),
-            headingCaps: headingCaps)
-        let theme = SermonSeriesTheme.make(style)
-        model.createInDrive(theme)
-        finish(theme.id)
     }
 
     static func postScript(_ family: String, bold: Bool) -> String {
@@ -233,11 +107,43 @@ struct SermonSeriesSheet: View {
         if bold { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) }
         return font.fontName
     }
+}
 
-    static func hex(_ color: Color) -> String {
-        let ns = NSColor(color).usingColorSpace(.sRGB) ?? .white
-        return String(format: "#%02X%02X%02XFF",
-                      Int(ns.redComponent * 255), Int(ns.greenComponent * 255), Int(ns.blueComponent * 255))
+/// Art dropped somewhere that opens a sheet to build from it.
+struct SeriesArtDrop: Identifiable {
+    let id = UUID()
+    var files: [URL]
+}
+
+/// Library › Themes › New Theme from Image…: the same one-step build as a
+/// sermon series, made into a general theme (Lyrics, Title, Announcements,
+/// Bible and Sermon Points, with lower thirds) for anything outside the
+/// message.
+struct ThemeFromImageSheet: View {
+    let model: AppModel
+    /// An image or download dropped on the Themes library.
+    var dropped: [URL] = []
+    var onCreated: (String) -> Void = { _ in }
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var files: [URL] = []
+    @State private var name = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New Theme from Image").font(.headline)
+            PhotoSeriesPane(model: model, kind: .general, name: $name, files: $files, alternatives: nil,
+                            onCancel: { dismiss() },
+                            onCreated: { id in
+                                onCreated(id)
+                                dismiss()
+                            })
+        }
+        .padding(16)
+        .frame(width: 780)
+        .onAppear {
+            if !dropped.isEmpty { files = dropped }
+        }
     }
 }
 

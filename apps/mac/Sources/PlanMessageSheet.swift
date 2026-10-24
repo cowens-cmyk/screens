@@ -12,20 +12,15 @@ struct PlanMessageSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var creatingSeries = false
     @State private var importingNotes = false
-    /// Series art dropped on the picker, to make a new series from.
-    @State private var seriesArt: URL?
+    /// Series art (or a Claude Design download) dropped on the sheet, to
+    /// make a new series from.
+    @State private var seriesArt: [URL] = []
     @State private var artTargeted = false
 
     private var plan: Service? { model.resident.services.value(planID) }
     private var seriesID: String { plan?.sermonThemeId ?? model.slideBuilding.sermonThemeId ?? "" }
     private var series: Theme? { seriesID.isEmpty ? nil : model.theme(seriesID) }
-    private var messageID: String? {
-        plan?.messagePresentationId
-            ?? plan?.items.first { item in
-                item.itemKind == .presentation
-                    && model.presentation(item.refId).map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
-            }?.refId
-    }
+    private var messageID: String? { Self.messageID(of: plan, model: model) }
     private var message: Presentation? { messageID.flatMap { model.presentation($0) } }
 
     var body: some View {
@@ -40,20 +35,11 @@ struct PlanMessageSheet: View {
                             ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
                         }
                         Button("New Series…") {
-                            seriesArt = nil
+                            seriesArt = []
                             creatingSeries = true
                         }
                     }
-                    .padding(2)
-                    .background(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.accentColor, lineWidth: 2)
-                        .opacity(artTargeted ? 1 : 0))
-                    .dropDestination(for: URL.self) { urls, _ in
-                        guard let url = urls.first(where: SeriesArt.accepts) else { return false }
-                        seriesArt = url
-                        creatingSeries = true
-                        return true
-                    } isTargeted: { artTargeted = $0 }
-                    Text("The series sets the look of the message on every screen. Switch series here any week, or drop the series art here to make a new one from it.")
+                    Text("The series sets the look of the message on every screen. Switch series here any week, or drop the series art (or a Claude Design download) anywhere here to make a new one from it.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Message") {
@@ -97,9 +83,18 @@ struct PlanMessageSheet: View {
         }
         .padding(20)
         .frame(width: 520, height: 560)
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: 3)
+            .opacity(artTargeted ? 1 : 0).allowsHitTesting(false))
+        .dropDestination(for: URL.self) { urls, _ in
+            guard PhotoSeries.accepts(urls) else { return false }
+            seriesArt = urls
+            creatingSeries = true
+            return true
+        } isTargeted: { artTargeted = $0 }
         .sheet(isPresented: $creatingSeries) {
-            // A new series made here is this plan's series.
-            SermonSeriesSheet(model: model, photo: seriesArt, onCreated: chooseSeries)
+            // A new series made here is this plan's series; art dropped
+            // here starts building as the sheet opens.
+            SermonSeriesSheet(model: model, dropped: seriesArt, onCreated: chooseSeries)
         }
         .sheet(isPresented: $importingNotes) { SermonImportSheet(model: model, planID: planID) }
     }
@@ -115,17 +110,16 @@ struct PlanMessageSheet: View {
         }
     }
 
-    /// The plan, its message and future sermon imports all follow the series.
     private func chooseSeries(_ id: String) {
-        guard !id.isEmpty else { return }
-        model.updateService(planID) { $0.sermonThemeId = id }
-        model.updateSlideBuilding { $0.sermonThemeId = id }
-        if let messageID {
-            model.updatePresentation(messageID) { message in
-                message.themeId = id
-                for index in message.slides.indices { message.slides[index].themeId = nil }
-            }
-        }
+        model.useSeries(id, forPlan: planID)
+    }
+
+    fileprivate static func messageID(of plan: Service?, model: AppModel) -> String? {
+        plan?.messagePresentationId
+            ?? plan?.items.first { item in
+                item.itemKind == .presentation
+                    && model.presentation(item.refId).map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
+            }?.refId
     }
 
     private func addMessage() {
@@ -139,6 +133,22 @@ struct PlanMessageSheet: View {
         model.updateService(planID) { plan in
             plan.items.append(item)
             plan.messagePresentationId = id
+        }
+    }
+}
+
+extension AppModel {
+    /// The plan, its message and future sermon imports all follow the series.
+    func useSeries(_ id: String, forPlan planID: String) {
+        guard !id.isEmpty else { return }
+        let messageID = PlanMessageSheet.messageID(of: resident.services.value(planID), model: self)
+        updateService(planID) { $0.sermonThemeId = id }
+        updateSlideBuilding { $0.sermonThemeId = id }
+        if let messageID {
+            updatePresentation(messageID) { message in
+                message.themeId = id
+                for index in message.slides.indices { message.slides[index].themeId = nil }
+            }
         }
     }
 }

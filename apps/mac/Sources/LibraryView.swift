@@ -529,11 +529,27 @@ struct LibrarySidebar: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
+            // An image (or a Claude Design download) dropped on Themes
+            // becomes a theme in one step.
+            if model.selectedSection == .themes, PhotoSeries.accepts(urls) {
+                themeFromImage = SeriesArtDrop(files: urls)
+                return true
+            }
             guard acceptsImport else { return false }
             Task { await model.importFiles(urls) }
             return true
         }
+        .sheet(item: $themeFromImage) { drop in
+            ThemeFromImageSheet(model: model, dropped: drop.files) { id in fileNewEntry(id) }
+        }
+        .sheet(isPresented: $creatingSeries) {
+            SermonSeriesSheet(model: model) { id in fileNewEntry(id) }
+        }
     }
+
+    /// Library › Themes › New Theme from Image…, or an image dropped there.
+    @State private var themeFromImage: SeriesArtDrop?
+    @State private var creatingSeries = false
 
     private var breadcrumbBar: some View {
         HStack(spacing: 3) {
@@ -1137,6 +1153,7 @@ struct LibrarySidebar: View {
     private var emptyDescription: String {
         switch model.selectedSection {
         case .media, .audio: "Drop files here or use Import."
+        case .themes: "Use New, or drop an image here to make a theme from it."
         default: "Use New to create one."
         }
     }
@@ -1197,6 +1214,15 @@ struct LibrarySidebar: View {
                                 fileNewEntry(model.createConfidenceLayout(from: template))
                             }
                         }
+                    } label: {
+                        Label("New", systemImage: "plus")
+                    }
+                    .fixedSize()
+                } else if model.selectedSection == .themes {
+                    Menu {
+                        Button("New Theme") { fileNewEntry(model.createEntity(in: .themes)) }
+                        Button("New Theme from Image…") { themeFromImage = SeriesArtDrop(files: []) }
+                        Button("New Sermon Series…") { creatingSeries = true }
                     } label: {
                         Label("New", systemImage: "plus")
                     }

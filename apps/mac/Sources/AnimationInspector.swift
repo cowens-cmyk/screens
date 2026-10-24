@@ -1104,7 +1104,7 @@ struct AnimationStepEditor: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 case .color:
-                    HexColorRow(label: "Color", hex: write(\.colorHex, default: "#FFD54FFF"))
+                    HexColorField(label: "Color", hex: write(\.colorHex, default: "#FFD54FFF"))
                 case .fade:
                     EmptyView()
                 }

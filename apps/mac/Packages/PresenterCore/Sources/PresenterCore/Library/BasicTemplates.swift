@@ -17,7 +17,7 @@ public enum BasicTemplates {
     static let accent = "#FFB21EFF"
     static let backdrop = "#0B1020FF"
     static let bar = "#000000B8"
-    static let lowerThirds = "Lower Thirds"
+    public static let lowerThirds = "Lower Thirds"
 
     public static func themes() -> [Theme] {
         [worship(), scripture(), points()]

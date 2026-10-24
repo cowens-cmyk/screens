@@ -4,8 +4,17 @@ import Foundation
 /// Claude (or the palette alone) read from it: the art itself as the Title
 /// slide, a calm background made from it behind points, scripture and
 /// lyrics, and a lower-third bar in the series' colors, with every text
-/// color checked for contrast against what it sits on.
+/// color checked for contrast against what it sits on. The same build makes
+/// a general theme from any church graphic (see Kind).
 public enum PhotoSeriesTheme {
+    /// What the art becomes: a sermon series (the five message designs and
+    /// four lower thirds), or a general theme for songs, announcements,
+    /// scripture and points in the same look.
+    public enum Kind: Sendable {
+        case sermonSeries
+        case general
+    }
+
     public struct Input: Sendable {
         public var name: String
         /// Sanitized (see ArtAnalysis.sanitized).
@@ -26,19 +35,30 @@ public enum PhotoSeriesTheme {
         public var textBackgroundSamples: [SeriesColor]
         /// Colors measured from the title art inside `titleBox`.
         public var titleSamples: [SeriesColor]
-        /// Staff's own picks from Adjust Colors, used as they are on the
+        /// Staff's own picks from Edit Colors & Fonts, used as they are on the
         /// full-screen designs.
         public var textColorOverride: SeriesColor?
         public var accentColorOverride: SeriesColor?
         public var barColorOverride: SeriesColor?
+        public var kind: Kind
+        /// A lower-third image of its own (a Claude Design download's
+        /// transparent PNG), drawn in place of the bar shapes.
+        public var lowerThirdMediaID: String?
+        /// That image where the bar's text sits, laid over black and over
+        /// white: the darkest and brightest camera shot behind it.
+        public var lowerThirdSamples: [SeriesColor]
 
         public init(
             name: String, analysis: ArtAnalysis, headingFont: String, bodyFont: String, verseFont: String,
             titleArtMediaID: String?, artWidth: Double, artHeight: Double, textBackgroundMediaID: String?,
             textBackgroundSamples: [SeriesColor] = [], titleSamples: [SeriesColor] = [],
             textColorOverride: SeriesColor? = nil, accentColorOverride: SeriesColor? = nil,
-            barColorOverride: SeriesColor? = nil
+            barColorOverride: SeriesColor? = nil, kind: Kind = .sermonSeries,
+            lowerThirdMediaID: String? = nil, lowerThirdSamples: [SeriesColor] = []
         ) {
+            self.kind = kind
+            self.lowerThirdMediaID = lowerThirdMediaID
+            self.lowerThirdSamples = lowerThirdSamples
             self.name = name
             self.analysis = analysis
             self.headingFont = headingFont
@@ -109,11 +129,21 @@ public enum PhotoSeriesTheme {
         let titleText = input.textColorOverride
             ?? (input.titleSamples.isEmpty ? text : SeriesContrast.readable(wantedText, on: input.titleSamples))
 
-        let bar = input.barColorOverride ?? SeriesColor(hex: analysis.lowerThird.color) ?? darkest
         let barAccent = input.accentColorOverride ?? SeriesColor(hex: analysis.lowerThird.accentColor) ?? accent
+        let wantedBarText = SeriesColor(hex: analysis.lowerThird.textColor) ?? .white
+        if input.lowerThirdMediaID != nil, !input.lowerThirdSamples.isEmpty {
+            // An image bar can't be made more solid, so only its text moves.
+            let samples = input.lowerThirdSamples
+            let measured = samples.first ?? darkest
+            let fixedAccent = SeriesContrast.readable(barAccent, on: samples)
+            return Colors(text: text, accent: accent, titleText: titleText, bar: measured, barOpacity: 1,
+                          barText: SeriesContrast.readable(wantedBarText, on: samples), barAccent: fixedAccent,
+                          barRule: fixedAccent, background: backgroundSamples.first ?? darkest)
+        }
+        let bar = input.barColorOverride ?? SeriesColor(hex: analysis.lowerThird.color) ?? darkest
         let fixed = barText(
             bar: bar, opacity: analysis.lowerThird.opacity,
-            text: SeriesColor(hex: analysis.lowerThird.textColor) ?? .white, accent: barAccent)
+            text: wantedBarText, accent: barAccent)
         let rule = barAccent.contrast(with: bar.composited(alpha: fixed.opacity, over: .black)) >= 2 ? barAccent : fixed.accent
         return Colors(text: text, accent: accent, titleText: titleText, bar: bar, barOpacity: fixed.opacity,
                       barText: fixed.text, barAccent: fixed.accent, barRule: rule,
@@ -167,7 +197,14 @@ public enum PhotoSeriesTheme {
         theme.slides = theme.slides?.map { design in
             var design = design
             if SermonSeriesTheme.isLowerThird(design) {
-                design.objects = lowerThirdObjects(design.objects, analysis: analysis.lowerThird, colors: colors)
+                if let image = input.lowerThirdMediaID {
+                    design.objects = design.objects.filter { $0.objectKind == .text } + [SlideObject(
+                        id: UUID().uuidString, objectKind: .shape, name: "Series Lower Third", text: "",
+                        x: 0, y: 0, width: 1920, height: 1080, shapeKind: .rectangle,
+                        fill: ObjectFill(fillKind: .media, mediaId: image, mediaScaleMode: .fill))]
+                } else {
+                    design.objects = lowerThirdObjects(design.objects, analysis: analysis.lowerThird, colors: colors)
+                }
             } else if design.name == SermonSeriesTheme.titleCategory {
                 design.objects = titleObjects(design.objects, input: input, colors: colors, backdrop: backdrop)
             } else if let backdrop {
@@ -175,7 +212,7 @@ public enum PhotoSeriesTheme {
             }
             return design
         }
-        return theme
+        return input.kind == .general ? SermonSeriesTheme.general(from: theme) : theme
     }
 
     private static func backgroundShape(_ background: ArtAnalysis.TextBackground, colors: Colors) -> SlideObject {

@@ -1483,13 +1483,13 @@ private struct PresentationBackgroundPopover: View {
                 if fill.fillKind == .linearGradient {
                     LabeledContent("Fill", value: "Gradient (imported)")
                 } else {
-                    ColorPicker("Color", selection: colorBinding, supportsOpacity: true)
+                    HexColorField(label: "Color", hex: colorBinding)
                 }
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .frame(width: 240)
+        .frame(width: 280)
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -1504,29 +1504,10 @@ private struct PresentationBackgroundPopover: View {
         )
     }
 
-    private var colorBinding: Binding<Color> {
+    private var colorBinding: Binding<String> {
         Binding(
-            get: {
-                guard let scene = ColorHex.color(
-                    model.presentation.backgroundFill?.colorHex ?? ""
-                ) else { return .black }
-                return Color(
-                    .sRGB, red: scene.red, green: scene.green,
-                    blue: scene.blue, opacity: scene.alpha
-                )
-            },
-            set: { color in
-                let ns = NSColor(color).usingColorSpace(.sRGB) ?? .black
-                model.setBackgroundFill(ObjectFill(
-                    fillKind: .solid,
-                    colorHex: ColorHex.hex(SceneColor(
-                        red: Double(ns.redComponent),
-                        green: Double(ns.greenComponent),
-                        blue: Double(ns.blueComponent),
-                        alpha: Double(ns.alphaComponent)
-                    ))
-                ))
-            }
+            get: { model.presentation.backgroundFill?.colorHex ?? "#000000FF" },
+            set: { hex in model.setBackgroundFill(ObjectFill(fillKind: .solid, colorHex: hex)) }
         )
     }
 }

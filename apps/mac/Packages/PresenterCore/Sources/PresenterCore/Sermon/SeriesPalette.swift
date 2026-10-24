@@ -11,7 +11,7 @@ public enum SeriesPalette {
     }
 
     /// Up to `count` swatches, largest first. Deterministic: the same pixels
-    /// always give the same palette, so Regenerate offline is predictable
+    /// always give the same palette, so Try Again offline is predictable
     /// and the tests can pin it.
     public static func extract(_ pixels: [SeriesColor], count: Int = 6, iterations: Int = 12) -> [Swatch] {
         guard !pixels.isEmpty, count > 0 else { return [] }
@@ -58,7 +58,7 @@ public enum SeriesPalette {
 
     /// The color that best stands for the series: the most vivid swatch
     /// that is more than a speck, else the largest. `skip` steps through
-    /// the other candidates, for Regenerate.
+    /// the other candidates, for Try Again.
     public static func accent(of swatches: [Swatch], skip: Int = 0) -> SeriesColor? {
         let candidates = swatches.filter { $0.share >= 0.02 }
             .sorted { vividness($0) > vividness($1) }

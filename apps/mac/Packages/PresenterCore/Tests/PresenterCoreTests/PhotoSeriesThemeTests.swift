@@ -278,3 +278,84 @@ private func input(_ analysis: ArtAnalysis, blurred: Bool = false) -> PhotoSerie
     #expect(title.objects.last?.fill?.mediaId == "soft")
     #expect(!(title.objects.contains { $0.fill?.mediaId == "art" }))
 }
+
+// MARK: General themes
+
+@Test func anImageBecomesAGeneralThemeWithTheStandardCategories() throws {
+    var made = input(try ArtAnalysis.decode(analysisJSON), blurred: true)
+    made.kind = .general
+    let theme = PhotoSeriesTheme.make(made)
+    let slides = theme.slides ?? []
+    #expect(theme.isSermonSeries == nil)
+    #expect(!SermonSeriesTheme.isSeries(theme), "the sermon pickers and the series upgrade leave it alone")
+    #expect(SermonSeriesTheme.upgraded(theme) == nil)
+
+    let full = slides.filter { $0.folder == nil }.map(\.name)
+    #expect(full == ["Lyrics", "Title", "Announcements", "Bible", "Sermon Points"])
+    let lower = slides.filter { $0.folder == BasicTemplates.lowerThirds }.map(\.name)
+    #expect(lower == ["Lyrics (Lower Third)", "Bible (Lower Third)", "Sermon Points (Lower Third)"])
+
+    // Each category finds its design the way slides ask for one.
+    for category in ["Lyrics", "Worship", "Announcements", "Bible", "Scripture", "Sermon Points", "Title"] {
+        #expect(ThemeCategories.match(category, in: slides) != nil, "\(category)")
+    }
+    // Lyrics land in the Lyrics box, on the same background as the rest.
+    let lyrics = try #require(slides.first)
+    #expect(lyrics.objects.first?.name == "Lyrics")
+    #expect(lyrics.objects.last?.fill?.mediaId == "soft")
+
+    let announcements = try #require(slides.first { $0.name == "Announcements" })
+    #expect(announcements.objects.prefix(2).map(\.name) == ["Title", "Body"])
+    #expect(announcements.objects[1].textStyle?.fontName == "AvenirNext-Regular", "the paragraph is in the body font")
+    #expect(announcements.objects.last?.fill?.mediaId == "soft")
+
+    // Livestream routes follow the renames and each points at a design that exists.
+    let routes = theme.streamDesigns ?? []
+    #expect(Set(routes.map(\.category)) == ["Title", "Lyrics", "Bible", "Sermon Points"])
+    for route in routes where route.mode == .design {
+        #expect(slides.contains { $0.id == route.slideId }, "\(route.category)")
+    }
+}
+
+// MARK: Claude Design downloads
+
+private let designExport = SeriesExport(
+    series: "Rooted", background: "background.png", lowerThird: "lower-third.png",
+    headingFont: ["Gotham Black"], bodyFont: ["Gotham Book"], scriptureFont: nil, headingAllCaps: true,
+    textColor: "#F5EFE0", accentColor: "#D9A441", lowerThirdTextColor: "#FFFFFF", lowerThirdAccentColor: "#D9A441")
+
+@Test func aClaudeDesignDownloadKeepsItsOwnChoices() {
+    let swatches = [
+        SeriesPalette.Swatch(color: SeriesColor(hex: "#1F3B2D")!, share: 0.8),
+        SeriesPalette.Swatch(color: SeriesColor(hex: "#D9A441")!, share: 0.2),
+    ]
+    let analysis = ArtAnalysis.designed(designExport, swatches: swatches)
+    #expect(analysis.seriesTitle == "Rooted")
+    #expect(analysis.textColor == "#F5EFE0FF" && analysis.accentColor == "#D9A441FF")
+    #expect(!analysis.artHasTitle, "the background has no words, so the Title slide prints the title")
+    #expect(analysis.textBackground.kind == .blurredArt && analysis.textBackground.tone == .dark)
+    #expect(analysis.textBackground.strength == 0 && analysis.textBackground.blur == 0,
+            "used as designed until the contrast check says otherwise")
+    #expect(analysis.headingAllCaps)
+    #expect(analysis.lowerThird.textColor == "#FFFFFFFF" && analysis.lowerThird.accentColor == "#D9A441FF")
+    #expect(analysis.sanitized(installedFamilies: ["Avenir Next"]).textBackground.strength == 0)
+
+    // Dark text on a light design keeps the background light.
+    var light = designExport
+    light.textColor = "#1A1A1A"
+    #expect(ArtAnalysis.designed(light, swatches: swatches).textBackground.tone == .light)
+}
+
+@Test func anImageLowerThirdReplacesTheBarAndItsTextStillReads() throws {
+    var made = input(try ArtAnalysis.decode(analysisJSON), blurred: true)
+    made.lowerThirdMediaID = "bar-art"
+    // A pale bar: white text would vanish over a bright shot.
+    made.lowerThirdSamples = [SeriesColor(hex: "#B8C4D0")!, SeriesColor(hex: "#DDE3EA")!]
+    let theme = PhotoSeriesTheme.make(made)
+    let lower = try #require(theme.slides?.first { $0.name == "\(SermonSeriesTheme.pointCategory) (Lower Third)" })
+    #expect(lower.objects.last?.fill?.mediaId == "bar-art")
+    #expect(!lower.objects.contains { $0.name == "Bar" || $0.name == "Accent Rule" })
+    let text = try #require(SeriesColor(hex: lower.objects.first?.textStyle?.colorHex ?? ""))
+    #expect(SeriesContrast.worst(text, on: made.lowerThirdSamples) >= 4.4, "rounding the color to a byte costs a hair")
+    #expect(text.luminance < 0.2, "dark text on the pale bar")
+}

@@ -16,14 +16,11 @@ public struct SeriesColor: Equatable, Hashable, Sendable {
     public static let white = SeriesColor(red: 1, green: 1, blue: 1)
     public static let black = SeriesColor(red: 0, green: 0, blue: 0)
 
-    /// "#RRGGBB" or "#RRGGBBAA" (alpha ignored); nil for anything else.
+    /// "#RGB", "#RRGGBB" or "#RRGGBBAA" (alpha ignored), read as HexColor
+    /// reads them; nil for anything else.
     public init?(hex: String) {
-        let digits = hex.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "")
-        guard digits.count == 6 || digits.count == 8, digits.allSatisfy(\.isHexDigit),
-              let value = UInt32(digits.prefix(6), radix: 16) else { return nil }
-        self.init(red: Double((value >> 16) & 0xFF) / 255,
-                  green: Double((value >> 8) & 0xFF) / 255,
-                  blue: Double(value & 0xFF) / 255)
+        guard let color = HexColor(hex) else { return nil }
+        self.init(red: color.red, green: color.green, blue: color.blue)
     }
 
     /// The app's "#RRGGBBAA".

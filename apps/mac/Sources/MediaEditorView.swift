@@ -1281,9 +1281,8 @@ struct MediaEditorView: View {
                 onScrubPhase: { began in transitionScrubbing = began }
             )
             if transition.transitionKind == .fadeColor {
-
-                CommittedTextField("Plate Color (hex)", text: Binding(
-                    get: { cachedMedia?.transition?.colorHex ?? "#000000" },
+                HexColorField(label: "Plate Color", hex: Binding(
+                    get: { cachedMedia?.transition?.colorHex ?? "#000000FF" },
                     set: { v in
                         cachedMedia?.transition?.colorHex = v
                         model.updateMedia(entry.id) { $0.transition?.colorHex = v }

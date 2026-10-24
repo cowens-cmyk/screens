@@ -313,7 +313,7 @@ public struct ArtAnalysis: Codable, Equatable, Sendable {
     /// no API key or Claude can't be reached: the art dimmed behind white
     /// text (or washed behind black for light art), the most vivid color as
     /// the accent, a deep bar, and system fonts. `variant` steps the accent
-    /// through the other vivid colors, for Regenerate.
+    /// through the other vivid colors, for Try Again.
     public static func local(swatches: [SeriesPalette.Swatch], seriesTitle: String,
                              fonts: (heading: String, body: String) = ("Avenir Next", "Avenir Next"),
                              variant: Int = 0) -> ArtAnalysis {
@@ -340,6 +340,35 @@ public struct ArtAnalysis: Codable, Equatable, Sendable {
             headingAllCaps: true, scriptureItalic: false,
             lowerThird: LowerThird(style: .solid, color: deep.hex(), opacity: 0.88, placement: .fullWidth,
                                    accentRule: true, textColor: SeriesColor.white.hex(), accentColor: accent.hex()))
+    }
+
+    // MARK: From a Claude Design download
+
+    /// A Claude Design download already made its choices, so it's read
+    /// without asking Claude again: its text, accent and bar colors and its
+    /// capitals, over its own background used as it is. The background is
+    /// art with no words on it, so it carries no title; `strength` starts
+    /// at 0 and the contrast check dims it only as far as its text color
+    /// needs (the app leaves it unblurred). The palette, and a bar for a download without a
+    /// lower third of its own, come from the background's colors.
+    public static func designed(_ export: SeriesExport, swatches: [SeriesPalette.Swatch]) -> ArtAnalysis {
+        var analysis = local(swatches: swatches, seriesTitle: export.series)
+        let text = export.textColor.flatMap(SeriesColor.init(hex:)) ?? SeriesColor(hex: analysis.textColor) ?? .white
+        analysis.rationale = "Colors and fonts from the Claude Design download."
+        analysis.artHasTitle = false
+        analysis.textColor = text.hex()
+        if let accent = export.accentColor.flatMap(SeriesColor.init(hex:)) { analysis.accentColor = accent.hex() }
+        // Light text needs the background kept dark, dark text light.
+        analysis.textBackground = TextBackground(kind: .blurredArt, tone: text.luminance > 0.4 ? .dark : .light,
+                                                 strength: 0, blur: 0, colors: [])
+        analysis.headingAllCaps = export.headingAllCaps ?? false
+        analysis.scriptureItalic = false
+        if let barText = export.lowerThirdTextColor.flatMap(SeriesColor.init(hex:)) {
+            analysis.lowerThird.textColor = barText.hex()
+        }
+        analysis.lowerThird.accentColor = (export.lowerThirdAccentColor.flatMap(SeriesColor.init(hex:))
+            ?? SeriesColor(hex: analysis.accentColor) ?? .white).hex()
+        return analysis
     }
 }
 
