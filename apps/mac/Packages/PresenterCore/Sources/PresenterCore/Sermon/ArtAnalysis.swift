@@ -388,6 +388,25 @@ public enum ArtCrop {
         return .init(x: x, y: y, width: width, height: height)
     }
 
+    /// The pixel size to draw artwork of this shape at: its own proportions,
+    /// large enough to cover the slide (the background is cropped to it
+    /// later, like any picture), and no more than 3840 on a side.
+    public static func renderSize(width: Double, height: Double) -> (width: Int, height: Int) {
+        guard width > 0, height > 0 else { return (Int(slide.width), Int(slide.height)) }
+        let scale = min(max(slide.width / width, slide.height / height), 3840 / width, 3840 / height)
+        return (max(1, Int((width * scale).rounded())), max(1, Int((height * scale).rounded())))
+    }
+
+    /// Where a lower third of this shape sits on the slide, in slide points
+    /// from the top: as large as fits without cropping, centered across and
+    /// resting on the bottom edge, where the bar belongs.
+    public static func bottomFit(width: Double, height: Double) -> (x: Double, y: Double, width: Double, height: Double) {
+        guard width > 0, height > 0 else { return (0, 0, slide.width, slide.height) }
+        let scale = min(slide.width / width, slide.height / height)
+        let fitted = (width: width * scale, height: height * scale)
+        return ((slide.width - fitted.width) / 2, slide.height - fitted.height, fitted.width, fitted.height)
+    }
+
     /// A zone of the image in slide points, clipped to what's visible; nil
     /// when the crop cuts it away.
     public static func slideRect(of zone: ArtAnalysis.Zone, visible: ArtAnalysis.Zone)

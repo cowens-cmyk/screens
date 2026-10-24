@@ -9,8 +9,16 @@ import SwiftUI
 struct SermonSeriesSheet: View {
     let model: AppModel
     /// Art or a download dropped before the sheet opened (on a plan or the
-    /// Message & Series sheet); the build starts straight away.
+    /// Message & Series sheet); the build starts straight away unless
+    /// `confirmFirst`.
     var dropped: [URL] = []
+    /// Show the dropped art with Build Designs before reading it: a plan's
+    /// list takes drops for many reasons, so one may not be meant as art.
+    var confirmFirst = false
+    /// Make the new series the default for slide building. A plan's own
+    /// series is set by its onCreated; from the Library a new series only
+    /// becomes the default when there isn't one yet.
+    var makesDefault = false
     /// The new series' theme id, once it's saved.
     var onCreated: (String) -> Void = { _ in }
 
@@ -29,7 +37,7 @@ struct SermonSeriesSheet: View {
                 nameForm
             } else {
                 PhotoSeriesPane(model: model, kind: .sermonSeries, name: $name, files: $files,
-                                alternatives: AnyView(alternatives),
+                                alternatives: AnyView(alternatives), confirmFirst: confirmFirst,
                                 onCancel: { dismiss() }, onCreated: finish)
             }
         }
@@ -82,10 +90,15 @@ struct SermonSeriesSheet: View {
         }
     }
 
-    /// Makes the new series current for slide building and tells whoever
-    /// opened the sheet (a plan applies it to its message).
+    /// Tells whoever opened the sheet (a plan applies the series to its
+    /// message and makes it current). Made anywhere else, a series becomes
+    /// the default only when asked or when there's no working default, so
+    /// building one ahead of time doesn't change this week's.
     private func finish(_ themeID: String) {
-        model.updateSlideBuilding { $0.sermonThemeId = themeID }
+        let current = model.slideBuilding.sermonThemeId ?? ""
+        if makesDefault || current.isEmpty || model.theme(current) == nil {
+            model.updateSlideBuilding { $0.sermonThemeId = themeID }
+        }
         onCreated(themeID)
         dismiss()
     }
@@ -202,6 +215,6 @@ struct SermonImportSettingsForm: View {
             }
             Button("New Sermon Series…") { creatingSeries = true }
         }
-        .sheet(isPresented: $creatingSeries) { SermonSeriesSheet(model: model) }
+        .sheet(isPresented: $creatingSeries) { SermonSeriesSheet(model: model, makesDefault: true) }
     }
 }

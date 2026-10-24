@@ -79,12 +79,14 @@ struct RunOrderList: View {
                 }
             }
             // A SongSelect or ChordPro file dropped anywhere on the plan
-            // (between rows places it; see onInsert). Series art or a
-            // Claude Design download starts this plan's new sermon series.
+            // (between rows places it; see onInsert). One picture or one
+            // ZIP offers to start this plan's new sermon series, and nothing
+            // is read until Build Designs: a plan is dropped on for many
+            // reasons, and the art would go to Claude.
             .dropDestination(for: URL.self) { urls, _ in
                 guard !runOnly else { return false }
                 let lyrics = urls.filter { LyricsFetcher.lyricExtensions.contains($0.pathExtension.lowercased()) }
-                if lyrics.isEmpty, PhotoSeries.accepts(urls) {
+                if lyrics.isEmpty, PhotoSeries.acceptsOnPlan(urls) {
                     seriesArt = SeriesArtDrop(files: urls)
                     return true
                 }
@@ -95,7 +97,7 @@ struct RunOrderList: View {
                 return true
             }
             .sheet(item: $seriesArt) { drop in
-                SermonSeriesSheet(model: model, dropped: drop.files) { id in
+                SermonSeriesSheet(model: model, dropped: drop.files, confirmFirst: true) { id in
                     model.useSeries(id, forPlan: serviceID)
                 }
             }
@@ -189,8 +191,8 @@ struct RunOrderList: View {
                                 if LyricsFetcher.lyricExtensions.contains(url.pathExtension.lowercased()) {
                                     LyricsFetcher.shared.importDropped(
                                         url, planID: serviceID, beforeItemID: anchorID, model: model)
-                                } else if single, PhotoSeries.accepts([url]) {
-                                    // Series art or a download, as on the rest of the plan.
+                                } else if single, !runOnly, PhotoSeries.acceptsOnPlan([url]) {
+                                    // Series art or a ZIP, as on the rest of the plan.
                                     seriesArt = SeriesArtDrop(files: [url])
                                 }
                             }

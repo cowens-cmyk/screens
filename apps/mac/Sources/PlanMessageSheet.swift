@@ -86,7 +86,7 @@ struct PlanMessageSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: 3)
             .opacity(artTargeted ? 1 : 0).allowsHitTesting(false))
         .dropDestination(for: URL.self) { urls, _ in
-            guard PhotoSeries.accepts(urls) else { return false }
+            guard PhotoSeries.acceptsDropped(urls) else { return false }
             seriesArt = urls
             creatingSeries = true
             return true

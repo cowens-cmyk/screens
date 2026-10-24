@@ -166,8 +166,23 @@ struct SeriesArt: @unchecked Sendable {
     /// Where text sits on the lower thirds.
     static let barTextArea: PhotoSeriesTheme.Box = (80, 885, 1760, 165)
 
+    /// A lower-third image where its text sits, measured for
+    /// PhotoSeriesTheme.barSamples: each pixel's color and how solid it is.
+    static func barPixels(of lowerThird: CGImage) -> [(color: SeriesColor, alpha: Double)] {
+        let box = barTextArea
+        let unit = CGRect(x: box.x / 1920, y: box.y / 1080, width: box.width / 1920, height: box.height / 1080)
+        return pixels(of: lowerThird, columns: 96, rows: 54, in: unit).enumerated()
+            .filter { $0.offset % 3 == 0 }.map(\.element)
+    }
+
     private static func samples(of image: CGImage, columns: Int, rows: Int, in unit: CGRect,
                                 over backdrop: SeriesColor? = nil) -> [SeriesColor] {
+        pixels(of: image, columns: columns, rows: rows, in: unit, over: backdrop)
+            .filter { $0.alpha > 0.5 }.map(\.color)
+    }
+
+    private static func pixels(of image: CGImage, columns: Int, rows: Int, in unit: CGRect,
+                               over backdrop: SeriesColor? = nil) -> [(color: SeriesColor, alpha: Double)] {
         guard let context = bitmap(width: columns, height: rows), let data = context.data else { return [] }
         if let backdrop {
             context.setFillColor(CGColor(srgbRed: backdrop.red, green: backdrop.green, blue: backdrop.blue, alpha: 1))
@@ -176,7 +191,7 @@ struct SeriesArt: @unchecked Sendable {
         context.interpolationQuality = .medium
         context.draw(image, in: CGRect(x: 0, y: 0, width: columns, height: rows))
         let bytes = data.bindMemory(to: UInt8.self, capacity: context.bytesPerRow * rows)
-        var colors: [SeriesColor] = []
+        var pixels: [(color: SeriesColor, alpha: Double)] = []
         // Bitmap rows run top down in memory; `unit` is measured from the top.
         let firstRow = Int((unit.minY * Double(rows)).rounded(.down))
         let lastRow = min(rows, Int((unit.maxY * Double(rows)).rounded(.up)))
@@ -187,14 +202,31 @@ struct SeriesArt: @unchecked Sendable {
             for column in firstColumn..<lastColumn {
                 let offset = row * context.bytesPerRow + column * 4
                 let alpha = Double(bytes[offset + 3]) / 255
-                guard alpha > 0.5 else { continue }
+                guard alpha > 0 else {
+                    pixels.append((.black, 0))
+                    continue
+                }
                 // Premultiplied, so divided back out.
-                colors.append(SeriesColor(red: Double(bytes[offset]) / 255 / alpha,
-                                          green: Double(bytes[offset + 1]) / 255 / alpha,
-                                          blue: Double(bytes[offset + 2]) / 255 / alpha))
+                pixels.append((SeriesColor(red: min(1, Double(bytes[offset]) / 255 / alpha),
+                                           green: min(1, Double(bytes[offset + 1]) / 255 / alpha),
+                                           blue: min(1, Double(bytes[offset + 2]) / 255 / alpha)), alpha))
             }
         }
-        return colors
+        return pixels
+    }
+
+    /// A lower third on a transparent 1920×1080 canvas, as large as fits
+    /// without cropping and resting on the bottom edge: a bar exported at
+    /// another size or shape lands where a bar belongs instead of being
+    /// stretched or cropped by the full-frame shape that shows it.
+    static func lowerThirdCanvas(_ image: CGImage) -> CGImage? {
+        if image.width == 1920, image.height == 1080 { return image }
+        let fit = ArtCrop.bottomFit(width: Double(image.width), height: Double(image.height))
+        guard let context = bitmap(width: 1920, height: 1080) else { return nil }
+        context.interpolationQuality = .high
+        // Core Graphics measures from the bottom.
+        context.draw(image, in: CGRect(x: fit.x, y: 1080 - fit.y - fit.height, width: fit.width, height: fit.height))
+        return context.makeImage()
     }
 
     // MARK: Files

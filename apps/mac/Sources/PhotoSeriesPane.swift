@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import PresenterCore
 import SwiftUI
 
@@ -16,11 +17,16 @@ struct PhotoSeriesPane: View {
     @Binding var files: [URL]
     /// Other ways to start, shown under the drop zone.
     var alternatives: AnyView?
+    /// Art dropped somewhere it might not have been meant for (a plan's
+    /// list): it's shown with Build Designs, and nothing is read until
+    /// that's pressed.
+    var confirmFirst = false
     let onCancel: () -> Void
     let onCreated: (String) -> Void
 
     private enum Phase: Equatable {
         case empty
+        case confirm
         case working(String)
         case ready
         case failed(String)
@@ -43,6 +49,15 @@ struct PhotoSeriesPane: View {
     /// The name last filled in from the art, so a new read replaces it but
     /// never a name someone typed.
     @State private var filledName = ""
+    /// Build Designs pressed for art that needed confirming.
+    @State private var confirmed = false
+    /// The art shown for confirming, from a small thumbnail.
+    @State private var thumbnail: CGImage?
+    /// Whether this build asks Claude, read from the Keychain once as the
+    /// build starts rather than each time the view draws.
+    @State private var askingClaude = false
+    /// Media this draft's save imported, kept for another try.
+    @State private var imported = PhotoSeries.ImportedMedia()
 
     private let families = NSFontManager.shared.availableFontFamilies
 
@@ -50,6 +65,7 @@ struct PhotoSeriesPane: View {
         VStack(alignment: .leading, spacing: 12) {
             switch phase {
             case .empty: dropZone(error: nil)
+            case .confirm: confirmation
             case .failed(let message): dropZone(error: message)
             case .working(let stage): working(stage)
             case .ready: ready
@@ -64,7 +80,15 @@ struct PhotoSeriesPane: View {
                     }
                 }
                 Spacer()
-                Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
+                // A save can't be stopped part way, so Cancel waits for it.
+                Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction).disabled(saving)
+                if phase == .confirm {
+                    Button("Build Designs") {
+                        confirmed = true
+                        run.generation += 1
+                    }
+                    .keyboardShortcut(.defaultAction)
+                }
                 if phase == .ready {
                     Button(saving ? "Saving…" : "Done") { Task { await done() } }
                         .keyboardShortcut(.defaultAction)
@@ -72,8 +96,9 @@ struct PhotoSeriesPane: View {
                 }
             }
         }
+        .interactiveDismissDisabled(saving)
         .dropDestination(for: URL.self) { urls, _ in
-            guard PhotoSeries.accepts(urls) else { return false }
+            guard !saving, PhotoSeries.accepts(urls) else { return false }
             open(urls)
             return true
         } isTargeted: { dropTargeted = $0 }
@@ -118,6 +143,29 @@ struct PhotoSeriesPane: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(dropTargeted ? Color.accentColor.opacity(0.08) : .clear))
     }
 
+    /// The dropped art and one choice: build from it, or Cancel.
+    private var confirmation: some View {
+        VStack(spacing: 12) {
+            if let thumbnail {
+                Image(decorative: thumbnail, scale: 1)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: 520, maxHeight: 260)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else if PhotoSeries.isDownload(run.files), let file = run.files.first {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: file.path))
+                    .resizable()
+                    .frame(width: 96, height: 96)
+            }
+            Text(run.files.first?.lastPathComponent ?? "").font(.headline).lineLimit(1)
+            Text(kind == .general
+                 ? "Build a theme from this image?"
+                 : "Build a sermon series from this art? It becomes this plan's series.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 300)
+    }
+
     private func working(_ stage: String) -> some View {
         VStack(spacing: 12) {
             ProgressView().controlSize(.large)
@@ -129,8 +177,7 @@ struct PhotoSeriesPane: View {
 
     private var workingDetail: String {
         let file = run.files.count == 1 ? run.files[0].lastPathComponent : "\(run.files.count) files"
-        guard !PhotoSeries.isDownload(run.files),
-              !ClaudeClient.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return file }
+        guard askingClaude else { return file }
         return "\(file)\nClaude is choosing fonts, colors and backgrounds. This usually takes under a minute."
     }
 
@@ -261,6 +308,16 @@ struct PhotoSeriesPane: View {
         }
         saveError = nil
         let download = PhotoSeries.isDownload(run.files)
+        if confirmFirst, !confirmed {
+            let file = run.files[0]
+            thumbnail = nil
+            phase = .confirm
+            guard !download else { return }
+            let shown = await Task.detached { Self.thumbnail(of: file) }.value
+            if !Task.isCancelled { thumbnail = shown }
+            return
+        }
+        askingClaude = !download && !ClaudeClient.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         do {
             let made = try await PhotoSeries.draft(from: run.files, kind: kind, variant: run.generation) { stage in
                 phase = .working(stage == .building ? "Building designs…"
@@ -268,6 +325,7 @@ struct PhotoSeriesPane: View {
             }
             guard !Task.isCancelled else { return }
             draft = made
+            imported = PhotoSeries.ImportedMedia()
             let suggested = made.suggestedName
             if name.trimmingCharacters(in: .whitespaces).isEmpty || name == filledName {
                 name = suggested
@@ -283,6 +341,16 @@ struct PhotoSeriesPane: View {
         }
     }
 
+    /// A picture small enough to show, without decoding all of it.
+    private nonisolated static func thumbnail(of url: URL) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 1040,
+        ] as CFDictionary)
+    }
+
     private func rebuildPreview() {
         preview = draft?.previewTheme(name: name, overrides: overrides)
     }
@@ -295,7 +363,7 @@ struct PhotoSeriesPane: View {
         let typed = name.trimmingCharacters(in: .whitespaces)
         do {
             let id = try await PhotoSeries.save(draft, name: typed.isEmpty ? draft.suggestedName : typed,
-                                                overrides: overrides, model: model)
+                                                overrides: overrides, model: model, imported: imported)
             onCreated(id)
         } catch {
             saveError = error.localizedDescription

@@ -119,10 +119,25 @@ enum PhotoSeries {
     /// Kinds of file the drop zone and Choose File take.
     static let fileTypes = SeriesArt.types + [.zip, .folder, .svg, .json]
 
-    /// A picture, or something that looks like a Claude Design download.
+    /// A picture (a PDF too), or something that looks like a Claude Design
+    /// download: what the series sheet's own drop zone and Choose File
+    /// take, where nothing else could be meant.
     static func accepts(_ urls: [URL]) -> Bool {
         if urls.count == 1, let url = urls.first, SeriesArt.accepts(url) { return true }
         return ClaudeDesignImport.isDownload(urls)
+    }
+
+    /// Dropped where art is clearly wanted but not on the sheet itself (the
+    /// Message & Series sheet, the Themes library): the same, less PDFs,
+    /// which are as likely to be the sermon notes as the series art.
+    static func acceptsDropped(_ urls: [URL]) -> Bool {
+        !urls.contains { DesignDownload.isPDF($0.lastPathComponent) } && accepts(urls)
+    }
+
+    /// Dropped on a plan's list, where files land for many reasons: one
+    /// picture or one ZIP, and the sheet asks before reading it.
+    static func acceptsOnPlan(_ urls: [URL]) -> Bool {
+        DesignDownload.acceptsOnPlan(urls.map(\.lastPathComponent))
     }
 
     /// Anything but one picture is read as a download.
@@ -152,10 +167,16 @@ enum PhotoSeries {
         }
 
         let found = try await ClaudeDesignImport.read(files)
+        // Everything needed is in memory once the two images are loaded,
+        // so the unpacked download goes however the build ends.
+        defer { found.cleanUp() }
         guard let backgroundURL = found.background else { throw ClaudeDesignImport.ImportError.noBackground }
         let art = try await Task.detached { try SeriesArt.load(backgroundURL) }.value
         let lowerThirdURL = found.lowerThird
-        let lowerThird = await Task.detached { lowerThirdURL.flatMap { try? SeriesArt.load($0) } }.value?.image
+        let lowerThird = await Task.detached { () -> CGImage? in
+            guard let loaded = lowerThirdURL.flatMap({ try? SeriesArt.load($0) }) else { return nil }
+            return SeriesArt.lowerThirdCanvas(loaded.image)
+        }.value
         let name = files.count == 1 ? first.lastPathComponent : first.deletingLastPathComponent().lastPathComponent
         var notes: [String] = []
         if !found.missingFonts.isEmpty {
@@ -216,9 +237,7 @@ enum PhotoSeries {
         else { throw CouldNotRender() }
         let barSamples = await Task.detached(operation: { () -> [SeriesColor] in
             guard let lowerThird else { return [] }
-            // The bar over the darkest and brightest shot it can sit on.
-            return SeriesArt.samples(of: lowerThird, in: SeriesArt.barTextArea, over: .black)
-                + SeriesArt.samples(of: lowerThird, in: SeriesArt.barTextArea, over: .white)
+            return PhotoSeriesTheme.barSamples(SeriesArt.barPixels(of: lowerThird))
         }).value
         try Task.checkCancellation()
         return PhotoSeriesDraft(
@@ -282,24 +301,39 @@ enum PhotoSeries {
                         backgroundSamples: samples, analysis: settled)
     }
 
+    /// The media one draft's save has imported. When the theme then fails to
+    /// save, Done again uses these instead of importing the same art twice.
+    @MainActor
+    final class ImportedMedia {
+        var title: String?
+        var background: String?
+        var lowerThird: String?
+    }
+
     /// Imports the rendered art through the normal media import, then saves
     /// the theme and waits for it to land so the pickers can select it.
-    static func save(_ draft: PhotoSeriesDraft, name: String, overrides: PhotoSeriesOverrides, model: AppModel) async throws -> String {
+    /// `imported` belongs to this draft and is kept across tries.
+    static func save(_ draft: PhotoSeriesDraft, name: String, overrides: PhotoSeriesOverrides, model: AppModel,
+                     imported: ImportedMedia) async throws -> String {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("photo-series-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         let safeName = name.replacingOccurrences(of: "/", with: "-")
 
-        func importImage(_ image: CGImage, _ fileName: String, png: Bool = false) async throws -> String {
+        func importImage(_ image: CGImage, _ fileName: String, png: Bool = false,
+                         as slot: ReferenceWritableKeyPath<ImportedMedia, String?>) async throws -> String {
+            if let id = imported[keyPath: slot] { return id }
             let url = folder.appendingPathComponent(fileName)
             guard let data = await Task.detached(operation: { png ? SeriesArt.png(image) : SeriesArt.jpeg(image) }).value
             else { throw CouldNotRender() }
             try data.write(to: url)
             guard let id = await model.importFiles([url]).first else { throw CouldNotRender() }
+            imported[keyPath: slot] = id
             return id
         }
-        let titleID = draft.analysis.titleUsesArt ? try await importImage(draft.titleArt, "\(safeName) Title.jpg") : nil
+        let titleID = draft.analysis.titleUsesArt
+            ? try await importImage(draft.titleArt, "\(safeName) Title.jpg", as: \.title) : nil
         var backgroundID: String?
         if let soft = draft.softBackground {
             // A designed background no text needed dimmed is the title art
@@ -307,12 +341,12 @@ enum PhotoSeries {
             if soft === draft.titleArt, let titleID {
                 backgroundID = titleID
             } else {
-                backgroundID = try await importImage(soft, "\(safeName) Background.jpg")
+                backgroundID = try await importImage(soft, "\(safeName) Background.jpg", as: \.background)
             }
         }
         var lowerThirdID: String?
         if let lowerThird = draft.lowerThird {
-            lowerThirdID = try await importImage(lowerThird, "\(safeName) Lower Third.png", png: true)
+            lowerThirdID = try await importImage(lowerThird, "\(safeName) Lower Third.png", png: true, as: \.lowerThird)
         }
         let theme = PhotoSeriesTheme.make(draft.input(
             name: name, titleArtID: titleID, backgroundID: backgroundID, lowerThirdID: lowerThirdID, overrides: overrides))

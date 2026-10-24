@@ -44,8 +44,8 @@ public enum PhotoSeriesTheme {
         /// A lower-third image of its own (a Claude Design download's
         /// transparent PNG), drawn in place of the bar shapes.
         public var lowerThirdMediaID: String?
-        /// That image where the bar's text sits, laid over black and over
-        /// white: the darkest and brightest camera shot behind it.
+        /// That image's bar where its text sits (see barSamples). Empty
+        /// when nothing there is solid: the text is over the camera shot.
         public var lowerThirdSamples: [SeriesColor]
 
         public init(
@@ -131,10 +131,13 @@ public enum PhotoSeriesTheme {
 
         let barAccent = input.accentColorOverride ?? SeriesColor(hex: analysis.lowerThird.accentColor) ?? accent
         let wantedBarText = SeriesColor(hex: analysis.lowerThird.textColor) ?? .white
-        if input.lowerThirdMediaID != nil, !input.lowerThirdSamples.isEmpty {
-            // An image bar can't be made more solid, so only its text moves.
-            let samples = input.lowerThirdSamples
-            let measured = samples.first ?? darkest
+        if input.lowerThirdMediaID != nil {
+            // An image bar can't be made more solid, so only its text moves:
+            // the download's own colors when they read on the bar, else the
+            // least change toward white or black. With nothing solid where
+            // the text sits, the text is over the camera shot itself.
+            let samples = input.lowerThirdSamples.isEmpty ? [SeriesColor.black, .white] : input.lowerThirdSamples
+            let measured = input.lowerThirdSamples.first ?? darkest
             let fixedAccent = SeriesContrast.readable(barAccent, on: samples)
             return Colors(text: text, accent: accent, titleText: titleText, bar: measured, barOpacity: 1,
                           barText: SeriesContrast.readable(wantedBarText, on: samples), barAccent: fixedAccent,
@@ -165,6 +168,20 @@ public enum PhotoSeriesTheme {
             fixedText = SeriesContrast.readable(text, on: backdrops())
         }
         return (fixedText, SeriesContrast.readable(accent, on: backdrops()), opacity)
+    }
+
+    /// What a lower-third image's text is checked against, from its pixels
+    /// where the text sits (color with alpha not premultiplied). Only the
+    /// bar counts: clear pixels around it are the camera shot, not
+    /// something the text sits on, and counting them would rule out every
+    /// color the download chose. A bar that is itself see-through is laid
+    /// over black and white, the darkest and brightest shot behind it.
+    public static func barSamples(_ pixels: [(color: SeriesColor, alpha: Double)]) -> [SeriesColor] {
+        pixels.filter { $0.alpha > 0.5 }.flatMap { pixel -> [SeriesColor] in
+            guard pixel.alpha < 0.99 else { return [pixel.color] }
+            return [pixel.color.composited(alpha: pixel.alpha, over: .black),
+                    pixel.color.composited(alpha: pixel.alpha, over: .white)]
+        }
     }
 
     static func backgroundColors(_ background: ArtAnalysis.TextBackground, fallback: SeriesColor) -> [SeriesColor] {

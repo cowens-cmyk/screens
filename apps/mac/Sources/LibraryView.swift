@@ -531,7 +531,7 @@ struct LibrarySidebar: View {
         .dropDestination(for: URL.self) { urls, _ in
             // An image (or a Claude Design download) dropped on Themes
             // becomes a theme in one step.
-            if model.selectedSection == .themes, PhotoSeries.accepts(urls) {
+            if model.selectedSection == .themes, PhotoSeries.acceptsDropped(urls) {
                 themeFromImage = SeriesArtDrop(files: urls)
                 return true
             }

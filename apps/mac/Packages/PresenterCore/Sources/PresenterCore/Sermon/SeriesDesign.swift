@@ -48,13 +48,106 @@ public struct SeriesDesign: Codable, Equatable, Sendable {
     """
 
     /// Removes anything the renderer shouldn't draw (text, scripts, links)
-    /// as a guard on top of the instructions.
-    public static func sanitize(_ svg: String) -> String {
+    /// as a guard on top of the instructions. A Claude Design download's
+    /// artwork often carries its picture inside the SVG as a `data:` image,
+    /// so `keepEmbeddedImages` keeps those; an image or link pointing
+    /// anywhere else is still removed, so drawing the file never reaches
+    /// out to the network or the disk.
+    public static func sanitize(_ svg: String, keepEmbeddedImages: Bool = false) -> String {
         var cleaned = svg
-        for pattern in [#"<text[\s\S]*?</text>"#, #"<script[\s\S]*?</script>"#, #"<image[^>]*>"#, #"<foreignObject[\s\S]*?</foreignObject>"#] {
+        for pattern in [#"<text[\s\S]*?</text>"#, #"<script[\s\S]*?</script>"#, #"<script[^>]*/>"#,
+                        #"<foreignObject[\s\S]*?</foreignObject>"#, #"<foreignObject[^>]*/>"#] {
             cleaned = cleaned.replacingOccurrences(of: pattern, with: "", options: [.regularExpression, .caseInsensitive])
         }
+        cleaned = replacingMatches(of: #"<image\b[^>]*>"#, in: cleaned) { tag in
+            let links = hrefs(in: tag)
+            return keepEmbeddedImages && !links.isEmpty && links.allSatisfy(isEmbeddedImage) ? tag : ""
+        }
+        cleaned = cleaned.replacingOccurrences(of: #"</image\s*>"#, with: "", options: [.regularExpression, .caseInsensitive])
+        // Links elsewhere (a <use> of another file, a stylesheet's url() or
+        // @import) point outside the file; references within it ("#id")
+        // and embedded images stay.
+        cleaned = replacingMatches(of: #"\s(?:xlink:)?href\s*=\s*(?:"[^"]*"|'[^']*')"#, in: cleaned) { attribute in
+            let value = hrefs(in: attribute).first ?? ""
+            return value.hasPrefix("#") || (keepEmbeddedImages && isEmbeddedImage(value)) ? attribute : ""
+        }
+        cleaned = cleaned.replacingOccurrences(of: #"@import[^;]*;?"#, with: "", options: [.regularExpression, .caseInsensitive])
+        cleaned = replacingMatches(of: #"url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)"#, in: cleaned) { call in
+            let inner = call.dropFirst(4).dropLast().trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
+            return inner.hasPrefix("#") || (keepEmbeddedImages && isEmbeddedImage(inner)) ? call : "none"
+        }
         return cleaned
+    }
+
+    /// The pictures carried inside an SVG as base64 `data:` images, in the
+    /// order they appear. A download's SVG is often only a wrapper around
+    /// one, which can be used directly if the SVG itself won't draw.
+    public static func embeddedImages(_ svg: String) -> [Data] {
+        captures(of: #"<image\b[^>]*?(?:xlink:)?href\s*=\s*(?:"([^"]*)"|'([^']*)')"#, in: svg).compactMap { href in
+            let value = href.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard isEmbeddedImage(value), let comma = value.firstIndex(of: ","),
+                  value[..<comma].lowercased().hasSuffix(";base64")
+            else { return nil }
+            let encoded = value[value.index(after: comma)...].filter { !$0.isWhitespace }
+            return Data(base64Encoded: String(encoded))
+        }
+    }
+
+    private static func isEmbeddedImage(_ href: String) -> Bool {
+        href.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("data:image/")
+    }
+
+    /// The values of every href and xlink:href in a tag.
+    private static func hrefs(in tag: String) -> [String] {
+        captures(of: #"(?:xlink:)?href\s*=\s*(?:"([^"]*)"|'([^']*)')"#, in: tag)
+    }
+
+    /// The first capture group that matched, for each match.
+    private static func captures(of pattern: String, in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
+        let source = text as NSString
+        return regex.matches(in: text, range: NSRange(location: 0, length: source.length)).compactMap { match in
+            (1..<match.numberOfRanges).lazy
+                .map { match.range(at: $0) }
+                .first { $0.location != NSNotFound }
+                .map { source.substring(with: $0) }
+        }
+    }
+
+    private static func replacingMatches(of pattern: String, in text: String, with replace: (String) -> String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return text }
+        let source = text as NSString
+        var result = ""
+        var last = 0
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: source.length)) {
+            result += source.substring(with: NSRange(location: last, length: match.range.location - last))
+            result += replace(source.substring(with: match.range))
+            last = match.range.location + match.range.length
+        }
+        return result + source.substring(from: last)
+    }
+
+    /// The drawing's own shape, from its viewBox (or its width and height
+    /// when it has none), so it can be drawn without being stretched.
+    public static func svgSize(_ svg: String) -> (width: Double, height: Double)? {
+        guard let open = svg.range(of: #"<svg\b[^>]*>"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        let tag = String(svg[open])
+        func attribute(_ name: String) -> String? {
+            captures(of: #"\s"# + name + #"\s*=\s*(?:"([^"]*)"|'([^']*)')"#, in: tag).first
+        }
+        if let box = attribute("viewBox") {
+            let numbers = box.split(whereSeparator: { $0 == " " || $0 == "," }).compactMap { Double($0) }
+            if numbers.count == 4, numbers[2] > 0, numbers[3] > 0 { return (numbers[2], numbers[3]) }
+        }
+        // "1920" or "1920px"; a percentage says nothing about the shape.
+        func length(_ name: String) -> Double? {
+            guard let value = attribute(name)?.trimmingCharacters(in: .whitespaces), !value.hasSuffix("%"),
+                  let number = Double(value.replacingOccurrences(of: "px", with: "")), number > 0
+            else { return nil }
+            return number
+        }
+        guard let width = length("width"), let height = length("height") else { return nil }
+        return (width, height)
     }
 
     /// Normalizes "#RRGGBB" (or "#RGB", "#RRGGBBAA") to the app's "#RRGGBBAA".
