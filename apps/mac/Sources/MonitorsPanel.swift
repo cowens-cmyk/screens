@@ -200,7 +200,7 @@ struct MonitorsPanel: View {
     /// tall, so a portrait or very tall output doesn't fill the column.
     private let previewHeight: CGFloat = 340
 
-    // MARK: Targets (Settings › Show Setup, else a sensible guess)
+    // MARK: Targets (Settings › Screens, else a sensible guess)
 
     private var targets: ShowTargets { ShowTargets(setup: setup, render: render) }
     private var stageTarget: String? { targets.stage }
@@ -223,7 +223,7 @@ struct MonitorsPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.08)))
             } else {
-                placeholder("Choose the \(title.lowercased()) screen in Settings › Show Setup")
+                placeholder("Choose the \(title.lowercased()) screen in Settings › Screens")
             }
         }
         .screenCard(color)
@@ -277,7 +277,7 @@ struct MonitorsPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.08)))
             } else {
-                placeholder("Choose the stage screen in Settings › Show Setup")
+                placeholder("Choose the stage screen in Settings › Screens")
             }
             if let controls {
                 SermonTimerControl(controls: controls)
@@ -327,7 +327,7 @@ struct MonitorsPanel: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.08)))
             } else {
-                placeholder("Choose the livestream screen in Settings › Show Setup")
+                placeholder("Choose the livestream screen in Settings › Screens")
             }
         }
         .screenCard(HopeStyle.stagePurple)
@@ -440,7 +440,7 @@ extension View {
 
 /// A message to whoever is on stage: typed, sent, shown large on the stage
 /// screen (in place of the clock and key in Worship) for the time set in
-/// Settings › Show Setup, or until cleared. Sending (or Escape) hands the
+/// Settings › Stage, or until cleared. Sending (or Escape) hands the
 /// keyboard back to the window, so Space and the arrows move the slides
 /// again rather than typing into the field.
 struct StageMessageField: View {
@@ -511,7 +511,7 @@ struct StageMessageCountdown: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 30, alignment: .trailing)
-                .help("Clears from the stage by itself then (Settings › Show Setup › Stage messages)")
+                .help("Clears from the stage by itself then (Settings › Stage)")
         }
     }
 }
