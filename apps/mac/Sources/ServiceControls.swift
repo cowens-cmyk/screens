@@ -1226,10 +1226,19 @@ final class ServiceControls {
     private var pendingAlertTheme: Task<Void, Never>?
 
     private func show(alert: CueAlert) {
+        var alert = alert
+        // A message only for the stage clears itself (Settings › Show Setup ›
+        // Stage messages); one the audience sees too stays until cleared. A
+        // new message starts the time again.
+        alert.firedAt = Date()
+        alert.expiresAt = alert.target == .confidence
+            ? StageMessageTiming.expiry(firedAt: alert.firedAt, duration: ShowSetup.shared.stageMessageDuration)
+            : nil
         let theme = alert.theme
         state.fire(alert: alert, atHostTime: CACurrentMediaTime())
         alertVisible = true
         apply()
+        scheduleAlertExpiry(for: alert)
 
         if let template = AlertSceneBuilder.alertsThemeSlide(in: theme) {
             for object in template.objects.map(SlideObjectNormalization.normalized) {
@@ -1257,7 +1266,34 @@ final class ServiceControls {
     func dismissAlert() {
         pendingAlertTheme?.cancel()
         pendingAlertTheme = nil
+        alertExpiry?.cancel()
+        alertExpiry = nil
         clear(function: .alerts)
+    }
+
+    private var alertExpiry: Task<Void, Never>?
+
+    /// Takes a timed stage message down when its time is up. The stage
+    /// screens already stop drawing it at that moment; this clears the
+    /// controls, the readouts and the remote to match. It clears only the
+    /// message it was set for: anything sent or cleared since wins.
+    private func scheduleAlertExpiry(for alert: CueAlert) {
+        alertExpiry?.cancel()
+        alertExpiry = nil
+        guard let expiresAt = alert.expiresAt else { return }
+        alertExpiry = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, expiresAt.timeIntervalSinceNow)))
+            guard !Task.isCancelled, let self,
+                  let live = self.state.liveAlert,
+                  live.id == alert.id, live.firedAt == alert.firedAt
+            else { return }
+            self.alertExpiry = nil
+            // Not dismissAlert(): Clear's path also settles a slide that is
+            // waiting to land, and running out of time mustn't drop one.
+            self.state.clear(function: .alerts, atHostTime: CACurrentMediaTime())
+            self.apply()
+            self.syncFlashClock()
+        }
     }
 
     private func syncFlashClock() {

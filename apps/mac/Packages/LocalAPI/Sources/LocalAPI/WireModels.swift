@@ -169,13 +169,24 @@ public struct APIShowStatus: Codable, Sendable {
         public var behavior: String
         public var target: String
         public var layer: String?
+        /// When a stage message clears itself; absent while it stays until
+        /// cleared.
+        public var expiresAt: Date?
+        /// Seconds left when this status was made, for a client whose clock
+        /// doesn't match the Mac's.
+        public var secondsLeft: Double?
 
-        public init(id: String, message: String, behavior: String, target: String, layer: String?) {
+        public init(
+            id: String, message: String, behavior: String, target: String, layer: String?,
+            expiresAt: Date? = nil, secondsLeft: Double? = nil
+        ) {
             self.id = id
             self.message = message
             self.behavior = behavior
             self.target = target
             self.layer = layer
+            self.expiresAt = expiresAt
+            self.secondsLeft = secondsLeft
         }
     }
 

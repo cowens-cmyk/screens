@@ -199,6 +199,9 @@ textarea,input[type=text]{-webkit-user-select:text;user-select:text}
 "use strict";
 var KEY="remoteToken", ROLE="remoteRole", REJECTED="remoteRejected", token="", role="", status=null, ws=null, pollTimer=null, wsFails=0, retry=1000, deck=null, deckId=null, lastFire=0, activeTab="show", timerList=[];
 var frames={live:{want:"",have:"",busy:false,url:""},next:{want:"",have:"",busy:false,url:""}};
+// When the stage message clears itself, on this phone's clock: the Mac sends
+// the seconds left rather than a time, so a phone set a minute off still counts right.
+var stageEnds=0;
 var $=function(id){return document.getElementById(id)};
 var all=function(sel){return Array.prototype.slice.call(document.querySelectorAll(sel))};
 var serviceName=document.body.getAttribute("data-service")||"";
@@ -291,7 +294,8 @@ function render(){
   $("stageNext").textContent=nt||"—";
   if(live&&live.presentationId&&live.presentationId!==deckId)loadDeck(live.presentationId);
   var al=s.alert;
-  $("stageNow").textContent=(al&&al.target!=="audience")?al.message:"Nothing";
+  stageEnds=(al&&typeof al.secondsLeft==="number")?Date.now()+al.secondsLeft*1000:0;
+  stageNow();
   $("liveFrame").classList.toggle("live",!!live);
   var nx=s.nextSlide||{};
   frames.live.want=JSON.stringify([live&&live.slideId,live&&live.occurrence,live&&live.stepIndex,s.mediaLayers,s.overlays,al&&al.id]);
@@ -466,10 +470,17 @@ function startPolling(){
   if(pollTimer)return;
   pollTimer=setInterval(function(){refresh();if(activeTab==="timers"||role==="stage")loadTimers()},2000);
 }
+// What the stage shows now, and how long until a timed message clears.
+function stageNow(){
+  var al=status&&status.alert, left=stageEnds?Math.ceil((stageEnds-Date.now())/1000):null;
+  if(!al||al.target==="audience"||(left!==null&&left<=0)){$("stageNow").textContent="Nothing";return}
+  $("stageNow").textContent=al.message+(left!==null?"  ·  clears in "+left+" s":"");
+}
 // Running timers tick on the phone every second; nothing else polls once
 // the socket is up.
 setInterval(function(){
   if(!token||document.hidden)return;
+  if(stageEnds)stageNow();
   if(role==="stage"){tick();loadTimers()}
   else if(activeTab==="timers")loadTimers();
 },1000);

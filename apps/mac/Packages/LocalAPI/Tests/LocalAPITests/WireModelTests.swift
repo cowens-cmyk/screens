@@ -24,6 +24,21 @@ final class ShowStatusWireTests: XCTestCase {
         XCTAssertEqual((json?["nextSlide"] as? [String: Any])?["text"] as? String, "Miracle worker")
     }
 
+    func testATimedStageMessageCarriesWhenItClears() throws {
+        let timed = APIShowStatus.Alert(
+            id: "a", message: "Wrap up", behavior: "persist", target: "confidence", layer: nil,
+            expiresAt: Date(timeIntervalSince1970: 30), secondsLeft: 24)
+        let json = try JSONSerialization.jsonObject(with: APIJSON.encoder().encode(timed)) as? [String: Any]
+        XCTAssertEqual(json?["expiresAt"] as? String, "1970-01-01T00:00:30Z")
+        XCTAssertEqual(json?["secondsLeft"] as? Double, 24)
+
+        let untilCleared = APIShowStatus.Alert(
+            id: "b", message: "Mics hot", behavior: "persist", target: "confidence", layer: nil)
+        let plain = try JSONSerialization.jsonObject(with: APIJSON.encoder().encode(untilCleared)) as? [String: Any]
+        XCTAssertNil(plain?["expiresAt"])
+        XCTAssertNil(plain?["secondsLeft"])
+    }
+
     func testTimersDocumentEncodesAnchorsAsISODates() throws {
         let document = APITimersDocument(
             timers: [APITimerStatus(

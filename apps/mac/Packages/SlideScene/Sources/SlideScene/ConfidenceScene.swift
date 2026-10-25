@@ -17,6 +17,11 @@ public struct CueAlert: Sendable, Equatable {
     /// person on stage notices it.
     public var firedAt: Date
 
+    /// When it leaves the stage by itself (Settings › Show Setup › Stage
+    /// messages). Nil: until cleared. Every stage screen stops drawing it at
+    /// this moment, whenever the controls get round to clearing it.
+    public var expiresAt: Date?
+
     public init(
         id: String = UUID().uuidString,
         message: String,
@@ -24,10 +29,12 @@ public struct CueAlert: Sendable, Equatable {
         target: AlertTarget = .confidence,
         theme: Theme? = nil,
         layer: LayerKind? = nil,
-        firedAt: Date = Date()
+        firedAt: Date = Date(),
+        expiresAt: Date? = nil
     ) {
         self.id = id
         self.firedAt = firedAt
+        self.expiresAt = expiresAt
         self.message = message
         self.behavior = behavior
         self.target = target
@@ -372,6 +379,15 @@ public struct ConfidenceInfo: Sendable, Equatable {
 
     public var videoCountdowns: [String: VideoCountdown]
 
+    /// The message on the stage now: one meant for the stage that hasn't run
+    /// past its time. A flashing alert's off beats are `alertVisible`.
+    public func stageAlert(at date: Date) -> CueAlert? {
+        guard let alert, alert.showsOnConfidence,
+              !StageMessageTiming.hasExpired(alert.expiresAt, at: date)
+        else { return nil }
+        return alert
+    }
+
     public func videoCountdown(forLayer layer: String?) -> VideoCountdown? {
         guard let layer, !layer.isEmpty else { return videoCountdown }
         return videoCountdowns[layer]
@@ -467,28 +483,103 @@ public enum ConfidenceSceneBuilder {
         let objects = resolved.filter {
             VisibilityRules.isShown($0, among: resolved, info: info, at: date)
         }
-        let wiring = SlideSceneBuilder.maskWiring(for: objects)
-        for object in objects {
+        let alert = info.stageAlert(at: date)
+        let style = alert.map { _ in StageMessagePlacement.style(for: layout) }
 
-            for item in SlideSceneBuilder.renderItems(
-                for: object, theme: nil, in: canvasSize,
-                baseID: "confidence-\(layout.id)-\(object.id)",
-                maskedBy: wiring.maskedBy[object.id],
-                matteGroup: wiring.mattes.contains(object.id) ? object.id : nil
-            ) {
-                scene.addItem(item, to: .slide)
+        // What the layout itself shows: faded out under the Message stage's
+        // takeover, and without the clock and key the Worship band replaces.
+        var layoutOpacity = 1.0
+        var replaced: Set<String> = []
+        switch style {
+        case .takeover:
+            if let alert {
+                layoutOpacity = 1 - StageMessageTiming.presence(
+                    firedAt: alert.firedAt, expiresAt: alert.expiresAt, at: date)
+            }
+        case .band(_, let ids):
+            replaced = Set(ids)
+        case .linkedObject, .banner, nil:
+            break
+        }
+        if layoutOpacity > 0 {
+            let wiring = SlideSceneBuilder.maskWiring(for: objects)
+            for object in objects where !replaced.contains(object.id) {
+                for var item in SlideSceneBuilder.renderItems(
+                    for: object, theme: nil, in: canvasSize,
+                    baseID: "confidence-\(layout.id)-\(object.id)",
+                    maskedBy: wiring.maskedBy[object.id],
+                    matteGroup: wiring.mattes.contains(object.id) ? object.id : nil
+                ) {
+                    item.opacity *= layoutOpacity
+                    scene.addItem(item, to: .slide)
+                }
             }
         }
 
-        if let alert = info.alert, alert.showsOnConfidence, info.alertVisible,
-           !layout.hasStageMessageObject {
+        guard let alert, let style else { return scene }
+        switch style {
+        case .linkedObject:
+            // The layout's own Stage Message box already shows it.
+            break
+        case .banner:
+            guard info.alertVisible else { break }
             for item in AlertSceneBuilder.bannerItems(
-                for: alert, canvasSize: canvasSize, info: info, at: date
+                for: alert, canvasSize: canvasSize, info: info, at: date, size: .stage
             ) {
                 scene.addItem(item, to: .alerts)
             }
+        case .band(let band, _):
+            for item in AlertSceneBuilder.bandItems(
+                for: alert, in: band, canvasSize: canvasSize, info: info, at: date
+            ) {
+                scene.addItem(item, to: .alerts)
+            }
+        case .takeover(let ids):
+            let presence = StageMessageTiming.presence(
+                firedAt: alert.firedAt, expiresAt: alert.expiresAt, at: date)
+            guard presence > 0 else { break }
+            let frames = StageMessagePlacement.takeoverFrames(canvas: canvasSize, slots: ids.count)
+            let byID = Dictionary(objects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            for (id, slot) in zip(ids, frames.slots) {
+                // One the layout hides right now (a visibility rule) stays hidden.
+                guard let object = byID[id] else { continue }
+                for var item in SlideSceneBuilder.renderItems(
+                    for: stripObject(object, in: slot), theme: nil, in: canvasSize,
+                    baseID: "confidence-\(layout.id)-\(object.id)-strip"
+                ) {
+                    item.opacity *= presence
+                    scene.addItem(item, to: .slide)
+                }
+            }
+            if info.alertVisible {
+                for var item in AlertSceneBuilder.takeoverItems(
+                    for: alert, in: frames.message, canvasSize: canvasSize, info: info, at: date
+                ) {
+                    item.opacity *= presence
+                    scene.addItem(item, to: .alerts)
+                }
+            }
         }
         return scene
+    }
+
+    /// A time from the layout, moved into its place in the strip: its own
+    /// colours, font and overtime ink, sized to the strip.
+    static func stripObject(_ object: SlideObject, in slot: CGRect) -> SlideObject {
+        var object = object
+        object.x = slot.minX
+        object.y = slot.minY
+        object.width = slot.width
+        object.height = slot.height
+        object.rotationDegrees = nil
+        var style = object.textStyle ?? TextStyle()
+        style.fontSize = slot.height * 0.8
+        style.autoShrink = true
+        style.minFontSize = slot.height * 0.3
+        style.horizontalAlignment = .center
+        style.verticalAlignment = .middle
+        object.textStyle = style
+        return object
     }
 
     static func primaryTimer(_ timers: [TimerSnapshot]) -> TimerSnapshot? {
@@ -555,13 +646,6 @@ public enum ConfidenceSceneBuilder {
     }
 }
 
-public extension ConfidenceLayout {
-
-    var hasStageMessageObject: Bool {
-        objects.contains { $0.textLink?.source == .stageMessage }
-    }
-}
-
 public enum AlertSceneBuilder {
 
     public static func alertsThemeSlide(in theme: Theme?) -> Slide? {
@@ -605,17 +689,33 @@ public enum AlertSceneBuilder {
         }
     }
 
+    /// How tall the top bar is: the audience screen's fallback stays modest;
+    /// the stage's is a fifth of the screen so it reads from the platform.
+    public enum BannerSize: Sendable {
+        case audience
+        case stage
+    }
+
     public static func bannerItems(
         for alert: CueAlert, canvasSize: CGSize,
-        info: ConfidenceInfo? = nil, at date: Date = Date()
+        info: ConfidenceInfo? = nil, at date: Date = Date(),
+        size: BannerSize = .audience
     ) -> [RenderItem] {
         let message = info.map {
             LinkedText.resolvedAlertMessage(alert.message, info: $0, at: date)
         } ?? alert.message
         // A red bar across the top, over whatever the layout shows. For its
         // first half second it's white, so it reads as a single flash.
-        let height = canvasSize.height * (150.0 / 1080.0)
-        let band = CGRect(x: 0, y: 0, width: canvasSize.width, height: height)
+        let band: CGRect
+        let fontSize: Double
+        switch size {
+        case .audience:
+            band = CGRect(x: 0, y: 0, width: canvasSize.width, height: canvasSize.height * (150.0 / 1080.0))
+            fontSize = canvasSize.height * (72.0 / 1080.0)
+        case .stage:
+            band = StageMessagePlacement.bannerFrame(canvas: canvasSize)
+            fontSize = canvasSize.height * (120.0 / 1080.0)
+        }
         let flashing = date.timeIntervalSince(alert.firedAt) < 0.5
         let inset = canvasSize.width * (40.0 / 1920.0)
         return [
@@ -632,12 +732,88 @@ public enum AlertSceneBuilder {
                 frame: band.insetBy(dx: inset, dy: 0),
                 content: .text(StyledText(
                     string: message,
-                    fontSize: canvasSize.height * (72.0 / 1080.0),
+                    fontSize: fontSize,
                     color: flashing ? ConfidenceSceneBuilder.stageRed : .white,
                     alignment: .center,
                     tabularFigures: false,
                     autoShrink: true,
                     minFontSize: canvasSize.height * (24.0 / 1080.0)
+                ))
+            ),
+        ]
+    }
+
+    /// The Worship stage's message: a red band where the clock and song key
+    /// were, white type, blinking white a few times as it appears so it is
+    /// noticed, then holding steady so it can be read. The lyrics are not
+    /// touched.
+    public static func bandItems(
+        for alert: CueAlert, in band: CGRect, canvasSize: CGSize,
+        info: ConfidenceInfo, at date: Date
+    ) -> [RenderItem] {
+        // A flashing alert's off beat leaves the band empty, so it blinks
+        // without the clock and key popping back in.
+        guard info.alertVisible else { return [] }
+        let message = LinkedText.resolvedAlertMessage(alert.message, info: info, at: date)
+        let lit = StageMessageTiming.bandIsLit(firedAt: alert.firedAt, at: date)
+        let inset = canvasSize.width * (30.0 / 1920.0)
+        return [
+            RenderItem(
+                id: "stage-band-\(alert.id)",
+                frame: band,
+                content: .shape(ShapeStyle(
+                    kind: .rectangle,
+                    fill: .solid(lit ? .white : ConfidenceSceneBuilder.stageRed)
+                ))
+            ),
+            RenderItem(
+                id: "stage-band-text-\(alert.id)",
+                frame: band.insetBy(dx: inset, dy: 0),
+                content: .text(StyledText(
+                    string: message,
+                    fontSize: band.height * 0.72,
+                    color: lit ? ConfidenceSceneBuilder.stageRed : .white,
+                    alignment: .center,
+                    autoShrink: true,
+                    minFontSize: max(12, band.height * 0.28)
+                ))
+            ),
+        ]
+    }
+
+    /// The Message stage's message: as large as it fits across the main
+    /// part of the screen, white, inside a thin red edge that flashes white
+    /// as it arrives.
+    public static func takeoverItems(
+        for alert: CueAlert, in area: CGRect, canvasSize: CGSize,
+        info: ConfidenceInfo, at date: Date
+    ) -> [RenderItem] {
+        let message = LinkedText.resolvedAlertMessage(alert.message, info: info, at: date)
+        let flashing = date.timeIntervalSince(alert.firedAt) < 0.5
+        let unit = canvasSize.height / 1080
+        let inset = canvasSize.width * 0.03
+        return [
+            RenderItem(
+                id: "stage-takeover-edge-\(alert.id)",
+                frame: area,
+                content: .shape(ShapeStyle(
+                    kind: .roundedRectangle(cornerRadius: 28 * unit),
+                    fill: .solid(SceneColor(red: 0.16, green: 0.02, blue: 0.02)),
+                    stroke: SceneStroke(
+                        color: flashing ? .white : ConfidenceSceneBuilder.stageRed, width: 8 * unit)
+                ))
+            ),
+            RenderItem(
+                id: "stage-takeover-text-\(alert.id)",
+                frame: area.insetBy(dx: inset, dy: inset / 2),
+                content: .text(StyledText(
+                    string: message,
+                    fontSize: 220 * unit,
+                    color: .white,
+                    alignment: .center,
+                    autoShrink: true,
+                    minFontSize: 48 * unit,
+                    balancedWrap: true
                 ))
             ),
         ]

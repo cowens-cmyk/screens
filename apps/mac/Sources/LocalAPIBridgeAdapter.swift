@@ -147,7 +147,9 @@ final class AppAPIBridge: LocalAPIBridge {
                 APIShowStatus.Alert(
                     id: $0.id, message: $0.message,
                     behavior: $0.behavior.rawValue, target: $0.target.rawValue,
-                    layer: $0.layer?.rawValue
+                    layer: $0.layer?.rawValue,
+                    expiresAt: $0.expiresAt,
+                    secondsLeft: $0.expiresAt.map { max(0, $0.timeIntervalSinceNow) }
                 )
             },
             currentServiceId: appModel.currentServiceID,

@@ -163,6 +163,7 @@ public enum OpenAPIDocument {
             ]),
             "alert": obj([
                 "id": str, "message": str, "behavior": str, "target": str, "layer": str,
+                "expiresAt": .object(["type": "string", "format": "date-time"]), "secondsLeft": num,
             ], required: ["id", "message", "behavior", "target"]),
             "currentServiceId": str,
         ], required: ["mediaLayers", "overlays"]),

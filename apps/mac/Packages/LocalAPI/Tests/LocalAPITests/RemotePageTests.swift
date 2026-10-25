@@ -44,6 +44,17 @@ struct RemotePageTests {
         #expect(context.exception == nil, "the remote's script doesn't parse: \(String(describing: context.exception))")
     }
 
+    /// The Stage tab counts a timed message down on the phone's own clock
+    /// from the seconds left the Mac sent, and shows Nothing once it is up.
+    @Test func theStageTabCountsDownATimedMessage() {
+        let page = RemotePage.html(serviceName: "Sunday")
+        for needle in [
+            "al.secondsLeft", "Date.now()+al.secondsLeft*1000", "clears in ", "if(stageEnds)stageNow();",
+        ] {
+            #expect(page.contains(needle), "missing \(needle)")
+        }
+    }
+
     @Test func rootAndRemoteRoutesServeThePageWithoutAuth() async throws {
         let tokens = APITokenStore(fileURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("remote-tokens-\(UUID().uuidString).json"))

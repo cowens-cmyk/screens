@@ -53,7 +53,7 @@ public enum LinkedText {
         case .slideNotes: return nonEmpty(info.current?.notes)
         case .stageMessage:
 
-            guard let alert = info.alert, alert.showsOnConfidence, info.alertVisible else { return nil }
+            guard let alert = info.stageAlert(at: date), info.alertVisible else { return nil }
 
             return nonEmpty(resolvedAlertMessage(alert.message, info: info, at: date))
         }
