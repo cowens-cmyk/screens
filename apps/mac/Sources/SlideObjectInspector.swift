@@ -258,7 +258,7 @@ struct SlideObjectInspector: View {
                 Divider()
                 ForEach(PresentationTypes.builtIn, id: \.self) { Text($0).tag($0) }
             }
-            .help("Each type can run default actions when it goes live — set them in Settings › Presentation Types")
+            .help("Each type can run default actions when it goes live — set them in Settings › Stage › Presentation Types")
 
             InspectorPicker("Livestream", selection: streamThemeBinding()) {
                 // Left empty, the presentation follows its type, so the
@@ -788,7 +788,7 @@ struct SlideObjectInspector: View {
                 )
             }
         }
-        Text("Room Default follows Settings › Transitions when this slide fires.")
+        Text("Room Default follows Settings › Slides & Themes › Transitions when this slide fires.")
             .font(.caption)
             .foregroundStyle(.secondary)
     }

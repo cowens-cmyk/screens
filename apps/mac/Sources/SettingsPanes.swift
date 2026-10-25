@@ -5,17 +5,74 @@ import NDIKit
 import PresenterCore
 import SwiftUI
 
-struct SettingsCategoryPane: View {
-    let category: SettingsCategory
-    let rows: [SettingsRowSpec]
-    let model: AppModel?
-    let controls: ServiceControls?
+// MARK: - Slides & Themes
 
+/// Settings › Slides & Themes: transitions, default animations and how the
+/// slide grid draws its thumbnails.
+struct SlidesSettingsPane: View {
+    let model: AppModel?
+
+    @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
+    @AppStorage("slideGrid.legibleText") private var legibleText = false
+    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
+    @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
+    @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
+
+    var body: some View {
+        Form {
+            Section {
+                SettingsRow("present.slideTransition") {
+                    DefaultTransitionControl(
+                        kindKey: "transition.slide.kind", durationKey: "transition.slide.duration",
+                        fallbackKind: "", fallbackDuration: 0.5)
+                }
+                SettingsRow("present.mediaTransition") {
+                    DefaultTransitionControl(
+                        kindKey: "transition.media.kind", durationKey: "transition.media.duration",
+                        fallbackKind: TransitionKind.dissolve.rawValue, fallbackDuration: 0.7)
+                }
+            } header: {
+                Text("Transitions")
+            } footer: {
+                Text("A slide or item can set its own. The footer chips change the media transition on the fly.")
+            }
+            if model != nil {
+                Section {
+                    SettingsRow("present.defaultAnimations") {
+                        DefaultAnimationsControl(model: model)
+                    }
+                } header: {
+                    Text("Animations")
+                } footer: {
+                    Text("A preset's Set as Default In or Out changes these too.")
+                }
+            }
+            Section {
+                SettingsRow("present.slidesAcross") {
+                    SlidesAcrossControl(count: $slidesAcross).frame(width: 200)
+                }
+                SettingsToggle("present.roundedCorners", isOn: $roundedCorners)
+                SettingsToggle("present.legibleText", isOn: $legibleText)
+                SettingsToggle("present.transparencyGrid", isOn: $transparencyGrid)
+                SettingsToggle("present.scopedBackgrounds", isOn: $hideScopedBackgrounds)
+            } header: {
+                Text("Slide Grid")
+            }
+        }
+        .settingsForm()
+    }
+}
+
+// MARK: - Media & Video
+
+/// Settings › Media & Video: the cameras, NDI sources, web pages and audio
+/// interfaces Live Input objects and Live Assist use. Each opens its own
+/// page here, with a way back.
+struct MediaSettingsPane: View {
     enum Page: Equatable {
         case list
         case videoInput(String)
         case audioInput(String)
-        case midiDevice(String)
     }
 
     @State private var page: Page = .list
@@ -23,149 +80,179 @@ struct SettingsCategoryPane: View {
     var body: some View {
         VStack(spacing: 0) {
             if page != .list {
-                SettingsPageHeader(backTitle: category.title, title: pageTitle) { page = .list }
+                SettingsPageHeader(backTitle: SettingsCategory.media.title, title: pageTitle) { page = .list }
                 Divider()
             }
             switch page {
             case .list:
-                list
+                Form {
+                    VideoInputsSection { page = .videoInput($0) }
+                    AudioInputsSection { page = .audioInput($0) }
+                }
+                .settingsForm()
             case .videoInput(let id):
                 VideoInputDetail(id: id) { page = .list }
             case .audioInput(let id):
                 AudioInputDetail(id: id) { page = .list }
-            case .midiDevice(let id):
-                MIDIDeviceDetail(id: id) { page = .list }
             }
         }
         .background(Color.basePlane)
-        .onChange(of: category) { _, _ in page = .list }
     }
 
     private var pageTitle: String {
         switch page {
-        case .list: category.title
+        case .list: SettingsCategory.media.title
         case .videoInput(let id): VideoInputInventory.shared.entries.first { $0.id == id }?.name ?? "Video Input"
         case .audioInput(let id): AudioInputInventory.shared.entries.first { $0.id == id }?.name ?? "Audio Input"
-        case .midiDevice(let id): MIDIDeviceInventory.shared.items.first { $0.id == id }?.device.name ?? "MIDI Device"
         }
+    }
+}
+
+// MARK: - Integrations
+
+/// Settings › Integrations: Anthem, Lightkey and MIDI, Shepherd, and the
+/// phone remote and Local API, one at a time.
+struct IntegrationsSettingsPane: View {
+    let model: AppModel?
+    let api: LocalAPIController?
+    @Binding var tab: IntegrationTab
+
+    @State private var midiDevice: String?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let midiDevice {
+                SettingsPageHeader(
+                    backTitle: IntegrationTab.lightkey.title,
+                    title: MIDIDeviceInventory.shared.items.first { $0.id == midiDevice }?.device.name ?? "MIDI Device"
+                ) { self.midiDevice = nil }
+                Divider()
+                MIDIDeviceDetail(id: midiDevice) { self.midiDevice = nil }
+            } else {
+                Picker("", selection: $tab) {
+                    ForEach(IntegrationTab.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .padding(.top, 16)
+                .padding(.bottom, 4)
+                content
+                    .id(tab)
+            }
+        }
+        .background(Color.basePlane)
+        .onChange(of: tab) { _, _ in midiDevice = nil }
     }
 
     @ViewBuilder
-    private var list: some View {
-        switch category {
-        case .avInputs:
+    private var content: some View {
+        switch tab {
+        case .anthem:
+            Form { AnthemSettingsForm() }
+                .settingsForm()
+        case .lightkey:
             Form {
-                VideoInputsSection { page = .videoInput($0) }
-                AudioInputsSection { page = .audioInput($0) }
-            }
-            .settingsForm()
-        case .midi:
-            Form {
+                LightkeySettingsForm(model: model)
+                MIDIDevicesSection { midiDevice = $0 }
                 Section {
-                    ForEach(rows.filter { $0.id == "midi.lightkey" }) { $0.control }
-                } header: {
-                    Text("Lightkey")
-                }
-                MIDIDevicesSection { page = .midiDevice($0) }
-                Section {
-                    ForEach(rows.filter { $0.id == "midi.map" }) { SettingsFormRow(spec: $0) }
+                    SettingsRow("midi.map") { MIDIMapManager() }
                 } header: {
                     Text("MIDI Input Map")
                 }
             }
             .settingsForm()
-        case .keyboard:
-            if let model {
-                KeyboardMapPane(model: model, controls: controls)
+        case .shepherd:
+            Form { ShepherdSettingsForm() }
+                .settingsForm()
+        case .remote:
+            if let api {
+                LocalAPISettingsForm(api: api)
+            } else {
+                SettingsUnavailable(text: "The Local API isn't available.")
             }
-        default:
+        }
+    }
+}
 
-            Form {
-                ForEach(Self.sectioned(rows), id: \.first!.id) { run in
-                    if let spec = run.first, spec.stacked {
-                        Section {
-                            spec.control
-                        } header: {
-                            Text(spec.title)
-                        } footer: {
-                            if let caption = spec.caption { Text(caption) }
+/// Integrations › Remote & API.
+private struct LocalAPISettingsForm: View {
+    let api: LocalAPIController
+
+    var body: some View {
+        Form {
+            Section {
+                SettingsRow("api.enabled") { LocalAPIEnableToggle(api: api) }
+                SettingsRow("api.port") { LocalAPIPortField(api: api) }
+                SettingsRow("api.address") { LocalAPIAddressRow(api: api) }
+            } header: {
+                Text("Local API")
+            }
+            Section {
+                LocalAPIRemoteQRRow(api: api)
+                    .padding(.vertical, 4)
+            } header: {
+                SettingsHeader(id: "api.remote")
+            } footer: {
+                Text(SettingsIndex.entry("api.remote")?.caption ?? "")
+            }
+            Section {
+                SettingsRow("api.tokens") { LocalAPITokensButton(api: api) }
+                SettingsRow("api.docs") { LocalAPIContractRow(api: api) }
+            } header: {
+                Text("Access")
+            }
+        }
+        .settingsForm()
+    }
+}
+
+// MARK: - Advanced
+
+/// Settings › Advanced: updates and the diagnostics log.
+struct AdvancedSettingsPane: View {
+    @Bindable private var updater = AppUpdater.shared
+
+    var body: some View {
+        Form {
+            Section {
+                SettingsToggle("advanced.updates", isOn: $updater.checksAutomatically)
+                LabeledContent("Version") {
+                    HStack(spacing: 12) {
+                        Text(updater.currentVersion)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                        Button(updater.isWorking ? "Checking…" : "Check Now") {
+                            Task { await updater.check(userInitiated: true) }
                         }
-                    } else {
-                        Section {
-                            ForEach(run) { SettingsFormRow(spec: $0) }
-                        }
+                        .disabled(updater.isWorking)
                     }
                 }
-            }
-            .settingsForm()
-        }
-    }
-}
-
-extension SettingsCategoryPane {
-
-    static func sectioned(_ rows: [SettingsRowSpec]) -> [[SettingsRowSpec]] {
-        var runs: [[SettingsRowSpec]] = []
-        for spec in rows {
-            if !spec.stacked, let last = runs.last, let head = last.first, !head.stacked {
-                runs[runs.count - 1].append(spec)
-            } else {
-                runs.append([spec])
-            }
-        }
-        return runs
-    }
-}
-
-extension View {
-
-    func settingsForm() -> some View {
-        formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(Color.basePlane)
-    }
-}
-
-struct SettingsPageHeader: View {
-    let backTitle: String
-    let title: String
-    let back: () -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Button(action: back) {
-                HStack(spacing: 3) {
-                    Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
-                    Text(backTitle).font(.system(size: 12))
+                if let status = updater.status {
+                    Text(status)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(Color.accentColor)
-                .contentShape(Rectangle())
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("Turning automatic checks on or off takes effect the next time Screens opens.")
             }
-            .buttonStyle(.plain)
-            Text(title).font(.system(size: 13, weight: .semibold))
-            Spacer()
+            Section {
+                SettingsRow("advanced.diagnostics") {
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([DiagnosticsStore.folder])
+                    }
+                }
+            } header: {
+                Text("Diagnostics")
+            }
         }
-        .padding(.horizontal, 16)
-        .frame(height: 44)
+        .settingsForm()
     }
 }
 
-struct SettingsFormRow: View {
-    let spec: SettingsRowSpec
-
-    var body: some View {
-        LabeledContent {
-            spec.control
-        } label: {
-            Text(spec.title)
-            if let caption = spec.caption, !caption.isEmpty {
-                Text(caption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-}
+// MARK: - Inputs
 
 private struct VideoInputsSection: View {
     let open: (String) -> Void
@@ -236,7 +323,9 @@ private struct VideoInputsSection: View {
             }
             .fixedSize()
         } header: {
-            Text("Video Inputs")
+            SettingsHeader(id: "avInputs.cameras")
+        } footer: {
+            Text(SettingsIndex.entry("avInputs.cameras")?.caption ?? "")
         }
         .task {
             while !Task.isCancelled {
@@ -660,7 +749,9 @@ private struct AudioInputsSection: View {
             }
             .fixedSize()
         } header: {
-            Text("Audio Inputs")
+            SettingsHeader(id: "avInputs.audio")
+        } footer: {
+            Text(SettingsIndex.entry("avInputs.audio")?.caption ?? "")
         }
         .sheet(item: $channelPickerDevice) { AudioChannelPickerSheet(device: $0) }
         .task {
@@ -828,7 +919,9 @@ private struct MIDIDevicesSection: View {
             }
             .fixedSize()
         } header: {
-            Text("MIDI Devices")
+            SettingsHeader(id: "midi.devices")
+        } footer: {
+            Text(SettingsIndex.entry("midi.devices")?.caption ?? "")
         }
         .task { inventory.reload() }
     }

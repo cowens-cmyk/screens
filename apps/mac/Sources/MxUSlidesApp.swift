@@ -279,6 +279,8 @@ struct MxUSlidesApp: App {
                     api: localAPI)
             }
         }
+        // The form pane grows with the window; the sidebar keeps its width.
+        .windowResizability(.contentMinSize)
 
         WindowGroup(id: "module", for: ServiceControlsModule.self) { $module in
             if let appModel, let module {
@@ -323,7 +325,7 @@ struct MxUSlidesApp: App {
                     .background(NonRestorableWindow())
             }
         }
-        .defaultSize(width: 780, height: 540)
+        .defaultSize(width: 1, height: 1)
 
         Window("Live Assist", id: "liveAssist") {
             LiveAssistView()

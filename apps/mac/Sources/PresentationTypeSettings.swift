@@ -1,27 +1,24 @@
 import PresenterCore
 import SwiftUI
 
-/// Settings › Presentation Types: default actions per type, run whenever a
-/// presentation of that type goes live.
+/// Settings › Stage › Presentation Types: default actions per type, run
+/// whenever a presentation of that type goes live. One form row per type.
 struct PresentationTypeRulesForm: View {
     let model: AppModel
     @State private var editing: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        Group {
             ForEach(PresentationTypes.builtIn, id: \.self) { category in
-                HStack {
-                    Text(category)
-                    Spacer()
-                    let count = actions(for: category).count
-                    Text(count == 0 ? "No actions" : "\(count) action\(count == 1 ? "" : "s")")
-                        .foregroundStyle(.secondary)
-                    Button("Edit…") { editing = category }
+                LabeledContent(category) {
+                    HStack(spacing: 12) {
+                        let count = actions(for: category).count
+                        Text(count == 0 ? "No actions" : "\(count) action\(count == 1 ? "" : "s")")
+                            .foregroundStyle(.secondary)
+                        Button("Edit…") { editing = category }
+                    }
                 }
             }
-            Text("Example: Sermon → set stage layout “Sermon”, configure and start the sermon timer. Songs count as Worship.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .sheet(item: Binding(get: { editing.map(Editing.init) }, set: { editing = $0?.id })) { target in
             SlideActionsSheet(

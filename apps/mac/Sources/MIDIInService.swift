@@ -155,7 +155,7 @@ final class MIDIInService: @unchecked Sendable {
         else { return false }
         // Messages sent to "Screens In" arrive as if from a source whose ID
         // is the destination's own. They read with Anthem's notes when
-        // Settings › Anthem says so, else with the MIDI input map.
+        // Settings › Integrations › Anthem says so, else with the MIDI input map.
         if MIDIDestinationCreateWithBlock(
             client, Self.destinationName as CFString, &destination,
             { [weak self] packetList, _ in self?.receiveAtDestination(packetList) }
@@ -242,7 +242,7 @@ final class MIDIInController {
             return
         }
         // Anthem counts its notes one up from ProPresenter's stock numbers.
-        // Its own source reads with Anthem's map unless Settings › Anthem
+        // Its own source reads with Anthem's map unless Settings › Integrations › Anthem
         // says otherwise; so does the Screens In destination when it says
         // Anthem's notes, since that is where Anthem's MIDI out lands when
         // it is pointed at Screens. Either way it's Anthem, and picks items

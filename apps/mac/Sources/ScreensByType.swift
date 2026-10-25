@@ -282,7 +282,7 @@ struct CameraBackdrop: View {
     }
 }
 
-/// Settings › Show Setup › Lower Thirds, also a sheet from the toolbar's
+/// Settings › Livestream › Lower Thirds, also a sheet from the toolbar's
 /// More menu: for each part of the service, the lower third the
 /// livestream puts over the camera, chosen once instead of song by song.
 struct ScreensByTypeForm: View {

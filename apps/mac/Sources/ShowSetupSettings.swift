@@ -1,48 +1,174 @@
 import PresenterCore
 import SwiftUI
 
-/// Settings › Show Setup: the Audience, Livestream and Stage screens and
-/// how the livestream behaves.
-struct ShowSetupForm: View {
-    let controls: ServiceControls
+/// Settings › Livestream: the Livestream switch and each part of the
+/// service's lower third. The output and alpha key are with the other
+/// screens in Settings › Screens.
+struct LivestreamSettingsPane: View {
+    let model: AppModel?
+    let controls: ServiceControls?
     @Bindable private var setup = ShowSetup.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ThreeScreensView(render: controls.render)
-            Picker("Livestream", selection: $setup.streamMode) {
-                ForEach(ShowSetup.StreamMode.allCases) { Text($0.title).tag($0) }
+        Form {
+            Section {
+                SettingsRow("show.streamMode") {
+                    Picker("", selection: $setup.streamMode) {
+                        ForEach(ShowSetup.StreamMode.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                LabeledContent("Output and alpha key") {
+                    Button("Show in Screens") {
+                        SettingsRouter.shared.open(.screens, entry: "screens.livestream")
+                    }
+                }
+            } header: {
+                Text("Livestream Switch")
+            } footer: {
+                Text("The switch is also in the Livestream card of the screens panel.")
             }
-            .pickerStyle(.segmented)
-            Text("Transparent: nothing over the camera. Lower Third: each slide shows in the lower third chosen for its type in Lower Thirds, or its presentation's or theme's own; anything without one leaves the camera clear. Full Screen: the room's slide, edge to edge.")
-                .font(.caption).foregroundStyle(.secondary)
-            Picker("Stage messages show for", selection: $setup.stageMessageDuration) {
-                ForEach(StageMessageDuration.allCases) { Text($0.title).tag($0) }
+            if let model {
+                Section {
+                    ScreensByTypeForm(model: model, render: controls?.render)
+                        .padding(.vertical, 4)
+                } header: {
+                    SettingsHeader(id: "show.typeScreens")
+                }
             }
-            .fixedSize()
-            Text("Then the stage goes back to what it showed. Clear takes a message down sooner; sending another starts the time again.")
-                .font(.caption).foregroundStyle(.secondary)
         }
+        .settingsForm()
     }
 }
 
-struct LiveAssistSettingsForm: View {
+/// Settings › Stage: what the stage display shows, how messages to it
+/// behave, and what each type of presentation does when it goes live.
+struct StageSettingsPane: View {
+    let model: AppModel?
+    let controls: ServiceControls?
+    @Bindable private var setup = ShowSetup.shared
+    @AppStorage(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
+
+    var body: some View {
+        Form {
+            Section {
+                SettingsRow("stage.mode") {
+                    Picker("", selection: $setup.stageMode) {
+                        ForEach(ShowSetup.StageMode.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                SettingsToggle("stage.follows", isOn: $setup.stageFollowsItems)
+                SettingsToggle("present.nextSkipsBlanks", isOn: Binding(
+                    get: { nextSkipsBlanks },
+                    set: {
+                        nextSkipsBlanks = $0
+                        controls?.refreshNextSlide()
+                    }
+                ))
+            } header: {
+                Text("Stage Display")
+            } footer: {
+                Text("Which display shows the stage is in Settings › Screens.")
+            }
+            Section {
+                SettingsRow("show.stageMessages") {
+                    Picker("", selection: $setup.stageMessageDuration) {
+                        ForEach(StageMessageDuration.allCases) { Text($0.title).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 160)
+                }
+            } header: {
+                Text("Messages")
+            }
+            if let controls {
+                SermonTimerResetSection(controls: controls)
+            }
+            if let model {
+                Section {
+                    PresentationTypeRulesForm(model: model)
+                } header: {
+                    SettingsHeader(id: "present.types")
+                } footer: {
+                    Text("Example: Sermon sets the stage layout and starts the sermon timer. Songs count as Worship.")
+                }
+            }
+        }
+        .settingsForm()
+    }
+}
+
+/// Settings › Stage › Sermon Timer: whether each service's start sets the
+/// timer back on this Mac, and when that happens next.
+private struct SermonTimerResetSection: View {
+    @Bindable var controls: ServiceControls
+    @AppStorage(ServiceStation.runsServiceKey) private var runsService = false
+
+    var body: some View {
+        Section {
+            SettingsToggle("stage.sermonTimerReset", isOn: $controls.sermonTimerResetsAtServiceStart)
+            LabeledContent("Reset now") {
+                Button("Reset Sermon Timer") { controls.resetSermonTimer() }
+            }
+        } header: {
+            Text("Sermon Timer")
+        } footer: {
+            Text(footer)
+        }
+    }
+
+    private var footer: String {
+        guard controls.sermonTimerResetsAtServiceStart else {
+            return "Off on this Mac. Present › Reset Sermon Timer (⌃⌘0) still sets it back by hand."
+        }
+        guard runsService else {
+            return "This Mac doesn't run the service (Settings › General › Run on this Mac), so another Mac resets it."
+        }
+        guard let next = controls.nextSermonTimerReset else { return "No service start left today." }
+        return "Next reset \(next.formatted(date: .omitted, time: .shortened))."
+    }
+}
+
+/// Settings › Live Listening: what Live Assist hears and what it does with
+/// it.
+struct LiveListeningSettingsPane: View {
     @Bindable private var assist = LiveAssist.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            LiveAssistInputPicker()
-            Toggle("Advance lyrics as they're sung", isOn: $assist.advancesAutomatically)
-            Slider(value: $assist.autoAdvanceConfidence, in: 0.5...0.95) {
-                Text("Advance when \(Int(assist.autoAdvanceConfidence * 100))% sure")
+        Form {
+            Section {
+                LiveAssistInputPicker()
+            } header: {
+                SettingsHeader(id: "show.liveAssist")
+            } footer: {
+                Text(SettingsIndex.entry("show.liveAssist")?.caption ?? "")
             }
-            .disabled(!assist.advancesAutomatically)
-            Text("Turn on Follow in a song's slide grid header. Off: Follow only outlines the next slide.")
-                .font(.caption).foregroundStyle(.secondary)
-            Toggle("Watch for spoken Bible references", isOn: $assist.detectsScripture)
-            Text("Start and stop listening, watch the confidence meter and show detected passages in Window › Live Assist (⌥⌘L).")
-                .font(.caption).foregroundStyle(.secondary)
+            Section {
+                SettingsToggle("liveAssist.lyrics", isOn: $assist.advancesAutomatically)
+                LabeledContent {
+                    Slider(value: $assist.autoAdvanceConfidence, in: 0.5...0.95)
+                        .frame(width: 200)
+                } label: {
+                    Text("Advance when \(Int(assist.autoAdvanceConfidence * 100))% sure")
+                }
+                .disabled(!assist.advancesAutomatically)
+            } header: {
+                Text("Songs")
+            }
+            Section {
+                SettingsToggle("liveAssist.scripture", isOn: $assist.detectsScripture)
+            } header: {
+                Text("Sermon")
+            } footer: {
+                Text("Detected passages show in Window › Live Assist, ready to put on screen.")
+            }
         }
+        .settingsForm()
     }
 }
 

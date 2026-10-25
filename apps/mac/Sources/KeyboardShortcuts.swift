@@ -29,6 +29,20 @@ final class KeyMapStore {
                stored.chords["settings.shepherd"] == nil {
                 stored.chords["settings.shepherd"] = chord
             }
+            // Settings was regrouped (Show Setup, Present, Audio/Video
+            // Inputs, MIDI, Shepherd & Anthem and Network & API became
+            // other sections); a key bound to an old page moves to the
+            // section that took its settings, unless that one has a key.
+            for key in Array(stored.chords.keys) {
+                guard let generated = GeneratedKey.parse(key), generated.kind == .settingsPage,
+                      SettingsCategory(rawValue: generated.id) == nil,
+                      let section = SettingsCategory(storedID: generated.id)
+                else { continue }
+                let moved = GeneratedKey(.settingsPage, section.rawValue).mapKey
+                if let chord = stored.chords.removeValue(forKey: key), stored.chords[moved] == nil {
+                    stored.chords[moved] = chord
+                }
+            }
             map = stored
         } else {
             map = KeyCommandMap()
@@ -276,14 +290,13 @@ final class KeyInController {
         }
     }
 
+    /// `id` may name a section from before Settings was regrouped; a
+    /// shortcut saved then still opens the section that took its settings.
     private func openSettingsPage(_ id: String) {
-        if let category = SettingsCategory(rawValue: id) {
-            SettingsRouter.shared.pending = category
-        } else {
+        guard let category = SettingsCategory(storedID: id) else {
             return DiagnosticsStore.shared.note("key.in.skipped", detail: "settings \(id)")
         }
-
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        SettingsRouter.shared.open(category)
     }
 
     private func fireHotKey(letter: String) -> Bool {

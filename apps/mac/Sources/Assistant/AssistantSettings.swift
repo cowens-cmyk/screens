@@ -14,31 +14,54 @@ enum AssistantPreferences {
     }
 
     /// Where to send someone who has no key yet.
-    static let keyLocation = "Settings › Network & API › Assistant"
+    static let keyLocation = "Settings › Assistant"
 
     @MainActor
     static func openSettings() {
-        SettingsRouter.shared.pending = .api
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        SettingsRouter.shared.open(.assistant, entry: "api.assistant")
     }
 }
 
-/// Settings › Network & API › Assistant.
-struct AssistantSettingsForm: View {
+/// Settings › Assistant: the Anthropic key everything Claude does here
+/// shares, the Assistant's model, and sermon import.
+struct AssistantSettingsPane: View {
+    let model: AppModel?
     @AppStorage(AssistantModel.defaultsKey) private var modelRaw = AssistantModel.opus.rawValue
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ClaudeKeyField()
-            Text("From console.anthropic.com › API Keys. Sermon import uses the same key.")
-                .font(.caption).foregroundStyle(.secondary)
-            Picker("Model", selection: $modelRaw) {
-                ForEach(AssistantModel.allCases) { model in
-                    Text(model.title).tag(model.rawValue)
+        Form {
+            Section {
+                SettingsRow("api.assistant") {
+                    // Reads the Keychain on appear, never in a view body.
+                    ClaudeKeyField()
+                        .labelsHidden()
+                        .frame(width: 260)
+                }
+                SettingsRow("assistant.model") {
+                    Picker("", selection: $modelRaw) {
+                        ForEach(AssistantModel.allCases) { model in
+                            Text(model.title).tag(model.rawValue)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 200)
+                }
+            } header: {
+                Text("Claude")
+            } footer: {
+                Text(AssistantModel.stored(modelRaw).detail
+                    + " Open the Assistant from Window › Assistant (⇧⌘A).")
+            }
+            if let model {
+                Section {
+                    SermonImportSettingsForm(model: model)
+                } header: {
+                    SettingsHeader(id: "bible.sermon")
+                } footer: {
+                    Text(SettingsIndex.entry("bible.sermon")?.caption ?? "")
                 }
             }
-            Text(AssistantModel.stored(modelRaw).detail)
-                .font(.caption).foregroundStyle(.secondary)
         }
+        .settingsForm()
     }
 }

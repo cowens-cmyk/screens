@@ -66,19 +66,25 @@ final class DeckLinkAutoSetup {
 struct DeckLinkSetupForm: View {
     @Bindable private var setup = DeckLinkAutoSetup.shared
 
+    /// Form rows for Settings › Screens: what was found, a way to look
+    /// again, and the driver's own report to copy when something's off.
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(setup.summary).font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Find Devices") { setup.refreshNow() }
-            }
+        LabeledContent {
+            Button("Find Devices") { setup.refreshNow() }
+        } label: {
+            Text("Driver")
+            Text(setup.summary)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .settingsAnchor("show.decklink")
+        DisclosureGroup("Details") {
             Text(DeckLinkAutoSetup.details)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
-            Text("Pick a DeckLink port as a screen's output in the cards above.")
-                .font(.caption).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

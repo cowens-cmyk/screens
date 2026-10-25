@@ -238,71 +238,102 @@ final class AnthemLink {
 
 import SwiftUI
 
-/// Settings › Anthem: what to type into Anthem, and whether cues arrive.
+/// Settings › Integrations › Anthem: what to type into Anthem, and whether
+/// cues arrive; then the setlist and the MIDI fallback. Form sections.
 struct AnthemSettingsForm: View {
     @Bindable private var link = AnthemLink.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        Section {
             Toggle("Let Anthem change the slides", isOn: $link.enabled)
+                .toggleStyle(.switch)
+                .settingsAnchor("anthem.link")
             if link.enabled {
-                HStack(spacing: 6) {
-                    Circle().fill(link.listening ? Color.green : Color.orange).frame(width: 8, height: 8)
-                    Text(link.listening ? "Listening on port \(AnthemLink.port)" : "Not listening")
-                        .font(.caption)
+                LabeledContent("Status") {
+                    StatusDot(
+                        color: link.listening ? .green : .orange,
+                        text: link.listening ? "Listening on port \(AnthemLink.port)" : "Not listening")
                 }
-                Text("In Anthem › Settings › ProPresenter, choose Network and enter \(link.addresses.first ?? "this Mac's address") port \(AnthemLink.port). Then link each song to its presentation here; the tracks change the slides on their cues.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                LabeledContent("Enter in Anthem") {
+                    Text(verbatim: "\(link.addresses.first ?? "this Mac's address") port \(AnthemLink.port)")
+                        .monospacedDigit()
+                        .textSelection(.enabled)
+                }
                 if link.addresses.count > 1 {
-                    Text("Other addresses: " + link.addresses.dropFirst().joined(separator: ", "))
-                        .font(.caption).foregroundStyle(.secondary)
+                    LabeledContent("Other addresses") {
+                        Text(link.addresses.dropFirst().joined(separator: ", "))
+                            .textSelection(.enabled)
+                    }
                 }
                 if let cue = link.lastCue, let at = link.lastCueAt {
-                    Text("Last cue: \(cue) at \(at.formatted(date: .omitted, time: .standard))")
-                        .font(.caption).foregroundStyle(.secondary)
+                    LabeledContent("Last cue") {
+                        Text("\(cue) at \(at.formatted(date: .omitted, time: .standard))")
+                    }
                 }
                 if let error = link.error {
-                    Text(error).font(.caption).foregroundStyle(.red)
+                    Text(error).font(.subheadline).foregroundStyle(.red)
                 }
             }
-            Divider().padding(.vertical, 2)
-            AnthemFeedSettings()
-            Divider().padding(.vertical, 2)
-            AnthemMIDISettings()
+        } header: {
+            Text("Anthem")
+        } footer: {
+            Text(link.enabled
+                ? "In Anthem › Settings › ProPresenter, choose Network and enter the address above. Then link each song to its presentation; the tracks change the slides on their cues."
+                : SettingsIndex.entry("anthem.link")?.caption ?? "")
+        }
+        AnthemFeedSettings()
+        AnthemMIDISettings()
+    }
+}
+
+/// A coloured dot and a short status, for connection rows.
+struct StatusDot: View {
+    let color: Color
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(text)
         }
     }
 }
 
-/// Settings › Anthem: reading Anthem's setlist and song orders.
+/// Settings › Integrations › Anthem: reading Anthem's setlist and song orders.
 private struct AnthemFeedSettings: View {
     @Bindable private var feed = AnthemFeed.shared
     @State private var address = AnthemFeed.shared.manualAddress
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        Section {
             Toggle("Match song orders to Anthem's setlist", isOn: $feed.enabled)
+                .toggleStyle(.switch)
             if feed.enabled {
-                HStack(spacing: 6) {
-                    Circle().fill(dotColor).frame(width: 8, height: 8)
-                    Text(statusText).font(.caption)
+                LabeledContent("Status") {
+                    StatusDot(color: dotColor, text: statusText)
                 }
-                LabeledContent("Anthem address") {
-                    TextField("Found automatically", text: $address)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
+                LabeledContent {
+                    TextField("", text: $address, prompt: Text("Found automatically"))
+                        .labelsHidden()
+                        .frame(width: 220)
                         .onSubmit { feed.manualAddress = address }
+                } label: {
+                    Text("Anthem address")
+                    Text("Empty finds Anthem on the network. Otherwise its Mac's address, port \(String(AnthemShow.defaultPort)) unless you add one.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                Text("Leave empty to find Anthem on the network. Otherwise its Mac's address, port \(AnthemShow.defaultPort) unless you add one.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 Toggle("Ignore instrumental sections", isOn: $feed.ignoreInstrumental)
+                    .toggleStyle(.switch)
                     .help("Intros, turnarounds and other band-only parts with no blank slide in Screens don't count as a difference.")
                 Toggle("Match Anthem automatically", isOn: $feed.autoMatch)
+                    .toggleStyle(.switch)
+            }
+        } header: {
+            Text("Setlist")
+        } footer: {
+            if feed.enabled {
                 Text("Upcoming plans Anthem's setlist is for. A song that differs gets an arrangement in Anthem's order (Anthem, or Anthem – and the plan's date when another plan uses that one). A song on screen is left alone.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .onDisappear {
@@ -333,18 +364,20 @@ private struct AnthemFeedSettings: View {
     }
 }
 
-/// Settings › Anthem: Anthem's MIDI fallback.
+/// Settings › Integrations › Anthem: Anthem's MIDI fallback.
 private struct AnthemMIDISettings: View {
     @Bindable private var feed = AnthemFeed.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        Section {
             Toggle("Listen to Anthem's MIDI", isOn: $feed.followMIDI)
+                .toggleStyle(.switch)
+                .settingsAnchor("anthem.midi")
             if feed.followMIDI {
-                HStack(spacing: 6) {
-                    Circle().fill(feed.midiConnected ? Color.green : Color.secondary).frame(width: 8, height: 8)
-                    Text(feed.midiConnected ? "Connected to Anthem's MIDI source" : "Anthem's MIDI source isn't open")
-                        .font(.caption)
+                LabeledContent("Status") {
+                    StatusDot(
+                        color: feed.midiConnected ? .green : .secondary,
+                        text: feed.midiConnected ? "Connected to Anthem's MIDI source" : "Anthem's MIDI source isn't open")
                 }
                 Picker("Notes", selection: $feed.midiUsesAnthemNotes) {
                     Text("Anthem's").tag(true)
@@ -352,9 +385,12 @@ private struct AnthemMIDISettings: View {
                 }
                 .pickerStyle(.segmented)
                 .fixedSize()
-                Text("Anthem's notes, channel 1: Next 13, Previous 14, Select Item 19, Trigger Slide 20 (velocity is the slide number). The choice covers Anthem's own MIDI source and the Screens In destination, so Anthem can send to either; a message that arrives on both counts once. If another app sends to Screens In, choose MIDI input map. MIDI devices added in Settings › MIDI always use the map.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("MIDI")
+        } footer: {
+            if feed.followMIDI {
+                Text("Anthem's notes, channel 1: Next 13, Previous 14, Select Item 19, Trigger Slide 20 (velocity is the slide number). The choice covers Anthem's own MIDI source and the Screens In destination, so Anthem can send to either; a message that arrives on both counts once. If another app sends to Screens In, choose MIDI input map. MIDI devices added in Settings › Integrations › Lightkey & MIDI always use the map.")
             }
         }
     }

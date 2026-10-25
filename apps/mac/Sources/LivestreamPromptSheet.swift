@@ -125,7 +125,7 @@ struct LivestreamPromptSheet: View {
                        systemImage: "rectangle.inset.filled") { answer(.fullScreen) }
                 choice(StreamWording.nothing, detail: "Nothing goes over the camera.",
                        systemImage: "video") { answer(.nothing) }
-                choice(StreamWording.themeDefault, detail: "The theme and the Show Setup switch decide.",
+                choice(StreamWording.themeDefault, detail: "The theme and the Livestream switch decide.",
                        systemImage: "paintpalette") { answer(.themeDefault) }
             }
             VStack(alignment: .leading, spacing: 6) {

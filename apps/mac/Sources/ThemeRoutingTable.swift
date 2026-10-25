@@ -53,7 +53,7 @@ struct ThemeRoutingTable: View {
             }
             Text("Lower Third, and any category not listed, uses these lower thirds.")
                 .font(.caption).foregroundStyle(.tertiary)
-            Text("Stage displays follow the stage layout chosen in Show Setup, not the theme.")
+            Text("Stage displays follow the stage layout chosen in Settings › Stage, not the theme.")
                 .font(.caption).foregroundStyle(.tertiary)
         }
         .task {

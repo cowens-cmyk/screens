@@ -12,8 +12,8 @@ enum ClaudeClient {
 
         var errorDescription: String? {
             switch self {
-            case .missingKey: "Add your Anthropic API key in Settings › Bible › Sermon import."
-            case .http(401, _): "Anthropic rejected the API key — check it in Settings › Bible."
+            case .missingKey: "Add your Anthropic API key in Settings › Assistant."
+            case .http(401, _): "Anthropic rejected the API key — check it in Settings › Assistant."
             case .http(let code, let body): "Claude request failed (\(code)). \(body.prefix(200))"
             case .refused: "Claude declined to read these notes."
             case .empty: "Claude didn't return any slides."
@@ -22,7 +22,7 @@ enum ClaudeClient {
     }
 }
 
-/// The API key field, shared by Settings › Bible and › Network & API. It reads
+/// The API key field in Settings › Assistant. It reads
 /// the Keychain only when its page is shown (Settings views are built at
 /// launch, and a read there brought up the Keychain prompt before anyone
 /// asked for Claude), and writes only when the key really changes.

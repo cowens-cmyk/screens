@@ -148,7 +148,7 @@ struct SermonImportSheet: View {
                 Button("Choose File…", action: choose)
             }
             if ClaudeClient.apiKey.isEmpty {
-                Text("Add your Anthropic API key in Settings › Bible › Sermon import first.")
+                Text("Add your Anthropic API key in Settings › Assistant first.")
                     .font(.caption).foregroundStyle(.orange)
             }
         }

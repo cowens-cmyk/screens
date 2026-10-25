@@ -13,7 +13,7 @@ extension AssistantToolbox {
         let sync = ShepherdSync.shared
         guard sync.isConfigured else {
             return (["configured": false,
-                     "note": "Shepherd isn't set up on this Mac (Settings › Shepherd & Anthem › Shepherd). Plans made in Screens still work."],
+                     "note": "Shepherd isn't set up on this Mac (Settings › Integrations › Shepherd). Plans made in Screens still work."],
                     "Shepherd isn't set up")
         }
         // A sync already running (the ten-minute check) is waited for, not doubled.
@@ -490,7 +490,7 @@ extension AssistantToolbox {
         }
         let sync = ShepherdSync.shared
         guard sync.isConfigured else {
-            throw Failure("Shepherd isn't set up on this Mac, so there are no lyrics to compare with (Settings › Shepherd & Anthem › Shepherd).")
+            throw Failure("Shepherd isn't set up on this Mac, so there are no lyrics to compare with (Settings › Integrations › Shepherd).")
         }
         let client = sync.client
 
