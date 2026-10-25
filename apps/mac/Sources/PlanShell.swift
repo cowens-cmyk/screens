@@ -200,6 +200,10 @@ struct PlanShell: View {
                     // The whole-plan page scrolls to an item instead of
                     // swapping views, and its selection moves as it scrolls.
                     .animation(HopeMotion.ui(reduced: reduceMotion), value: wholePlanShown ? nil : itemID)
+                    // Listening is never a secret: a red bar across the top
+                    // of the slides for as long as a microphone is open.
+                    .safeAreaInset(edge: .top, spacing: 0) { LiveListeningBar() }
+                    .animation(HopeMotion.ui(reduced: reduceMotion), value: LiveAssist.shared.listening)
                 // Edit gives the editor the room; Present and Schedule show the screens.
                 if screensShown && mode != .edit, let render {
                     Divider()
@@ -682,6 +686,7 @@ struct PlanShell: View {
             }
         } label: {
             Label("Bible", systemImage: assist.listening ? "waveform" : "book")
+                .foregroundStyle(assist.listening ? HopeStyle.live : Color.primary)
         } primaryAction: {
             scriptureShown = true
         }
