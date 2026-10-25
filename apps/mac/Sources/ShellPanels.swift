@@ -172,7 +172,7 @@ struct PlanBubbleLabel: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text(itemName ?? (planName == nil ? "Choose a plan" : "Nothing chosen"))
+                Text(itemName ?? (planName == nil ? "Choose a plan" : "No item selected"))
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -330,8 +330,8 @@ struct ShowControlBar: View {
 /// Behind everything in the window's content: near black, a soft steel-blue
 /// light from the top right of centre and a plum one from the lower left,
 /// falling back to black at the edges. Gradients, not an image, so it fits
-/// any window, and drawn once: nothing in it moves. Dim on purpose, so the
-/// slides, their text and the live outline stay the brightest things there.
+/// any window, and drawn once: nothing in it moves. Kept below the slides'
+/// brightness, so they, their text and the live outline still lead.
 struct ShellBackdrop: View {
     private static let base = Color(red: 0.020, green: 0.022, blue: 0.030)
     private static let steel = Color(red: 0x3E / 255, green: 0x8F / 255, blue: 0xB0 / 255)
@@ -341,18 +341,18 @@ struct ShellBackdrop: View {
         ZStack {
             Self.base
             EllipticalGradient(
-                colors: [Self.steel.opacity(0.30), Self.steel.opacity(0.12), .clear],
-                center: UnitPoint(x: 0.62, y: -0.05),
-                startRadiusFraction: 0, endRadiusFraction: 0.62)
+                colors: [Self.steel.opacity(0.55), Self.steel.opacity(0.22), .clear],
+                center: UnitPoint(x: 0.6, y: 0.0),
+                startRadiusFraction: 0, endRadiusFraction: 0.72)
             EllipticalGradient(
-                colors: [Self.plum.opacity(0.30), Self.plum.opacity(0.10), .clear],
-                center: UnitPoint(x: 0.04, y: 1.02),
-                startRadiusFraction: 0, endRadiusFraction: 0.6)
+                colors: [Self.plum.opacity(0.50), Self.plum.opacity(0.18), .clear],
+                center: UnitPoint(x: 0.24, y: 0.66),
+                startRadiusFraction: 0, endRadiusFraction: 0.62)
             // The edges and corners back to black.
             EllipticalGradient(
-                colors: [.clear, .black.opacity(0.55)],
+                colors: [.clear, .black.opacity(0.5)],
                 center: .center,
-                startRadiusFraction: 0.42, endRadiusFraction: 0.74)
+                startRadiusFraction: 0.5, endRadiusFraction: 0.8)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
