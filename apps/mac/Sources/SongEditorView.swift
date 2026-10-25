@@ -17,6 +17,7 @@ struct SongEditorView: View {
     @State private var linesPerSlide = 2
     @State private var sequence: [String] = []   // section names, in play order
     @State private var loaded = false
+    @State private var lowerThirds = LowerThirdCatalog()
 
     private var presentation: Presentation? { model.presentation(presentationID) }
     private var sections: [PresentationSection] { presentation?.sections ?? [] }
@@ -116,10 +117,15 @@ struct SongEditorView: View {
                 ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
             }
             Picker("Livestream", selection: optionalBinding(\.streamThemeId)) {
-                Text("Same theme's lower third").tag("")
+                // Left empty, the song follows its type, so the label says
+                // what that is.
+                Text(presentation.map { InheritedLivestreamLabel.text(for: $0, model: model, catalog: lowerThirds) } ?? "Type default")
+                    .tag("")
+                Divider()
                 ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
             }
-            .help("The livestream follows the Livestream switch in the screens column; this picks the theme it uses for this song.")
+            .help("Set for every song in More › Lower Thirds & Themes. A theme picked here wins for this song.")
+            .task(id: model.version(of: .theme)) { lowerThirds = await LowerThirdCatalog.load(model) }
             Picker("Stage", selection: optionalBinding(\.stageLayoutId)) {
                 Text("Worship (chords, current, next, key, time)").tag("")
                 ForEach(model.entries(of: .confidenceLayout), id: \.id) { Text($0.name).tag($0.id) }

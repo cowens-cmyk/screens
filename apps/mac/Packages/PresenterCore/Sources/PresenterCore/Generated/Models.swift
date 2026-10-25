@@ -2655,8 +2655,9 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
     public var sermonThemeId: String?
     public var serviceDay: ServiceDaySettings?
     public var lightingCues: [LightingCue]?
+    public var typeScreens: [PresentationTypeScreens]?
 
-    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil, serviceDay: ServiceDaySettings? = nil, lightingCues: [LightingCue]? = nil) {
+    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil, serviceDay: ServiceDaySettings? = nil, lightingCues: [LightingCue]? = nil, typeScreens: [PresentationTypeScreens]? = nil) {
         self.id = id
         self.designMap = designMap
         self.messageNotesThemeId = messageNotesThemeId
@@ -2667,6 +2668,7 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
         self.sermonThemeId = sermonThemeId
         self.serviceDay = serviceDay
         self.lightingCues = lightingCues
+        self.typeScreens = typeScreens
     }
 }
 
@@ -2731,6 +2733,20 @@ public struct PresentationTypeRule: Codable, Sendable, Equatable {
     public init(category: String, actions: [SlideAction]) {
         self.category = category
         self.actions = actions
+    }
+}
+
+public struct PresentationTypeScreens: Codable, Sendable, Equatable {
+    public var category: String
+    public var stream: String?
+    public var streamThemeId: String?
+    public var streamSlideId: String?
+
+    public init(category: String, stream: String? = nil, streamThemeId: String? = nil, streamSlideId: String? = nil) {
+        self.category = category
+        self.stream = stream
+        self.streamThemeId = streamThemeId
+        self.streamSlideId = streamSlideId
     }
 }
 

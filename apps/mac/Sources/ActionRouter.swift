@@ -74,8 +74,10 @@ final class ActionRouter {
     }
 
     /// Runs the presentation type's default actions when a presentation of
-    /// that type goes live (not on every slide within it).
+    /// that type goes live (not on every slide within it), and tells the
+    /// livestream which type's lower third it now follows.
     func presentationDidGoLive(_ presentation: Presentation) {
+        stream.presentationWentLive(presentation)
         let actions = PresentationTypes.actions(
             for: presentation, rules: model.slideBuilding.presentationTypeRules)
         guard !actions.isEmpty else { return }

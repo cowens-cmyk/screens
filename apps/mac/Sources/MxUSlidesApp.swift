@@ -238,6 +238,10 @@ struct MxUSlidesApp: App {
                 .sheet(isPresented: $showFeedback) {
                     FeedbackView(model: appModel) { showFeedback = false }
                 }
+                // Lower Thirds & Themes from the toolbar's More menu.
+                .sheet(isPresented: Bindable(ScreensByTypeRouter.shared).shown) {
+                    ScreensByTypeSheet(model: appModel, render: renderContext)
+                }
                 .task {
                     try? await Task.sleep(for: .seconds(1.5))
                     if FeedbackController.shared.lastRunCrashed && !showWelcome && !presentLayout.runOnly {

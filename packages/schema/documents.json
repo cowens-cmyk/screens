@@ -4739,6 +4739,11 @@
           "name": "lightingCues",
           "type": "list:LightingCue",
           "optional": true
+        },
+        {
+          "name": "typeScreens",
+          "type": "list:PresentationTypeScreens",
+          "optional": true
         }
       ]
     },
@@ -4850,6 +4855,30 @@
         {
           "name": "actions",
           "type": "list:SlideAction"
+        }
+      ]
+    },
+    "PresentationTypeScreens": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "category",
+          "type": "string"
+        },
+        {
+          "name": "stream",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "streamThemeId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "streamSlideId",
+          "type": "string",
+          "optional": true
         }
       ]
     },

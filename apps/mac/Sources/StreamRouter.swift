@@ -12,9 +12,11 @@ import SlideScene
 /// stream even when the switch is on Transparent, its Nothing clears the
 /// stream even on Full Screen, and its lower-third picture goes over the
 /// camera in place of the slide); then the Transparent · Lower Third · Full
-/// Screen switch (ShowSetup.streamMode); then, on Lower Third, the theme's
-/// pick for the slide's category, then the theme's lower-third theme, and
-/// otherwise the camera stays clear. Every other screen carries every layer.
+/// Screen switch (ShowSetup.streamMode); then, on Lower Third, the
+/// presentation's own Livestream theme, then its type's choice in Screens by
+/// Type, then the theme's pick for the slide's category, then the theme's
+/// lower-third theme, and otherwise the camera stays clear. Every other
+/// screen carries every layer.
 @MainActor
 @Observable
 final class StreamRouter {
@@ -26,6 +28,8 @@ final class StreamRouter {
     /// The live slide and its theme, for Lower Third.
     private var liveTheme: Theme?
     private var liveSlide: Slide?
+    /// The live presentation's row in Screens by Type.
+    private var liveType: String?
 
     /// A video's temporary hold on the stream. Kept here, not in the switch,
     /// so the operator's saved Show Setup choice never changes.
@@ -53,6 +57,9 @@ final class StreamRouter {
     private func armThemeMutationWatch() {
         withObservationTracking {
             _ = appModel.version(of: .theme)
+            // Screens by Type and the current series live in the church's
+            // settings: a change there while a song is up shows at once.
+            _ = appModel.slideBuilding
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -124,7 +131,8 @@ final class StreamRouter {
     }
 
     /// The design the live slide asked for. A slide that picked Lower Third
-    /// without naming a design gets its theme's lower third for its category.
+    /// without naming a design gets the lower third its presentation, type
+    /// or theme would give it.
     private func slideChoice() -> StreamChoice {
         guard let own = liveSlide?.streamDesign else { return .clear }
         guard let themeID = own.themeId, !themeID.isEmpty else { return themeChoice(lowerThirdOnly: true) }
@@ -137,14 +145,52 @@ final class StreamRouter {
         return .design(key: "stream-slide:\(themeID)##\(own.slideId ?? "")", theme: scoped)
     }
 
-    /// What the livestream shows for the live slide, from its theme: the
-    /// design picked for its category in the theme editor, else the theme's
-    /// lower-third theme, else a clear camera. For a slide that asked for a
-    /// lower third, the theme's Nothing and Full Screen picks are passed over:
-    /// the slide's own choice already beat them.
+    /// What the livestream shows for the live slide when nothing on the
+    /// slide or the switch decided: the presentation's own Livestream theme,
+    /// else its type's choice in Screens by Type, else the slide's theme.
+    /// For a slide that asked for a lower third, Nothing and Full Screen set
+    /// up ahead of time are passed over: the slide's own choice already beat
+    /// them.
     private func themeChoice(lowerThirdOnly: Bool = false) -> StreamChoice {
-        let override = ShowSetup.shared.streamThemeOverride.flatMap { appModel.theme($0) }
-        guard let theme = override ?? liveTheme else { return .clear }
+        let decided = StreamPrecedence.source(
+            presentationStreamThemeId: ShowSetup.shared.streamThemeOverride,
+            type: liveTypeStream, seriesThemeId: seriesThemeID, lowerThirdOnly: lowerThirdOnly)
+        switch decided.source {
+        case .audience:
+            return .audience
+        case .clear:
+            return .clear
+        case .design(let themeID, let slideID):
+            // A design that's left the library falls back to the slide's
+            // theme rather than leaving the camera bare.
+            guard let source = appModel.theme(themeID), source.hasSlide(id: slideID) else {
+                return routed(through: liveTheme, lowerThirdOnly: lowerThirdOnly)
+            }
+            var scoped = source.scoped(toSlideID: slideID)
+            if var only = scoped.slides?.first, let name = liveSlide?.themeSlideName, !name.isEmpty {
+                only.name = name
+                scoped.slides = [only]
+            }
+            return .design(key: "stream-type:\(themeID)##\(slideID)", theme: scoped)
+        case .theme(let id):
+            // Not read yet, or gone: the slide's theme until it arrives.
+            guard let chosen = appModel.theme(id) else { return routed(through: liveTheme, lowerThirdOnly: lowerThirdOnly) }
+            return routed(through: chosen, chosen: true, lowerThirdOnly: lowerThirdOnly)
+        case .slideTheme:
+            return routed(through: liveTheme, lowerThirdOnly: lowerThirdOnly)
+        }
+    }
+
+    /// A theme's own livestream choices: the design picked for the slide's
+    /// category in the theme editor, else the theme's lower-third theme. A
+    /// theme picked to carry the stream (`chosen`) that was never set up for
+    /// the livestream then falls to its own Lower Thirds designs, so a
+    /// lower-thirds theme picked for a song or a type shows without being
+    /// tied up in the theme editor first. One that was set up keeps its
+    /// gaps: a series leaves its Title slide's camera clear on purpose.
+    /// Otherwise the camera stays clear.
+    private func routed(through theme: Theme?, chosen: Bool = false, lowerThirdOnly: Bool) -> StreamChoice {
+        guard let theme else { return .clear }
         let category = liveSlide.flatMap { SlideSceneBuilder.themeSlide(for: $0, theme: theme)?.name } ?? ""
         if let pick = theme.streamDesigns?.first(where: { $0.category.caseInsensitiveCompare(category) == .orderedSame }),
            !lowerThirdOnly || pick.mode == .design {
@@ -168,7 +214,40 @@ final class StreamRouter {
            let lowerThird = appModel.theme(lowerThirdID) {
             return .design(key: "stream-lower-third:\(lowerThirdID)", theme: ThemeCategories.lowerThirds(of: lowerThird))
         }
+        if chosen, (theme.streamDesigns ?? []).isEmpty, theme.hasSlideFolder(BasicTemplates.lowerThirds) {
+            return .design(key: "stream-lower-third:\(theme.id)", theme: ThemeCategories.lowerThirds(of: theme))
+        }
         return .clear
+    }
+
+    /// The live presentation's type's livestream choice. Before anything has
+    /// gone live there's no type, and the theme decides as it always has.
+    private var liveTypeStream: TypeStream {
+        guard let liveType else { return .theme }
+        return appModel.slideBuilding.screens(forType: liveType).livestream
+    }
+
+    /// The current plan's sermon series, else the church's current one.
+    private var seriesThemeID: String? {
+        let plan = appModel.currentServiceID.flatMap { appModel.resident.services.value($0) }
+        return [plan?.sermonThemeId, appModel.slideBuilding.sermonThemeId]
+            .compactMap { $0 }.first { !$0.isEmpty }
+    }
+
+    /// Themes the live slide's stream could draw from, so one not yet read
+    /// is fetched before it's needed.
+    private func wantedThemeIDs(_ theme: Theme?, _ slide: Slide?) -> [String] {
+        var ids = [theme?.streamLowerThirdThemeId, slide?.streamDesign?.themeId,
+                   ShowSetup.shared.streamThemeOverride, seriesThemeID]
+            + (theme?.streamDesigns ?? []).map(\.themeId)
+        if case .design(let themeID, _) = liveTypeStream { ids.append(themeID) }
+        return ids.compactMap { $0 }.filter { !$0.isEmpty }
+    }
+
+    /// A presentation went live: its type picks its row in Screens by Type.
+    /// Called before its first slide's noteLiveTheme.
+    func presentationWentLive(_ presentation: Presentation) {
+        liveType = PresentationTypes.screensType(of: presentation)
     }
 
     /// The operator changed a slide's livestream choice. When that slide is
@@ -200,8 +279,7 @@ final class StreamRouter {
         if wentLive { video.slideWentLive() }
         liveTheme = theme
         liveSlide = slide
-        let needed = ([theme?.streamLowerThirdThemeId, slide?.streamDesign?.themeId] + (theme?.streamDesigns ?? []).map(\.themeId))
-            .compactMap { $0 }.filter { !$0.isEmpty && appModel.theme($0) == nil }
+        let needed = wantedThemeIDs(theme, slide).filter { appModel.theme($0) == nil }
         if !needed.isEmpty {
             Task { @MainActor [weak self] in
                 await self?.appModel.themesFilled(needed)

@@ -25,6 +25,8 @@ struct SlideObjectInspector: View {
     @State private var presetNamePrompt = false
     @State private var presetNameDraft = ""
 
+    @State private var lowerThirds = LowerThirdCatalog()
+
     private static let defaultShadow = ObjectShadow(colorHex: "#00000080", blurRadius: 8, offsetX: 0, offsetY: 4)
     private static let defaultStroke = ObjectStroke(colorHex: "#000000FF", width: 2)
 
@@ -258,6 +260,17 @@ struct SlideObjectInspector: View {
             }
             .help("Each type can run default actions when it goes live — set them in Settings › Presentation Types")
 
+            InspectorPicker("Livestream", selection: streamThemeBinding()) {
+                // Left empty, the presentation follows its type, so the
+                // label says what that is.
+                Text(InheritedLivestreamLabel.text(for: model.presentation, model: model.appModel, catalog: lowerThirds))
+                    .tag("")
+                Divider()
+                ForEach(model.appModel.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
+            }
+            .help("Set for every presentation of this type in More › Lower Thirds & Themes. A theme picked here wins for this presentation; a slide's own Livestream wins over both.")
+            .task(id: model.appModel.version(of: .theme)) { lowerThirds = await LowerThirdCatalog.load(model.appModel) }
+
             Button("Attach Chord Chart…") { attachChordChart() }
                 .help("Drop in the song's chord chart (PDF, ChordPro or text) — lyrics, sections, chords and key are rebuilt from it")
 
@@ -305,6 +318,13 @@ struct SlideObjectInspector: View {
         Binding(
             get: { model.presentation.category ?? "" },
             set: { model.setCategory($0.isEmpty ? nil : $0) }
+        )
+    }
+
+    private func streamThemeBinding() -> Binding<String> {
+        Binding(
+            get: { model.presentation.streamThemeId ?? "" },
+            set: { model.setStreamTheme($0.isEmpty ? nil : $0) }
         )
     }
 
