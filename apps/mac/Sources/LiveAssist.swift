@@ -10,6 +10,9 @@ import SwiftUI
 /// turned Follow on for and highlights or puts up the next slide as it's sung
 /// (with a confidence meter and instant manual takeover), and spots spoken
 /// Bible references ("turn to Genesis 32") so the passage is one click away.
+/// During the sermon it also recognizes a passage read without its
+/// reference (by searching the ESV for the words, then matching them against
+/// the chapter) and moves the passage on screen along as it's read.
 @MainActor
 @Observable
 final class LiveAssist {
@@ -85,6 +88,42 @@ final class LiveAssist {
     private(set) var detected: [SpokenDetection] = []
     /// Following holds off until then after the operator moves a slide.
     private(set) var pausedUntil: Date?
+    /// When the newest spoken reference was heard, so the listening bar can
+    /// put whichever is newer, it or a reading, first.
+    private(set) var detectedAt: Date?
+
+    // MARK: Reading state
+
+    /// A passage found from the pastor reading it aloud, at the verse he's on.
+    struct Reading: Equatable {
+        var reference: BibleReference
+        var heardAt: Date
+    }
+    private(set) var reading: Reading?
+    /// The verse the reading has reached, and when a phrase last fit it:
+    /// the listening bar says "Following" while that's recent.
+    private(set) var followingVerse: BibleReference?
+    private(set) var lastReadingMatch: Date?
+
+    /// The chapter being followed (one at a time: the ESV's terms keep
+    /// stored text small) and where in it he is.
+    private var scriptureFollower: ScriptureFollower?
+    private var followedPassage: BiblePassage?
+    /// Built from the followed chapter, from the verse he was on to its end.
+    private var readingPresentation: Presentation?
+    /// Found from reading with too little to put up by itself; the next few
+    /// phrases can still confirm it.
+    private var readingAwaitingShow: Date?
+    /// The scripture presentation Screens last put up, which reading moves
+    /// through, and the slide it last fired there.
+    private var scriptureShown: Presentation?
+    private var scriptureFired: (slideID: String, at: Date)?
+    /// The latest finished words, for searching.
+    private var heardWords: [String] = []
+    private var searchPacer = ScriptureSearchPacer()
+    private var searchQueue: [(query: String, heard: [String])] = []
+    private var searchTask: Task<Void, Never>?
+    private var recentQueries: [String] = []
 
     // MARK: Follow state
 
@@ -238,12 +277,16 @@ final class LiveAssist {
         listeningSince = nil
         status = "Off"
         clearSuggestion()
+        clearReading()
     }
 
     /// Any manual move pauses following briefly so the operator stays in
     /// charge, unless it put up the slide that was suggested. `occurrence`
     /// and `contextID` name the slide being fired, when the caller knows it.
     func operatorTookOver(firing occurrence: Int? = nil, contextID: String? = nil) {
+        // During the sermon the same pause holds back scripture found from
+        // reading: it neither goes up nor moves on while the operator acts.
+        if mode == .sermon, listening { takeOver() }
         guard followsEverySong || !followedSongIDs.isEmpty else { return }
         if let suggestion, let controls {
             let fired = occurrence ?? controls.liveOccurrence
@@ -299,8 +342,11 @@ final class LiveAssist {
         transcript = String((lastHeardFinal + " " + text).suffix(400))
         if isFinal { lastHeardFinal = String((lastHeardFinal + " " + text).suffix(600)) }
         if mode == .sermon {
-            if isFinal { sermonTranscript = String((sermonTranscript + "\n" + text).suffix(8000)) }
-            if isFinal { spotScripture(in: before + " " + text) }
+            if isFinal {
+                sermonTranscript = String((sermonTranscript + "\n" + text).suffix(8000))
+                spotScripture(in: before + " " + text)
+                followReading(text)
+            }
             return
         }
         if detectsScripture, isFinal { spotScripture(in: before + " " + text) }
@@ -311,10 +357,13 @@ final class LiveAssist {
         for detection in SpokenReference.detections(in: text, recent: detected.map(\.reference))
         where !detected.contains(where: { $0.reference == detection.reference }) {
             detected.insert(detection, at: 0)
+            detectedAt = Date()
             // The likely reading goes up; any other reading of the same words
             // ("John 11" heard as 1:1) is loaded too, one click away.
             let shows = mode == .sermon && showsAutomatically
             Task { await prepare(detection.reference, thenShow: shows) }
+            // A named passage is usually read next: follow it from there.
+            if mode == .sermon { Task { await followSpoken(detection.reference) } }
             for alternative in detection.alternatives {
                 Task { await prepare(alternative, thenShow: false) }
             }
@@ -325,7 +374,9 @@ final class LiveAssist {
     func clearSermon() {
         sermonTranscript = ""
         detected = []
+        detectedAt = nil
         prepared = [:]
+        clearReading()
     }
 
     /// Fetches and lays out the passage ahead of time.
@@ -500,10 +551,10 @@ final class LiveAssist {
 
     /// Builds the passage with the Bible template and puts its first slide live.
     func show(_ reference: BibleReference) async throws {
-        guard let model, let controls else { return }
+        guard let model, controls != nil else { return }
         if let ready = prepared[reference.display] {
             if model.libraryEntry(ready.id) == nil { model.createInDrive(ready) }
-            if let first = ready.slides.first { controls.fire(slide: first, in: ready) }
+            if let first = ready.slides.first { fireScripture(first, in: ready) }
             return
         }
         let settings = BibleSettings.shared
@@ -517,8 +568,261 @@ final class LiveAssist {
         presentation.folder = model.newPlacement.folder(for: .presentation)
         model.createInDrive(presentation)
         if let first = presentation.slides.first {
-            controls.fire(slide: first, in: presentation)
+            fireScripture(first, in: presentation)
         }
+    }
+
+    /// Puts up a scripture slide and remembers it, so reading can move on
+    /// through the same passage.
+    private func fireScripture(_ slide: Slide, in presentation: Presentation) {
+        guard let controls else { return }
+        scriptureShown = presentation
+        scriptureFired = (slide.id, Date())
+        controls.fire(slide: slide, in: presentation)
+    }
+
+    // MARK: Following a reading
+
+    /// Matches a finished phrase against the chapter being followed, and
+    /// when nothing is being followed (or he has stopped reading it),
+    /// searches the ESV for what he's reading.
+    private func followReading(_ text: String) {
+        let words = ScriptureFollower.words(text)
+        guard !words.isEmpty else { return }
+        heardWords = Array((heardWords + words).suffix(30))
+        if var follower = scriptureFollower {
+            let place = follower.hear(words: words)
+            scriptureFollower = follower
+            if follower.matchedLastPhrase {
+                lastReadingMatch = Date()
+                if let book = followedPassage?.reference.book, let at = follower.place {
+                    followingVerse = BibleReference(book: book, chapter: at.chapter, startVerse: at.verse)
+                }
+            }
+            if let place { readingMoved(place) }
+        }
+        // Searching costs a request against the ESV's allowance, so not
+        // while the followed chapter still fits, not when a reference was
+        // just said (that's handled), and not for a few words.
+        let stillReading = lastReadingMatch.map { Date().timeIntervalSince($0) < 20 } ?? false
+        guard !stillReading, words.count >= 4, SpokenReference.detections(in: text).isEmpty,
+              !BibleSettings.shared.esvKey.isEmpty
+        else { return }
+        let queries = ScriptureFollower.searchQueries(recent: heardWords).filter { !recentQueries.contains($0) }
+        guard !queries.isEmpty else { return }
+        // Newer words replace a search still waiting: only where he is now matters.
+        searchQueue = queries.map { ($0, heardWords) }
+        if searchTask == nil { searchTask = Task { await runSearches() } }
+    }
+
+    /// One search at a time, paced to the ESV API's limits.
+    private func runSearches() async {
+        defer { searchTask = nil }
+        while !Task.isCancelled, listening, mode == .sermon, !searchQueue.isEmpty {
+            guard let wait = searchPacer.wait(at: Date()) else {
+                searchQueue = []
+                DiagnosticsStore.shared.note("liveAssist.reading", detail: "daily search limit reached")
+                return
+            }
+            if wait > 0 {
+                try? await Task.sleep(for: .seconds(wait))
+                continue
+            }
+            let (query, heard) = searchQueue.removeFirst()
+            recentQueries = Array((recentQueries + [query]).suffix(50))
+            searchPacer.recordRequest(at: Date())
+            do {
+                let results = try await BibleSettings.shared.service.esvSearch(query)
+                searchPacer.succeeded()
+                let candidates = results.compactMap { result in
+                    BibleReference.parse(result.reference).map { (reference: $0, text: result.content) }
+                }
+                if let hit = ScriptureFollower.bestSearchHit(heard: heard, results: candidates) {
+                    searchQueue = []
+                    await located(hit.reference, heard: heard)
+                }
+            } catch let limited as ESVRateLimited {
+                searchPacer.rateLimited(at: Date(), retryAfter: limited.retryAfter)
+                DiagnosticsStore.shared.note("liveAssist.reading", detail: "ESV search rate limited")
+            } catch {
+                // Offline or refused: the next phrase tries again.
+            }
+        }
+    }
+
+    /// A search found the verse: load its chapter, and keep it only if the
+    /// whole chapter agrees that's where the words come from.
+    private func located(_ hit: BibleReference, heard: [String]) async {
+        let chapter = BibleReference(book: hit.book, chapter: hit.chapter)
+        // Already following that chapter: its own matching has the say.
+        guard followedPassage?.reference != chapter, let passage = await loadChapter(chapter) else { return }
+        var follower = ScriptureFollower(verses: passage.verses)
+        guard let place = follower.hear(words: heard) else { return }
+        follow(passage, with: follower)
+        lastReadingMatch = Date()
+        followingVerse = BibleReference(book: chapter.book, chapter: place.chapter, startVerse: place.verse)
+        DiagnosticsStore.shared.note(
+            "liveAssist.reading", detail: "found \(chapter.book.name) \(place.chapter):\(place.verse) \(place.evidence)")
+        readingMoved(place)
+    }
+
+    /// A reference was said: follow its chapter from that verse.
+    private func followSpoken(_ reference: BibleReference) async {
+        let chapter = BibleReference(book: reference.book, chapter: reference.chapter)
+        let passage: BiblePassage
+        if let followed = followedPassage, followed.reference == chapter {
+            passage = followed
+        } else {
+            guard let loaded = await loadChapter(chapter) else { return }
+            passage = loaded
+        }
+        follow(passage, with: ScriptureFollower(
+            verses: passage.verses, at: reference.startVerse ?? passage.verses.first?.verse))
+    }
+
+    private func follow(_ passage: BiblePassage, with follower: ScriptureFollower) {
+        if followedPassage?.reference != passage.reference {
+            readingPresentation = nil
+            reading = nil
+            followingVerse = nil
+        }
+        followedPassage = passage
+        scriptureFollower = follower
+        readingAwaitingShow = nil
+    }
+
+    /// One request for the whole chapter, verse by verse: ESV when there's
+    /// a key (the church reads ESV), else the default translation.
+    private func loadChapter(_ chapter: BibleReference) async -> BiblePassage? {
+        let settings = BibleSettings.shared
+        let translation: BibleTranslation? = settings.esvKey.isEmpty ? settings.translation : .esv
+        guard let translation else { return nil }
+        if translation.source == .esv { searchPacer.recordRequest(at: Date()) }
+        do {
+            let passage = try await settings.service.passage(chapter, translation: translation)
+            if translation.source == .esv { searchPacer.succeeded() }
+            return passage
+        } catch BibleError.http(let status, _) where status == 429 {
+            searchPacer.rateLimited(at: Date(), retryAfter: nil)
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
+    /// He has read into a new verse: move the passage on screen to it, or
+    /// put it up, or offer it in the listening bar.
+    private func readingMoved(_ place: ScriptureFollower.Place) {
+        guard let passage = followedPassage else { return }
+        let at = BibleReference(book: passage.reference.book, chapter: place.chapter, startVerse: place.verse)
+        reading = Reading(reference: at, heardAt: Date())
+        if place.kind == .located, place.evidence < ScriptureFollower.Threshold.show {
+            readingAwaitingShow = Date()
+        }
+        let ourLive = scriptureLiveIndex() != nil
+        if ourLive, advanceShownScripture(to: at) { return }
+        // Up by itself only when it's sure, the operator isn't busy, and it
+        // won't take the screen from something else the operator chose: a
+        // passage newly found, or reading on past the end of what's up
+        // (never back to before it).
+        let fresh = place.kind == .located
+            || readingAwaitingShow.map { Date().timeIntervalSince($0) < 30 } == true
+        guard showsAutomatically, !isPaused, place.evidence >= ScriptureFollower.Threshold.show,
+              fresh || (ourLive && readsPastShown(at))
+        else { return }
+        Task { await showReading(at: at) }
+    }
+
+    /// The verse comes after the last one in the passage Screens put up.
+    private func readsPastShown(_ at: BibleReference) -> Bool {
+        guard let name = scriptureShown?.slides.last?.name, let shown = BibleReference.parse(name),
+              shown.book == at.book, let verse = at.startVerse, let start = shown.startVerse
+        else { return false }
+        return (at.chapter, verse) > (shown.endChapter ?? shown.chapter, shown.endVerse ?? start)
+    }
+
+    /// Where the live slide sits in the scripture presentation Screens put
+    /// up, or nil when something else is live.
+    private func scriptureLiveIndex() -> Int? {
+        guard let controls, let shown = scriptureShown, let live = controls.state.liveSlide,
+              live.presentation?.id == shown.id
+        else { return nil }
+        return shown.slides.firstIndex { $0.id == live.slide.id }
+    }
+
+    /// Moves forward to the slide holding this verse while the passage
+    /// Screens put up is live. True when that passage holds the verse
+    /// (whether or not it moved).
+    private func advanceShownScripture(to at: BibleReference) -> Bool {
+        guard let controls, let shown = scriptureShown, let liveIndex = scriptureLiveIndex(),
+              let verse = at.startVerse,
+              let index = ScriptureFollower.slideIndex(
+                book: at.book, chapter: at.chapter, verse: verse, slideNames: shown.slides.map(\.name))
+        else { return false }
+        // The operator moved within it (a remote, MIDI): hold off, as for a click.
+        let liveID = controls.state.liveSlide?.slide.id
+        if let fired = scriptureFired, let liveID, fired.slideID != liveID, Date().timeIntervalSince(fired.at) > 3 {
+            scriptureFired = (liveID, Date())
+            takeOver()
+        }
+        guard index > liveIndex, !isPaused else { return true }
+        fireScripture(shown.slides[index], in: shown)
+        DiagnosticsStore.shared.note("liveAssist.reading", detail: "\(shown.name) \(liveIndex + 1)→\(index + 1)")
+        return true
+    }
+
+    /// Puts the passage being read on screen at the verse he's on.
+    func showReading() async {
+        guard let at = reading?.reference else { return }
+        await showReading(at: at)
+    }
+
+    private func showReading(at place: BibleReference) async {
+        guard let model, let passage = followedPassage, let verse = place.startVerse else { return }
+        readingAwaitingShow = nil
+        func slide(in presentation: Presentation) -> Int? {
+            ScriptureFollower.slideIndex(
+                book: place.book, chapter: place.chapter, verse: verse, slideNames: presentation.slides.map(\.name))
+        }
+        var presentation: Presentation
+        if let ready = readingPresentation, slide(in: ready) != nil {
+            presentation = ready
+        } else {
+            // From this verse to the chapter's end: he may read on.
+            let verses = passage.verses.filter { ($0.chapter, $0.verse) >= (place.chapter, verse) }
+            guard let last = verses.last else { return }
+            let reference = BibleReference(
+                book: place.book, chapter: place.chapter, startVerse: verse,
+                endChapter: last.chapter == place.chapter ? nil : last.chapter, endVerse: last.verse)
+            let settings = BibleSettings.shared
+            let themeID = model.slideBuilding.scriptureThemeId ?? ""
+            await model.themesFilled([themeID])
+            presentation = ScriptureSlideBuilder.presentation(
+                for: BiblePassage(
+                    reference: reference, translation: passage.translation, verses: verses,
+                    copyright: passage.copyright),
+                format: settings.format, theme: model.theme(themeID))
+            presentation.folder = "Sermon Scripture"
+            readingPresentation = presentation
+        }
+        guard let index = slide(in: presentation) else { return }
+        if model.libraryEntry(presentation.id) == nil { model.createInDrive(presentation) }
+        fireScripture(presentation.slides[index], in: presentation)
+        DiagnosticsStore.shared.note("liveAssist.reading", detail: "showed \(presentation.name) at \(place.display)")
+    }
+
+    private func clearReading() {
+        searchTask?.cancel()
+        searchTask = nil
+        searchQueue = []
+        heardWords = []
+        scriptureFollower = nil
+        followedPassage = nil
+        readingPresentation = nil
+        readingAwaitingShow = nil
+        reading = nil
+        followingVerse = nil
+        lastReadingMatch = nil
     }
 }
 

@@ -63,6 +63,22 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
+/// One verse from the ESV API's search: "Romans 8:28" and its text.
+public struct ESVSearchResult: Hashable, Sendable, Decodable {
+    public var reference: String
+    public var content: String
+
+    public init(reference: String, content: String) {
+        self.reference = reference
+        self.content = content
+    }
+}
+
+/// The ESV API answered 429: too many requests.
+public struct ESVRateLimited: Error, Sendable {
+    public var retryAfter: TimeInterval?
+}
+
 /// Fetches passages from API.Bible (rest.api.bible) and the ESV API
 /// (api.esv.org). Both return text with "[n]" verse markers, which
 /// ScriptureText.verses(fromMarked:) splits.
@@ -159,6 +175,41 @@ public struct BibleService: Sendable {
         struct Response: Decodable { var passages: [String] }
         let text = try JSONDecoder().decode(Response.self, from: data).passages.joined(separator: "\n")
         return (text, "Scripture quotations are from the ESV® Bible, © 2001 by Crossway.")
+    }
+
+    /// Verses matching words, from the ESV API's search. Used to find a
+    /// passage the pastor is reading without saying where it is, so the
+    /// caller keeps it inside the API's limits (ScriptureSearchPacer). A
+    /// 429 throws `ESVRateLimited` with how long the API asked to wait.
+    public func esvSearch(_ query: String, pageSize: Int = 20) async throws -> [ESVSearchResult] {
+        guard let key = keys.esv else { throw BibleError.missingKey("ESV API") }
+        var request = URLRequest(url: Self.esvSearchURL(query: query, pageSize: pageSize), timeoutInterval: 10)
+        request.setValue("Token \(key)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        let http = response as? HTTPURLResponse
+        let status = http?.statusCode ?? 0
+        if status == 429 {
+            let retryAfter = http?.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
+            throw ESVRateLimited(retryAfter: retryAfter)
+        }
+        guard (200..<300).contains(status) else {
+            throw BibleError.http(status, String(decoding: data, as: UTF8.self))
+        }
+        return try Self.esvSearchResults(from: data)
+    }
+
+    static func esvSearchURL(query: String, pageSize: Int) -> URL {
+        var components = URLComponents(string: "https://api.esv.org/v3/passage/search/")!
+        components.queryItems = [
+            .init(name: "q", value: query),
+            .init(name: "page-size", value: String(pageSize)),
+        ]
+        return components.url!
+    }
+
+    static func esvSearchResults(from data: Data) throws -> [ESVSearchResult] {
+        struct Response: Decodable { var results: [ESVSearchResult]? }
+        return try JSONDecoder().decode(Response.self, from: data).results ?? []
     }
 
     private func get(_ url: URL, headers: [String: String]) async throws -> Data {
