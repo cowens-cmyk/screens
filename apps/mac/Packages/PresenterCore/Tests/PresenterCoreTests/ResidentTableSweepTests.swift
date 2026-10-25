@@ -171,7 +171,8 @@ import Testing
         #expect(alert.contains("appModel.resident.themes.fireRead(styling)"))
         #expect(alert.contains("await self?.appModel.themesFilled([styling])"))
         let stream = try source("StreamRouter.swift")
-        #expect(try body(of: "func noteLiveTheme(", in: stream).contains("await self?.appModel.themesFilled(needed)"),
+        #expect(try body(of: "func noteLiveTheme(", in: stream).contains("fetchWantedThemes()"))
+        #expect(try body(of: "private func fetchWantedThemes()", in: stream).contains("await self?.appModel.themesFilled(needed)"),
                 "a stream design whose theme isn't in memory yet waits for the fill")
     }
 

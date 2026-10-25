@@ -168,6 +168,30 @@ import Testing
     #expect(!PresentFollowRule.selectsLive(sinceScroll: 1, sinceKey: nil, sinceClick: nil), "the list stays on what the operator scrolled to")
 }
 
+@Test func aPickedItemLetsTheLiveOneGoUntilAnotherGoesLive() {
+    var hold = PresentLiveHold()
+    var seen: [Bool] = []
+    for live in ["loop", "loop"] { seen.append(hold.follows(live: live)) }
+    #expect(seen == [true, true], "nothing picked: the page follows")
+
+    hold.selected("opening-song", live: "loop")
+    seen = ["loop", "loop", "welcome", "welcome"].map { hold.follows(live: $0) }
+    #expect(seen == [false, false, true, true],
+            "the loop advancing leaves the operator on the song; the next item to go live is followed")
+
+    hold.selected("opening-song", live: "welcome")
+    hold.selected("welcome", live: "welcome")
+    let backOnLive = hold.follows(live: "welcome")
+    #expect(backOnLive, "picking the live item again follows it again")
+
+    hold.selected("opening-song", live: nil)
+    let nothingLive = hold.follows(live: "welcome")
+    #expect(nothingLive, "nothing was live to let go")
+    hold.selected(nil, live: "welcome")
+    let cleared = hold.follows(live: "welcome")
+    #expect(cleared)
+}
+
 @Test func onlyTheOperatorsOwnScrollMovesThePlanSelection() {
     #expect(PresentFollowRule.operatorScrolled(sinceScroll: 0.3, sinceFocus: nil))
     #expect(PresentFollowRule.operatorScrolled(sinceScroll: 0.3, sinceFocus: 5))

@@ -11,6 +11,12 @@ final class InputTrailRecorder {
 
     private var lastFocusScroll: TimeInterval?
 
+    /// The page's own input, kept apart from the trail: the trail holds four
+    /// entries, so typing a stage message would push a scroll out of it.
+    private var lastPageScroll: TimeInterval?
+    private var lastPageClick: TimeInterval?
+    private var lastKeyboardFire: TimeInterval?
+
     private let regions = NSHashTable<InputRegionView>.weakObjects()
 
     private init() {}
@@ -34,6 +40,11 @@ final class InputTrailRecorder {
         lastFocusScroll = ProcessInfo.processInfo.systemUptime
     }
 
+    /// A key put a slide up (an arrow on the page, the clicker, a hot key).
+    func noteKeyboardFire() {
+        lastKeyboardFire = ProcessInfo.processInfo.systemUptime
+    }
+
     func cause() -> String {
         "input: \(trail.summary(at: ProcessInfo.processInfo.systemUptime)); keys go to \(focusDescription())"
     }
@@ -44,16 +55,19 @@ final class InputTrailRecorder {
 
     /// A scroll over the whole-plan page itself, not the plan list beside it.
     func sincePageScroll() -> TimeInterval? {
-        trail.age(of: "scroll in present", at: ProcessInfo.processInfo.systemUptime)
+        lastPageScroll.map { ProcessInfo.processInfo.systemUptime - $0 }
     }
 
+    /// A slide put up from the keyboard. Keys that only type, into the
+    /// stage message or a search field, don't count.
     func sinceKey() -> TimeInterval? {
-        trail.age(of: "key", at: ProcessInfo.processInfo.systemUptime)
+        lastKeyboardFire.map { ProcessInfo.processInfo.systemUptime - $0 }
     }
 
+    /// A click on the whole-plan page. One in the plan list or a sheet
+    /// didn't put the slide under the pointer.
     func sinceClick() -> TimeInterval? {
-        let now = ProcessInfo.processInfo.systemUptime
-        return [trail.age(of: "click", at: now), trail.age(of: "double-click", at: now)].compactMap { $0 }.min()
+        lastPageClick.map { ProcessInfo.processInfo.systemUptime - $0 }
     }
 
     func sinceFocusScroll() -> TimeInterval? {
@@ -66,6 +80,7 @@ final class InputTrailRecorder {
 
     private func take(_ event: NSEvent) {
         let what: String
+        let now = ProcessInfo.processInfo.systemUptime
         switch event.type {
         case .keyDown:
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -75,18 +90,25 @@ final class InputTrailRecorder {
                 control: flags.contains(.control), shift: flags.contains(.shift))
             what = "key \(key)\(event.isARepeat ? " held" : "") to \(focusDescription())"
         case .scrollWheel:
-            what = "scroll in \(region(at: event.locationInWindow, in: event.window))"
+            let place = region(at: event.locationInWindow, in: event.window)
+            if place == Self.page { lastPageScroll = now }
+            what = "scroll in \(place)"
         case .rightMouseDown:
             what = "right-click in \(region(at: event.locationInWindow, in: event.window))"
         case .otherMouseDown:
             what = "other-click in \(region(at: event.locationInWindow, in: event.window))"
         default:
             let click = event.clickCount > 1 ? "double-click" : "click"
-            what = "\(click) in \(region(at: event.locationInWindow, in: event.window))"
+            let place = region(at: event.locationInWindow, in: event.window)
+            if place == Self.page { lastPageClick = now }
+            what = "\(click) in \(place)"
         }
 
-        trail.record(what, at: ProcessInfo.processInfo.systemUptime)
+        trail.record(what, at: now)
     }
+
+    /// The whole-plan page's region name (ServiceContinuousView).
+    private static let page = "present"
 
     private func region(at point: NSPoint, in window: NSWindow?) -> String {
         let hits = regions.allObjects.filter { view in

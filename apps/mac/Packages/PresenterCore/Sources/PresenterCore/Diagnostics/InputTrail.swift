@@ -85,14 +85,16 @@ public enum PresentFollowRule {
     /// goes live (the remote, Anthem, a slide's own timing).
     public static let scrollPause: TimeInterval = 3
 
-    /// A slide clicked this recently went live under the pointer; it's in view.
+    /// A slide clicked on the page this recently went live under the
+    /// pointer; it's in view.
     public static let clickWindow: TimeInterval = 0.5
 
     /// How recent a scroll has to be for the page settling to count as the
     /// operator's: anything older moved it some other way.
     public static let settleWindow: TimeInterval = 1.5
 
-    /// A key pressed after the scroll (an arrow, the clicker) ends the pause.
+    /// A slide put up by a key after the scroll (an arrow, the clicker) ends
+    /// the pause. Typing elsewhere, a stage message, doesn't.
     public static func paused(sinceScroll: TimeInterval?, sinceKey: TimeInterval?) -> Bool {
         if let sinceScroll, sinceScroll < scrollPause {
             (sinceKey ?? .infinity) > sinceScroll
@@ -123,6 +125,37 @@ public enum PresentFollowRule {
             sinceScroll < (sinceFocus ?? .infinity)
         } else {
             false
+        }
+    }
+}
+
+/// Whether a slide going live may move the whole-plan page and the plan
+/// list at all. Once the operator picks another item in the plan list, the
+/// item that was live is let go: more of its slides going live, a
+/// pre-service loop advancing every few seconds, leave the operator where
+/// they are. The next item to go live is followed again, and so is the live
+/// item once the operator picks it. A scroll has its own, shorter pause
+/// (PresentFollowRule).
+public struct PresentLiveHold: Equatable, Sendable {
+
+    /// The live item the operator moved away from.
+    public private(set) var letGo: String?
+
+    public init() {}
+
+    /// The operator picked an item (nil: the selection was cleared).
+    public mutating func selected(_ itemID: String?, live: String?) {
+        letGo = if let itemID, let live, itemID != live { live } else { nil }
+    }
+
+    /// A slide of `live` went up. The page follows it unless it's still the
+    /// item the operator moved away from.
+    public mutating func follows(live: String) -> Bool {
+        if live == letGo {
+            return false
+        } else {
+            letGo = nil
+            return true
         }
     }
 }

@@ -77,6 +77,16 @@ import Testing
         #expect(recorder.contains("PresentLanding.anchor(self.cards, grids: self.currentGrids)"), "the slide at the top, not just the card")
     }
 
+    @Test func onlyInputOnThePageHoldsOrReleasesTheLiveFollow() throws {
+        let surface = try source("ServiceContinuousView.swift")
+        #expect(surface.contains("hold.follows(live: itemID)"), "a picked-away item is let go")
+        #expect(surface.contains("if focusScroll.honoredItemID != id { picks.pick(id) }"))
+        let recorder = try source("InputTrailRecorder.swift")
+        #expect(!recorder.contains("trail.age(of: \"click\""), "a click anywhere in the window")
+        #expect(!recorder.contains("trail.age(of: \"key\""), "typing a stage message")
+        #expect(try source("ServiceControls.swift").contains("InputTrailRecorder.shared.noteKeyboardFire()"))
+    }
+
     @Test func regionMarkersCoverNothing() throws {
         let recorder = try source("InputTrailRecorder.swift")
         let modifier = try #require(recorder.range(of: "func inputRegion(_ name: String) -> some View {"))
