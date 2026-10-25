@@ -92,17 +92,73 @@ private func read(_ text: String, into follower: inout ScriptureFollower) -> [Sc
             read(Chapter.text(Chapter.romans8, verse), into: &follower)
             verses.append(follower.place?.verse ?? 0)
         }
-        #expect(verses == [28, 29, 30, 31, 32], "\(verses)")
+        // 31 ("What shall we then say to these things? If God be for us,
+        // who can be against us?") has one distinctive word, too few to
+        // move on by, so the place waits there and catches up at 32.
+        #expect(verses == [28, 29, 30, 30, 32], "\(verses)")
+    }
+
+    @Test func movingOnNeedsTwoNewWordsFromTheNewestPhrase() {
+        var follower = ScriptureFollower(verses: Chapter.romans8, at: 28)
+        read(Chapter.text(Chapter.romans8, 28), into: &follower)
+        // One word of the next verse in a remark doesn't move it, even right
+        // after the verse before was read.
+        #expect(follower.hear("predestinate is a big word") == nil)
+        #expect(follower.hear("now this is where Paul gets into the image") == nil)
+        #expect(follower.place?.verse == 28)
+        read(Chapter.text(Chapter.romans8, 29), into: &follower)
+        #expect(follower.place?.verse == 29)
+    }
+
+    @Test func aStreakCountsPhrasesInARowThatFit() {
+        var follower = ScriptureFollower(verses: Chapter.romans8, at: 28)
+        read(Chapter.text(Chapter.romans8, 28), into: &follower)
+        #expect(follower.streak >= 2)
+        follower.hear("good morning church it is so good to see you")
+        #expect(follower.streak == 0)
+
+        // A verse said in one breath (quoted from memory) is one phrase.
+        var quoted = ScriptureFollower(verses: Chapter.romans8)
+        #expect(quoted.hear(spoken(Chapter.text(Chapter.romans8, 28)))?.kind == .located)
+        #expect(quoted.streak == 1)
+        read(Chapter.text(Chapter.romans8, 29), into: &quoted)
+        #expect(quoted.streak >= 2, "reading on is a streak")
+        read(Chapter.text(Chapter.romans8, 26), into: &quoted)
+        #expect(quoted.place?.verse == 26)
+        #expect(quoted.streak <= 3, "a jump back starts a new streak")
+    }
+
+    @Test func progressTracksHowFarIntoAVerseHeIs() {
+        var follower = ScriptureFollower(verses: Chapter.romans8, at: 34)
+        follower.hear("who shall separate us from the love of")
+        follower.hear("christ shall tribulation or distress or persecution or")
+        #expect(follower.place?.verse == 35)
+        let partway = follower.place?.progress ?? 0
+        #expect(partway > 0.3 && partway < 0.8, "\(partway)")
+        follower.hear("famine or nakedness or peril or sword")
+        #expect((follower.place?.progress ?? 0) > 0.9)
+        #expect(follower.place?.verse == 35)
     }
 
     @Test func toleratesMisheardWords() {
         var follower = ScriptureFollower(verses: Chapter.romans8, at: 28)
         // "foreknow" heard as "for no", "predestinate" as "predestined",
-        // "conformed" as "confirmed", "brethren" as "brother and".
-        read("for whom he did for no he also did predestined to be confirmed to the image of his son that he might be the first born among many brother and", into: &follower)
+        // "conformed" as "confirmed", "brethren" as "brother and". Phrases
+        // end where he pauses, here at each sentence.
+        follower.hear("for whom he did for no he also did predestined to be confirmed to the image of his son that he might be the first born among many brother and")
         #expect(follower.place?.verse == 29)
-        read("moreover whom he did predestinate them he also cold and whom he called them he also just a fight and whom he justified them he also glorified", into: &follower)
+        follower.hear("moreover whom he did predestinate them he also cold and whom he called them he also just a fight and whom he justified them he also glorified")
         #expect(follower.place?.verse == 30)
+    }
+
+    @Test func manyMisheardWordsInShortPhrasesHoldThePlace() {
+        // With most of a verse misheard and arriving in scraps, no scrap has
+        // two clear words of the next verse, so it waits rather than guess.
+        var follower = ScriptureFollower(verses: Chapter.romans8, at: 28)
+        for scrap in ["for whom he did for no he also did", "his son that he might be the first born", "among many brother and"] {
+            follower.hear(scrap)
+        }
+        #expect(follower.place?.verse == 28)
     }
 
     @Test func findsAPassageDespiteDroppedAndExtraWords() {
@@ -226,7 +282,7 @@ private func read(_ text: String, into follower: inout ScriptureFollower) -> [Sc
         #expect(!queries.isEmpty)
         #expect(queries.first?.contains("purpose") == true)
         #expect(queries.allSatisfy { !$0.split(separator: " ").contains("the") }, "stopwords are left out")
-        #expect(queries.count <= 3)
+        #expect(queries.count <= 2, "one search and one fallback per phrase")
     }
 
     @Test func talkIsNotSearched() {
@@ -295,6 +351,22 @@ private func read(_ text: String, into follower: inout ScriptureFollower) -> [Sc
         #expect(ScriptureFollower.slideIndex(book: psalms, chapter: 8, verse: 28, slideNames: names) == nil, "another book's slides")
     }
 
+    @Test func aVerseOverTwoSlidesMovesOnPartway() throws {
+        let romans = try #require(BibleReference.book(named: "Romans"))
+        let names = ["Romans 8:26–27", "Romans 8:28", "Romans 8:28", "Romans 8:29"]
+        func slide(_ progress: Double, _ counts: [Int]? = nil) -> Int? {
+            ScriptureFollower.slideIndex(
+                book: romans, chapter: 8, verse: 28, progress: progress, slideNames: names, wordCounts: counts)
+        }
+        #expect(slide(0) == 1)
+        #expect(slide(0.3) == 1)
+        #expect(slide(0.6) == 2)
+        #expect(slide(1) == 2)
+        // By their share of the words: a short second part comes later.
+        #expect(slide(0.6, [20, 30, 10, 20]) == 1)
+        #expect(slide(0.8, [20, 30, 10, 20]) == 2)
+    }
+
     // MARK: Pacing
 
     @Test func searchesWaitBetweenRequests() {
@@ -302,8 +374,53 @@ private func read(_ text: String, into follower: inout ScriptureFollower) -> [Sc
         let start = Date(timeIntervalSince1970: 1_000_000)
         #expect(pacer.wait(at: start) == 0)
         pacer.recordRequest(at: start)
-        #expect(pacer.wait(at: start.addingTimeInterval(1)) == 3)
-        #expect(pacer.wait(at: start.addingTimeInterval(5)) == 0)
+        #expect(pacer.wait(at: start.addingTimeInterval(1)) == 5, "six seconds apart")
+        #expect(pacer.wait(at: start.addingTimeInterval(7)) == 0)
+    }
+
+    @Test func steadySearchingSpendsTheAllowanceEvenly() {
+        var pacer = ScriptureSearchPacer()
+        var now = Date(timeIntervalSince1970: 1_000_000)
+        var sent = 0
+        // An hour of a phrase every 4 seconds, each wanting a search.
+        for _ in 0..<900 {
+            if pacer.wait(at: now) == 0 {
+                pacer.recordRequest(at: now)
+                sent += 1
+            }
+            now = now.addingTimeInterval(4)
+        }
+        #expect(sent <= 310 && sent >= 250, "\(sent)")
+        // And the last ten minutes still searched, not only the first half hour.
+        var late = 0
+        for _ in 0..<150 {
+            if pacer.wait(at: now) == 0 { pacer.recordRequest(at: now); late += 1 }
+            now = now.addingTimeInterval(4)
+        }
+        #expect(late >= 40)
+    }
+
+    @Test func requestsThatMustGoAreCountedNotHeld() {
+        var pacer = ScriptureSearchPacer()
+        pacer.burst = 2
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        pacer.count(at: start)
+        pacer.count(at: start)
+        #expect(pacer.wait(at: start) == 12, "the searches after them wait for the allowance")
+    }
+
+    @Test func searchesStopAtTheHourlyCeiling() throws {
+        var pacer = ScriptureSearchPacer()
+        pacer.hourlyLimit = 5
+        pacer.burst = 100
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        var now = start
+        for _ in 0..<5 {
+            pacer.recordRequest(at: now)
+            now = now.addingTimeInterval(10)
+        }
+        let wait = try #require(pacer.wait(at: now))
+        #expect(abs(wait - (3600 - 50)) < 0.001)
     }
 
     @Test func searchesBackOffWhenTheAPISaysTooMany() {
