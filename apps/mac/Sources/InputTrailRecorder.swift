@@ -281,9 +281,14 @@ final class PresentCardFrames {
     /// Plan headers: bands on the page, never the item it is showing.
     private var headerIDs: Set<String> = []
 
-    /// Told the item at the top once the page stops where the operator
-    /// scrolled it, so the plan list can highlight it.
+    /// Told the item the operator is looking at as they scroll the page, so
+    /// the plan list can highlight it.
     var onOperatorScroll: ((String) -> Void)?
+
+    /// The page's visible height, for the line a third of the way down that
+    /// decides which item the operator is looking at.
+    var viewportHeight: CGFloat = 0
+    private var readingLine: CGFloat { viewportHeight > 0 ? viewportHeight / 3 : 1 }
 
     private var anchor: PresentLanding.Anchor?
     private var settleTask: Task<Void, Never>?
@@ -417,6 +422,14 @@ final class PresentCardFrames {
     }
 
     func moved() {
+        // While the operator scrolls, the plan list follows at once rather
+        // than catching up when the page stops.
+        let scrolling = InputTrailRecorder.shared
+        if PresentFollowRule.operatorScrolled(
+            sinceScroll: scrolling.sincePageScroll(), sinceFocus: scrolling.sinceFocusScroll()),
+           let id = PresentLanding.itemAtLine(cards, line: readingLine, skipping: headerIDs) {
+            onOperatorScroll?(id)
+        }
         settleTask?.cancel()
         settleTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(200))
@@ -427,7 +440,7 @@ final class PresentCardFrames {
             if !Task.isCancelled,
                PresentFollowRule.operatorScrolled(
                    sinceScroll: recorder.sincePageScroll(), sinceFocus: recorder.sinceFocusScroll()),
-               let id = PresentLanding.itemAtTop(self.cards, skipping: self.headerIDs) {
+               let id = PresentLanding.itemAtLine(self.cards, line: self.readingLine, skipping: self.headerIDs) {
                 self.onOperatorScroll?(id)
             }
         }

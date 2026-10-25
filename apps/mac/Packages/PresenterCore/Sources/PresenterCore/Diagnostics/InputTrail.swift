@@ -184,6 +184,17 @@ public enum PresentLanding {
         cardAtTop(cards.filter { !skipped.contains($0.id) })?.id
     }
 
+    /// The item the operator is looking at: the one crossing a line a third
+    /// of the way down the page, so an item with only its last row showing
+    /// at the top has already given way to the one filling the view. A
+    /// header band on the line gives way to the item under it.
+    public static func itemAtLine(_ cards: [Card], line: CGFloat, skipping skipped: Set<String> = []) -> String? {
+        let items = cards.filter { !skipped.contains($0.id) }
+        return (items.first { $0.top <= line && $0.top + $0.height > line }
+            ?? items.filter { $0.top > line }.min { $0.top < $1.top }
+            ?? items.filter { $0.top + $0.height <= line }.max { $0.top < $1.top })?.id
+    }
+
     public struct Grid: Equatable, Sendable {
         public let id: String
         public let top: CGFloat

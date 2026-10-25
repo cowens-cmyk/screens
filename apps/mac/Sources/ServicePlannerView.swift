@@ -1250,11 +1250,11 @@ private struct CurrentItemHighlight: View {
             if let frame {
                 let origin = proxy.frame(in: .global).origin
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.22))
+                    .fill(Color.accentColor.opacity(0.32))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1))
-                    .frame(width: max(frame.width - 12, 0), height: frame.height - 2)
+                    .frame(width: max(frame.width - 8, 0), height: frame.height - 2)
                     .position(x: frame.midX - origin.x, y: frame.midY - origin.y)
             }
         }

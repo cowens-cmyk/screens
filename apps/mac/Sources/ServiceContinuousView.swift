@@ -92,9 +92,13 @@ struct ServiceContinuousView: View {
                         }
                         .coordinateSpace(name: Self.scrollSpace)
                         .inputRegion("present")
-                        .onAppear { viewportHeight = viewport.size.height }
+                        .onAppear {
+                            viewportHeight = viewport.size.height
+                            PresentCardFrames.shared.viewportHeight = viewport.size.height
+                        }
                         .onChange(of: viewport.size.height) { _, height in
                             viewportHeight = height
+                            PresentCardFrames.shared.viewportHeight = height
                         }
 
                         .onChange(of: viewport.size.width) { _, _ in

@@ -156,6 +156,26 @@ import Testing
     #expect(PresentLanding.itemAtTop([], skipping: []) == nil)
 }
 
+@Test func theItemFillingTheViewIsTheOneShown() {
+    let cards = [
+        PresentLanding.Card(id: "slideshow", top: -400, height: 520),
+        PresentLanding.Card(id: "holy", top: 130, height: 900),
+        PresentLanding.Card(id: "message", top: 1030, height: 30),
+        PresentLanding.Card(id: "sermon", top: 1060, height: 600),
+    ]
+    #expect(PresentLanding.itemAtTop(cards) == "slideshow", "only its last row is at the top")
+    #expect(PresentLanding.itemAtLine(cards, line: 200) == "holy")
+    let headerOnLine = [
+        PresentLanding.Card(id: "holy", top: -900, height: 1000),
+        PresentLanding.Card(id: "message", top: 190, height: 30),
+        PresentLanding.Card(id: "sermon", top: 220, height: 600),
+    ]
+    #expect(PresentLanding.itemAtLine(headerOnLine, line: 200, skipping: ["message"]) == "sermon")
+    let pastTheEnd = [PresentLanding.Card(id: "last", top: -300, height: 400)]
+    #expect(PresentLanding.itemAtLine(pastTheEnd, line: 200) == "last", "the bottom of the plan")
+    #expect(PresentLanding.itemAtLine([], line: 200) == nil)
+}
+
 @Test func theLiveSlideIsFollowedUnlessTheOperatorJustScrolledOrClickedIt() {
     #expect(PresentFollowRule.reveals(sinceScroll: nil, sinceKey: nil, sinceClick: nil), "the remote, Anthem, auto-advance")
     #expect(!PresentFollowRule.reveals(sinceScroll: 1, sinceKey: nil, sinceClick: nil), "the operator is looking elsewhere")
