@@ -111,6 +111,7 @@ final class ServiceControls {
     func noteKeyboardFire() {
         keyboardFires += 1
         LiveAssist.shared.operatorTookOver()
+        InputTrailRecorder.shared.noteKeyboardFire()
     }
 
     weak var actionRouter: ActionRouter?
@@ -183,7 +184,7 @@ final class ServiceControls {
         // taking over: the video keeps the livestream, and its plan keeps
         // its move to the next item when it ends.
         let underVideo = autoAdvanced && screenVideoID.map(isMediaLive) == true
-        actionRouter?.noteLiveTheme(theme, slide: slide, wentLive: !underVideo)
+        actionRouter?.noteLiveTheme(theme, slide: slide, contextID: contextID, wentLive: !underVideo)
 
         if let own = RenderContext.sceneTransition(from: slide.transition) {
             render.nextLiveTransitions[.slide] = own

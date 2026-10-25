@@ -42,8 +42,10 @@ final class ActionRouter {
     }
 
     /// `wentLive` false: the slide advanced by itself under a video that
-    /// still holds the livestream.
-    func noteLiveTheme(_ theme: Theme?, slide: Slide?, wentLive: Bool = true) {
+    /// still holds the livestream. `contextID` is the plan item it was
+    /// fired from, so the livestream knows which plan's series is live.
+    func noteLiveTheme(_ theme: Theme?, slide: Slide?, contextID: String?, wentLive: Bool = true) {
+        stream.itemFired(contextID)
         stream.noteLiveTheme(theme, slide: slide, wentLive: wentLive)
     }
 

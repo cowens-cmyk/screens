@@ -36,8 +36,10 @@ struct LiveListeningBar: View {
                 if assist.mode == .sermon, let heard = assist.detected.first {
                     Divider().frame(height: 22)
                     heardButton(heard.reference, primary: true)
-                    ForEach(heard.alternatives.prefix(2), id: \.display) { alternative in
-                        heardButton(alternative, primary: false)
+                    // Two readings can print the same, so they're told apart by place.
+                    let alternatives = Array(heard.alternatives.prefix(2))
+                    ForEach(alternatives.indices, id: \.self) { index in
+                        heardButton(alternatives[index], primary: false)
                     }
                 }
 

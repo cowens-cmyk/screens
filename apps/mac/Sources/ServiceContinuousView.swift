@@ -37,6 +37,9 @@ struct ServiceContinuousView: View {
 
     @State private var headerHeights: [String: CGFloat] = [:]
 
+    /// The items the operator picked in the plan list, for LiveSlideFollow.
+    @State private var picks = PresentPicks()
+
     static let scrollSpace = "presentScroll"
 
     static let contentSpace = "presentContent"
@@ -102,11 +105,16 @@ struct ServiceContinuousView: View {
                         }
                     }
                     .onChange(of: focusItemID) { _, id in
+                        // The page moving the selection itself (following the
+                        // live slide, the operator's scroll) marks the item
+                        // first; anything else is the operator's pick.
+                        if focusScroll.honoredItemID != id { picks.pick(id) }
                         scrollToFocus(id, reason: "selection", proxy: proxy, service: service)
                         pointNewSlide(at: id)
                     }
 
                     .onChange(of: focusScroll.reselects) { _, _ in
+                        picks.pick(focusItemID)
                         scrollToFocus(focusItemID, reason: "reselect", proxy: proxy, service: service)
                         pointNewSlide(at: focusItemID)
                     }
@@ -126,7 +134,7 @@ struct ServiceContinuousView: View {
                 .background(KeyboardFireFollow(controls: controls) { revealLive(service) })
                 // Everything else that puts a slide up: the remote, Anthem,
                 // a slide's own timing, a click.
-                .background(LiveSlideFollow(controls: controls) { followLive($0, service) })
+                .background(LiveSlideFollow(controls: controls, picks: picks) { followLive($0, service) })
 
                 .onDeleteCommand { deleteRequests += 1 }
                 .onSlideClipboardKeys(active: focused) { clipboardRequests.take($0) }
@@ -1081,7 +1089,8 @@ extension ServiceContinuousView {
     /// A slide went live some way other than an arrow key here. The page
     /// keeps it in view and the plan list highlights its item, except for a
     /// few seconds after the operator scrolls the page somewhere else; a
-    /// clicked slide is already in view, so only the highlight moves.
+    /// clicked slide is already in view, so only the highlight moves. More
+    /// slides of an item the operator picked away from never get here.
     private func followLive(_ itemID: String, _ service: Service) {
         guard presentRows(service).contains(where: { $0.id == itemID }) else { return }
         let recorder = InputTrailRecorder.shared
@@ -1095,16 +1104,37 @@ extension ServiceContinuousView {
     }
 }
 
+/// The operator's picks in the plan list, counted so picking the same item
+/// twice still registers.
+private struct PresentPicks: Equatable {
+    private(set) var itemID: String?
+    private(set) var count = 0
+
+    mutating func pick(_ itemID: String?) {
+        self.itemID = itemID
+        count += 1
+    }
+}
+
 /// Watches what's live for ServiceContinuousView, so a fire re-renders this
-/// and not the page (see slideGridHostsNeverReadTheLiveSlide).
+/// and not the page (see slideGridHostsNeverReadTheLiveSlide). An item the
+/// operator picked away from is let go until another goes live
+/// (PresentLiveHold), so a looping slideshow doesn't pull them back.
 private struct LiveSlideFollow: View {
     let controls: ServiceControls?
+    let picks: PresentPicks
     let follow: (String) -> Void
 
+    @State private var hold = PresentLiveHold()
+
     var body: some View {
-        Color.clear.onChange(of: place) { _, _ in
-            if let itemID = controls?.liveContextID { follow(itemID) }
-        }
+        Color.clear
+            .onChange(of: picks) { _, picks in
+                hold.selected(picks.itemID, live: controls?.liveContextID)
+            }
+            .onChange(of: place) { _, _ in
+                if let itemID = controls?.liveContextID, hold.follows(live: itemID) { follow(itemID) }
+            }
     }
 
     private var place: String? {

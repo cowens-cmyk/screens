@@ -31,6 +31,15 @@ final class StreamRouter {
     /// The live presentation's row in Screens by Type.
     private var liveType: String?
 
+    /// The plan item last fired and the plan it came from, so the Message
+    /// keeps its own series while another plan is open.
+    @ObservationIgnored private var liveItemID: String?
+    @ObservationIgnored private var livePlanID: String?
+
+    /// Themes already asked for since the last slide went live, so one
+    /// that isn't in the library is asked for once, not on every fill.
+    @ObservationIgnored private var askedThemeIDs: Set<String> = []
+
     /// A video's temporary hold on the stream. Kept here, not in the switch,
     /// so the operator's saved Show Setup choice never changes.
     private(set) var video = StreamVideoOverride()
@@ -53,10 +62,13 @@ final class StreamRouter {
         republishStream()
     }
 
-    /// A theme edit can change the live slide's stream design.
+    /// A theme edit can change the live slide's stream design, and a theme
+    /// read in after the slide went live can be the one it was waiting for.
     private func armThemeMutationWatch() {
         withObservationTracking {
             _ = appModel.version(of: .theme)
+            // Filling bumps this, not version(of:).
+            _ = appModel.fillVersion(of: .theme)
             // Screens by Type and the current series live in the church's
             // settings: a change there while a song is up shows at once.
             _ = appModel.slideBuilding
@@ -64,6 +76,7 @@ final class StreamRouter {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.republishStream()
+                self.fetchWantedThemes()
                 self.armThemeMutationWatch()
             }
         }
@@ -227,21 +240,54 @@ final class StreamRouter {
         return appModel.slideBuilding.screens(forType: liveType).livestream
     }
 
-    /// The current plan's sermon series, else the church's current one.
+    /// The sermon series of the plan the live slide came from (the plan
+    /// being viewed when that isn't known), else the church's current one.
     private var seriesThemeID: String? {
-        let plan = appModel.currentServiceID.flatMap { appModel.resident.services.value($0) }
+        let plan = (livePlanID ?? appModel.currentServiceID).flatMap { appModel.resident.services.value($0) }
         return [plan?.sermonThemeId, appModel.slideBuilding.sermonThemeId]
             .compactMap { $0 }.first { !$0.isEmpty }
     }
 
     /// Themes the live slide's stream could draw from, so one not yet read
-    /// is fetched before it's needed.
+    /// is fetched before it's needed: the slide's theme and the themes it
+    /// names, and each theme chosen over it (the presentation's, the
+    /// series, the type's) with the themes that one names.
     private func wantedThemeIDs(_ theme: Theme?, _ slide: Slide?) -> [String] {
-        var ids = [theme?.streamLowerThirdThemeId, slide?.streamDesign?.themeId,
-                   ShowSetup.shared.streamThemeOverride, seriesThemeID]
-            + (theme?.streamDesigns ?? []).map(\.themeId)
-        if case .design(let themeID, _) = liveTypeStream { ids.append(themeID) }
-        return ids.compactMap { $0 }.filter { !$0.isEmpty }
+        var chosen = [ShowSetup.shared.streamThemeOverride, seriesThemeID]
+        if case .design(let themeID, _) = liveTypeStream { chosen.append(themeID) }
+        let chosenIDs = chosen.compactMap { $0 }.filter { !$0.isEmpty }
+        let named = ([theme] + chosenIDs.map { appModel.theme($0) }).compactMap { $0 }
+            .flatMap(\.streamThemeReferences)
+        return Array(Set(chosenIDs + named + [slide?.streamDesign?.themeId].compactMap { $0 }.filter { !$0.isEmpty }))
+    }
+
+    /// Reads in the wanted themes not yet read. A chosen theme read in can
+    /// name more, so this runs again after each fill (see
+    /// armThemeMutationWatch); each theme is asked for once per slide.
+    private func fetchWantedThemes() {
+        let needed = wantedThemeIDs(liveTheme, liveSlide)
+            .filter { appModel.theme($0) == nil && !askedThemeIDs.contains($0) }
+        if !needed.isEmpty {
+            askedThemeIDs.formUnion(needed)
+            Task { @MainActor [weak self] in
+                await self?.appModel.themesFilled(needed)
+                self?.republishStream()
+                self?.fetchWantedThemes()
+            }
+        }
+    }
+
+    /// A slide went live from a plan item (nil: from the library). Called
+    /// before its noteLiveTheme.
+    func itemFired(_ itemID: String?) {
+        let services = appModel.resident.services
+        livePlanID = StreamPrecedence.firedPlan(
+            item: itemID, previousItem: liveItemID, previousPlan: livePlanID,
+            currentPlan: appModel.currentServiceID
+        ) { plan, item in
+            services.value(plan)?.items.contains { $0.id == item } == true
+        }
+        liveItemID = itemID
     }
 
     /// A presentation went live: its type picks its row in Screens by Type.
@@ -276,16 +322,13 @@ final class StreamRouter {
     /// theme. A slide going live also ends a video's hold on the stream; a
     /// change to the live slide's own choice (`wentLive` false) doesn't.
     func noteLiveTheme(_ theme: Theme?, slide: Slide? = nil, wentLive: Bool = true) {
-        if wentLive { video.slideWentLive() }
+        if wentLive {
+            video.slideWentLive()
+            askedThemeIDs = []
+        }
         liveTheme = theme
         liveSlide = slide
-        let needed = wantedThemeIDs(theme, slide).filter { appModel.theme($0) == nil }
-        if !needed.isEmpty {
-            Task { @MainActor [weak self] in
-                await self?.appModel.themesFilled(needed)
-                self?.republishStream()
-            }
-        }
+        fetchWantedThemes()
         republishStream()
     }
 }

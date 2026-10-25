@@ -149,3 +149,41 @@ public struct StreamVideoOverride: Equatable, Sendable {
         cleared = false
     }
 }
+
+extension StreamPrecedence {
+
+    /// The plan a newly live slide was fired from, so the Message's series
+    /// lower third stays with the service on screen while the operator looks
+    /// ahead at next week's plan. More of the item already live (its own
+    /// timing, the remote) stays with its plan; a new item belongs to the
+    /// plan being viewed if it's in it, else to the plan that was live. A
+    /// slide fired from the library belongs to no plan.
+    public static func firedPlan(
+        item: String?, previousItem: String?, previousPlan: String?, currentPlan: String?,
+        holds: (_ plan: String, _ item: String) -> Bool
+    ) -> String? {
+        if let item {
+            if item == previousItem, let previousPlan, holds(previousPlan, item) {
+                previousPlan
+            } else if let currentPlan, holds(currentPlan, item) {
+                currentPlan
+            } else if let previousPlan, holds(previousPlan, item) {
+                previousPlan
+            } else {
+                nil
+            }
+        } else {
+            nil
+        }
+    }
+}
+
+extension Theme {
+    /// The other themes this theme's livestream choices draw on: the design
+    /// picked for each category and its lower-third theme. A theme chosen to
+    /// carry the stream needs these read too, or its lower third stays clear.
+    public var streamThemeReferences: [String] {
+        ([streamLowerThirdThemeId] + (streamDesigns ?? []).map(\.themeId))
+            .compactMap { $0 }.filter { !$0.isEmpty }
+    }
+}

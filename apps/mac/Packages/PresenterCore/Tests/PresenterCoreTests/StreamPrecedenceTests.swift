@@ -117,3 +117,38 @@ import Testing
         #expect(StreamPrecedence.decide(global: global, design: image, video: .none) == .slideImage(mediaID: "png-1"))
     }
 }
+
+@Test func theSeriesComesFromThePlanTheLiveSlideWasFiredFrom() {
+    let plans = ["this-sunday": Set(["loop", "song", "message"]), "next-week": Set(["song-2", "message-2"])]
+    let holds = { (plan: String, item: String) in plans[plan]?.contains(item) == true }
+    #expect(StreamPrecedence.firedPlan(
+        item: "message", previousItem: nil, previousPlan: nil, currentPlan: "this-sunday", holds: holds) == "this-sunday")
+    #expect(StreamPrecedence.firedPlan(
+        item: "message", previousItem: "message", previousPlan: "this-sunday", currentPlan: "next-week", holds: holds)
+        == "this-sunday", "the next slide of the live message while next week is open")
+    #expect(StreamPrecedence.firedPlan(
+        item: "song", previousItem: "loop", previousPlan: "this-sunday", currentPlan: "next-week", holds: holds)
+        == "this-sunday", "the remote moving on to the next item of the live plan")
+    #expect(StreamPrecedence.firedPlan(
+        item: "message-2", previousItem: "message", previousPlan: "this-sunday", currentPlan: "next-week", holds: holds)
+        == "next-week", "fired from the plan being viewed")
+    #expect(StreamPrecedence.firedPlan(
+        item: nil, previousItem: "message", previousPlan: "this-sunday", currentPlan: "next-week", holds: holds) == nil,
+        "a slide from the library")
+    #expect(StreamPrecedence.firedPlan(
+        item: "gone", previousItem: nil, previousPlan: "this-sunday", currentPlan: "next-week", holds: holds) == nil)
+}
+
+@Test func aThemesStreamReferencesAreItsDesignsAndItsLowerThird() {
+    let theme = Theme(
+        id: "series", name: "Series", fontFamily: "", fontSize: 40, textColorHex: "#FFFFFF",
+        backgroundColorHex: "#000000", streamLowerThirdThemeId: "lower-thirds",
+        streamDesigns: [
+            StreamDesign(category: "Title", mode: .clear),
+            StreamDesign(category: "Scripture", mode: .design, themeId: "series-l3", slideId: "s1"),
+            StreamDesign(category: "Point", mode: .design, themeId: ""),
+        ])
+    #expect(theme.streamThemeReferences == ["lower-thirds", "series-l3"])
+    let bare = Theme(id: "t", name: "T", fontFamily: "", fontSize: 40, textColorHex: "#FFFFFF", backgroundColorHex: "#000000")
+    #expect(bare.streamThemeReferences.isEmpty)
+}
