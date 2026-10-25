@@ -22,7 +22,7 @@ The window title is the current plan's name. It has three columns.
 **Left column.** At the top, a segmented control switches between **Plans** and **Library**. With Plans showing, the list has sections **Upcoming** (soonest first; the first one is tagged Next), **Templates**, and **Past**, and a **+** button ("New plan"). Below that is the chosen plan's items, headed by the plan name in capitals and a book button that opens **Message & Sermon Series** for that plan. At the bottom is the **Add Item** menu and an item count.
 
 **Center.** Depends on the mode:
-- **Present**: the selected plan item's slides as a grid. A slider at the bottom right sets slide size (drag right for bigger slides, fewer per row).
+- **Present**: the whole plan on one page that scrolls from top to bottom, every item in plan order, like ProPresenter's playlist view. Each item has a header row (its kind badge, name, and its controls: arrangement, key, Slide Show, Follow, the Anthem ⚠ chip, the section pills) that stays pinned at the top while its slides scroll past; under it are its slides as the same tiles as the grid (click to fire, right-click menus). Plan headers show as colored bands. Videos and the countdown show as a tile with a Play button (right-click for **When Video Ends**); audio and playlists show their tracks; items that aren't linked show as a slim row, with **Get Lyrics** for a planned song with no slides. Clicking an item in the plan list scrolls the page to it; clicking the selected item again scrolls back to it. Scrolling the page highlights the item at the top in the plan list. When a slide goes live (arrow keys, the remote, Anthem, a slideshow's timing) the page scrolls to keep it in view, except for 3 seconds after you scroll the page yourself; pressing an arrow key ends that pause. Arrows, Space and Return go from the last slide of one item to the first of the next. A slider at the bottom right sets slide size (drag right for bigger slides, fewer per row). **View › Show Whole Plan** (on by default; also Settings › Present) turns this off to show only the selected item's slides.
 - **Edit**: the editor for the selected plan item or library item. The left column folds away while something is open, and the screens column hides.
 - **Schedule**: the Scheduler board.
 
@@ -50,7 +50,7 @@ Song Search, Point Slides, Import Lyrics and Import Sermon are run by the Librar
 
 **Edit**: Undo ⌘Z, Redo ⇧⌘Z, Group ⌘G, Ungroup ⇧⌘G (objects in the slide editor).
 
-**View**: **Present** ⌘1, **Edit** ⌘2, **Scheduler** ⌘3, **Edit Slides** ⌘4, **Edit Themes** ⌘5, **Edit Confidence** ⌘6, **Find in Library** ⌘F (switches the left column to Library and focuses its search).
+**View**: **Present** ⌘1, **Edit** ⌘2, **Scheduler** ⌘3, **Show Whole Plan** (Present's one scrolling page; off shows one item at a time), **Edit Slides** ⌘4, **Edit Themes** ⌘5, **Edit Confidence** ⌘6, **Find in Library** ⌘F (switches the left column to Library and focuses its search).
 
 **Present**: **Clear Slides** F2, **Clear Media** F3, **Clear Alerts** F6, **Clear Layer** submenu (one entry per layer), **Clear All** F1.
 
@@ -97,7 +97,7 @@ New items go after the selected item, or at the end.
 
 Select several items to Hide or Remove them together. Dragging a slide from the grid onto another presentation item in the plan copies the slide into it.
 
-**Items that aren't linked.** A Shepherd item with no presentation shows "Not Linked" in the center. A planned song with no slides in the library shows an orange **Get Lyrics** button: it looks in Shepherd first; if the song isn't there it opens SongSelect in the browser and imports the lyrics file once it lands in Downloads.
+**Items that aren't linked.** A Shepherd item with no presentation shows "Not Linked" on the page. A planned song with no slides in the library shows an orange **Get Lyrics** button: it looks in Shepherd first; if the song isn't there it opens SongSelect in the browser and imports the lyrics file once it lands in Downloads.
 
 **Countdown.** Every upcoming plan gets a **Countdown** item first, automatically. A plan that already has one (Shepherd's "COUNTDOWN" item, or an item linked to a video in the Countdowns folder or a presentation named Countdown) has that item marked as its countdown instead. Its **Choose Video** / **Change** button picks this week's video from the **Countdowns** folder in Media (newest first) or **Other Videos**. The countdown always plays once and goes on to the next item when it ends; the video's own settings are not changed. Removing the countdown item from a plan keeps it removed.
 

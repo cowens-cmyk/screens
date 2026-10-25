@@ -13,12 +13,17 @@ struct ServiceContinuousView: View {
 
     @Binding var focusScroll: PresentFocusScroll
 
+    /// The item the page has come to by itself (the operator's scroll, or
+    /// following the live slide), for the plan list to highlight.
+    var onShowItem: ((String) -> Void)? = nil
+
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
     @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
     @AppStorage("slideGrid.legibleText") private var legibleText = false
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
 
     @Environment(\.runOnly) private var runOnly
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
 
     @State private var deleteRequests = 0
@@ -119,11 +124,17 @@ struct ServiceContinuousView: View {
                 }
 
                 .background(KeyboardFireFollow(controls: controls) { revealLive(service) })
+                // Everything else that puts a slide up: the remote, Anthem,
+                // a slide's own timing, a click.
+                .background(LiveSlideFollow(controls: controls) { followLive($0, service) })
 
                 .onDeleteCommand { deleteRequests += 1 }
                 .onSlideClipboardKeys(active: focused) { clipboardRequests.take($0) }
             }
-            .onAppear { focused = true }
+            .onAppear {
+                focused = true
+                PresentCardFrames.shared.onOperatorScroll = onShowItem
+            }
 
             .onChange(of: model.listVersion) {
                 controls?.refreshNextSlide()
@@ -154,21 +165,30 @@ struct ServiceContinuousView: View {
     private func itemSection(_ item: ServiceItem, proxy: ScrollViewProxy) -> some View {
         switch item.itemKind {
         case .header:
-
-            HStack(spacing: 8) {
-                if !item.isHidden {
-                    Text(item.name.uppercased())
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(headerTint(item) ?? Color.secondary)
-                        .tracking(0.6)
-                }
+            if item.isHidden {
                 Rectangle()
                     .fill((headerTint(item) ?? Color(nsColor: .separatorColor)).opacity(0.45))
                     .frame(height: 1)
+                    .padding(.top, 4)
+                    .padding(.bottom, 10)
+                    .id(item.id)
+            } else {
+                // A solid band in the header's color, as in the plan list
+                // and ProPresenter's playlist.
+                Text(item.name)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(GroupColor.text(onHex: item.colorHex))
+                    .lineLimit(1)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
+                    .background(
+                        headerTint(item) ?? HopeStyle.navy.opacity(0.85),
+                        in: RoundedRectangle.standard(CornerStandard.element)
+                    )
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+                    .id(item.id)
             }
-            .padding(.top, 4)
-            .padding(.bottom, 10)
-            .id(item.id)
         case .info:
 
             Section {
@@ -187,9 +207,14 @@ struct ServiceContinuousView: View {
                 CardRefresh(model: model) { mediaCardBody(item) }
             } header: {
                 CardRefresh(model: model) {
-                    cardHeader(item, glyph: .media) {
+                    cardHeader(item) {
                         if let media = model.media(item.refId) {
                             mediaContext(media)
+                        }
+                    } leading: {
+                        if item.isCountdown == true, !runOnly {
+                            CountdownVideoMenu(model: model, planID: serviceID, item: item)
+                                .fixedSize()
                         }
                     }
                     .contextMenu { mediaQuickMenu(item) }
@@ -202,7 +227,7 @@ struct ServiceContinuousView: View {
                 CardRefresh(model: model) { audioCardBody(item) }
             } header: {
                 CardRefresh(model: model) {
-                    cardHeader(item, glyph: .audio) {
+                    cardHeader(item) {
                         let isLive = controls?.state.liveAudio
                             .contains { $0.audioItemId == item.refId } ?? false
                         playStopChip(
@@ -223,7 +248,7 @@ struct ServiceContinuousView: View {
                 CardRefresh(model: model) { playlistCardBody(item) }
             } header: {
                 CardRefresh(model: model) {
-                    cardHeader(item, glyph: .audio) {
+                    cardHeader(item) {
                         if let playlist = try? model.playlist(item.refId) {
                             let isLive = controls?.state.liveAudio
                                 .contains { $0.playlistId == playlist.id } ?? false
@@ -518,7 +543,7 @@ struct ServiceContinuousView: View {
 
         if let presentation = model.presentation(item.refId) {
             let slides = model.arrangedSlides(presentation, arrangementId: item.arrangementId)
-            cardHeader(item, glyph: .presentations) {
+            cardHeader(item) {
 
                 CardSlidePosition(controls: controls, itemID: item.id, slideCount: slides.count)
             } leading: {
@@ -544,6 +569,7 @@ struct ServiceContinuousView: View {
                         )
                     }
                 }
+                AnthemMismatchBadge(model: model, serviceID: serviceID, itemID: item.id, labeled: true)
                 SongKeyChip(model: model, controls: controls, presentation: presentation)
                 SlideShowChip(model: model, controls: controls, presentation: presentation)
                 LyricFollowChip(controls: controls, presentation: presentation)
@@ -573,20 +599,21 @@ struct ServiceContinuousView: View {
             }
         } else {
 
-            cardHeader(item, glyph: .presentations) { EmptyView() }
+            cardHeader(item) { EmptyView() }
         }
     }
 
     private func cardHeader(
-        _ item: ServiceItem, glyph: GlyphKind,
+        _ item: ServiceItem,
         @ViewBuilder detail: () -> some View,
         @ViewBuilder leading: () -> some View = { EmptyView() },
         @ViewBuilder accessory: () -> some View = { EmptyView() }
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Glyph(kind: glyph, size: 12)
-                    .foregroundStyle(.secondary)
+                // The same badge as the item's row in the plan list.
+                ItemKindBadge(kind: HopeStyle.kind(
+                    of: item, presentation: item.itemKind == .presentation ? model.presentation(item.refId) : nil))
                 Text(displayName(item))
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
@@ -776,6 +803,12 @@ struct ServiceContinuousView: View {
     @ViewBuilder
     private func mediaContext(_ media: MediaItem) -> some View {
         HStack(spacing: 4) {
+            if model.isMediaFileMissing(media) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .help("\u{201C}\(media.fileName)\u{201D} isn't on this Mac")
+            }
             if media.inPoint != nil || media.outPoint != nil {
                 Image(systemName: "scissors")
                     .font(.caption2)
@@ -927,10 +960,18 @@ extension ServiceContinuousView {
 
     func unlinkedCard(_ item: ServiceItem) -> some View {
         HStack(spacing: 8) {
+            ItemKindBadge(kind: HopeStyle.kind(of: item, presentation: nil))
             Text(item.name)
                 .font(.subheadline.weight(.medium))
                 .lineLimit(1)
             Spacer(minLength: 8)
+            if item.refId.isEmpty, item.mxuSongTitle != nil {
+                GetLyricsButton(model: model, serviceID: serviceID, item: item)
+            }
+            if item.isCountdown == true, !runOnly {
+                CountdownVideoMenu(model: model, planID: serviceID, item: item)
+                    .fixedSize()
+            }
             if let duration = item.duration, duration > 0 {
                 Text(Duration.seconds(duration).formatted(.time(pattern: .minuteSecond)))
                     .font(.caption)
@@ -945,7 +986,7 @@ extension ServiceContinuousView {
                 .background(Color.primary.opacity(0.08), in: Capsule())
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.cardSurface, in: RoundedRectangle.standard(CornerStandard.element))
         .overlay(
@@ -1014,7 +1055,9 @@ extension ServiceContinuousView {
         if let target = focusScroll.request(itemID) {
             DiagnosticsStore.shared.note("present.focus", detail: "scroll \(target) (\(reason))")
             InputTrailRecorder.shared.noteFocusScroll()
-            proxy.scrollTo(Self.anchor(for: target, in: service), anchor: .top)
+            withAnimation(reason == "appear" ? nil : jump) {
+                proxy.scrollTo(Self.anchor(for: target, in: service), anchor: .top)
+            }
             PresentCardFrames.shared.holdCard(target)
             PresentCardFrames.shared.reportLanding(target: target, rows: presentRows(service))
         } else if let itemID {
@@ -1022,11 +1065,50 @@ extension ServiceContinuousView {
         }
     }
 
-    private func revealLive(_ service: Service) {
+    /// A plan-list click glides to its item; landing on the page doesn't.
+    private var jump: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.3)
+    }
+
+    private func revealLive(_ service: Service, cause: String = "keyboard") {
         if let itemID = controls?.liveContextID, let occurrence = controls?.liveOccurrence,
            presentRows(service).contains(where: { $0.id == itemID }) {
-            PresentCardFrames.shared.reveal(itemID, slide: occurrence, headerHeight: headerHeights[itemID] ?? 44)
+            PresentCardFrames.shared.reveal(
+                itemID, slide: occurrence, headerHeight: headerHeights[itemID] ?? 44, cause: cause)
         }
+    }
+
+    /// A slide went live some way other than an arrow key here. The page
+    /// keeps it in view and the plan list highlights its item, except for a
+    /// few seconds after the operator scrolls the page somewhere else; a
+    /// clicked slide is already in view, so only the highlight moves.
+    private func followLive(_ itemID: String, _ service: Service) {
+        guard presentRows(service).contains(where: { $0.id == itemID }) else { return }
+        let recorder = InputTrailRecorder.shared
+        let scroll = recorder.sincePageScroll(), key = recorder.sinceKey(), click = recorder.sinceClick()
+        if PresentFollowRule.selectsLive(sinceScroll: scroll, sinceKey: key, sinceClick: click) {
+            onShowItem?(itemID)
+        }
+        if PresentFollowRule.reveals(sinceScroll: scroll, sinceKey: key, sinceClick: click) {
+            revealLive(service, cause: "live")
+        }
+    }
+}
+
+/// Watches what's live for ServiceContinuousView, so a fire re-renders this
+/// and not the page (see slideGridHostsNeverReadTheLiveSlide).
+private struct LiveSlideFollow: View {
+    let controls: ServiceControls?
+    let follow: (String) -> Void
+
+    var body: some View {
+        Color.clear.onChange(of: place) { _, _ in
+            if let itemID = controls?.liveContextID { follow(itemID) }
+        }
+    }
+
+    private var place: String? {
+        controls?.liveContextID.map { "\($0)#\(controls?.liveOccurrence ?? -1)" }
     }
 }
 

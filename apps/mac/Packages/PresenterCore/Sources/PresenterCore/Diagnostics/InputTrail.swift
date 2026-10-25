@@ -78,6 +78,55 @@ public enum PresentJumpRule {
     }
 }
 
+/// When the whole-plan page moves on its own, and when the plan list follows it.
+public enum PresentFollowRule {
+
+    /// After the operator scrolls the page it stays put this long, whatever
+    /// goes live (the remote, Anthem, a slide's own timing).
+    public static let scrollPause: TimeInterval = 3
+
+    /// A slide clicked this recently went live under the pointer; it's in view.
+    public static let clickWindow: TimeInterval = 0.5
+
+    /// How recent a scroll has to be for the page settling to count as the
+    /// operator's: anything older moved it some other way.
+    public static let settleWindow: TimeInterval = 1.5
+
+    /// A key pressed after the scroll (an arrow, the clicker) ends the pause.
+    public static func paused(sinceScroll: TimeInterval?, sinceKey: TimeInterval?) -> Bool {
+        if let sinceScroll, sinceScroll < scrollPause {
+            (sinceKey ?? .infinity) > sinceScroll
+        } else {
+            false
+        }
+    }
+
+    /// The page scrolls to keep the new live slide in view.
+    public static func reveals(
+        sinceScroll: TimeInterval?, sinceKey: TimeInterval?, sinceClick: TimeInterval?
+    ) -> Bool {
+        !paused(sinceScroll: sinceScroll, sinceKey: sinceKey) && (sinceClick ?? .infinity) > clickWindow
+    }
+
+    /// The plan list highlights the live slide's item: a clicked one always,
+    /// otherwise only while the page isn't held where the operator scrolled it.
+    public static func selectsLive(
+        sinceScroll: TimeInterval?, sinceKey: TimeInterval?, sinceClick: TimeInterval?
+    ) -> Bool {
+        (sinceClick ?? .infinity) <= clickWindow || !paused(sinceScroll: sinceScroll, sinceKey: sinceKey)
+    }
+
+    /// The page stopped where the operator's own scroll left it, not where a
+    /// jump the app made (a plan-list click, following the live slide) did.
+    public static func operatorScrolled(sinceScroll: TimeInterval?, sinceFocus: TimeInterval?) -> Bool {
+        if let sinceScroll, sinceScroll < settleWindow {
+            sinceScroll < (sinceFocus ?? .infinity)
+        } else {
+            false
+        }
+    }
+}
+
 public enum PresentLanding {
     public struct Card: Equatable, Sendable {
         public let id: String
@@ -94,6 +143,12 @@ public enum PresentLanding {
     public static func cardAtTop(_ cards: [Card]) -> Card? {
         cards.first { $0.top <= 1 && $0.top + $0.height > 1 }
             ?? cards.filter { $0.top > 1 }.min { $0.top < $1.top }
+    }
+
+    /// The item the whole-plan page is showing: the one at the top, or the
+    /// first below it. Header bands are passed over for the item under them.
+    public static func itemAtTop(_ cards: [Card], skipping skipped: Set<String> = []) -> String? {
+        cardAtTop(cards.filter { !skipped.contains($0.id) })?.id
     }
 
     public struct Grid: Equatable, Sendable {

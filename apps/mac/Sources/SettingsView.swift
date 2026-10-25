@@ -235,9 +235,9 @@ struct AppSettingsView: View {
             ),
             SettingsRowSpec(
                 id: "present.continuous", category: .present,
-                title: "Continuous service view",
-                caption: "The whole run order scrolls as one surface; arrows advance across items.",
-                keywords: "scroll run order single item",
+                title: "Show whole plan",
+                caption: "Every item's slides on one page, in plan order; arrows advance across items. Also in the View menu.",
+                keywords: "scroll run order single item continuous playlist",
                 control: AnyView(Toggle("", isOn: $continuousPresent).settingsToggle())
             ),
             SettingsRowSpec(

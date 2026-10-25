@@ -36,6 +36,14 @@ import Testing
     #expect(focus.request("sermon") == nil, "one reselect is one jump")
 }
 
+@Test func followingTheScrolledPageMovesTheSelectionWithoutAJump() {
+    var focus = PresentFocusScroll()
+    _ = focus.request("song1")
+    focus.follow("song3")
+    #expect(focus.request("song3") == nil, "the page is already there")
+    #expect(focus.request("sermon") == "sermon", "a click elsewhere still jumps")
+}
+
 @Test func onlyAPlainClickOnTheShownRowIsAReselect() {
     #expect(RunOrderSelection.isReselect(pressed: "sermon", current: "sermon", command: false, shift: false, control: false))
     #expect(!RunOrderSelection.isReselect(pressed: "song2", current: "sermon", command: false, shift: false, control: false))

@@ -17,7 +17,13 @@ struct PlanShell: View {
     @AppStorage("appMode") private var modeRaw = AppMode.present.rawValue
     @AppStorage("shell.screensShown") private var screensShown = true
     @AppStorage("shell.topPane") private var topPane = TopPane.plans
+    /// View › Show Whole Plan: Present shows every item's slides on one
+    /// scrolling page, in order; off, just the selected item's.
+    @AppStorage(Self.wholePlanKey) private var showWholePlan = true
     @State private var itemID: String?
+    /// Whether the page has already scrolled to the selected item, so a
+    /// selection that came from the page itself doesn't jump it.
+    @State private var presentFocusScroll = PresentFocusScroll()
     @State private var columns = NavigationSplitViewVisibility.all
     @State private var creatingPlan = false
     @State private var controlsShown = false
@@ -39,6 +45,9 @@ struct PlanShell: View {
     /// The screens column's width: room for a 16:9 preview a third of the
     /// window wide, and a fixed number so nothing in it can resize the split.
     static let screensWidth: CGFloat = 360
+
+    /// Shared with Settings › Present and the View menu.
+    static let wholePlanKey = "present.continuous"
 
     enum TopPane: String { case plans, library }
 
@@ -107,7 +116,15 @@ struct PlanShell: View {
                 Task { await addMedia(urls) }
             }
             .animation(HopeMotion.ui(reduced: reduceMotion), value: model.currentServiceID)
-            .onChange(of: model.currentServiceID) { _, _ in itemID = nil; ensureCountdowns() }
+            .onChange(of: model.currentServiceID) { _, _ in
+                itemID = nil
+                presentFocusScroll.reset()
+                ensureCountdowns()
+            }
+            // Coming back to Present (or to the whole plan) lands on the
+            // selected item again.
+            .onChange(of: modeRaw) { _, _ in presentFocusScroll.reset() }
+            .onChange(of: showWholePlan) { _, _ in presentFocusScroll.reset() }
             .onChange(of: plans.upcoming.map(\.id)) { ensureCountdowns() }
             .onChange(of: itemID) { _, _ in songSlideEditor = false }
             .task {
@@ -180,7 +197,9 @@ struct PlanShell: View {
                     .frame(minWidth: 320, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                     .background(Color(nsColor: .underPageBackgroundColor))
                     .animation(HopeMotion.ui(reduced: reduceMotion), value: modeRaw)
-                    .animation(HopeMotion.ui(reduced: reduceMotion), value: itemID)
+                    // The whole-plan page scrolls to an item instead of
+                    // swapping views, and its selection moves as it scrolls.
+                    .animation(HopeMotion.ui(reduced: reduceMotion), value: wholePlanShown ? nil : itemID)
                 // Edit gives the editor the room; Present and Schedule show the screens.
                 if screensShown && mode != .edit, let render {
                     Divider()
@@ -426,7 +445,10 @@ struct PlanShell: View {
                 .padding(.vertical, 5)
                 RunOrderList(
                     model: model, controls: controls, serviceID: planID, render: render,
-                    selectedItemID: $itemID, planAdds: PlanAddActions(
+                    selectedItemID: $itemID,
+                    // Clicking the item already selected scrolls back to it.
+                    onReselect: { if wholePlanShown { presentFocusScroll.reselect() } },
+                    planAdds: PlanAddActions(
                         song: { addPresentation(planID, kind: .song) },
                         deck: { addPresentation(planID, kind: .deck) },
                         slideshow: { addPresentation(planID, kind: .slideshow) },
@@ -452,8 +474,21 @@ struct PlanShell: View {
         switch mode {
         case .present:
             if let planID = model.currentServiceID {
-                ServiceItemDetailView(
-                    model: model, render: render, controls: controls, serviceID: planID, itemID: itemID)
+                Group {
+                    if showWholePlan {
+                        ServiceContinuousView(
+                            model: model, render: render, controls: controls,
+                            serviceID: planID, focusItemID: itemID,
+                            focusScroll: $presentFocusScroll,
+                            onShowItem: { showItem($0) })
+                            .background(Color.basePlane)
+                            // A new plan starts at its top.
+                            .id(planID)
+                    } else {
+                        ServiceItemDetailView(
+                            model: model, render: render, controls: controls, serviceID: planID, itemID: itemID)
+                    }
+                }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         VStack(spacing: 0) {
                             Divider()
@@ -475,6 +510,16 @@ struct PlanShell: View {
         case .scheduler:
             SchedulerView(model: model, controls: controls)
         }
+    }
+
+    private var wholePlanShown: Bool { mode == .present && showWholePlan }
+
+    /// The page scrolled to this item by itself (the operator's scroll, or
+    /// following the live slide): highlight it in the list without a jump.
+    private func showItem(_ id: String) {
+        guard wholePlanShown, itemID != id else { return }
+        presentFocusScroll.follow(id)
+        itemID = id
     }
 
     @ViewBuilder

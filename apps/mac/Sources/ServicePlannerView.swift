@@ -71,8 +71,15 @@ struct RunOrderList: View {
             let order = visible.map(\.id)
             let changed = model.versionChangedItemIDs(serviceID)
             VStack(spacing: 0) {
-                runOrderList(service: service, visible: visible, order: order, changed: changed)
-                    .animation(HopeMotion.ui(reduced: reduceMotion), value: order)
+                ScrollViewReader { proxy in
+                    runOrderList(service: service, visible: visible, order: order, changed: changed)
+                        .animation(HopeMotion.ui(reduced: reduceMotion), value: order)
+                        // The whole-plan page moves the selection as it
+                        // scrolls; keep that row in sight.
+                        .onChange(of: selectedItemID) { _, id in
+                            if let id { proxy.scrollTo(id) }
+                        }
+                }
                 if !runOnly {
                     Divider()
                     addBar
@@ -674,36 +681,8 @@ struct RunOrderList: View {
         return model.entry(item.refId)?.name ?? item.name
     }
 
-    /// A planned song with no slides: one click fetches them, from Shepherd
-    /// or SongSelect (see LyricsFetcher).
-    @ViewBuilder
     private func getLyricsButton(_ item: ServiceItem) -> some View {
-        let fetcher = LyricsFetcher.shared
-        if fetcher.waitingItemID == item.id {
-            HStack(spacing: 4) {
-                ProgressView().controlSize(.mini)
-                Button("Cancel") { fetcher.cancel() }
-                    .buttonStyle(.borderless)
-                    .font(.caption2)
-            }
-            .help(fetcher.status ?? "")
-        } else {
-            Button {
-                Task { await fetcher.getLyrics(for: item, planID: serviceID, model: model) }
-            } label: {
-                Label("Get Lyrics", systemImage: "text.badge.plus")
-                    .font(.caption2.weight(.semibold))
-                    .labelStyle(.titleAndIcon)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Color.orange.opacity(0.18), in: Capsule())
-                    .foregroundStyle(.orange)
-                    .lineLimit(1)
-            }
-            .buttonStyle(.plain)
-            .disabled(runOnly || fetcher.waitingItemID != nil)
-            .help("No slides for this song yet. Looks in Shepherd; if it isn't there, opens SongSelect and imports the lyrics file you download.")
-        }
+        GetLyricsButton(model: model, serviceID: serviceID, item: item)
     }
 
     @ViewBuilder
@@ -1200,6 +1179,46 @@ struct SlideshowMenu: View {
 
     private func set(_ advance: AutoAdvance?) {
         model.updatePresentation(presentationID) { $0.autoAdvance = advance }
+    }
+}
+
+/// A planned song with no slides: one click fetches them, from Shepherd
+/// or SongSelect (see LyricsFetcher). On its plan-list row and on the
+/// whole-plan page.
+struct GetLyricsButton: View {
+    let model: AppModel
+    let serviceID: String
+    let item: ServiceItem
+
+    @Environment(\.runOnly) private var runOnly
+
+    var body: some View {
+        let fetcher = LyricsFetcher.shared
+        if fetcher.waitingItemID == item.id {
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Button("Cancel") { fetcher.cancel() }
+                    .buttonStyle(.borderless)
+                    .font(.caption2)
+            }
+            .help(fetcher.status ?? "")
+        } else {
+            Button {
+                Task { await fetcher.getLyrics(for: item, planID: serviceID, model: model) }
+            } label: {
+                Label("Get Lyrics", systemImage: "text.badge.plus")
+                    .font(.caption2.weight(.semibold))
+                    .labelStyle(.titleAndIcon)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Color.orange.opacity(0.18), in: Capsule())
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+            }
+            .buttonStyle(.plain)
+            .disabled(runOnly || fetcher.waitingItemID != nil)
+            .help("No slides for this song yet. Looks in Shepherd; if it isn't there, opens SongSelect and imports the lyrics file you download.")
+        }
     }
 }
 

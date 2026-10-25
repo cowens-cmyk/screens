@@ -15,6 +15,12 @@ public struct PresentFocusScroll: Equatable, Sendable {
         }
     }
 
+    /// The page got to this item by itself (the operator scrolled there, or
+    /// it followed the live slide): the selection moves to it without a jump.
+    public mutating func follow(_ itemID: String) {
+        honoredItemID = itemID
+    }
+
     public mutating func reset() {
         honoredItemID = nil
     }

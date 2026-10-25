@@ -42,6 +42,20 @@ final class InputTrailRecorder {
         trail.age(of: "scroll", at: ProcessInfo.processInfo.systemUptime)
     }
 
+    /// A scroll over the whole-plan page itself, not the plan list beside it.
+    func sincePageScroll() -> TimeInterval? {
+        trail.age(of: "scroll in present", at: ProcessInfo.processInfo.systemUptime)
+    }
+
+    func sinceKey() -> TimeInterval? {
+        trail.age(of: "key", at: ProcessInfo.processInfo.systemUptime)
+    }
+
+    func sinceClick() -> TimeInterval? {
+        let now = ProcessInfo.processInfo.systemUptime
+        return [trail.age(of: "click", at: now), trail.age(of: "double-click", at: now)].compactMap { $0 }.min()
+    }
+
     func sinceFocusScroll() -> TimeInterval? {
         lastFocusScroll.map { ProcessInfo.processInfo.systemUptime - $0 }
     }
@@ -242,6 +256,13 @@ final class PresentCardFrames {
 
     private var rows: [(id: String, name: String)] = []
 
+    /// Plan headers: bands on the page, never the item it is showing.
+    private var headerIDs: Set<String> = []
+
+    /// Told the item at the top once the page stops where the operator
+    /// scrolled it, so the plan list can highlight it.
+    var onOperatorScroll: ((String) -> Void)?
+
     private var anchor: PresentLanding.Anchor?
     private var settleTask: Task<Void, Never>?
     private var keepTask: Task<Void, Never>?
@@ -331,7 +352,7 @@ final class PresentCardFrames {
         if docGrids[grid.id] != grid { docGrids[grid.id] = grid }
     }
 
-    func reveal(_ id: String, slide: Int, headerHeight: CGFloat) {
+    func reveal(_ id: String, slide: Int, headerHeight: CGFloat, cause: String = "keyboard") {
         let insets = scrollView?.contentInsets ?? NSEdgeInsets()
         if let grid = docGrids[id], let scrollView,
            let delta = PresentLanding.reveal(
@@ -343,7 +364,7 @@ final class PresentCardFrames {
             Self.scroll(scrollView, by: delta)
             let name = rows.first { $0.id == id }?.name ?? "-"
             DiagnosticsStore.shared.note(
-                "present.follow", detail: "keyboard: showed \"\(name)\" slide \(slide + 1) (scrolled \(Int(delta)) pt, top inset \(Int(insets.top)))")
+                "present.follow", detail: "\(cause): showed \"\(name)\" slide \(slide + 1) (scrolled \(Int(delta)) pt, top inset \(Int(insets.top)))")
         }
     }
 
@@ -359,6 +380,8 @@ final class PresentCardFrames {
         if rows.map(\.id) != items.map(\.id) {
             rows = items.map { ($0.id, $0.name) }
         }
+        let headers = Set(items.filter { $0.itemKind == .header }.map(\.id))
+        if headers != headerIDs { headerIDs = headers }
     }
 
     private var cards: [PresentLanding.Card] {
@@ -377,6 +400,13 @@ final class PresentCardFrames {
             try? await Task.sleep(for: .milliseconds(200))
             if !Task.isCancelled, ProcessInfo.processInfo.systemUptime >= self.keepingUntil {
                 self.anchor = PresentLanding.anchor(self.cards, grids: self.currentGrids)
+            }
+            let recorder = InputTrailRecorder.shared
+            if !Task.isCancelled,
+               PresentFollowRule.operatorScrolled(
+                   sinceScroll: recorder.sincePageScroll(), sinceFocus: recorder.sinceFocusScroll()),
+               let id = PresentLanding.itemAtTop(self.cards, skipping: self.headerIDs) {
+                self.onOperatorScroll?(id)
             }
         }
     }

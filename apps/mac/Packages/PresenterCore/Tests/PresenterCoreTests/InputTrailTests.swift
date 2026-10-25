@@ -138,3 +138,40 @@ import Testing
     #expect(PresentHold.mayCorrect(recent: recent, now: 11.5), "a second later it holds again")
     #expect(PresentHold.recording(20, in: recent) == [20], "old corrections age out")
 }
+
+@Test func theWholePlanPageShowsTheItemUnderItsTopPassingOverHeaders() {
+    let cards = [
+        PresentLanding.Card(id: "worship", top: -40, height: 30),
+        PresentLanding.Card(id: "song1", top: -10, height: 600),
+        PresentLanding.Card(id: "message", top: 590, height: 30),
+        PresentLanding.Card(id: "sermon", top: 620, height: 900),
+    ]
+    #expect(PresentLanding.itemAtTop(cards, skipping: ["worship", "message"]) == "song1")
+    let headerAtTop = [
+        PresentLanding.Card(id: "message", top: -10, height: 30),
+        PresentLanding.Card(id: "sermon", top: 20, height: 900),
+    ]
+    #expect(PresentLanding.itemAtTop(headerAtTop) == "message")
+    #expect(PresentLanding.itemAtTop(headerAtTop, skipping: ["message"]) == "sermon", "the item under the band")
+    #expect(PresentLanding.itemAtTop([], skipping: []) == nil)
+}
+
+@Test func theLiveSlideIsFollowedUnlessTheOperatorJustScrolledOrClickedIt() {
+    #expect(PresentFollowRule.reveals(sinceScroll: nil, sinceKey: nil, sinceClick: nil), "the remote, Anthem, auto-advance")
+    #expect(!PresentFollowRule.reveals(sinceScroll: 1, sinceKey: nil, sinceClick: nil), "the operator is looking elsewhere")
+    #expect(PresentFollowRule.reveals(sinceScroll: 4, sinceKey: nil, sinceClick: nil), "the pause runs out")
+    #expect(PresentFollowRule.reveals(sinceScroll: 1, sinceKey: 0.2, sinceClick: nil), "an arrow after the scroll takes the page back")
+    #expect(!PresentFollowRule.reveals(sinceScroll: nil, sinceKey: nil, sinceClick: 0.1), "a clicked slide is already in view")
+
+    #expect(PresentFollowRule.selectsLive(sinceScroll: nil, sinceKey: nil, sinceClick: nil))
+    #expect(PresentFollowRule.selectsLive(sinceScroll: 1, sinceKey: nil, sinceClick: 0.1), "the item clicked")
+    #expect(!PresentFollowRule.selectsLive(sinceScroll: 1, sinceKey: nil, sinceClick: nil), "the list stays on what the operator scrolled to")
+}
+
+@Test func onlyTheOperatorsOwnScrollMovesThePlanSelection() {
+    #expect(PresentFollowRule.operatorScrolled(sinceScroll: 0.3, sinceFocus: nil))
+    #expect(PresentFollowRule.operatorScrolled(sinceScroll: 0.3, sinceFocus: 5))
+    #expect(!PresentFollowRule.operatorScrolled(sinceScroll: 2, sinceFocus: 0.3), "a plan-list jump or the live follow")
+    #expect(!PresentFollowRule.operatorScrolled(sinceScroll: 5, sinceFocus: nil), "an old scroll: something else moved it")
+    #expect(!PresentFollowRule.operatorScrolled(sinceScroll: nil, sinceFocus: nil))
+}

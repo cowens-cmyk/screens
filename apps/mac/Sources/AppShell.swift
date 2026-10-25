@@ -211,6 +211,7 @@ struct ViewCommands: Commands {
 
     @AppStorage(PresentLayoutController.lockedKey) private var runOnly = false
     @FocusedValue(\.presentSimpleMode) private var presentSimpleMode
+    @AppStorage(PlanShell.wholePlanKey) private var showWholePlan = true
 
     var body: some Commands {
         CommandGroup(before: .sidebar) {
@@ -224,6 +225,11 @@ struct ViewCommands: Commands {
                 .disabled(runOnly)
             Button("Scheduler") { modeRaw = AppMode.scheduler.rawValue }
                 .keyboardShortcut(command: .modeScheduler)
+                .disabled(runOnly)
+            Divider()
+            // Present: every item's slides on one scrolling page, or only
+            // the selected item's.
+            Toggle("Show Whole Plan", isOn: $showWholePlan)
                 .disabled(runOnly)
             Divider()
 
