@@ -1,3 +1,4 @@
+import AudioEngine
 import AVFoundation
 import Observation
 import PresenterCore
@@ -14,8 +15,13 @@ import SwiftUI
 final class LiveAssist {
     static let shared = LiveAssist()
 
-    private static let deviceKey = "liveAssist.deviceUID"
+    // New keys: inputs chosen before were mostly the first in the list
+    // (often a virtual device like BlackHole), picked for people rather
+    // than by them, so everyone starts again on the Mac's own input.
+    private static let deviceKey = "liveAssist.inputUID"
 
+    /// The input heard for both singing and the sermon; empty follows the
+    /// Mac's input in System Settings › Sound.
     var deviceUID: String {
         didSet {
             UserDefaults.standard.set(deviceUID, forKey: Self.deviceKey)
@@ -26,24 +32,10 @@ final class LiveAssist {
     /// nil for the first pair.
     var channel: Int? {
         didSet {
-            UserDefaults.standard.set(channel ?? -1, forKey: "liveAssist.channel")
+            UserDefaults.standard.set(channel ?? -1, forKey: "liveAssist.inputChannel")
             if channel != oldValue { restartIfListening() }
         }
     }
-    /// The pastor's mic for sermon listening, kept apart from the worship input.
-    var sermonDeviceUID: String {
-        didSet {
-            UserDefaults.standard.set(sermonDeviceUID, forKey: "liveAssist.sermon.deviceUID")
-            if sermonDeviceUID != oldValue { sermonChannel = nil; restartIfListening() }
-        }
-    }
-    var sermonChannel: Int? {
-        didSet {
-            UserDefaults.standard.set(sermonChannel ?? -1, forKey: "liveAssist.sermon.channel")
-            if sermonChannel != oldValue { restartIfListening() }
-        }
-    }
-
     enum Mode { case worship, sermon }
     private(set) var mode: Mode = .worship
 
@@ -57,6 +49,18 @@ final class LiveAssist {
     }
 
     private(set) var level: Float = 0
+    /// When the input last carried more than room noise, and when listening
+    /// began: together they say "no sound" when the wrong input is chosen.
+    private(set) var lastSound: Date?
+    private(set) var listeningSince: Date?
+    /// The input being heard, by name, for the listening bar.
+    private(set) var inputName = ""
+    /// The device actually opened, so a change of the Mac's input can be
+    /// followed while listening.
+    private var openedUID = ""
+    private var inputListener: AudioDeviceList.ListenerToken?
+    /// Why a heard passage didn't go up, when it couldn't.
+    private(set) var problem: String?
     /// Off: a followed song only highlights the next slide; the operator
     /// puts it up.
     var advancesAutomatically = true {
@@ -129,19 +133,19 @@ final class LiveAssist {
 
     private init() {
         deviceUID = UserDefaults.standard.string(forKey: Self.deviceKey) ?? ""
-        let storedChannel = UserDefaults.standard.object(forKey: "liveAssist.channel") as? Int ?? -1
+        let storedChannel = UserDefaults.standard.object(forKey: "liveAssist.inputChannel") as? Int ?? -1
         channel = storedChannel >= 0 ? storedChannel : nil
-        sermonDeviceUID = UserDefaults.standard.string(forKey: "liveAssist.sermon.deviceUID") ?? ""
-        let sermonStored = UserDefaults.standard.object(forKey: "liveAssist.sermon.channel") as? Int ?? -1
-        sermonChannel = sermonStored >= 0 ? sermonStored : nil
         // On unless turned off: a heard passage should just appear.
         showsAutomatically = UserDefaults.standard.object(forKey: "liveAssist.sermon.autoShow") as? Bool ?? true
         advancesAutomatically = UserDefaults.standard.object(forKey: "liveAssist.follow.advances") as? Bool ?? true
         let confidence = UserDefaults.standard.double(forKey: "liveAssist.follow.confidence")
         autoAdvanceConfidence = (0.5...0.95).contains(confidence) ? confidence : 0.7
         transcriber.onText = { [weak self] text, isFinal in self?.heard(text, isFinal: isFinal) }
-        transcriber.onLevel = { [weak self] level in self?.level = level }
+        transcriber.onLevel = { [weak self] level in self?.heardLevel(level) }
         transcriber.onState = { [weak self] state in self?.update(state) }
+        inputListener = AudioDeviceList.listenForChanges {
+            Task { @MainActor in LiveAssist.shared.inputsChanged() }
+        }
     }
 
     func attach(model: AppModel, controls: ServiceControls) {
@@ -153,7 +157,6 @@ final class LiveAssist {
     /// reference as it's said.
     func startSermon() async {
         mode = .sermon
-        if sermonDeviceUID.isEmpty { sermonDeviceUID = deviceUID }
         await start()
     }
 
@@ -166,13 +169,14 @@ final class LiveAssist {
         starting = true
         defer { if transcriber.state != .preparing { starting = false } }
         let devices = LiveTranscriber.inputDevices()
-        if mode == .sermon {
-            if !devices.contains(where: { $0.uid == sermonDeviceUID }) { sermonDeviceUID = devices.first?.uid ?? "" }
-        } else if deviceUID.isEmpty || !devices.contains(where: { $0.uid == deviceUID }) {
-            deviceUID = devices.first?.uid ?? ""
-        }
-        let device = mode == .sermon ? sermonDeviceUID : deviceUID
-        let inputChannel = mode == .sermon ? sermonChannel : channel
+        // No input chosen (or the chosen one is unplugged): whatever the
+        // Mac's Sound settings have selected.
+        let chosen = devices.contains { $0.uid == deviceUID } ? deviceUID : ""
+        let device = chosen.isEmpty ? LiveTranscriber.defaultInputUID() ?? devices.first?.uid ?? "" : chosen
+        let inputChannel = chosen.isEmpty ? nil : channel
+        inputName = devices.first { $0.uid == device }?.name ?? ""
+        openedUID = device
+        problem = nil
         guard !device.isEmpty else {
             status = "Choose an audio input"
             return
@@ -211,6 +215,14 @@ final class LiveAssist {
         }
     }
 
+    /// Following the Mac's input: switching it in Sound settings switches
+    /// what's heard.
+    private func inputsChanged() {
+        guard listening, deviceUID.isEmpty,
+              let current = LiveTranscriber.defaultInputUID(), current != openedUID else { return }
+        restartIfListening()
+    }
+
     private func restartIfListening() {
         guard listening else { return }
         Task { await start() }
@@ -222,6 +234,8 @@ final class LiveAssist {
         starting = false
         listeningForFollow = false
         level = 0
+        lastSound = nil
+        listeningSince = nil
         status = "Off"
         clearSuggestion()
     }
@@ -257,20 +271,39 @@ final class LiveAssist {
         switch state {
         case .idle: listening = false; starting = false; status = "Off"
         case .preparing: starting = true; status = "Preparing speech model…"
-        case .listening: listening = true; starting = false; status = "Listening"
+        case .listening:
+            listening = true; starting = false; status = "Listening"
+            listeningSince = Date(); lastSound = nil
         case .failed(let message): listening = false; starting = false; status = message
         }
     }
 
+    /// A level as a meter shows it: -60 dB empty, 0 dB full, so speech
+    /// fills most of the bar instead of a sliver of it.
+    nonisolated static func meterFill(_ level: Float) -> Double {
+        guard level > 0 else { return 0 }
+        return min(max((20 * log10(Double(level)) + 60) / 60, 0), 1)
+    }
+
+    /// Room noise sits well below this (about -46 dB); speech on a live mic
+    /// is far above it.
+    private func heardLevel(_ value: Float) {
+        level = value
+        if value > 0.005 { lastSound = Date() }
+    }
+
     private func heard(_ text: String, isFinal: Bool) {
+        // The phrase before this one is read with it, so a reference split
+        // across two ("turn to John 3" … "verse 16") is still caught.
+        let before = String(lastHeardFinal.suffix(120))
         transcript = String((lastHeardFinal + " " + text).suffix(400))
         if isFinal { lastHeardFinal = String((lastHeardFinal + " " + text).suffix(600)) }
         if mode == .sermon {
             if isFinal { sermonTranscript = String((sermonTranscript + "\n" + text).suffix(8000)) }
-            if isFinal { spotScripture(in: text) }
+            if isFinal { spotScripture(in: before + " " + text) }
             return
         }
-        if detectsScripture, isFinal { spotScripture(in: text) }
+        if detectsScripture, isFinal { spotScripture(in: before + " " + text) }
         follow(text, isFinal: isFinal)
     }
 
@@ -303,9 +336,15 @@ final class LiveAssist {
         }
         let settings = BibleSettings.shared
         if settings.translation == nil { await settings.refreshTranslations() }
-        guard let translation = settings.translation,
-              let passage = try? await settings.service.passage(reference, translation: translation)
-        else { return }
+        guard let translation = settings.translation else {
+            problem = "Heard \(reference.display), but no Bible translation is set up"
+            return
+        }
+        guard let passage = try? await settings.service.passage(reference, translation: translation) else {
+            problem = "Heard \(reference.display), but couldn't load it"
+            return
+        }
+        problem = nil
         let themeID = model.slideBuilding.scriptureThemeId ?? ""
         await model.themesFilled([themeID])
         var presentation = ScriptureSlideBuilder.presentation(
@@ -593,18 +632,26 @@ private struct ConfidenceMeter: View {
 /// Which microphone (and which channel of an interface) Live Assist hears,
 /// with a level meter to confirm it.
 struct LiveAssistInputPicker: View {
-    var forSermon = false
+    /// "Mac's input (MacBook Pro Microphone)": the choice that follows
+    /// System Settings › Sound.
+    static func macInputTitle(_ devices: [(uid: String, name: String, channels: Int)]) -> String {
+        let uid = LiveTranscriber.defaultInputUID()
+        return devices.first { $0.uid == uid }.map { "Mac's input (\($0.name))" } ?? "Mac's input"
+    }
+
     @Bindable private var assist = LiveAssist.shared
     @State private var devices = LiveTranscriber.inputDevices()
 
-    private var device: Binding<String> { forSermon ? $assist.sermonDeviceUID : $assist.deviceUID }
-    private var channel: Binding<Int?> { forSermon ? $assist.sermonChannel : $assist.channel }
+    private var device: Binding<String> { $assist.deviceUID }
+    private var channel: Binding<Int?> { $assist.channel }
     private var channels: Int { devices.first { $0.uid == device.wrappedValue }?.channels ?? 0 }
 
     var body: some View {
-        Picker(forSermon ? "Pastor's mic" : "Listen to", selection: device) {
-            if !devices.contains(where: { $0.uid == device.wrappedValue }) {
-                Text("Choose a microphone…").tag(device.wrappedValue)
+        Picker("Listen to", selection: device) {
+            Text(LiveAssistInputPicker.macInputTitle(devices)).tag("")
+            Divider()
+            if !device.wrappedValue.isEmpty, !devices.contains(where: { $0.uid == device.wrappedValue }) {
+                Text("Unplugged input").tag(device.wrappedValue)
             }
             ForEach(devices, id: \.uid) { device in
                 Text(device.channels > 2 ? "\(device.name) (\(device.channels) ch)" : device.name).tag(device.uid)
@@ -619,8 +666,8 @@ struct LiveAssistInputPicker: View {
         }
         HStack {
             Text("Level").font(.caption).foregroundStyle(.secondary)
-            ProgressView(value: Double(assist.level))
-                .tint(assist.level > 0.9 ? .red : .green)
+            ProgressView(value: LiveAssist.meterFill(assist.level))
+                .tint(LiveAssist.meterFill(assist.level) > 0.95 ? .red : .green)
             if !assist.listening {
                 Text("Start listening to check").font(.caption).foregroundStyle(.tertiary)
             }
@@ -651,13 +698,13 @@ struct SermonPanel: View {
                 .buttonStyle(.borderedProminent)
                 Spacer()
                 if sermonListening {
-                    ProgressView(value: Double(assist.level)).frame(width: 60).tint(.green)
+                    ProgressView(value: LiveAssist.meterFill(assist.level)).frame(width: 60).tint(.green)
                 }
             }
             if !sermonListening, assist.mode == .sermon, assist.status != "Off" {
                 Text(assist.status).font(.caption).foregroundStyle(.orange)
             }
-            DisclosureGroup("Microphone") { LiveAssistInputPicker(forSermon: true) }
+            DisclosureGroup("Microphone") { LiveAssistInputPicker() }
                 .font(.caption)
             Toggle("Show passages automatically", isOn: $assist.showsAutomatically)
                 .font(.caption)

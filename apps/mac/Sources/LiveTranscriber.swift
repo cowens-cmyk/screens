@@ -27,6 +27,11 @@ final class LiveTranscriber {
         AudioDeviceList.inputDevices().map { ($0.uid, $0.name, $0.channelCount) }
     }
 
+    /// The Mac's default input, for when nothing has been chosen yet.
+    static func defaultInputUID() -> String? {
+        AudioDeviceList.defaultInputDevice()?.uid
+    }
+
     func start(deviceUID: String, channels: InputChannelSelection = .default) {
         stop()
         guard #available(macOS 26, *) else {

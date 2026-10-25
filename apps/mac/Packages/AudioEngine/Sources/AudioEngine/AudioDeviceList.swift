@@ -96,6 +96,22 @@ public enum AudioDeviceList {
         inputDevices().first { $0.uid == uid }
     }
 
+    /// The input macOS uses by default (Sound settings), which is a real
+    /// microphone far more often than whatever sorts first in the list.
+    public static func defaultInputDevice() -> AudioInputDevice? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id
+        ) == noErr, id != 0 else { return nil }
+        return inputDevices().first { $0.id == id }
+    }
+
     public static func listenForChanges(
         queue: DispatchQueue = .main, onChange: @escaping @Sendable () -> Void
     ) -> ListenerToken {
@@ -114,6 +130,7 @@ public enum AudioDeviceList {
             self.addresses = [
                 kAudioHardwarePropertyDevices,
                 kAudioHardwarePropertyDefaultOutputDevice,
+                kAudioHardwarePropertyDefaultInputDevice,
             ].map {
                 AudioObjectPropertyAddress(
                     mSelector: $0,
