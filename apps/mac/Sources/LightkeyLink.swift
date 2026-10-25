@@ -184,47 +184,73 @@ struct LightkeySettingsForm: View {
     @Bindable private var link = LightkeyLink.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        Section {
             Picker("Lightkey runs on", selection: $link.location) {
                 ForEach(LightkeyLink.Location.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.radioGroup)
+            .settingsAnchor("midi.lightkey")
             if link.location == .network {
-                HStack {
-                    TextField("IP address, e.g. 192.168.1.40", text: $link.host)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Port", value: $link.port, format: .number.grouping(.never))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 70)
-                    Button("Connect") { link.apply() }
+                LabeledContent("Address") {
+                    HStack(spacing: 8) {
+                        TextField("", text: $link.host, prompt: Text("192.168.1.40"))
+                            .labelsHidden()
+                            .frame(width: 140)
+                        TextField("", value: $link.port, format: .number.grouping(.never), prompt: Text("Port"))
+                            .labelsHidden()
+                            .frame(width: 64)
+                        Button("Connect") { link.apply() }
+                    }
                 }
-                Text("On the Lightkey Mac: Audio MIDI Setup › Window › Show MIDI Studio › Network — create a session, turn it on and allow anyone to connect (port 5004).")
-                    .font(.caption).foregroundStyle(.secondary)
             }
-            Text(link.status).font(.caption).foregroundStyle(.secondary)
-            Stepper("MIDI channel: \(link.channel)", value: $link.channel, in: 1...16)
-            HStack {
+            LabeledContent("Status") {
+                Text(link.status).foregroundStyle(.secondary)
+            }
+            LabeledContent("MIDI channel") {
+                Stepper("\(link.channel)", value: $link.channel, in: 1...16)
+                    .monospacedDigit()
+            }
+            LabeledContent {
                 Button("Send Test Note") { link.sendTest() }
-                Text("Put a Lightkey cue in MIDI learn, then press this.")
-                    .font(.caption).foregroundStyle(.secondary)
+            } label: {
+                Text("Test")
+                Text("Put a Lightkey cue in MIDI learn, then press Send Test Note.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
-            Toggle("Send song sections (Verse, Chorus, Bridge…)", isOn: $link.sendsSections)
-            if link.sendsSections {
-                Text(LightkeyLink.sectionNotes.map { "\($0.name) = note \($0.note)" }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Text("To fire a Lightkey cue from a slide: right-click › Add Action › Lightkey Cue.")
-                .font(.caption).foregroundStyle(.secondary)
-            if let model {
-                Divider()
-                LightingCueTableForm(model: model)
+        } header: {
+            Text("Lightkey")
+        } footer: {
+            if link.location == .network {
+                Text("On the Lightkey Mac: Audio MIDI Setup › Window › Show MIDI Studio › Network. Create a session, turn it on and allow anyone to connect (port 5004).")
             }
         }
         .onAppear { link.apply() }
+        Section {
+            Toggle("Send song sections (Verse, Chorus, Bridge…)", isOn: $link.sendsSections)
+                .toggleStyle(.switch)
+            if link.sendsSections {
+                Text(LightkeyLink.sectionNotes.map { "\($0.name) = note \($0.note)" }.joined(separator: " · "))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Song Sections")
+        } footer: {
+            Text("To fire a Lightkey cue from a slide: right-click › Add Action › Lightkey Cue.")
+        }
+        if let model {
+            Section {
+                LightingCueTableForm(model: model)
+                    .padding(.vertical, 4)
+            } header: {
+                SettingsHeader(id: "midi.lightingCues")
+            }
+        }
     }
 }
 
-/// Settings › MIDI › Lightkey › Lighting cues: a note per service position.
+/// Settings › Integrations › Lightkey & MIDI › Lighting cues: a note per service position.
 /// The table is the church's (synced); the switch is this Mac's.
 struct LightingCueTableForm: View {
     let model: AppModel

@@ -32,7 +32,7 @@ struct SongSearchSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Song Search").font(.headline)
             if !sync.isConfigured {
-                Text("Add your Shepherd key in Settings › Shepherd to search the song library.")
+                Text("Add your Shepherd key in Settings › Integrations › Shepherd to search the song library.")
                     .foregroundStyle(.orange)
             }
             TextField("Search by title or CCLI number", text: $query)

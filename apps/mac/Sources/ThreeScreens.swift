@@ -117,133 +117,60 @@ enum ShowScreens {
     }
 }
 
-/// Window › Screen Configuration and Settings › Show Setup: one card per
-/// screen.
-struct ThreeScreensView: View {
-    let render: RenderContext
+/// What carries one of the three screens (a display, a DeckLink port, NDI
+/// or nothing) and the changes to it. Settings › Screens draws it twice, as
+/// a display's role in the arrangement and as the screen's own Output menu,
+/// so both go through here.
+@MainActor
+struct ScreenOutput {
+    static let alphaKeyKey = "screens.livestream.alphaKey"
+    static let keyModeKey = "screens.livestream.keyMode"
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(ShowScreen.allCases) { role in
-                if let screen = role.screen(in: render.outputs) {
-                    ScreenCard(role: role, screen: screen, render: render)
-                }
-            }
-        }
-        .task { DeckLinkDeviceCatalog.shared.refresh() }
-        .onReceive(NotificationCenter.default.publisher(
-            for: NSApplication.didBecomeActiveNotification)
-        ) { _ in
-            DeckLinkDeviceCatalog.shared.refresh()
-        }
-    }
-}
-
-private struct ScreenCard: View {
     let role: ShowScreen
     let screen: PlaceholderScreen
     let render: RenderContext
 
-    @AppStorage("screens.livestream.alphaKey") private var alphaKey = false
-    @AppStorage("screens.livestream.keyMode") private var keyModeRaw = Int(DeckLinkAlphaKey.externalKey.rawValue)
+    init?(_ role: ShowScreen, render: RenderContext) {
+        guard let screen = role.screen(in: render.outputs) else { return nil }
+        self.role = role
+        self.screen = screen
+        self.render = render
+    }
 
     private var outputs: OutputManager { render.outputs }
     private var catalog: DeckLinkDeviceCatalog { .shared }
-    private var deckLinkBacking: DeckLinkScreenOutputs.Backing? {
+
+    var deckLinkBacking: DeckLinkScreenOutputs.Backing? {
         DeckLinkScreenOutputs.shared.backing(for: screen.id)
     }
-    private var ndiOn: Bool { NDIScreenOutputs.shared.status(for: screen.id) != nil }
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            preview
-                .frame(width: 176)
-                .aspectRatio(CGFloat(screen.width) / CGFloat(max(1, screen.height)), contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.separator.opacity(0.6)))
-            VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(role.name).font(.headline)
-                    Text(role.summary).font(.caption).foregroundStyle(.secondary)
-                }
-                LabeledContent("Output") {
-                    Picker("", selection: Binding(get: { currentOutput }, set: choose)) {
-                        Text("None").tag("none")
-                        if !outputs.displays.isEmpty { Divider() }
-                        ForEach(outputs.displays) { display in
-                            Text(display.name).tag("display:\(display.uuid)")
-                        }
-                        if let backing = outputs.placeholderDevices[screen.id],
-                           !outputs.displays.contains(where: { $0.uuid == backing }) {
-                            Text("\(outputs.placeholderDeviceNames[screen.id] ?? "Display") (disconnected)")
-                                .tag("display:\(backing)")
-                        }
-                        if !deckLinkPorts.isEmpty { Divider() }
-                        ForEach(deckLinkPorts) { device in
-                            Text("DeckLink: \(device.name)").tag("decklink:\(device.persistentID)")
-                        }
-                        Divider()
-                        Text("NDI").tag("ndi")
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                }
-                if let status = outputStatus {
-                    Text(status).font(.caption).foregroundStyle(.secondary)
-                }
-                LabeledContent("Resolution") {
-                    ChipPicker(
-                        options: [(1080, "1080p"), (2160, "4K")],
-                        selection: Binding(get: { screen.height >= 2160 ? 2160 : 1080 }, set: setResolution))
-                }
-                if role == .livestream {
-                    alphaKeyRow
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .background(Color.primary.opacity(0.03), in: RoundedRectangle.standard(CornerStandard.element))
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(Color.separator.opacity(0.5), lineWidth: 1)
-        )
+    var ndiOn: Bool { NDIScreenOutputs.shared.status(for: screen.id) != nil }
+
+    /// The display showing this screen, when a display does.
+    var display: DisplayUUID? {
+        guard deckLinkBacking == nil, !ndiOn else { return nil }
+        return outputs.placeholderDevices[screen.id]
     }
-
-    @ViewBuilder
-    private var preview: some View {
-        if role == .livestream {
-            ZStack {
-                Checkerboard()
-                TransparentScenePreview(
-                    compositor: render.compositor,
-                    provider: outputs.previewProvider(for: screen.id.uuidString))
-            }
-        } else {
-            LiveSceneView(render: render, screenTargetID: screen.id.uuidString)
-        }
-    }
-
-    // MARK: Output
 
     /// DeckLink ports that can send. A port mapped as an input in Desktop
     /// Video Setup is left for capture.
-    private var deckLinkPorts: [DeckLinkHelperDevice] {
+    var deckLinkPorts: [DeckLinkHelperDevice] {
         catalog.devices.filter { device in
             catalog.displayModes[device.persistentID]?.isEmpty != true
                 || deckLinkBacking?.devicePersistentID == device.persistentID
         }
     }
 
-    private var currentOutput: String {
+    /// "none", "display:<uuid>", "decklink:<id>" or "ndi".
+    var current: String {
         if let backing = deckLinkBacking { return "decklink:\(backing.devicePersistentID)" }
         if ndiOn { return "ndi" }
         if let display = outputs.placeholderDevices[screen.id] { return "display:\(display)" }
         return "none"
     }
 
-    private func choose(_ token: String) {
-        guard token != currentOutput else { return }
+    func choose(_ token: String) {
+        guard token != current else { return }
         if token.hasPrefix("decklink:"),
            let id = Int64(token.dropFirst("decklink:".count)),
            let device = catalog.devices.first(where: { $0.persistentID == id }) {
@@ -259,7 +186,7 @@ private struct ScreenCard: View {
         }
     }
 
-    private var outputStatus: String? {
+    var status: String? {
         if deckLinkBacking != nil {
             switch DeckLinkScreenOutputs.shared.status(for: screen.id) {
             case .sending:
@@ -287,9 +214,22 @@ private struct ScreenCard: View {
         return nil
     }
 
+    /// The status above is a fault, not news.
+    var isProblem: Bool {
+        if case .failed? = DeckLinkScreenOutputs.shared.status(for: screen.id) { return true }
+        if case .failed? = NDIScreenOutputs.shared.status(for: screen.id) { return true }
+        if deckLinkBacking == nil, !ndiOn, let backing = outputs.placeholderDevices[screen.id],
+           !outputs.displays.contains(where: { $0.uuid == backing }) {
+            return true
+        }
+        return false
+    }
+
     // MARK: Resolution
 
-    private func setResolution(_ height: Int) {
+    var resolutionHeight: Int { screen.height >= 2160 ? 2160 : 1080 }
+
+    func setResolution(_ height: Int) {
         let width = height == 2160 ? 3840 : 1920
         guard width != screen.width || height != screen.height else { return }
         outputs.reconfigurePlaceholderScreen(
@@ -304,10 +244,17 @@ private struct ScreenCard: View {
 
     // MARK: Alpha key
 
-    private func keying(for device: DeckLinkHelperDevice) -> DeckLinkAlphaKey {
-        guard role == .livestream, alphaKey else { return .off }
-        let wanted = DeckLinkAlphaKey(rawValue: Int32(keyModeRaw)) ?? .externalKey
-        switch wanted {
+    static var alphaKeyOn: Bool { UserDefaults.standard.bool(forKey: alphaKeyKey) }
+
+    static var wantedKeyMode: DeckLinkAlphaKey {
+        let raw = UserDefaults.standard.object(forKey: keyModeKey) as? Int
+            ?? Int(DeckLinkAlphaKey.externalKey.rawValue)
+        return DeckLinkAlphaKey(rawValue: Int32(raw)) ?? .externalKey
+    }
+
+    func keying(for device: DeckLinkHelperDevice) -> DeckLinkAlphaKey {
+        guard role == .livestream, Self.alphaKeyOn else { return .off }
+        switch Self.wantedKeyMode {
         case .externalKey where device.supportsExternalKeying: return .externalKey
         case .internalKey where device.supportsInternalKeying: return .internalKey
         default:
@@ -317,47 +264,24 @@ private struct ScreenCard: View {
         }
     }
 
-    private var deckLinkDevice: DeckLinkHelperDevice? {
+    var deckLinkDevice: DeckLinkHelperDevice? {
         deckLinkBacking.flatMap { backing in
             catalog.devices.first { $0.persistentID == backing.devicePersistentID }
         }
     }
 
-    private func applyKeying() {
+    /// After the alpha key settings change: the port re-keys at once.
+    func applyKeying() {
         guard let device = deckLinkDevice else { return }
         DeckLinkScreenOutputs.shared.setKeying(
             screenID: screen.id, keying: keying(for: device), render: render)
     }
 
-    @ViewBuilder
-    private var alphaKeyRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle("Alpha key (transparent)", isOn: Binding(
-                get: { alphaKey },
-                set: { alphaKey = $0; applyKeying() }
-            ))
-            .disabled(deckLinkDevice == nil)
-            if let device = deckLinkDevice, alphaKey,
-               device.supportsInternalKeying, device.supportsExternalKeying {
-                ChipPicker(
-                    options: [(DeckLinkAlphaKey.externalKey.rawValue, "External"),
-                              (DeckLinkAlphaKey.internalKey.rawValue, "Internal")],
-                    selection: Binding(
-                        get: { Int32(keyModeRaw) },
-                        set: { keyModeRaw = Int($0); applyKeying() }))
-            }
-            Text(alphaCaption)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var alphaCaption: String {
+    var alphaCaption: String {
         guard deckLinkDevice != nil else {
             return "Needs a DeckLink output. NDI carries transparency on its own."
         }
-        guard alphaKey else { return "Off: the switcher gets the full picture." }
+        guard Self.alphaKeyOn else { return "Off: the switcher gets the full picture." }
         switch deckLinkBacking?.keying {
         case .externalKey?: return "External: fill and key on separate connectors for the switcher's keyer."
         case .internalKey?: return "Internal: the card keys over the video at its SDI input."
@@ -366,31 +290,65 @@ private struct ScreenCard: View {
     }
 }
 
-/// Window › Screen Configuration.
+/// The arrangement's side of the same choice: which screen a display or a
+/// DeckLink port carries.
+@MainActor
+enum ScreenRouting {
+    static func role(on display: DisplayUUID, render: RenderContext) -> ShowScreen? {
+        ShowScreen.allCases.first { ScreenOutput($0, render: render)?.display == display }
+    }
+
+    /// A display carries one screen. Giving it a screen moves that screen
+    /// off wherever it was, and a screen the display had is left with no
+    /// output; None just takes the display's screen off it.
+    static func assign(display: DisplayUUID, to role: ShowScreen?, render: RenderContext) {
+        if let role {
+            ScreenOutput(role, render: render)?.choose("display:\(display)")
+        } else if let current = Self.role(on: display, render: render) {
+            ScreenOutput(current, render: render)?.choose("none")
+        }
+    }
+
+    static func roles(onDeckLink id: Int64, render: RenderContext) -> [ShowScreen] {
+        ShowScreen.allCases.filter {
+            ScreenOutput($0, render: render)?.deckLinkBacking?.devicePersistentID == id
+        }
+    }
+}
+
+/// Window › Screen Configuration, kept so its menu item and More › Screen
+/// Setup… still work: the screens are set up in Settings › Screens now, so
+/// this opens that and closes itself before it is seen.
 struct OutputsWindow: View {
     let render: RenderContext?
 
-    @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
+    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
-        Group {
-            if let render {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ThreeScreensView(render: render)
-                        Text("NDI® is a registered trademark of Vizrt NDI AB")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.quaternary)
-                    }
-                    .padding(16)
+        Color.clear
+            .frame(width: 1, height: 1)
+            .background(HiddenWindow())
+            .onAppear {
+                SettingsRouter.shared.open(.screens)
+                Task { @MainActor in
+                    dismissWindow(id: "outputs")
                 }
-            } else {
-                Text("Metal is not available on this machine.")
-                    .padding(40)
             }
-        }
-        .frame(minWidth: 560, minHeight: 480)
-        .background(Color.basePlane)
-        .preferredColorScheme((AppAppearance(rawValue: appearanceRaw) ?? .dark).colorScheme)
     }
 }
+
+/// Keeps a window that only redirects from flashing on screen.
+private struct HiddenWindow: NSViewRepresentable {
+    final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.alphaValue = 0
+            window?.isRestorable = false
+        }
+    }
+
+    func makeNSView(context: Context) -> NSView { Probe() }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+

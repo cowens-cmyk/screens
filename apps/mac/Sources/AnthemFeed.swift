@@ -11,7 +11,7 @@ import SwiftUI
 /// agree.
 ///
 /// Anthem is found over Bonjour (`_anthem-show._tcp`) or at the address in
-/// Settings › Anthem. The setlist is read every 10 s; Anthem's status every
+/// Settings › Integrations › Anthem. The setlist is read every 10 s; Anthem's status every
 /// 1.5 s only while a song is live. When Anthem is off the feed says
 /// "Anthem not found" and keeps quiet.
 @MainActor
@@ -57,7 +57,7 @@ final class AnthemFeed {
         }
     }
     /// Read Anthem's notes with Anthem's numbers rather than the MIDI input
-    /// map in Settings › MIDI.
+    /// map in Settings › Integrations › Lightkey & MIDI.
     var midiUsesAnthemNotes: Bool {
         didSet { UserDefaults.standard.set(midiUsesAnthemNotes, forKey: "anthem.midi.anthemNotes") }
     }

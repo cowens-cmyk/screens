@@ -49,7 +49,7 @@ struct OnboardingView: View {
 
     private var choices: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Your library starts with Worship, Scripture and Points themes and two stage layouts. The Audience, Livestream and Stage screens are set up in Window › Screen Configuration.")
+            Text("Your library starts with Worship, Scripture and Points themes and two stage layouts. The Audience, Livestream and Stage screens are set up in Settings › Screens.")
                 .fixedSize(horizontal: false, vertical: true)
             Button {
                 importWorkspace? { importActivity = $0 }

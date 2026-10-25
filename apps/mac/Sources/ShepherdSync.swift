@@ -244,37 +244,54 @@ final class ShepherdSync {
     }
 }
 
-/// Settings › Services › Shepherd.
+/// Settings › Integrations › Shepherd.
 struct ShepherdSettingsForm: View {
     @Bindable private var sync = ShepherdSync.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SecureField("Shepherd API key (shp_…)", text: $sync.apiKey)
-                .textFieldStyle(.roundedBorder)
-            Text("A Shepherd admin makes this under Connected apps, with the services:read scope.")
-                .font(.caption).foregroundStyle(.secondary)
-            TextField("Service type (blank for all)", text: $sync.serviceType)
-                .textFieldStyle(.roundedBorder)
+        Section {
+            SecureField("API key", text: $sync.apiKey, prompt: Text("shp_…"))
+                .settingsAnchor("shepherd.sync")
+            TextField("Service type", text: $sync.serviceType, prompt: Text("All"))
+        } header: {
+            Text("Shepherd")
+        } footer: {
+            Text("A Shepherd admin makes the key under Connected apps, with the services:read scope. "
+                + (SettingsIndex.entry("shepherd.sync")?.caption ?? ""))
+        }
+        Section {
             Toggle("Sundays only", isOn: $sync.sundaysOnly)
-            Stepper("Load \(sync.weeksAhead) week\(sync.weeksAhead == 1 ? "" : "s") ahead", value: $sync.weeksAhead, in: 1...12)
+                .toggleStyle(.switch)
+            LabeledContent("Load ahead") {
+                Stepper("\(sync.weeksAhead) week\(sync.weeksAhead == 1 ? "" : "s")", value: $sync.weeksAhead, in: 1...12)
+            }
             Toggle("Check for changes every 10 minutes", isOn: $sync.autoSync)
-            HStack {
-                Button(sync.isSyncing ? "Loading…" : "Load Plans Now") { Task { await sync.sync() } }
-                    .disabled(!sync.isConfigured || sync.isSyncing)
-                Button("Test Key") { Task { await sync.testConnection() } }
-                    .disabled(!sync.isConfigured)
-                Spacer()
-            }
-            if let app = sync.connectedApp {
-                Text("Connected as “\(app)”.").font(.caption).foregroundStyle(.secondary)
-            }
-            if let summary = sync.lastSummary, let when = sync.lastSync {
-                Text("\(summary) · \(when.formatted(date: .omitted, time: .shortened))")
-                    .font(.caption).foregroundStyle(.secondary)
+                .toggleStyle(.switch)
+        } header: {
+            Text("Plans")
+        }
+        Section {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Button("Test Key") { Task { await sync.testConnection() } }
+                        .disabled(!sync.isConfigured)
+                    Button(sync.isSyncing ? "Loading…" : "Load Plans Now") { Task { await sync.sync() } }
+                        .disabled(!sync.isConfigured || sync.isSyncing)
+                }
+            } label: {
+                if let app = sync.connectedApp {
+                    Text("Connected as “\(app)”")
+                } else {
+                    Text(sync.isConfigured ? "Not checked yet" : "No key")
+                }
+                if let summary = sync.lastSummary, let when = sync.lastSync {
+                    Text("\(summary) · \(when.formatted(date: .omitted, time: .shortened))")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
             if let error = sync.lastError {
-                Text(error).font(.caption).foregroundStyle(.red)
+                Text(error).font(.subheadline).foregroundStyle(.red)
             }
         }
     }

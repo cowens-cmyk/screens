@@ -27,7 +27,7 @@ The window title is the current plan's name. The slides fill the middle, over a 
 **Plan panel contents.** At the top, a segmented control switches between **Plans** and **Library**. With Plans showing, the list has sections **Upcoming** (soonest first; the first one is tagged Next), **Templates**, and **Past**, and a **+** button ("New plan"). Below that is the chosen plan's items, headed by the plan name in capitals and a book button that opens **Message & Sermon Series** for that plan. At the bottom is the **Add Item** menu and an item count.
 
 **Center.** Depends on the mode:
-- **Present**: the whole plan on one page that scrolls from top to bottom, every item in plan order, like ProPresenter's playlist view. Items sit on the page itself, divided by a thin line, not in boxes. Each item has a header row (its kind badge, name, and its controls: arrangement, key, Slide Show, Follow, the Anthem ⚠ chip, the slide count, and the section pills when there is somewhere to jump) that stays pinned at the top while its slides scroll past; under it are its slides as the same tiles as the grid (click to fire, right-click menus). If any slides need a look (text that doesn't fit its box, a media file missing on this Mac), the header shows an orange ⚠ with a count; click it for the list. Right-click the header for **Add Slide…** and **Arrangement**. A presentation can have no slides at all (a new one starts that way, and deleting every slide leaves it empty). Its header says "No slides" and under it is one slide-sized dashed space, "Drop slides or media here": drag in slides from another presentation on the page (they are copied), pictures or videos from the Media library, or image and video files from the Finder (each becomes a slide with it as the background). Its **+** offers **Slide from Theme…** (pick a design from any theme), **From Media Library…** (pick one or more pictures or videos; double-click adds one) and **Blank Slide**. With Run Only on, the space only says "No slides". Arrow keys, Space and Return skip an empty presentation. Plan headers show as colored bands. Videos and the countdown show as a tile with a Play button (right-click for **When Video Ends**); audio and playlists show their tracks; items that aren't linked show as a slim row, with **Get Lyrics** for a planned song with no slides. Clicking an item in the plan list scrolls the page to it; clicking the selected item again scrolls back to it. Scrolling the page highlights the item at the top in the plan list. When a slide goes live (arrow keys, the remote, Anthem, a slideshow's timing) the page scrolls to keep it in view, except for 3 seconds after you scroll the page yourself; pressing an arrow key ends that pause. Arrows, Space and Return go from the last slide of one item to the first of the next. Slide size fits the window by itself (about 220 pt wide tiles, 3 to 8 per row). The slider at the bottom right overrides it (drag right for bigger slides, fewer per row); its **Auto** button, or Settings › Present › **Slides across**, goes back to fitting. **View › Show Whole Plan** (on by default; also Settings › Present) turns this off to show only the selected item's slides.
+- **Present**: the whole plan on one page that scrolls from top to bottom, every item in plan order, like ProPresenter's playlist view. Items sit on the page itself, divided by a thin line, not in boxes. Each item has a header row (its kind badge, name, and its controls: arrangement, key, Slide Show, Follow, the Anthem ⚠ chip, the slide count, and the section pills when there is somewhere to jump) that stays pinned at the top while its slides scroll past; under it are its slides as the same tiles as the grid (click to fire, right-click menus). If any slides need a look (text that doesn't fit its box, a media file missing on this Mac), the header shows an orange ⚠ with a count; click it for the list. Right-click the header for **Add Slide…** and **Arrangement**. A presentation can have no slides at all (a new one starts that way, and deleting every slide leaves it empty). Its header says "No slides" and under it is one slide-sized dashed space, "Drop slides or media here": drag in slides from another presentation on the page (they are copied), pictures or videos from the Media library, or image and video files from the Finder (each becomes a slide with it as the background). Its **+** offers **Slide from Theme…** (pick a design from any theme), **From Media Library…** (pick one or more pictures or videos; double-click adds one) and **Blank Slide**. With Run Only on, the space only says "No slides". Arrow keys, Space and Return skip an empty presentation. Plan headers show as colored bands. Videos and the countdown show as a tile with a Play button (right-click for **When Video Ends**); audio and playlists show their tracks; items that aren't linked show as a slim row, with **Get Lyrics** for a planned song with no slides. Clicking an item in the plan list scrolls the page to it; clicking the selected item again scrolls back to it. Scrolling the page highlights the item at the top in the plan list. When a slide goes live (arrow keys, the remote, Anthem, a slideshow's timing) the page scrolls to keep it in view, except for 3 seconds after you scroll the page yourself; pressing an arrow key ends that pause. Arrows, Space and Return go from the last slide of one item to the first of the next. Slide size fits the window by itself (about 220 pt wide tiles, 3 to 8 per row). The slider at the bottom right overrides it (drag right for bigger slides, fewer per row); its **Auto** button, or Settings › Slides & Themes › **Slides across**, goes back to fitting. **View › Show Whole Plan** (on by default; also Settings › General › **Show whole plan**) turns this off to show only the selected item's slides.
 - **Edit**: the editor for the selected plan item or library item, with the plans and library in the window's sidebar. The sidebar folds away while something is open; the screens and the control bar don't show.
 - **Schedule**: the Scheduler board.
 
@@ -37,7 +37,7 @@ The window title is the current plan's name. The slides fill the middle, over a 
 - Mode picker: **Present / Edit / Schedule** (also View menu, ⌘1 / ⌘2 / ⌘3).
 - **Schedule Service**: when this plan's services start and when the countdown starts.
 - **Bible**: click to add scripture (⌘⇧B); the arrow opens a menu with **Add Scripture…**, **Listen for Scripture** / **Stop Listening**, and a **Bible Theme** list.
-- **More** (…): **Message & Series…**, **Themes** (this plan's series first, then every theme by name: pick one to open it in the theme editor; also **New Theme from Image…** and **Show Themes in Library**), **Timers & Macros…**, **Lower Thirds…** (the livestream lower third for each type, see Livestream), **Screen Setup…** (opens the Screen Configuration window), **Edit Stage Display…**.
+- **More** (…): **Message & Series…**, **Themes** (this plan's series first, then every theme by name: pick one to open it in the theme editor; also **New Theme from Image…** and **Show Themes in Library**), **Timers & Macros…**, **Lower Thirds…** (the livestream lower third for each type, see Livestream), **Screen Setup…** (opens Settings › Screens), **Edit Stage Display…**.
 - **Plan** (left sidebar button) and **Screens** (right sidebar button): pin or fold each panel, in Present and Schedule.
 
 ## Menu bar and shortcuts
@@ -59,7 +59,7 @@ Song Search, Point Slides, Import Lyrics and Import Sermon are run by the Librar
 
 **Present**: **Clear Slides** F2, **Clear Media** F3, **Clear Alerts** F6, **Clear Layer** submenu (one entry per layer), **Clear All** F1, **Reset Sermon Timer** ⌃⌘0, **Sermon Timer Resets at Service Start** (on by default; kept per Mac).
 
-**Window**: **Service Controls**, **Screen Configuration**, **Live Assist** (⌥⌘L), **Assistant** (⇧⌘A).
+**Window**: **Service Controls**, **Screen Configuration** (opens Settings › Screens), **Live Assist** (⌥⌘L), **Assistant** (⇧⌘A).
 
 **Help**: **Show Welcome**, **Report a Problem…**.
 
@@ -108,7 +108,7 @@ Select several items to Hide or Remove them together. Dragging a slide from the 
 
 ## Shepherd sync
 
-Settings › Shepherd & Anthem › Shepherd:
+Settings › Integrations › Shepherd:
 - **Shepherd API key (shp_…)**. A Shepherd admin makes it under Connected apps with the services:read scope. Song Search also needs the songs:lyrics scope.
 - **Service type** (blank for all), **Sundays only** (on by default), **Load N weeks ahead** (3 by default), **Check for changes every 10 minutes** (on by default).
 - **Load Plans Now** and **Test Key**.
@@ -117,7 +117,7 @@ Upcoming Shepherd plans become Screens plans. Headers stay headers. Songs link t
 
 ## Anthem
 
-Anthem (the band's tracks app) leads; Screens follows. Settings › Shepherd & Anthem › Anthem:
+Anthem (the band's tracks app) leads; Screens follows. Settings › Integrations › Anthem:
 - **Let Anthem change the slides**: Screens answers Anthem the way ProPresenter would, on port 50001. In Anthem › Settings › ProPresenter, choose Network and enter this Mac's address. Anthem's slide numbers are each presentation's own slide order.
 - **Match song orders to Anthem's setlist**: Screens finds Anthem on the network (or at **Anthem address**) and reads its open setlist every 10 seconds. The status line says the setlist it has, or "Anthem not found" when Anthem is off.
 - **Ignore instrumental sections** (on by default): intros, turnarounds and other band-only parts don't count as a difference unless Screens has a blank slide for them.
@@ -182,7 +182,7 @@ The bottom bar has **New** (a new presentation starts with no slides; in Confide
 
 **Importing media.** Media tab › **Import…**, or drag files onto the Media library, or plan › Add Item › **Video or Image…**. Files the app can't play directly are flagged for transcode. Put countdown videos in a Media folder named **Countdowns**.
 
-**Presentation types.** In the editor inspector, **Presentation › Type**: None, Worship, Sermon, Bible, Announcements, Video. Songs count as Worship. Settings › Present › **Presentation types** gives each type default actions that run when one goes live (for example Sermon sets the stage layout and starts the sermon timer).
+**Presentation types.** In the editor inspector, **Presentation › Type**: None, Worship, Sermon, Bible, Announcements, Video. Songs count as Worship. Settings › Stage › **Presentation types** gives each type default actions that run when one goes live (for example Sermon sets the stage layout and starts the sermon timer).
 
 ## Themes
 
@@ -202,12 +202,12 @@ A theme holds full-screen designs named by category (Title, Bible, Sermon Points
 - **Message**: **Import Notes…**, or **Add a Message to This Plan**. Once there is a message, **Sermon timer** sets its length in minutes (typed, or ±5; 40 by default).
 - **Every screen** checks Audience (message slides use the series), Livestream (the series has lower thirds), Stage (sermon timer and clock).
 
-**New Sermon Series** (from that sheet, Library › Themes › New › **New Sermon Series…**, or Settings › Bible › Sermon import) opens on a drop zone. It is one step with nothing to choose: drop the series art the designer made (JPG, PNG, HEIC or PDF; for a PDF, its first page; a PDF is taken only here or with **Choose File…**) or a Claude Design download (the ZIP, its folder, or its files), or **Choose File…**. A download may hold up to 60 files and 200 MB, in folders up to 4 deep.
+**New Sermon Series** (from that sheet, Library › Themes › New › **New Sermon Series…**, or Settings › Assistant › Sermon import) opens on a drop zone. It is one step with nothing to choose: drop the series art the designer made (JPG, PNG, HEIC or PDF; for a PDF, its first page; a PDF is taken only here or with **Choose File…**) or a Claude Design download (the ZIP, its folder, or its files), or **Choose File…**. A download may hold up to 60 files and 200 MB, in folders up to 4 deep.
 - **From art**: "Reading the art…" while Claude looks at it (usually under a minute), then "Building designs…". Claude picks the colors, where text can go, fonts from those installed on this Mac, whether headings are in capitals, and the lower-third bar (solid, fading or see-through, full width or inset). The Title design is the art itself, cropped to 16:9; if the art already has the series title lettered on it, the message title sits small in a clear part of the art rather than repeating the series name. Points, Bible, Point + Scripture and Worship sit on a blurred, darkened copy of the art (or a gradient or solid color from it).
 - **From a Claude Design download**: "Opening the download…". The download's own background, lower third (PNG or SVG), fonts and colors from its screens-theme.json are used as they are; nothing is asked of Claude again. SVG artwork keeps its proportions (a background is cropped to fill the screen, a lower third fitted along the bottom) and any pictures embedded in it; an SVG that draws nothing says so. Fonts that aren't installed fall back to a similar one, and the sheet names them. A download with no lower third gets a bar made to match; one with no screens-theme.json is read like any art.
 - Either way every design gets its text boxes (Title and Subtitle, Point, Verse and Reference, Lyrics), drawn over the art, and every text color is checked for contrast against the art where the text sits and adjusted if it would be hard to read. Points, verses and lyrics on the full-screen designs are held to 7:1, since a projector washes colors out; references, subtitles, the title over the art and lower-third text to 4.5:1. Colors picked in Edit Colors & Fonts are used as picked (with a veil under them if they don't reach 4.5:1). A background is dimmed as far as its text needs and a lower-third bar is made more solid (or, for a download's own bar image, its text color adjusted). Where the art behind the text is busy (stripes, lettering, a sharp photo), a soft see-through plate goes behind the block of text on Title, Point, Scripture, Point + Scripture and Worship; where a calm background still isn't enough, a veil goes over the whole background, and under a lower third, across the bottom. If Claude's answer is missing parts or can't be read, those parts come from the art's colors instead, so a design never comes out as art alone. Series made by an earlier version, whose text could end up hidden under the art or dimmed under the bar, are put right when the library opens.
 - The preview of all nine designs is the confirmation, drawn the way the screens draw them. **Done** adds the art to the media library, saves the theme and, opened from a plan, makes it the plan's series and the current series. **Edit Theme** does the same and then opens the new theme in the theme editor. Made from the Library it becomes the current series only when there isn't one yet; from Settings it always does. **Cancel** waits while it saves. The **Series name** fills in from the title in the art (or the download or file name) and can be changed first. **Edit Colors & Fonts…** shows the text, accent and lower-third bar colors (each a color well plus a hex field), the heading, body and scripture fonts, and **Headings in capitals**; **Use Automatic Choices** undoes the edits. **Try Again** asks Claude again (without a key, tries another accent color from the art; not shown for a download). Dropping different art on the sheet starts over.
-- Without an Anthropic API key, or if Claude can't be reached, art is still built from its colors, with white or black text and system fonts, and the sheet says "Add a Claude key in Settings for a closer match."
+- Without an Anthropic API key, or if Claude can't be reached, art is still built from its colors, with white or black text and system fonts, and the sheet says "Add a Claude key in Settings for a closer match." (the key is in Settings › Assistant)
 - **No Art Yet? Design from the Name…** (under the drop zone): type the **Series name** and **Create Series Theme**; Claude designs the background, lower-third bar, fonts and colors from the name (about a minute); its text colors are checked against the drawn artwork the same way. **Use Art Instead** goes back.
 - **Copy Claude Design Prompt** (under the drop zone): paste it into Claude Design after the artwork is made; it asks for a ZIP with background.png, lower-third.png and screens-theme.json. Drop that ZIP on the sheet.
 
@@ -221,18 +221,18 @@ A series theme has five full-screen designs: **Title**, **Point**, **Scripture**
 
 **Point Slides…** (⌘⇧P): type or paste points; a blank line starts the next slide. Uses the theme's Sermon Points design.
 
-**Anthropic API key.** Settings › Bible › Sermon import › **Anthropic API key** (from console.anthropic.com › API Keys), also shown at Settings › Network & API › **Assistant**. Sermon import, series design, and this Assistant all use this key. The same section has **Current series theme** and **New Sermon Series…**.
+**Anthropic API key.** Settings › Assistant › **Anthropic API key** (from console.anthropic.com › API Keys). Sermon import, series design, and this Assistant all use this key. The same section has **Current series theme** and **New Sermon Series…**.
 
 ## Livestream
 
 The livestream screen is keyed over the camera. In order, these decide what it shows: a playing video, then the slide's own choice, then the Livestream switch, then (on Lower Third) the presentation's own Livestream theme, its type's choice in Lower Thirds, and last the slide's theme's routing.
 
-**1. The Livestream switch** (Livestream card menu in the screens panel, or Settings › Show Setup):
+**1. The Livestream switch** (Livestream card menu in the screens panel, Settings › Livestream › **Livestream shows**, or the Livestream section of Settings › Screens):
 - **Lower Third** (default): each slide shows in the lower third set up for it (below); anything without one leaves the camera clear.
 - **Full Screen**: the room's slide, edge to edge.
 - **Transparent**: nothing over the camera.
 
-**2. Lower Thirds** (More › **Lower Thirds…**, or Settings › Show Setup › Lower Thirds). One row each for **Worship** (songs count as Worship), **Message**, **Scripture** and **Announcements**, each with one picker and a preview over a stand-in camera picture. Church-wide, synced to every Mac.
+**2. Lower Thirds** (More › **Lower Thirds…**, or Settings › Livestream › Lower Thirds). One row each for **Worship** (songs count as Worship), **Message**, **Scripture** and **Announcements**, each with one picker and a preview over a stand-in camera picture. Church-wide, synced to every Mac.
 - The picker lists every lower third in the library by name (Lyrics, Sermon Points, Bible…), plus **Camera only**. **Not set** leaves it to each slide's theme. The Message's default is **Sermon series**: the plan's series theme's lower thirds.
 - Example: to put the Worship lower third on every song, set Worship to **Lyrics**. A song still wins with its own Livestream theme (song editor › Screens), and a slide with its own choice.
 - It sets only the livestream; what the room sees doesn't change.
@@ -276,11 +276,11 @@ The stage follows what goes live: a song switches it to Worship; the message swi
 - **Audience screen** and a playing video: a red bar across the top, a fifth of the screen tall.
 - A stage layout with its own **Stage Message** box (Add Live Info › Stage Message) shows it there and nowhere else. Other custom layouts get the Worship band if they have lyrics with the clock or key along the bottom, the Message takeover if they show only times, and otherwise the top bar.
 
-A message stays up for 30 seconds, then the stage goes back to exactly what it showed. Settings › Show Setup › **Stage messages show for** sets 15, 30 or 60 seconds, or **Until cleared**. **Clear** takes it down at once; sending another message replaces it and starts the time again. Timers and the clock keep running throughout. The Stage card shows the message on stage with the time left and a **Clear** button. Alert presets aimed only at the stage are timed the same way; alerts that also show on the audience screen stay until cleared. The phone remote's Stage tab can send messages too and shows the time left.
+A message stays up for 30 seconds, then the stage goes back to exactly what it showed. Settings › Stage › **Stage messages show for** sets 15, 30 or 60 seconds, or **Until cleared**. **Clear** takes it down at once; sending another message replaces it and starts the time again. Timers and the clock keep running throughout. The Stage card shows the message on stage with the time left and a **Clear** button. Alert presets aimed only at the stage are timed the same way; alerts that also show on the audience screen stay until cleared. The phone remote's Stage tab can send messages too and shows the time left.
 
 **Edit Stage Display…** (More menu or the Stage card menu) opens the current mode's layout in the editor: the Worship layout for Worship and the audience screen, the Message layout for Message. The stage editor adds **Add Live Info**: Current Slide, Next Slide, Clock, Timer, Stage Message, Song Key, Slide Notes, Group Name, Video Countdown, Next Service Item. Stage layouts also live in Library › Confidence (Edit Confidence, ⌘6).
 
-A slide can bring up a specific layout (Screens… › Stage, or Add Action › Stage Layout). Settings › Present › **Confidence NEXT skips blank slides** controls the next-slide preview.
+A slide can bring up a specific layout (Screens… › Stage, or Add Action › Stage Layout). Settings › Stage › **Confidence NEXT skips blank slides** controls the next-slide preview.
 
 ## Bible and scripture
 
@@ -297,7 +297,7 @@ A slide can bring up a specific layout (Screens… › Stage, or Add Action › 
 - While he reads, the bar shows **Following Romans 8:29** beside the words, and the slides move forward to the slide holding the verse he's on (partway through a verse that runs over two slides, to its second). This works for a passage found from reading and for one he named first. It only moves forward, only while that passage's slide is live (never when the operator has put up something else), and pauses for 8 seconds after the operator clicks a slide or uses the arrow keys. A passage named or found later replaces anything still on its way for an earlier one, and nothing goes up after **Stop**.
 - Start it from Bible › **Listen for Scripture**, slide right-click › **Start Listening for Scripture**, or More › Timers & Macros… › **Sermon** tab › **Listen to Sermon**. The Sermon tab lists passages **Mentioned** (click one to show it), a **Transcript**, and **Show passages automatically**.
 - **Window › Live Assist** (⌥⌘L): microphone and channel, **Start Listening**, **Lyric Follow** (**Follow every song**, **Advance automatically**, a confidence meter, where it thinks the singer is, **Take Over (pause 8 s)** (Escape)), and **Scripture Detection**.
-- Settings › Show Setup › Live Assist: input, **Advance lyrics as they're sung**, the confidence threshold, **Watch for spoken Bible references**.
+- Settings › Live Listening: input, **Advance lyrics as they're sung**, the confidence threshold, **Watch for spoken Bible references**.
 
 **Lyric follow** (Live Assist): Screens listens to the worship input and keeps its place in the live song as it's sung.
 - Turn it on per song with the **Follow** chip next to the song's name in the slide grid (click it again to stop; its arrow has **Follow Every Song**, **Advance Automatically**, **Stop Listening**). Turning it on starts the worship mic; the first time, macOS asks for the microphone and speech recognition.
@@ -314,7 +314,7 @@ Every service opens with a countdown video, different each week, first in the pl
 
 At the top of the Schedule board, the **Service Day** card (for example "Sunday Services") restarts the pre-service slideshow before each service, in case the last slide of the previous service was left up. **Set Up** / **Edit** opens a sheet: the days (Sunday by default), the service times (8:00, 9:30 and 11:15 by default; add or remove), a **Restart pre-service at** time for each (30 minutes before the first service, 25 before the others by default), which presentation is the pre-service slideshow, **Clear the screens first** (on by default; this also stops audio), and **Advance every 10 seconds and loop** when the slideshow doesn't loop yet. It saves weekly triggers in a **Service Day** folder. The card shows the next service day at a glance: pre-service restarts, countdown starts and service times.
 
-**Run on this Mac** (in the card and both sheets) is kept per Mac and not synced. The countdowns and restarts sync to every Mac, but only a Mac with it on plays them; the others skip them and note "Not this Mac's job" in History. It turns on when a Mac saves the Service Day setup or schedules a service, and is off on other Macs until then. Run Now always runs.
+**Run on this Mac** (in the card, both sheets and Settings › General) is kept per Mac and not synced. The countdowns and restarts sync to every Mac, but only a Mac with it on plays them; the others skip them and note "Not this Mac's job" in History. It turns on when a Mac saves the Service Day setup or schedules a service, and is off on other Macs until then. Run Now always runs.
 
 A restart goes ahead only when the screens are empty, show the end of the plan (the last slide of its last presentation, or its closing video finished), or show the pre-service slideshow stopped for 3 minutes or more; or when a slide in the plan's last item has been left up for 20 minutes. Anything else is skipped and noted in History: a video playing (a looping background doesn't count), the countdown, the message with its timer running, or any other slide from the service. A skipped restart isn't retried later.
 
@@ -328,7 +328,7 @@ Editing a video or image (Edit mode) shows: **Name**; **Behavior**: Classificati
 
 A slide's background (editor inspector › **Background**): **Choose…** a media item, **Applies To** (This Slide, Until Replaced, This Section, Entire Song), Classification, Layer (Background Media, Still Graphics, Foreground Videos), **Loop**, **Replace…**, **Remove**.
 
-Default transitions: Settings › Present › **Media transition** and **Slide transition** (Cut is the default for slides). A slide can set its own in the inspector's **Transition** section.
+Default transitions: Settings › Slides & Themes › **Media transition** and **Slide transition** (Cut is the default for slides). A slide can set its own in the inspector's **Transition** section.
 
 ## Timers, macros, alerts and actions
 
@@ -362,39 +362,47 @@ These are Hope Church conventions, not special features.
 
 ## Screens and outputs
 
-**Window › Screen Configuration** (also More › Screen Setup… and Settings › Show Setup): one card each for **Audience** (what the room sees), **Livestream** (laid over the camera) and **Stage** (lyrics, next slide, clock and timers). Each card's **Output** is None, a connected display, a Blackmagic DeckLink port, or NDI. The Livestream card has **Alpha key (transparent)**. Settings › Show Setup also has Blackmagic DeckLink setup; Settings › Network & API has **NDI network** (pin NDI to the wired production network).
+**Settings › Screens** (also Window › Screen Configuration and More › Screen Setup…, which open it) sets up the three screens in one place:
+- **Displays**: the Mac's connected displays drawn to scale where macOS arranges them, the main display with its menu bar. Each display shows which screen it carries (Audience, Livestream, Stage) with a small live preview, or Not used. Drag **Audience**, **Livestream** or **Stage** from the chips above onto a display, or drag one display's screen onto another to move it. Click a display to choose below: **Shows** (None, Audience, Livestream, Stage), its **Resolution** (pixels and refresh rate), and **Show Name on Display**, which puts the display's name and screen in large type on that display for a few seconds. Right-click a display for the same choices and **Identify**. A display shows one screen; giving it another moves that screen off wherever it was.
+- One section each for **Audience** (what the room sees), **Livestream** (laid over the camera) and **Stage** (lyrics, next slide, clock and timers), with a live preview, the status, **Output** (None, a connected display, a Blackmagic DeckLink port, or NDI) and **Resolution** (1080p or 4K). Livestream also has **Shows** (the Livestream switch) and **Alpha key (transparent)** (needs a DeckLink port; External or Internal when the port can do both). Stage also has **Shows** (Worship, Message, Audience Screen) and **Follow what's live**.
+- **NDI**: **Send over NDI** with a button per screen, and **NDI network** (pin NDI to the wired production network).
+- **Blackmagic DeckLink**: each output port with a button per screen it carries, the driver's status with **Find Devices**, and **Details** (what the driver reported).
 
 ## LightKey cues
 
-Lightkey's scenes can follow the service. It is off on each Mac until **Change Lightkey scenes with the service** is turned on (Settings › MIDI › Lightkey). Then, when a plan item goes live (its first slide, its video, or the countdown), Screens sends Lightkey the note for that item's position, once per item. Clicking a header in Present mode sends the header's position; moving the selection with the arrow keys doesn't. The walk-in slideshow sets Walk-in even when it goes up from the library or the Local API.
+Lightkey's scenes can follow the service. It is off on each Mac until **Change Lightkey scenes with the service** is turned on (Settings › Integrations › Lightkey & MIDI). Then, when a plan item goes live (its first slide, its video, or the countdown), Screens sends Lightkey the note for that item's position, once per item. Clicking a header in Present mode sends the header's position; moving the selection with the arrow keys doesn't. The walk-in slideshow sets Walk-in even when it goes up from the library or the Local API.
 
 - **Positions**: Walk-in, Countdown, Song 1, Song 2…, Announcements, Message, Closing, Walkout, Baptism, Communion, plus any cue the church adds.
 - **How Screens works out a position**, first match wins: the item's own choice; the countdown, and the pre-service slideshow (Walk-in); the nearest header above that names a position ("Walk In", "Pre-Service", "Announcements", "Message", "Sermon", "Closing", "Benediction", "Walk Out", "Baptism", "Communion", "Lord's Supper"); the item's type (Sermon → Message, Announcements → Announcements, songs count Song 1, Song 2… down the plan, hidden items skipped); then the item's own name. "Worship" and "Response" headers don't set a position, so their songs keep their numbers.
 - Each plan row shows its position in small gray text at the right. Right-click an item (or header) › **Lighting Cue** to pick **Automatic**, any position, or **None**.
 - **Macros on a plan item**: drag a macro from the Macros list onto a plan item. It runs once when the item goes live, after the position cue, whether or not the switch is on; clicking a header never runs it again. A bolt marks the row. Right-click › **Remove Macros** takes them off. If the item's macros or its first slide's actions send their own Lightkey Cue, that cue is used instead of the position cue.
-- **Settings › MIDI › Lightkey › Lighting cues**: **Change Lightkey scenes with the service** (this Mac) and the church's table of notes, one row per position, each with a note number, an on/off box and **Send** (press it while a Lightkey cue is in MIDI learn). Defaults are notes 60–72 on the Lightkey channel (Walk-in 60, Countdown 61, Song 1–5 62–66, Announcements 67, Message 68, Closing 69, Walkout 70, Baptism 71, Communion 72), clear of the song-section notes 1–10 and the Lightkey Cue slide action's 31–54; added rows take 73 and up. **Add Song** adds Song 6 and up (songs past the last row use it); **Add Cue…** adds a named position that a header with the same name picks up.
+- **Settings › Integrations › Lightkey & MIDI › Lighting cues**: **Change Lightkey scenes with the service** (this Mac) and the church's table of notes, one row per position, each with a note number, an on/off box and **Send** (press it while a Lightkey cue is in MIDI learn). Defaults are notes 60–72 on the Lightkey channel (Walk-in 60, Countdown 61, Song 1–5 62–66, Announcements 67, Message 68, Closing 69, Walkout 70, Baptism 71, Communion 72), clear of the song-section notes 1–10 and the Lightkey Cue slide action's 31–54; added rows take 73 and up. **Add Song** adds Song 6 and up (songs past the last row use it); **Add Cue…** adds a named position that a header with the same name picks up.
 - Templates keep each item's lighting choice and macros.
 
 ## Phone remote and Local API
 
-Settings › Network & API: **Local API** on/off, **Port**, **Connect at** (open http://address/ in Safari or Chrome on the same Wi-Fi), **Access keys** (required; each grants Watch, Operate or Manage), **API reference**. The phone remote has tabs Show, Slides, Timers, Macros and Stage. Companion and Stream Deck use the same address.
+Settings › Integrations › Remote & API: **Local API** on/off, **Port**, **Connect at** (open http://address/ in Safari or Chrome on the same Wi-Fi), **Access keys** (required; each grants Watch, Operate or Manage), **API reference**. The phone remote has tabs Show, Slides, Timers, Macros and Stage. Companion and Stream Deck use the same address.
 
 ## Other integrations
 
-- **MIDI** (Settings › MIDI): MIDI devices, Lightkey, and a **MIDI input map** for incoming notes (ProPresenter's numbers by default).
-- **Anthem** (Settings › Shepherd & Anthem): the tracks change the slides and song orders follow Anthem's setlist; see Anthem above.
-- **Audio/Video Inputs** (Settings): cameras, NDI sources, web pages and audio inputs, used by Live Input objects and Live Assist.
+- **MIDI** (Settings › Integrations › Lightkey & MIDI): MIDI devices, Lightkey, and a **MIDI input map** for incoming notes (ProPresenter's numbers by default).
+- **Anthem** (Settings › Integrations › Anthem): the tracks change the slides and song orders follow Anthem's setlist; see Anthem above.
+- **Video and audio inputs** (Settings › Media & Video): cameras, NDI sources, web pages and audio inputs, used by Live Input objects and Live Assist.
 
 ## Settings overview
 
-Open with ⌘,. A search field finds any setting. Pages:
-- **Show Setup**: the three screens and the Livestream switch, Lower Thirds (each type's livestream lower third), Blackmagic DeckLink, Live Assist.
-- **Present**: media and slide transitions, default animations, slides across, thumbnail options, Confidence NEXT skips blank slides, **Present layouts**, **Run-Only Mode** (locks editing for volunteers behind a 4 to 6 digit passcode; **Enter Run-Only Mode…**, **Change Passcode…**), **Presentation types**.
-- **Audio/Video Inputs**, **MIDI**.
-- **Screens**: opens Screen Configuration.
-- **Bible**: **Sermon import** (Anthropic API key, current series theme, New Sermon Series…), **Scripture and points themes**, **Bible translations**.
-- **Shepherd & Anthem**.
-- **Network & API**: NDI network, the Local API, and **Assistant** (the Anthropic API key and the model: Claude Opus 5.5, or Claude Sonnet 5.5 for faster answers).
+Open with ⌘,. The sidebar lists the sections; Settings opens on the last one used. The search field at the top of the sidebar finds any setting: click a result to go to it, and the row is highlighted for a moment. Sections:
+- **General**: **Show whole plan**, **Present layouts**, **Simple Mode** (the volunteer view behind a passcode; **Enter Simple Mode…**, **Change Passcode…**), and Service Day's **Run on this Mac**.
+- **Screens**: the displays and the Audience, Livestream and Stage outputs, NDI and Blackmagic DeckLink (see Screens and outputs).
+- **Livestream**: **Livestream shows** (the switch) and **Lower Thirds**.
+- **Stage**: **Stage shows**, **Follow what's live**, **Confidence NEXT skips blank slides**, **Stage messages show for**, **Sermon Timer** (**Reset the sermon timer at each service's start**, kept per Mac, with the next reset time; it acts only on the Mac with Run on this Mac on), and **Presentation types**.
+- **Slides & Themes**: slide and media transitions, default animations, and the slide grid (slides across, thumbnail options).
+- **Bible**: **Bible translations** (API.Bible and ESV keys), **Default translation**, passage text options, **Scripture and points themes**.
+- **Live Listening**: Live Assist's input, **Advance lyrics as they're sung** and its threshold, **Watch for spoken Bible references**.
+- **Media & Video**: video inputs and audio inputs.
+- **Integrations**, in four tabs: **Anthem**, **Lightkey & MIDI** (Lightkey, song sections, lighting cues, MIDI devices, MIDI input map), **Shepherd**, **Remote & API** (the Local API, the phone remote's QR code, access keys, API reference).
+- **Assistant**: the **Anthropic API key**, the **Model** (Claude Opus 5.5, or Claude Sonnet 5.5 for faster answers), and **Sermon import** (current series theme, New Sermon Series…).
+- **Advanced**: **Check for updates automatically**, **Check Now**, and **Diagnostics** (Show in Finder).
 - **Keyboard**: open with ⌥K.
 
 ## The Assistant window
@@ -424,7 +432,7 @@ Songs and the message are added without asking, since they only add to the plan.
 
 **Check song lyrics** compares each song's slides with the song in Shepherd (found by CCLI number, then title) and reports: misspellings, wrong, missing or extra words, missing or extra lines, whole sections missing or extra, section names that differ, whether the song order matches the plan's arrangement, and capitalization that isn't consistent across the slides (for example "You" and "you" for the same word, or a line starting in lowercase). Punctuation is ignored, since imported slides have none. A chorus copied onto several slides is compared once.
 
-The comparison is done in Screens; only the differences go to Claude, never whole songs. When there are fixes, the Assistant offers them; **Approve** shows each changed line (− old, + new) first. Fixes change wording, spelling and missing lines; capitals change only if you ask. Extra lines are reported but never removed, since they may be on purpose. A slide edited after the check is skipped until it's checked again. Each fix can be undone with Edit › Undo. Shepherd must be set up in Settings › Shepherd & Anthem.
+The comparison is done in Screens; only the differences go to Claude, never whole songs. When there are fixes, the Assistant offers them; **Approve** shows each changed line (− old, + new) first. Fixes change wording, spelling and missing lines; capitals change only if you ask. Extra lines are reported but never removed, since they may be on purpose. A slide edited after the check is skipped until it's checked again. Each fix can be undone with Edit › Undo. Shepherd must be set up in Settings › Integrations › Shepherd.
 
 ## Assistant conventions
 

@@ -47,7 +47,7 @@ struct ConfidenceModule: View {
                 }
             }
         } else {
-            Text("No confidence monitors. Give a screen the Confidence Monitor role in Screen Configuration.")
+            Text("No stage display. Choose one for Stage in Settings › Screens.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 2)

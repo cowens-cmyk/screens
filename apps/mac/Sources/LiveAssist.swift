@@ -981,7 +981,7 @@ struct LiveAssistView: View {
                 }
                 Text(assist.transcript.isEmpty ? "…" : assist.transcript)
                     .font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                Text("Lyric following and scripture detection options are in Settings › Show Setup.")
+                Text("Lyric following and scripture detection options are in Settings › Live Listening.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
             Section("Lyric Follow") {

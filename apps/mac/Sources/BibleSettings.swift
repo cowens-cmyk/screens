@@ -105,36 +105,76 @@ final class BibleSettings {
     }
 }
 
+/// Settings › Bible: the translation services and the default scripture and
+/// points themes. BibleSettings reads its keys from the Keychain when it is
+/// first used; building this pane only when Bible is chosen keeps that read
+/// off Settings' first appearance.
+struct BibleSettingsPane: View {
+    let model: AppModel?
+
+    var body: some View {
+        Form {
+            BibleSettingsForm()
+            if let model {
+                Section {
+                    ScriptureThemeSetting(model: model)
+                } header: {
+                    SettingsHeader(id: "bible.themes")
+                } footer: {
+                    Text(SettingsIndex.entry("bible.themes")?.caption ?? "")
+                }
+            }
+        }
+        .settingsForm()
+    }
+}
+
+/// The translation keys, the default translation and the passage's text
+/// options, as form sections.
 struct BibleSettingsForm: View {
     @Bindable private var settings = BibleSettings.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        Section {
             SecureField("API.Bible key", text: $settings.apiBibleKey)
-                .textFieldStyle(.roundedBorder)
-            Text("Free at api.bible — many translations. Licensed ones (like NIV) need the publisher's approval in your API.Bible account.")
-                .font(.caption).foregroundStyle(.secondary)
             SecureField("ESV API key", text: $settings.esvKey)
-                .textFieldStyle(.roundedBorder)
-            Text("Free for churches at api.esv.org.")
-                .font(.caption).foregroundStyle(.secondary)
-            HStack {
-                Picker("Default translation", selection: $settings.translation) {
-                    Text("None").tag(BibleTranslation?.none)
-                    ForEach(settings.translations) { translation in
-                        Text("\(translation.abbreviation) — \(translation.name)").tag(Optional(translation))
+        } header: {
+            SettingsHeader(id: "bible.sources")
+        } footer: {
+            Text("API.Bible is free at api.bible, with many translations; licensed ones like NIV need the publisher's approval in your API.Bible account. ESV is free for churches at api.esv.org.")
+        }
+        Section {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Picker("", selection: $settings.translation) {
+                        Text("None").tag(BibleTranslation?.none)
+                        ForEach(settings.translations) { translation in
+                            Text("\(translation.abbreviation) — \(translation.name)").tag(Optional(translation))
+                        }
                     }
+                    .labelsHidden()
+                    .frame(maxWidth: 260)
+                    Button(settings.isLoading ? "Loading…" : "Refresh") {
+                        Task { await settings.refreshTranslations() }
+                    }
+                    .disabled(!settings.hasAnyKey || settings.isLoading)
                 }
-                Button(settings.isLoading ? "Loading…" : "Refresh") {
-                    Task { await settings.refreshTranslations() }
-                }
-                .disabled(!settings.hasAnyKey || settings.isLoading)
+            } label: {
+                Text("Default translation")
             }
+            .settingsAnchor("bible.translation")
             if let error = settings.loadError {
-                Text(error).font(.caption).foregroundStyle(.red)
+                Text(error).font(.subheadline).foregroundStyle(.red)
             }
+        } footer: {
+            Text(SettingsIndex.entry("bible.sources")?.caption ?? "")
+        }
+        Section {
             Toggle("Keep the passage's line breaks", isOn: $settings.keepsLineBreaks)
+                .settingsAnchor("bible.text")
             Toggle("Show verse numbers", isOn: $settings.showsVerseNumbers)
+        } header: {
+            Text("Passage Text")
         }
         .task { await settings.refreshTranslations() }
     }

@@ -216,21 +216,21 @@ struct FontFacePicker: View {
     }
 }
 
-/// Settings › Bible › Sermon import.
+/// Settings › Assistant › Sermon import, as form rows. The Anthropic key it
+/// uses is the row above it in the same pane.
 struct SermonImportSettingsForm: View {
     let model: AppModel
     @State private var creatingSeries = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ClaudeKeyField()
-            Text("From console.anthropic.com › API Keys. Reading a week's notes costs a few cents.")
-                .font(.caption).foregroundStyle(.secondary)
+        Group {
             Picker("Current series theme", selection: model.slideBuildingBinding(\.sermonThemeId)) {
                 Text("Choose…").tag("")
                 ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
             }
-            Button("New Sermon Series…") { creatingSeries = true }
+            LabeledContent("New series") {
+                Button("New Sermon Series…") { creatingSeries = true }
+            }
         }
         .sheet(isPresented: $creatingSeries) { SermonSeriesSheet(model: model, makesDefault: true) }
     }

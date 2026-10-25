@@ -1,6 +1,11 @@
+import AppKit
 import PresenterCore
 import SwiftUI
 
+/// Settings (⌘,): a sidebar of sections and a grouped form for each. Every
+/// setting is listed once in SettingsIndex, which the search reads and the
+/// panes take their words from, so a result always names what the pane
+/// shows and jumping to it can find the row.
 struct AppSettingsView: View {
 
     var model: AppModel?
@@ -19,50 +24,36 @@ struct AppSettingsView: View {
     @Environment(\.dismissWindow) private var dismissWindow
 
     @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
-    @AppStorage("present.continuous") private var continuousPresent = true
-    @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
-    @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
-    @AppStorage(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
+    /// The section shown last, so Settings opens where it was left.
+    @AppStorage("settings.lastSection") private var lastSection = SettingsCategory.general.rawValue
+    @AppStorage(IntegrationTab.defaultsKey) private var integrationTabRaw = IntegrationTab.anthem.rawValue
 
-    @State private var category: SettingsCategory = .present
     @State private var query = ""
+    /// The row a search result (or another window) asked for; it is
+    /// scrolled to and tinted for a moment.
+    @State private var highlight: String?
+    @State private var highlightGeneration = 0
+
+    private var category: SettingsCategory {
+        SettingsCategory(storedID: lastSection) ?? .general
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            nav
-                .frame(width: 176)
-            Divider()
-
-            if query.isEmpty {
-                SettingsCategoryPane(
-                    category: category,
-                    rows: allRows.filter { $0.category == category },
-                    model: model, controls: controls)
-                    .id(category)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                searchResults
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 200, ideal: 216, max: 260)
+        } detail: {
+            detail
+                .navigationTitle(query.isEmpty ? category.title : "Search Results")
         }
-        .frame(width: 720, height: 520)
+        .searchable(text: $query, placement: .sidebar, prompt: "Search")
+        .toolbar(removing: .sidebarToggle)
+        .frame(minWidth: 800, idealWidth: 880, minHeight: 540, idealHeight: 660)
         .background(Color.basePlane)
+        .environment(\.settingsHighlight, highlight)
         .preferredColorScheme((AppAppearance(rawValue: appearanceRaw) ?? .dark).colorScheme)
-        .onAppear {
-            if let pending = SettingsRouter.shared.pending {
-                category = pending
-                SettingsRouter.shared.pending = nil
-            }
-        }
-        .onChange(of: SettingsRouter.shared.pending) { _, pending in
-            if let pending {
-                category = pending
-                SettingsRouter.shared.pending = nil
-            }
-        }
+        .onAppear { takePending() }
+        .onChange(of: SettingsRouter.shared.pending) { _, _ in takePending() }
         .sheet(item: $pinFlow) { flow in
             PasscodeSheet(
                 flow: flow,
@@ -91,6 +82,178 @@ struct AppSettingsView: View {
         }
     }
 
+    // MARK: Navigation
+
+    private func takePending() {
+        let router = SettingsRouter.shared
+        guard let pending = router.pending else { return }
+        router.pending = nil
+        if let entry = router.pendingEntry.flatMap(SettingsIndex.entry) {
+            router.pendingEntry = nil
+            jump(to: entry)
+        } else {
+            query = ""
+            lastSection = pending.rawValue
+        }
+    }
+
+    private func jump(to entry: SettingsEntry) {
+        query = ""
+        lastSection = entry.category.rawValue
+        if let tab = entry.tab { integrationTabRaw = tab.rawValue }
+        highlightGeneration += 1
+        let generation = highlightGeneration
+        highlight = entry.id
+        Task {
+            try? await Task.sleep(for: .seconds(2.2))
+            if highlightGeneration == generation { highlight = nil }
+        }
+    }
+
+    private var sidebarSelection: Binding<SettingsCategory?> {
+        Binding(
+            get: { query.isEmpty ? category : nil },
+            set: { picked in
+                guard let picked else { return }
+                query = ""
+                highlight = nil
+                lastSection = picked.rawValue
+            }
+        )
+    }
+
+    private var sidebar: some View {
+        List(selection: sidebarSelection) {
+            ForEach(SettingsCategory.sidebarGroups, id: \.self) { group in
+                Section {
+                    ForEach(group) { entry in
+                        Label {
+                            Text(entry.title)
+                        } icon: {
+                            SettingsIconTile(category: entry)
+                        }
+                        .tag(entry)
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+    }
+
+    // MARK: Detail
+
+    @ViewBuilder
+    private var detail: some View {
+        if query.isEmpty {
+            ScrollViewReader { proxy in
+                pane(for: category)
+                    .id(category)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .task(id: highlightGeneration) {
+                        guard let target = highlight else { return }
+                        // The pane lays out first; then the row can be found.
+                        try? await Task.sleep(for: .milliseconds(120))
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo(target, anchor: .center)
+                        }
+                    }
+            }
+        } else {
+            SettingsSearchResults(query: query) { jump(to: $0) }
+        }
+    }
+
+    @ViewBuilder
+    private func pane(for category: SettingsCategory) -> some View {
+        switch category {
+        case .general:
+            generalPane
+        case .screens:
+            if let controls {
+                ScreensSettingsPane(render: controls.render)
+            } else {
+                SettingsUnavailable(text: "Screens need Metal, which isn't available on this Mac.")
+            }
+        case .livestream:
+            LivestreamSettingsPane(model: model, controls: controls)
+        case .stage:
+            StageSettingsPane(model: model, controls: controls)
+        case .slides:
+            SlidesSettingsPane(model: model)
+        case .bible:
+            BibleSettingsPane(model: model)
+        case .liveListening:
+            LiveListeningSettingsPane()
+        case .media:
+            MediaSettingsPane()
+        case .integrations:
+            IntegrationsSettingsPane(
+                model: model, api: api,
+                tab: Binding(
+                    get: { IntegrationTab(rawValue: integrationTabRaw) ?? .anthem },
+                    set: { integrationTabRaw = $0.rawValue }))
+        case .keyboard:
+            if let model {
+                KeyboardMapPane(model: model, controls: controls)
+                    .settingsAnchor("keyboard.shortcuts")
+            } else {
+                SettingsUnavailable(text: "The library hasn't opened.")
+            }
+        case .assistant:
+            AssistantSettingsPane(model: model)
+        case .advanced:
+            AdvancedSettingsPane()
+        }
+    }
+
+    // MARK: General
+
+    @AppStorage("present.continuous") private var continuousPresent = true
+    @AppStorage(ServiceStation.runsServiceKey) private var runsService = false
+
+    private var generalPane: some View {
+        Form {
+            Section {
+                SettingsToggle("present.continuous", isOn: $continuousPresent)
+                if let layout {
+                    SettingsRow("present.layouts") {
+                        PresentLayoutMenuControl(layout: layout) { saved in
+                            requestRunOnly(applying: saved)
+                        }
+                    }
+                }
+            } header: {
+                Text("Present")
+            }
+            if let layout {
+                Section {
+                    SettingsRow("present.runOnly") {
+                        HStack(spacing: 8) {
+                            if layout.hasPIN {
+                                Button("Change Passcode…") { pinFlow = .change }
+                            }
+                            Button("Enter Simple Mode…") { requestRunOnly(applying: nil) }
+                        }
+                    }
+                } header: {
+                    Text("Simple Mode")
+                }
+            }
+            Section {
+                SettingsToggle("general.runsService", isOn: $runsService)
+            } header: {
+                Text("Service Day")
+            } footer: {
+                Text(runsService
+                    ? "A restart goes ahead only over empty screens, the end of the plan or stopped pre-service slides, or after 20 minutes on the plan's last item."
+                    : "This Mac skips the countdowns and pre-service restarts.")
+            }
+        }
+        .settingsForm()
+    }
+
+    // MARK: Simple Mode
+
     private func requestRunOnly(applying saved: PresentLayout?) {
         let settingsWindow = NSApp.keyWindow
         if let savedModules = saved?.volunteerModules, layout?.hasPIN == true {
@@ -107,88 +270,177 @@ struct AppSettingsView: View {
         })
         settingsWindow?.close()
     }
+}
 
-    private var nav: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                TextField("Search settings", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.caption)
-            }
-            .padding(.horizontal, 8)
-            .frame(height: 26)
-            .background(
-                Color.primary.opacity(0.05),
-                in: RoundedRectangle.standard(CornerStandard.element)
-            )
-            .overlay(
-                RoundedRectangle.standard(CornerStandard.element)
-                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-            )
-            .padding(.bottom, 10)
-            // Only categories with something in them (Appearance is gone:
-            // Screens is always dark).
-            ForEach(SettingsCategory.allCases.filter { entry in allRows.contains { $0.category == entry } }) { entry in
-                navRow(entry)
-            }
-            Spacer()
+// MARK: - Sections
+
+enum SettingsCategory: String, CaseIterable, Identifiable {
+    case general
+    case screens
+    case livestream
+    case stage
+    case slides
+    case bible
+    case liveListening
+    case media
+    case integrations
+    case keyboard
+    case assistant
+    case advanced
+
+    var id: String { rawValue }
+
+    /// The sidebar's runs, divided like System Settings: the room, the
+    /// content, then what connects to it.
+    static let sidebarGroups: [[SettingsCategory]] = [
+        [.general, .screens, .livestream, .stage],
+        [.slides, .bible, .liveListening, .media],
+        [.integrations, .keyboard, .assistant, .advanced],
+    ]
+
+    /// A stored section name, including the ones before Settings was
+    /// regrouped: keyboard shortcuts saved as "Open Settings › Show Setup"
+    /// and the last section a Mac had open still land somewhere sensible.
+    init?(storedID: String) {
+        if let current = SettingsCategory(rawValue: storedID) {
+            self = current
+            return
         }
-        .padding(12)
+        switch storedID {
+        case "showSetup": self = .screens
+        case "present", "appearance": self = .general
+        case "avInputs": self = .media
+        case "midi", "shepherd", "api": self = .integrations
+        default: return nil
+        }
     }
 
-    private func navRow(_ entry: SettingsCategory) -> some View {
-        let selected = query.isEmpty && category == entry
-        return Button {
-            query = ""
-            category = entry
-        } label: {
-            HStack(spacing: 7) {
-                Image(systemName: entry.systemImage)
-                    .font(.system(size: 10))
-                    .foregroundStyle(selected ? .primary : .secondary)
-                    .frame(width: 16)
-                Text(entry.title)
-                    .font(.system(size: 11, weight: selected ? .medium : .regular))
-                    .foregroundStyle(selected ? .primary : .secondary)
-                Spacer()
-            }
-            .padding(.horizontal, 8)
-            .frame(height: 26)
-            .background(
-                selected ? Color.primary.opacity(0.08) : .clear,
-                in: RoundedRectangle.standard(CornerStandard.element)
-            )
-            .contentShape(RoundedRectangle.standard(CornerStandard.element))
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .screens: "Screens"
+        case .livestream: "Livestream"
+        case .stage: "Stage"
+        case .slides: "Slides & Themes"
+        case .bible: "Bible"
+        case .liveListening: "Live Listening"
+        case .media: "Media & Video"
+        case .integrations: "Integrations"
+        case .keyboard: "Keyboard"
+        case .assistant: "Assistant"
+        case .advanced: "Advanced"
         }
-        .buttonStyle(.plain)
     }
 
-    @ViewBuilder
-    private var searchResults: some View {
-        let rows = visibleRows
-        if rows.isEmpty {
+    var systemImage: String {
+        switch self {
+        case .general: "gearshape"
+        case .screens: "display.2"
+        case .livestream: "dot.radiowaves.left.and.right"
+        case .stage: "music.mic"
+        case .slides: "rectangle.on.rectangle"
+        case .bible: "book.closed"
+        case .liveListening: "waveform"
+        case .media: "video"
+        case .integrations: "puzzlepiece.extension"
+        case .keyboard: "keyboard"
+        case .assistant: "sparkles"
+        case .advanced: "wrench.and.screwdriver"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .general: .gray
+        case .screens: .blue
+        case .livestream: .red
+        case .stage: .orange
+        case .slides: .indigo
+        case .bible: .brown
+        case .liveListening: .pink
+        case .media: .teal
+        case .integrations: .green
+        case .keyboard: .gray
+        case .assistant: .purple
+        case .advanced: .gray
+        }
+    }
+}
+
+/// The four groups inside Integrations, one at a time so each reads as a
+/// short page.
+enum IntegrationTab: String, CaseIterable, Identifiable {
+    case anthem, lightkey, shepherd, remote
+
+    static let defaultsKey = "settings.integrationsTab"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .anthem: "Anthem"
+        case .lightkey: "Lightkey & MIDI"
+        case .shepherd: "Shepherd"
+        case .remote: "Remote & API"
+        }
+    }
+}
+
+/// Opens Settings at a section (and optionally a row) from anywhere: a menu,
+/// a keyboard shortcut, another window.
+@MainActor
+@Observable
+final class SettingsRouter {
+    static let shared = SettingsRouter()
+    var pending: SettingsCategory?
+    /// A SettingsIndex id to scroll to and highlight once the section shows.
+    var pendingEntry: String?
+    private init() {}
+
+    func open(_ category: SettingsCategory, entry: String? = nil) {
+        pendingEntry = entry
+        pending = category
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+}
+
+struct SettingsIconTile: View {
+    let category: SettingsCategory
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+            .fill(category.tint.gradient)
+            .frame(width: 20, height: 20)
+            .overlay {
+                Image(systemName: category.systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+    }
+}
+
+// MARK: - Search
+
+struct SettingsSearchResults: View {
+    let query: String
+    let choose: (SettingsEntry) -> Void
+
+    var body: some View {
+        let matches = SettingsIndex.matching(query)
+        if matches.isEmpty {
             ContentUnavailableView.search(text: query)
         } else {
             Form {
-                ForEach(SettingsCategory.allCases) { entry in
-                    let matches = rows.filter { $0.category == entry }
-                    if !matches.isEmpty {
-                        Section(entry.title) {
-                            ForEach(matches) { spec in
-                                if spec.stacked {
-                                    LabeledContent {
-                                        Button("Show") { query = ""; category = entry }
-                                    } label: {
-                                        Text(spec.title)
-                                        if let caption = spec.caption { Text(caption).font(.caption).foregroundStyle(.secondary) }
-                                    }
-                                } else {
-                                    SettingsFormRow(spec: spec)
-                                }
+                ForEach(SettingsCategory.allCases) { category in
+                    let rows = matches.filter { $0.category == category }
+                    if !rows.isEmpty {
+                        Section {
+                            ForEach(rows) { entry in
+                                Button { choose(entry) } label: { resultRow(entry) }
+                                    .buttonStyle(.plain)
                             }
+                        } header: {
+                            Text(category.title)
                         }
                     }
                 }
@@ -197,434 +449,124 @@ struct AppSettingsView: View {
         }
     }
 
-    private var visibleRows: [SettingsRowSpec] {
-        let all = allRows
-        guard !query.isEmpty else { return all.filter { $0.category == category } }
-        let needle = query.lowercased()
-        return all.filter { $0.searchText.contains(needle) }
-    }
-
-    private var allRows: [SettingsRowSpec] {
-        var rows: [SettingsRowSpec] = [
-            SettingsRowSpec(
-                id: "present.mediaTransition", category: .present,
-                title: "Media transition",
-                caption: "Backgrounds and foreground media enter (and leave on Clear) with this unless the item sets its own. The footer chips adjust the same setting on the fly.",
-                keywords: "transition dissolve fade blur media default cut clear background foreground",
-                control: AnyView(DefaultTransitionControl(
-                    kindKey: "transition.media.kind", durationKey: "transition.media.duration",
-                    fallbackKind: TransitionKind.dissolve.rawValue, fallbackDuration: 0.7
-                ))
-            ),
-            SettingsRowSpec(
-                id: "present.slideTransition", category: .present,
-                title: "Slide transition",
-                caption: "How the slide layer changes between slides. Cut is the lyrics-safe default.",
-                keywords: "transition dissolve fade slide default cut lyrics",
-                control: AnyView(DefaultTransitionControl(
-                    kindKey: "transition.slide.kind", durationKey: "transition.slide.duration",
-                    fallbackKind: "", fallbackDuration: 0.5
-                ))
-            ),
-            SettingsRowSpec(
-                id: "present.defaultAnimations", category: .present,
-                title: "Default animations",
-                caption: "What Apply Default In / Apply Default Out write on the timeline's presence-bar ends. A preset's Set as Default In/Out changes it too.",
-                keywords: "animation default in out fade timeline animate steps",
-                control: AnyView(DefaultAnimationsControl(model: model))
-            ),
-            SettingsRowSpec(
-                id: "present.continuous", category: .present,
-                title: "Show whole plan",
-                caption: "Every item's slides on one page, in plan order; arrows advance across items. Also in the View menu.",
-                keywords: "scroll run order single item continuous playlist",
-                control: AnyView(Toggle("", isOn: $continuousPresent).settingsToggle())
-            ),
-            SettingsRowSpec(
-                id: "present.slidesAcross", category: .present,
-                title: "Slides across",
-                caption: "How many slide thumbnails share a row in Present. Auto fits them to the window; drag the slider for a fixed count.",
-                keywords: "slide grid columns across per row thumbnails size zoom auto automatic fit",
-                control: AnyView(SlidesAcrossControl(count: $slidesAcross).frame(width: 190))
-            ),
-            SettingsRowSpec(
-                id: "present.roundedCorners", category: .present,
-                title: "Rounded thumbnail corners",
-                caption: nil,
-                keywords: "slide grid thumbnails corners",
-                control: AnyView(Toggle("", isOn: $roundedCorners).settingsToggle())
-            ),
-            SettingsRowSpec(
-                id: "present.legibleText", category: .present,
-                title: "Readable thumbnail text",
-                caption: "Boosts lyric legibility in thumbnails — never on the glass.",
-                keywords: "slide grid lyrics legible text thumbnails",
-                control: AnyView(Toggle("", isOn: $legibleText).settingsToggle())
-            ),
-            SettingsRowSpec(
-                id: "present.transparencyGrid", category: .present,
-                title: "Transparency grid in thumbnails",
-                caption: "Checkerboard shows wherever nothing opaque covers the slide — where lower layers would show through on glass.",
-                keywords: "transparency grid checkerboard alpha thumbnails photoshop",
-                control: AnyView(Toggle("", isOn: $transparencyGrid).settingsToggle())
-            ),
-            SettingsRowSpec(
-                id: "present.scopedBackgrounds", category: .present,
-                title: "Backgrounds only on declaring slide",
-                caption: "Thumbnails after the declaring slide drop the shared background.",
-                keywords: "slide grid backgrounds cue thumbnails",
-                control: AnyView(Toggle("", isOn: $hideScopedBackgrounds).settingsToggle())
-            ),
-            SettingsRowSpec(
-                id: "present.nextSkipsBlanks", category: .present,
-                title: "Confidence NEXT skips blank slides",
-                caption: "Blank slides parked as clears are ignored — NEXT shows the first upcoming slide that has text.",
-                keywords: "confidence monitor next blank empty slide stage skip",
-                control: AnyView(Toggle("", isOn: Binding(
-                    get: { nextSkipsBlanks },
-                    set: {
-                        nextSkipsBlanks = $0
-
-                        controls?.refreshNextSlide()
-                    }
-                )).settingsToggle())
-            ),
-        ]
-        if let layout {
-            rows.append(SettingsRowSpec(
-                id: "present.layouts", category: .present,
-                title: "Present layouts",
-                caption: "Save and switch whole workspace arrangements — panels, sizes, and windows (moved here from the footer).",
-                keywords: "layout workspace arrangement save panels windows dock",
-                control: AnyView(PresentLayoutMenuControl(layout: layout) { saved in
-                    requestRunOnly(applying: saved)
-                })
-            ))
-            rows.append(SettingsRowSpec(
-                id: "present.runOnly", category: .present,
-                title: "Simple Mode",
-                caption: "The volunteer view: the plan, big slides, Back, Next and Clear All, with nothing that edits. Also in the main window's More menu. Leaving asks for the passcode.",
-                keywords: "simple mode run only volunteer lock passcode pin kiosk",
-                control: AnyView(HStack(spacing: 6) {
-                    if layout.hasPIN {
-                        Button("Change Passcode…") { pinFlow = .change }
-                    }
-                    Button("Enter Simple Mode…") { requestRunOnly(applying: nil) }
-                })
-            ))
-        }
-        rows.append(
-            SettingsRowSpec(
-                id: "screens.configuration", category: .screens,
-                title: "Screen Configuration",
-                caption: "The Audience, Livestream and Stage screens: which output carries each one, and its resolution.",
-                keywords: "outputs displays screens audience livestream stage decklink ndi resolution 4k alpha key",
-                control: AnyView(OpenScreenConfigurationButton())
-            )
-        )
-        rows.append(SettingsRowSpec(
-            id: "avInputs.cameras", category: .avInputs,
-            title: "Video inputs",
-            caption: "Added inputs run warm from launch and appear in Live Input pickers — slides never wait on a camera spinning up.",
-            keywords: "camera capture device uvc continuity blackmagic live input video refresh",
-            control: AnyView(EmptyView()),
-            stacked: true
-        ))
-        rows.append(SettingsRowSpec(
-            id: "avInputs.audio", category: .avInputs,
-            title: "Audio inputs",
-            caption: "Interfaces and board feeds — each picks its device and channels. Live Assist listens to one of these.",
-            keywords: "audio input microphone interface usb board feed sound source channels live assist",
-            control: AnyView(EmptyView()),
-            stacked: true
-        ))
-        rows.append(SettingsRowSpec(
-            id: "midi.devices", category: .midi,
-            title: "MIDI devices",
-            caption: "Devices MIDI talks to — each one can send, listen, or both, and switches off without being forgotten. With none added, MIDI Out reaches every destination on this Mac.",
-            keywords: "midi device destination source input output port note control change iac lighting console enable disable direction",
-            control: AnyView(EmptyView()),
-            stacked: true
-        ))
-        rows.append(SettingsRowSpec(
-            id: "midi.lightkey", category: .midi,
-            title: "Lightkey",
-            caption: nil,
-            keywords: "lightkey lighting dmx midi network rtp cue section verse chorus scene position walk-in countdown song message closing walkout baptism communion",
-            control: AnyView(LightkeySettingsForm(model: model)),
-            stacked: true
-        ))
-        rows.append(SettingsRowSpec(
-            id: "midi.map", category: .midi,
-            title: "MIDI input map",
-            caption: "What incoming notes trigger — clears, slides, videos, media, timers, alerts, macros. ProPresenter's stock numbers out of the box; every assignment is editable.",
-            keywords: "midi input map note trigger command clear slide advance timer combo channel propresenter playlist media alert message select index",
-            control: AnyView(MIDIMapManager())
-        ))
-
-        rows.append(SettingsRowSpec(
-            id: "network.ndi", category: .api,
-            title: "NDI network",
-            caption: "The network NDI discovers and carries video on — inputs and screen outputs alike. Pin it to the wired production network when this Mac also joins Wi-Fi on another VLAN — even when both carry the same VLAN, the pin keeps NDI on the wire. Applies immediately; live feeds re-tune.",
-            keywords: "ndi network interface adapter nic vlan ethernet wifi wired discovery pin bind",
-            control: AnyView(NDINetworkScopeControl())
-        ))
-        if let controls {
-            rows.append(SettingsRowSpec(
-                id: "show.screens", category: .showSetup,
-                title: "Screens",
-                caption: nil,
-                keywords: "audience livestream stream stage display confidence screen monitor output decklink ndi resolution 4k 1080p alpha key lower third transparent full screen stage message seconds clear",
-                control: AnyView(ShowSetupForm(controls: controls)),
-                stacked: true
-            ))
-        }
-        if let model {
-            rows.append(SettingsRowSpec(
-                id: "show.typeScreens", category: .showSetup,
-                title: "Lower Thirds",
-                caption: nil,
-                keywords: "lower third lower thirds theme worship message sermon scripture bible announcements livestream stream type default series song",
-                control: AnyView(ScreensByTypeForm(model: model, render: controls?.render)),
-                stacked: true
-            ))
-        }
-        if controls != nil {
-            rows.append(SettingsRowSpec(
-                id: "show.decklink", category: .showSetup,
-                title: "Blackmagic DeckLink",
-                caption: nil,
-                keywords: "decklink blackmagic sdi ultrastudio desktop video output card 8k duo quad",
-                control: AnyView(DeckLinkSetupForm()),
-                stacked: true
-            ))
-        }
-        rows.append(SettingsRowSpec(
-            id: "show.liveAssist", category: .showSetup,
-            title: "Live Assist",
-            caption: nil,
-            keywords: "live assist lyric following speech microphone scripture detection auto advance",
-            control: AnyView(LiveAssistSettingsForm()),
-            stacked: true
-        ))
-        if let model {
-            rows.append(SettingsRowSpec(
-                id: "bible.sermon", category: .bible,
-                title: "Sermon import",
-                caption: "Claude reads the week's notes (PDF or Pages) and builds the message slides with the series theme.",
-                keywords: "sermon notes import claude anthropic api key series theme message slides pdf pages",
-                control: AnyView(SermonImportSettingsForm(model: model)),
-                stacked: true
-            ))
-            rows.append(SettingsRowSpec(
-                id: "api.assistant", category: .api,
-                title: "Assistant",
-                caption: "Window › Assistant (⇧⌘A) answers questions about Screens and makes changes to plans and slides with Claude.",
-                keywords: "assistant claude anthropic api key model opus sonnet ai chat help pre-service announcements events",
-                control: AnyView(AssistantSettingsForm()),
-                stacked: true
-            ))
-            rows.append(SettingsRowSpec(
-                id: "bible.themes", category: .bible,
-                title: "Scripture and points themes",
-                caption: "Used by the Scripture and Points buttons in the top bar.",
-                keywords: "scripture bible points sermon theme default template",
-                control: AnyView(Form { ScriptureThemeSetting(model: model) }.formStyle(.columns)),
-                stacked: true
-            ))
-            rows.append(SettingsRowSpec(
-                id: "present.types", category: .present,
-                title: "Presentation types",
-                caption: "Default actions for each type of presentation, run when one goes live — stage layout and timers.",
-                keywords: "presentation type category sermon worship bible announcement default action stage layout timer",
-                control: AnyView(PresentationTypeRulesForm(model: model)),
-                stacked: true
-            ))
-        }
-        rows.append(SettingsRowSpec(
-            id: "anthem.link", category: .shepherd,
-            title: "Anthem",
-            caption: "Anthem leads: the tracks change the slides, and each song's order follows Anthem's setlist.",
-            keywords: "anthem tracks multitrack cue slides network propresenter band setlist arrangement order section match midi",
-            control: AnyView(AnthemSettingsForm()),
-            stacked: true
-        ))
-        rows.append(SettingsRowSpec(
-            id: "shepherd.sync", category: .shepherd,
-            title: "Shepherd",
-            caption: "Upcoming Sunday plans from Shepherd become services. Songs link to presentations already in the library; any without one are flagged No slides.",
-            keywords: "shepherd hope plan sunday service sync song flag api key",
-            control: AnyView(ShepherdSettingsForm()),
-            stacked: true
-        ))
-        rows.append(SettingsRowSpec(
-            id: "bible.sources", category: .bible,
-            title: "Bible translations",
-            caption: "Where scripture text comes from. Type a reference in Scripture Slides (File menu) and slides are built with your Bible template — each slide starts at the beginning of a verse.",
-            keywords: "bible scripture translation esv niv kjv nlt api verse passage key",
-            control: AnyView(BibleSettingsForm()),
-            stacked: true
-        ))
-        rows.append(contentsOf: apiRows)
-        return rows
-    }
-
-    private var apiRows: [SettingsRowSpec] {
-        guard let api else { return [] }
-        return [
-            SettingsRowSpec(
-                id: "api.enabled", category: .api,
-                title: "Local API",
-                caption: "Serves the documented REST + WebSocket API on this Mac and announces it on the local network.",
-                keywords: "api rest websocket http server remote companion stream deck automation bonjour",
-                control: AnyView(LocalAPIEnableToggle(api: api))
-            ),
-            SettingsRowSpec(
-                id: "api.port", category: .api,
-                title: "Port",
-                caption: "Changing the port restarts the server.",
-                keywords: "api port number network",
-                control: AnyView(LocalAPIPortField(api: api))
-            ),
-
-            SettingsRowSpec(
-                id: "api.address", category: .api,
-                title: "Connect at",
-                caption: "Phone & tablet remote: open http://<this address>/ in Safari or Chrome on the same Wi-Fi and paste a Control access key from the row below. Companion and Stream Deck use the same address.",
-                keywords: "api address ip port connect companion stream deck remote host default key",
-                control: AnyView(LocalAPIAddressRow(api: api))
-            ),
-            SettingsRowSpec(
-                id: "api.remote", category: .api,
-                title: "Phone remote",
-                caption: "Scan with a phone or iPad on the same Wi-Fi. It opens the remote: the booth's Back and Next with the slides as pictures, or the stage's sermon timer and notes to the booth.",
-                keywords: "remote phone iphone ipad qr code scan pastor worship leader booth message home screen",
-                control: AnyView(LocalAPIRemoteQRRow(api: api)),
-                stacked: true
-            ),
-            SettingsRowSpec(
-                id: "api.tokens", category: .api,
-                title: "Access keys",
-                caption: "Required — nothing connects without one. Create a key here and paste it into the client. Each key grants Watch, Operate, or Manage access.",
-                keywords: "api tokens keys auth bearer secret scope watch operate manage revoke password required",
-                control: AnyView(LocalAPITokensButton(api: api))
-            ),
-            SettingsRowSpec(
-                id: "api.docs", category: .api,
-                title: "API reference",
-                caption: "A browsable page of every endpoint with descriptions and copyable examples — served by this Mac, works offline.",
-                keywords: "api reference docs documentation openapi explorer examples endpoints developer",
-                control: AnyView(LocalAPIContractRow(api: api))
-            ),
-        ]
-    }
-
-
-}
-
-enum SettingsCategory: String, CaseIterable, Identifiable {
-
-    case appearance
-    case showSetup
-    case present
-
-    case avInputs
-    case midi
-
-    case keyboard
-    case screens
-    case bible
-    case shepherd
-    case api
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .appearance: "Appearance"
-        case .showSetup: "Show Setup"
-        case .present: "Present"
-        case .avInputs: "Audio/Video Inputs"
-        case .midi: "MIDI"
-        case .keyboard: "Keyboard"
-        case .screens: "Screens"
-        case .bible: "Bible"
-        case .shepherd: "Shepherd & Anthem"
-
-        case .api: "Network & API"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .appearance: "circle.lefthalf.filled"
-        case .showSetup: "rectangle.3.group"
-        case .present: "play.rectangle"
-        case .avInputs: "camera"
-        case .midi: "pianokeys"
-        case .keyboard: "keyboard"
-        case .screens: "display"
-        case .bible: "book"
-        case .shepherd: "calendar.badge.clock"
-        case .api: "network"
-        }
-    }
-}
-
-@MainActor
-@Observable
-final class SettingsRouter {
-    static let shared = SettingsRouter()
-    var pending: SettingsCategory?
-    private init() {}
-}
-
-struct SettingsRowSpec: Identifiable {
-    let id: String
-    let category: SettingsCategory
-    let title: String
-    let caption: String?
-    let keywords: String
-    let control: AnyView
-
-    var stacked: Bool = false
-
-    var searchText: String {
-        "\(title) \(caption ?? "") \(keywords) \(category.title)".lowercased()
-    }
-}
-
-private struct SettingsRowView: View {
-    let spec: SettingsRowSpec
-
-    var body: some View {
-
-        Group {
-            if spec.stacked {
-                VStack(alignment: .leading, spacing: 10) {
-                    header
-                    spec.control
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                HStack(alignment: .center, spacing: 12) {
-                    header
-                    Spacer(minLength: 16)
-                    spec.control
+    private func resultRow(_ entry: SettingsEntry) -> some View {
+        HStack(spacing: 12) {
+            SettingsIconTile(category: entry.category)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.title)
+                Text(entry.breadcrumb)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                if let caption = entry.caption {
+                    Text(caption)
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(2)
                 }
             }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Rows
+
+private struct SettingsHighlightKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
+extension EnvironmentValues {
+    /// The SettingsIndex id being pointed out after a search.
+    var settingsHighlight: String? {
+        get { self[SettingsHighlightKey.self] }
+        set { self[SettingsHighlightKey.self] = newValue }
+    }
+}
+
+private struct SettingsAnchor: ViewModifier {
+    let id: String
+    @Environment(\.settingsHighlight) private var highlight
+
+    func body(content: Content) -> some View {
+        let lit = highlight == id
+        content
+            .id(id)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.accentColor.opacity(lit ? 0.22 : 0))
+                    .padding(.horizontal, -8)
+                    .padding(.vertical, -4)
+                    .allowsHitTesting(false)
+            }
+            .animation(.easeOut(duration: lit ? 0.2 : 0.8), value: lit)
+    }
+}
+
+extension View {
+    /// Marks the view as the place a search result for `id` lands.
+    func settingsAnchor(_ id: String) -> some View {
+        modifier(SettingsAnchor(id: id))
     }
 
-    private var header: some View {
+    func settingsForm() -> some View {
+        formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.basePlane)
+    }
+}
+
+/// A labelled row whose words come from SettingsIndex.
+struct SettingsRow<Control: View>: View {
+    let entry: SettingsEntry
+    let control: Control
+
+    init(_ id: String, @ViewBuilder control: () -> Control) {
+        entry = SettingsIndex.entry(id) ?? SettingsEntry(id: id, category: .general, title: id)
+        self.control = control()
+    }
+
+    var body: some View {
+        LabeledContent {
+            control
+        } label: {
+            SettingsLabel(entry: entry)
+        }
+        .settingsAnchor(entry.id)
+    }
+}
+
+/// A switch row whose words come from SettingsIndex.
+struct SettingsToggle: View {
+    let entry: SettingsEntry
+    @Binding var isOn: Bool
+
+    init(_ id: String, isOn: Binding<Bool>) {
+        entry = SettingsIndex.entry(id) ?? SettingsEntry(id: id, category: .general, title: id)
+        _isOn = isOn
+    }
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            SettingsLabel(entry: entry)
+        }
+        .toggleStyle(.switch)
+        .settingsAnchor(entry.id)
+    }
+}
+
+struct SettingsLabel: View {
+    let entry: SettingsEntry
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(spec.title)
-                .font(.system(size: 11, weight: .medium))
-            if let caption = spec.caption {
+            Text(entry.title)
+            if let caption = entry.caption {
                 Text(caption)
-                    .font(.system(size: 9))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -632,17 +574,59 @@ private struct SettingsRowView: View {
     }
 }
 
-private struct OpenScreenConfigurationButton: View {
-    @Environment(\.openWindow) private var openWindow
+/// A section header that is also a search landing spot.
+struct SettingsHeader: View {
+    let id: String
 
     var body: some View {
-        Button("Open\u{2026}") {
-            openWindow(id: "outputs")
-        }
+        Text(SettingsIndex.entry(id)?.title ?? id)
+            .settingsAnchor(id)
     }
 }
 
-private struct PresentLayoutMenuControl: View {
+struct SettingsUnavailable: View {
+    let text: String
+
+    var body: some View {
+        ContentUnavailableView(text, systemImage: "exclamationmark.triangle")
+    }
+}
+
+struct SettingsPageHeader: View {
+    let backTitle: String
+    let title: String
+    let back: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: back) {
+                HStack(spacing: 3) {
+                    Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
+                    Text(backTitle).font(.system(size: 12))
+                }
+                .foregroundStyle(Color.accentColor)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Text(title).font(.system(size: 13, weight: .semibold))
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 44)
+    }
+}
+
+extension Toggle {
+
+    func settingsToggle() -> some View {
+        toggleStyle(.switch)
+            .labelsHidden()
+    }
+}
+
+// MARK: - Controls
+
+struct PresentLayoutMenuControl: View {
     let layout: PresentLayoutController
 
     let onPickRunOnly: (PresentLayout) -> Void
@@ -689,30 +673,9 @@ private struct PresentLayoutMenuControl: View {
                 }
             }
         } label: {
-            HStack(spacing: 3) {
-                Text(active?.name ?? "Layouts")
-                    .font(.system(size: 10))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 6, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
+            Text(active?.name ?? "Layouts")
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
         .fixedSize()
-        .background(
-            Color.primary.opacity(0.05),
-            in: RoundedRectangle.standard(CornerStandard.element)
-        )
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-        )
         .alert("Save Layout", isPresented: $showingSave) {
             TextField("Name", text: $nameDraft)
             Button("Save") { layout.saveLayout(named: nameDraft) }
@@ -737,14 +700,6 @@ private struct PresentLayoutMenuControl: View {
         } else {
             layout.apply(saved, openWindow: openWindow, dismissWindow: dismissWindow)
         }
-    }
-}
-
-extension Toggle {
-
-    func settingsToggle() -> some View {
-        toggleStyle(.switch)
-            .labelsHidden()
     }
 }
 
@@ -778,7 +733,7 @@ struct DefaultAnimationsControl: View {
                 }
             }
             .labelsHidden()
-            .fixedSize()
+            .frame(width: 96)
             Picker("", selection: Binding(
                 get: { SlideEditorModel.AnimationSpeed.of(step.durationSeconds) },
                 set: { speed in
@@ -796,7 +751,7 @@ struct DefaultAnimationsControl: View {
                 }
             }
             .labelsHidden()
-            .fixedSize()
+            .frame(width: 96)
         }
     }
 
@@ -851,7 +806,14 @@ struct DefaultTransitionControl: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
+            if !kindRaw.isEmpty {
+                Stepper(
+                    String(format: "%.2gs", duration),
+                    value: storedDuration, in: 0 ... 5, step: 0.1
+                )
+                .monospacedDigit()
+            }
             Picker("", selection: storedKind) {
                 Text("Cut").tag("")
                 Text("Dissolve").tag(TransitionKind.dissolve.rawValue)
@@ -861,15 +823,7 @@ struct DefaultTransitionControl: View {
                 Text("Film Burn").tag(TransitionKind.filmBurn.rawValue)
             }
             .labelsHidden()
-            .fixedSize()
-            if !kindRaw.isEmpty {
-                Stepper(
-                    String(format: "%.2gs", duration),
-                    value: storedDuration, in: 0 ... 5, step: 0.1
-                )
-                .font(.caption.monospacedDigit())
-                .controlSize(.small)
-            }
+            .frame(width: 140)
         }
     }
 }
