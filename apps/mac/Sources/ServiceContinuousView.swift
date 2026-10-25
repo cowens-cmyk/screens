@@ -45,6 +45,12 @@ struct ServiceContinuousView: View {
     /// answer New Slide, so the page asks.
     @State private var emptyDeckNewSlide: EmptyDeckNewSlide?
 
+    /// From Media Library… for a presentation with no slides.
+    @State private var emptyDeckMedia: MediaSlideTarget?
+
+    /// The livestream question for slides just made from media here.
+    @State private var livestreamPrompt: LivestreamPromptRequest?
+
     /// The page's side margin; the slide grids reach their marquee over it.
     static let pageMargin: CGFloat = 12
 
@@ -174,6 +180,12 @@ struct ServiceContinuousView: View {
                         afterSlideID: target.afterSlideID)
                 }
             }
+            .sheet(item: $emptyDeckMedia) { target in
+                MediaSlidePickerSheet(model: model) { mediaIDs in
+                    addMediaSlides(mediaIDs, to: target.presentationID, after: target.afterSlideID)
+                }
+            }
+            .sheet(item: $livestreamPrompt) { LivestreamPromptSheet(model: model, request: $0) }
             .mediaCueSheets(model: model, state: mediaMenuState)
             // The page sits on the window's dark backdrop and paints no
             // background of its own, so it reads as dark whatever the Mac's
@@ -231,16 +243,10 @@ struct ServiceContinuousView: View {
                 CardRefresh(model: model) { unlinkedCard(item) }
             }
         case .presentation:
-            if let presentation = model.presentation(item.refId),
-               model.arrangedSlides(presentation, arrangementId: item.arrangementId).isEmpty {
-                // Nothing to fire: one line, not an empty grid.
-                CardRefresh(model: model) { emptyPresentationRow(item) }
-            } else {
-                stickySection(item) {
-                    CardRefresh(model: model) { presentationBodyFresh(item) }
-                } header: {
-                    CardRefresh(model: model) { presentationHeaderFresh(item, proxy: proxy) }
-                }
+            stickySection(item) {
+                CardRefresh(model: model) { presentationBodyFresh(item) }
+            } header: {
+                CardRefresh(model: model) { presentationHeaderFresh(item, proxy: proxy) }
             }
         case .media:
             stickySection(item) {
@@ -546,11 +552,20 @@ struct ServiceContinuousView: View {
     private func presentationBodyFresh(_ item: ServiceItem) -> some View {
 
         if let presentation = model.presentation(item.refId) {
-            presentationCardBody(
-                item, presentation,
-
-                model.arrangedSlides(presentation, arrangementId: item.arrangementId)
-            )
+            let slides = model.arrangedSlides(presentation, arrangementId: item.arrangementId)
+            if presentation.slides.isEmpty {
+                // No slides at all: a slide-sized space to drop some into.
+                emptyDeckBody(item, presentation)
+            } else if slides.isEmpty {
+                Text("This arrangement has no slides.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 6)
+                    .padding(.bottom, Self.itemGap)
+            } else {
+                presentationCardBody(item, presentation, slides)
+            }
         } else {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
@@ -665,27 +680,100 @@ struct ServiceContinuousView: View {
             afterSlideID: presentation.slides.last?.id)
     }
 
-    private func emptyPresentationRow(_ item: ServiceItem) -> some View {
-        let presentation = model.presentation(item.refId)
-        return HStack(spacing: 8) {
-            ItemKindBadge(kind: HopeStyle.kind(of: item, presentation: presentation))
-            Text(displayName(item))
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-            Text("No slides yet")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
+    /// An empty presentation's body: one tile-sized drop area where its
+    /// first slide would be, sized like the slide tiles around it.
+    private func emptyDeckBody(_ item: ServiceItem, _ presentation: Presentation) -> some View {
+        let across = SlidesAcross.resolved(
+            slidesAcross, width: pageWidth - Self.pageMargin * 2, spacing: SlideGridMetrics.spacing)
+        let row = SlidesAcross.rows(count: 1, across: across)[0]
+        let presentationID = presentation.id
+        return HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
+            VStack(spacing: SlideGridMetrics.labelGap) {
+                EmptySlidesDropArea(
+                    aspect: SlideGridMetrics.tileAspect(for: presentation),
+                    locked: runOnly,
+                    choices: AddSlideChoices(
+                        fromTheme: {
+                            emptyDeckNewSlide = EmptyDeckNewSlide(
+                                presentationID: presentationID, themeId: presentation.themeId, afterSlideID: nil)
+                        },
+                        fromMedia: {
+                            emptyDeckMedia = MediaSlideTarget(presentationID: presentationID, afterSlideID: nil)
+                        },
+                        blank: {
+                            model.insertSlide(
+                                presentationID,
+                                slide: NewSlideChoice.blank.slide(sectionId: nil, deckThemeId: presentation.themeId),
+                                afterSlideID: nil)
+                        }
+                    ),
+                    dropText: { dropOnEmptyDeck($0, presentationID: presentationID) },
+                    dropFiles: { urls in
+                        Task { @MainActor in
+                            let imported = await model.importFiles(urls)
+                            addMediaSlides(imported, to: presentationID)
+                        }
+                    },
+                    breadcrumb: "present.emptyDrop",
+                    roundedCorners: roundedCorners
+                )
+                // The label strip under a slide tile, so the space is a tile's size.
+                Color.clear.frame(height: SlideGridMetrics.labelHeight)
+            }
+            .frame(maxWidth: .infinity)
+            ForEach(0 ..< row.fillers, id: \.self) { _ in
+                Color.clear.frame(height: 0).frame(maxWidth: .infinity)
+            }
         }
-        .padding(.vertical, 9)
+        .background {
+            // No grid: tell the page so an earlier grid's rows don't stand in
+            // for this item when it keeps its place.
+            GeometryReader { proxy in
+                let _ = PresentCardFrames.shared.noteGrid(PresentLanding.Grid(
+                    id: item.id, top: proxy.frame(in: .named(Self.scrollSpace)).minY,
+                    rowPitch: 0, across: across, count: 0))
+                let _ = PresentCardFrames.shared.noteDocGrid(PresentLanding.Grid(
+                    id: item.id, top: proxy.frame(in: .named(Self.contentSpace)).minY,
+                    rowPitch: 0, across: across, count: 0))
+                Color.clear
+            }
+        }
+        .padding(.top, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) { Self.hairline }
-        .contentShape(Rectangle())
-        .contextMenu {
-            if !runOnly, let presentation { presentationMenu(item, presentation) }
+        .padding(.bottom, Self.itemGap)
+    }
+
+    /// A slide dragged from another presentation is copied in; a picture or
+    /// video from the Media library becomes a slide with it as the background.
+    private func dropOnEmptyDeck(_ payload: String, presentationID: String) -> Bool {
+        guard !runOnly else { return false }
+        if let dragged = SlideBulkEdit.draggedSlide(in: payload) {
+            return dragged.presentationID != presentationID
+                && model.presentationExists(dragged.presentationID)
+                && model.copySlide(dragged.slideID, from: dragged.presentationID, to: presentationID)
         }
-        .padding(.bottom, 12)
-        .id(item.id)
+        guard !payload.contains("::"), model.media(payload) != nil else { return false }
+        return addMediaSlides([payload], to: presentationID)
+    }
+
+    @discardableResult
+    private func addMediaSlides(_ mediaIDs: [String], to presentationID: String, after afterSlideID: String? = nil) -> Bool {
+        guard !runOnly else { return false }
+        let added = MediaSlides.make(mediaIDs, model: model)
+        guard !added.isEmpty else { return false }
+        model.insertSlides(presentationID, slides: added, afterSlideID: afterSlideID)
+        let actionRouter = controls?.actionRouter
+        let asked = LivestreamPromptRequest.make(model, presentationID: presentationID, added: added) { design, ids in
+            let chosen = Set(ids)
+            model.updateSlides(presentationID: presentationID, undoLabel: "Livestream") { deck in
+                for index in deck.slides.indices where chosen.contains(deck.slides[index].id) {
+                    deck.slides[index].streamDesign = design
+                }
+            }
+            actionRouter?.noteStreamDesign(design, forSlides: chosen)
+        }
+        if let asked { livestreamPrompt = livestreamPrompt.map { $0.adding(asked) } ?? asked }
+        return true
     }
 
     private func cardHeader(
@@ -961,16 +1049,12 @@ struct ServiceContinuousView: View {
 
         let settled = delta > 0 && NSEvent.modifierFlags.contains(.option)
         controls.advance(steps: delta, settled: settled) {
-            let currentFlat = positions.firstIndex {
-                $0.itemID == controls.liveContextID && $0.occurrence == controls.liveOccurrence
+            // Empty presentations have no places, so a step skips them.
+            let live = controls.liveContextID.flatMap { itemID in
+                controls.liveOccurrence.map { PlanSlideSteps.Place(itemID: itemID, occurrence: $0) }
             }
-            let next: Int
-            if let currentFlat {
-                next = currentFlat + delta
-            } else {
-                next = delta > 0 ? 0 : positions.count - 1
-            }
-            guard positions.indices.contains(next) else { return }
+            let places = positions.map { PlanSlideSteps.Place(itemID: $0.itemID, occurrence: $0.occurrence) }
+            guard let next = PlanSlideSteps.step(delta, from: live, in: places) else { return }
             let position = positions[next]
             controls.fire(
                 slide: position.slide, in: position.presentation,
@@ -1579,7 +1663,7 @@ private struct CardSlidePosition: View {
         if controls?.liveContextID == itemID, let occurrence = controls?.liveOccurrence {
             "Slide \(occurrence + 1) of \(slideCount)"
         } else {
-            slideCount == 1 ? "1 slide" : "\(slideCount) slides"
+            slideCount == 0 ? "No slides" : slideCount == 1 ? "1 slide" : "\(slideCount) slides"
         }
     }
 }

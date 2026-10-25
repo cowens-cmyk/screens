@@ -4,6 +4,9 @@ import SwiftUI
 struct NewSlideTarget: Identifiable {
     let id = UUID()
     let after: Slide?
+    /// Straight to the theme picker (Slide from Theme…), not the Blank /
+    /// From Theme choice.
+    var startsWithThemes = false
 }
 
 struct NewSlideSheet: View {
@@ -115,14 +118,16 @@ final class NewSlideRouter {
 
 extension View {
 
-    func newSlideEdgeButton(enabled: Bool, action: @escaping () -> Void) -> some View {
-        modifier(NewSlideEdgeButton(enabled: enabled, action: action))
+    /// The "+" on a grid's last tile, offering the same choices as an empty
+    /// presentation's drop area.
+    func newSlideEdgeMenu(enabled: Bool, choices: AddSlideChoices) -> some View {
+        modifier(NewSlideEdgeMenu(enabled: enabled, choices: choices))
     }
 }
 
-private struct NewSlideEdgeButton: ViewModifier {
+private struct NewSlideEdgeMenu: ViewModifier {
     let enabled: Bool
-    let action: () -> Void
+    let choices: AddSlideChoices
 
     @State private var tileHovered = false
     @State private var buttonHovered = false
@@ -135,7 +140,9 @@ private struct NewSlideEdgeButton: ViewModifier {
                 .onHover { tileHovered = $0 }
                 .overlay(alignment: .trailing) {
                     if tileHovered || buttonHovered {
-                        Button(action: action) {
+                        Menu {
+                            AddSlideMenuItems(choices: choices)
+                        } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(.white)
@@ -146,8 +153,11 @@ private struct NewSlideEdgeButton: ViewModifier {
                                 .scaleEffect(buttonHovered ? 1.12 : 1)
                                 .contentShape(Circle())
                         }
+                        .menuStyle(.button)
                         .buttonStyle(.plain)
-                        .help("New Slide…")
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help("New Slide")
                         .onHover { buttonHovered = $0 }
 
                         .offset(

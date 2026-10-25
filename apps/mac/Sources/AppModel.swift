@@ -939,6 +939,8 @@ final class AppModel {
         }
     }
 
+    /// A new presentation starts with no slides: the Present page and the
+    /// editor show a space to drop slides or media into, with a "+" to add one.
     @discardableResult
     func createPresentation(named name: String) -> String? {
         let id = UUID().uuidString
@@ -946,7 +948,7 @@ final class AppModel {
         createInDrive(Presentation(
             id: id, name: name,
             presentationKind: .deck, themeId: "",
-            slides: [Slide(id: UUID().uuidString, name: "", objects: [])]
+            slides: []
         ))
         return id
     }
@@ -2115,7 +2117,7 @@ final class AppModel {
         var presentation = Presentation(
             id: UUID().uuidString, name: name.isEmpty ? "Slides" : name, presentationKind: .deck,
             themeId: themeId, folder: folder?.isEmpty == false ? folder : nil,
-            slides: slides.isEmpty ? [Slide(id: UUID().uuidString, name: "", objects: [])] : slides
+            slides: slides
         )
         presentation.sections = sections.isEmpty ? nil : sections
         presentation.arrangements = arrangement.map { [$0] }

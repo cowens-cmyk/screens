@@ -20,6 +20,11 @@ struct SlideEditorView: View {
 
     @State private var model: SlideEditorModel?
     @State private var showingMediaPicker = false
+
+    /// From Media Library… on an empty presentation.
+    @State private var choosingMediaSlides = false
+
+    @AppStorage(PresentLayoutController.lockedKey) private var runOnly = false
     @State private var showingBackgroundFill = false
 
     @State private var pendingThemeID: String?
@@ -203,6 +208,11 @@ struct SlideEditorView: View {
 
         .sheet(item: Binding(get: { model.livestreamPrompt }, set: { model.livestreamPrompt = $0 })) {
             LivestreamPromptSheet(model: appModel, request: $0)
+        }
+        .sheet(isPresented: $choosingMediaSlides) {
+            MediaSlidePickerSheet(model: appModel) { mediaIDs in
+                addMediaSlides(model, mediaIDs)
+            }
         }
         .sheet(isPresented: Binding(get: { model.choosingNewSlide }, set: { model.choosingNewSlide = $0 })) {
             NewSlideSheet(appModel: appModel, render: render, deckThemeId: model.presentation.themeId, startsWithThemes: true) { choice in
@@ -1326,9 +1336,13 @@ struct SlideEditorView: View {
                     EditorInteractionView(model: model)
 
                     if model.presentation.slides.isEmpty {
-                        VStack(spacing: 10) {
-                            Text(model.isThemeEditor ? "No categories" : "No slides").foregroundStyle(.secondary)
-                            Button(model.isThemeEditor ? "Add Category" : "Add Slide…") { model.addSlide() }
+                        if model.isThemeEditor {
+                            VStack(spacing: 10) {
+                                Text("No categories").foregroundStyle(.secondary)
+                                Button("Add Category") { model.addSlide() }
+                            }
+                        } else {
+                            emptyDeckDropArea(model)
                         }
                     }
 
@@ -1360,7 +1374,9 @@ struct SlideEditorView: View {
                 .onDrop(
                     of: [.plainText, .fileURL],
                     delegate: CanvasDropDelegate(
-                        enabled: true,
+                        // With no slide there is nothing to place media on;
+                        // the empty presentation's drop area takes it.
+                        enabled: !model.presentation.slides.isEmpty,
                         viewSize: { canvasViewSize },
                         canvasSize: model.canvasSize,
                         setTargeted: { canvasDropTargeted = $0 },
@@ -1401,6 +1417,46 @@ struct SlideEditorView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+}
+
+extension SlideEditorView {
+    /// A presentation with no slides: where the slide would be, a space to
+    /// drop pictures, videos or files into, with the same "+" choices as the
+    /// Present page.
+    func emptyDeckDropArea(_ model: SlideEditorModel) -> some View {
+        EmptySlidesDropArea(
+            aspect: model.canvasSize.height > 0 ? model.canvasSize.width / model.canvasSize.height : 16 / 9,
+            locked: runOnly,
+            choices: AddSlideChoices(
+                fromTheme: { model.choosingNewSlide = true },
+                fromMedia: { choosingMediaSlides = true },
+                blank: { model.addSlide(.blank) }
+            ),
+            dropText: { payload in
+                guard !runOnly, !payload.contains("::") else { return false }
+                return addMediaSlides(model, [payload])
+            },
+            dropFiles: { urls in
+                guard !runOnly else { return }
+                Task { @MainActor in
+                    addMediaSlides(model, await appModel.importFiles(urls))
+                }
+            },
+            breadcrumb: "editor.emptyDrop",
+            rejectPrefixes: ["mxueditslide::", "mxuslide::", "mxuobj::"]
+        )
+        .frame(maxWidth: 420)
+        .padding(40)
+    }
+
+    @discardableResult
+    func addMediaSlides(_ model: SlideEditorModel, _ mediaIDs: [String]) -> Bool {
+        let added = model.insertMediaSlides(mediaIDs: mediaIDs, beforeSlideID: nil)
+        if added, let first = model.presentation.slides.first, model.selectedSlideID == nil {
+            model.selectSlide(first.id)
+        }
+        return added
     }
 }
 
