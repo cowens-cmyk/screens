@@ -108,6 +108,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
     case goToSlide
     case nextServiceItem
     case previousServiceItem
+    case resetSermonTimer
     case clearAll
     case clearSlides
     case clearMedia
@@ -136,6 +137,8 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .goToSlide: []
         case .nextServiceItem: []
         case .previousServiceItem: []
+        // ⌃⌘0: back to the top, clear of the bare keys that fire slides.
+        case .resetSermonTimer: [KeyChord("0", command: true, control: true)]
         case .clearAll: [KeyChord("f1")]
         case .clearSlides: [KeyChord("f2")]
         case .clearMedia: [KeyChord("f3")]
@@ -162,7 +165,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
     public var group: KeyCommandGroup {
         switch self {
         case .nextSlide, .previousSlide, .goToSlide,
-             .nextServiceItem, .previousServiceItem:
+             .nextServiceItem, .previousServiceItem, .resetSermonTimer:
             .showControl
         case .clearAll, .clearSlides, .clearMedia,
              .clearAlerts:
@@ -183,7 +186,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
     public var scope: KeyCommandScope {
         switch self {
         case .nextSlide, .previousSlide, .goToSlide,
-             .nextServiceItem, .previousServiceItem, .videoPlayPause,
+             .nextServiceItem, .previousServiceItem, .resetSermonTimer, .videoPlayPause,
              .videoGoToBeginning,
              .clearAll, .clearSlides, .clearMedia,
              .clearAlerts:
@@ -200,7 +203,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
     public var runsInRunOnly: Bool {
         switch self {
         case .nextSlide, .previousSlide, .goToSlide,
-             .nextServiceItem, .previousServiceItem,
+             .nextServiceItem, .previousServiceItem, .resetSermonTimer,
              .clearAll, .clearSlides, .clearMedia,
              .clearAlerts,
              .videoPlayPause, .videoGoToBeginning,
@@ -229,6 +232,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .goToSlide: "Go to Slide"
         case .nextServiceItem: "Next Service Item"
         case .previousServiceItem: "Previous Service Item"
+        case .resetSermonTimer: "Reset Sermon Timer"
         case .clearAll: "Clear All"
         case .clearSlides: "Clear Slides"
         case .clearMedia: "Clear Media"

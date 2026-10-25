@@ -583,7 +583,7 @@ final class AppAPIBridge: LocalAPIBridge {
         switch action {
         case .play: controls.timers.start(id: id)
         case .pause: controls.timers.pause(id: id)
-        case .reset: controls.timers.reset(id: id)
+        case .reset: controls.resetTimer(id: id)
         }
     }
 

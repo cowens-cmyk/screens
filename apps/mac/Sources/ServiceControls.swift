@@ -837,6 +837,9 @@ final class ServiceControls {
             serviceTracking?.noteItemFired(serviceItemID: id)
         }
         armMediaEnd(mediaItem, on: layer, playsOnce: playsOnce, countdown: countdown)
+        // The countdown opens a service, scheduled or played by hand: the
+        // Sermon timer is made ready for it (unless a sermon is still going).
+        if countdown { sermonTimerAtServiceStart("countdown started") }
         if playsOnce {
             screenVideoID = mediaItem.id
             actionRouter?.videoStarted(mediaItem.id)
@@ -1026,7 +1029,7 @@ final class ServiceControls {
 
     /// The message's length: the live message's, else the current plan's
     /// message's, else 40 minutes.
-    private var sermonLength: Double {
+    var sermonLength: Double {
         if let live = state.liveSlide?.presentation,
            PresentationTypes.category(of: live) == PresentationTypes.sermon {
             return SermonTimer.seconds(for: live)
@@ -1067,13 +1070,76 @@ final class ServiceControls {
         timers.toggle(id: id)
     }
 
-    /// Back to the message's full length, stopped: minutes nudged on or off
-    /// go too.
-    func resetSermonTimer() {
-        let seconds = sermonLength
+    /// Runs the Sermon timer from where it is; nothing when it's running.
+    func startSermonTimer() {
+        let id = ensureSermonTimer(seconds: sermonLength)
+        timers.setKeepsCountingAfterZero(id: id, true)
+        timers.start(id: id)
+    }
+
+    func pauseSermonTimer() {
+        timers.pause(id: ensureSermonTimer(seconds: sermonLength))
+    }
+
+    /// Back to the message's full length (or `seconds`), stopped: minutes
+    /// nudged on or off go too.
+    func resetSermonTimer(to seconds: Double? = nil) {
+        let seconds = seconds ?? sermonLength
         let id = ensureSermonTimer(seconds: seconds)
         timers.reset(id: id)
         timers.setDuration(id: id, seconds: seconds)
+    }
+
+    /// Any timer's Reset, from a key, the remote, MIDI or an action. The
+    /// Sermon timer's goes back to the message's length too, as its own
+    /// Reset button does; the others only start over.
+    func resetTimer(id: String) {
+        if id == sermonTimer?.id {
+            resetSermonTimer()
+        } else {
+            timers.reset(id: id)
+        }
+    }
+
+    // MARK: The sermon timer at service start
+
+    /// Whether each service's start sets the Sermon timer back (see
+    /// SermonTimerAutoReset). On unless turned off on this Mac.
+    var sermonTimerResetsAtServiceStart: Bool =
+        UserDefaults.standard.object(forKey: SermonTimerAutoReset.enabledKey) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(sermonTimerResetsAtServiceStart, forKey: SermonTimerAutoReset.enabledKey)
+            DiagnosticsStore.shared.note(
+                "sermonTimer.resetsAtServiceStart", detail: sermonTimerResetsAtServiceStart ? "on" : "off")
+        }
+    }
+
+    /// When the next service starts and the timer is set back, for a
+    /// readout; nil when there's none today, or it's off.
+    var nextSermonTimerReset: Date?
+
+    /// A service is starting: sets the Sermon timer back unless a sermon is
+    /// still going. `reason` is for Diagnostics.
+    func sermonTimerAtServiceStart(_ reason: String) {
+        guard sermonTimerResetsAtServiceStart else { return }
+        let now = Date()
+        let length = sermonLength
+        let timerState = sermonTimer.map {
+            SermonTimerReset.TimerState(
+                isRunning: $0.isRunning, remaining: $0.value(at: now),
+                elapsed: $0.elapsed(at: now), duration: $0.durationSeconds)
+        }
+        let messageIsLive = state.liveSlide?.presentation
+            .map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } ?? false
+        switch SermonTimerReset.decide(timerState, length: length, messageIsLive: messageIsLive) {
+        case .reset:
+            resetSermonTimer(to: length)
+            DiagnosticsStore.shared.note("sermonTimer.resetAtServiceStart", detail: reason)
+        case .ready:
+            break
+        case .skip(let why):
+            DiagnosticsStore.shared.note("sermonTimer.resetSkipped", detail: "\(reason) — \(why)")
+        }
     }
 
     /// A minute more or less, running or not: only the length moves, so the

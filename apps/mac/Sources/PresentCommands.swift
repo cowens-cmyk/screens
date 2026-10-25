@@ -23,6 +23,16 @@ struct PresentCommands: Commands {
             }
             Button("Clear All") { controls?.clearAll() }
                 .keyboardShortcut(command: .clearAll)
+            Divider()
+            // Back to the message's length, stopped, ready for the next
+            // service.
+            Button("Reset Sermon Timer") { controls?.resetSermonTimer() }
+                .keyboardShortcut(command: .resetSermonTimer)
+                .disabled(controls == nil)
+            Toggle("Sermon Timer Resets at Service Start", isOn: Binding(
+                get: { controls?.sermonTimerResetsAtServiceStart ?? false },
+                set: { controls?.sermonTimerResetsAtServiceStart = $0 }))
+                .disabled(controls == nil)
         }
     }
 }

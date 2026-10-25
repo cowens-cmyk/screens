@@ -179,6 +179,7 @@ struct MxUSlidesApp: App {
             }
             ShepherdSync.shared.attach(model)
             PlanTimeBridge.shared.start(model)
+            SermonTimerAutoReset.shared.start(model: model, controls: controls)
             LiveAssist.shared.attach(model: model, controls: controls)
             AppUpdater.shared.start()
             let tracking = ServiceTimingController(model: model, controls: controls, render: render)

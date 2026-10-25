@@ -376,7 +376,7 @@ final class MIDIInController {
             switch command {
             case .startTimer: controls.timers.start(id: id)
             case .stopTimer: controls.timers.pause(id: id)
-            default: controls.timers.reset(id: id)
+            default: controls.resetTimer(id: id)
             }
         case .selectActionComboFolder:
 

@@ -100,6 +100,13 @@ public enum ServiceCountdown {
         return serviceTime.addingTimeInterval(-length.rounded(.up))
     }
 
+    /// The service time a countdown starting then ends at: the other way
+    /// round from `start(serviceTime:videoSeconds:)`.
+    public static func serviceTime(start: Date, videoSeconds: Double?) -> Date {
+        let length = (videoSeconds ?? 0) > 0 ? videoSeconds! : 300
+        return start.addingTimeInterval(length.rounded(.up))
+    }
+
     /// A one-time trigger that brings up the plan and plays its countdown.
     public static func trigger(
         planID: String, planName: String, countdownItemID: String,

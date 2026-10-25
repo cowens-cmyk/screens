@@ -151,6 +151,7 @@ final class KeyInController {
     private static let monitorExecuted: Set<KeyCommand> = [
         .nextSlide, .previousSlide, .nextServiceItem, .previousServiceItem,
         .videoPlayPause, .videoGoToBeginning, .openKeyboardSettings,
+        .resetSermonTimer,
     ]
 
     private func handle(_ event: NSEvent) -> Bool {
@@ -253,7 +254,8 @@ final class KeyInController {
         case .videoGoToBeginning:
             for row in controls.media.rows { controls.media.resetToStart(row.id) }
         case .openKeyboardSettings: openKeyboardSettings()
-        default: break 
+        case .resetSermonTimer: controls.resetSermonTimer()
+        default: break
         }
     }
 
@@ -268,7 +270,7 @@ final class KeyInController {
             router.fire(comboID: key.id)
         case .timerStart: controls.timers.start(id: key.id)
         case .timerPause: controls.timers.pause(id: key.id)
-        case .timerReset: controls.timers.reset(id: key.id)
+        case .timerReset: controls.resetTimer(id: key.id)
         case .settingsPage: openSettingsPage(key.id)
         case .preview: WindowBridge.openPreview?(key.id)
         }

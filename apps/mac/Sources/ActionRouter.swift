@@ -274,7 +274,7 @@ final class ActionRouter {
             controls.timers.pause(id: timerID)
         case .timerReset:
             guard let timerID = action.timerId else { return miss(action, "timerId") }
-            controls.timers.reset(id: timerID)
+            controls.resetTimer(id: timerID)
         case .timerConfigure:
             guard let timerID = action.timerId else { return miss(action, "timerId") }
             controls.timers.configure(

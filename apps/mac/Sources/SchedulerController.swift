@@ -387,8 +387,9 @@ final class SchedulerController {
             skip(trigger, source: source, reason: reason)
             return
         }
-        // The next service's message starts its timer from the top.
-        if ServiceDay.isRestartTrigger(trigger) { controls.resetSermonTimer() }
+        // The Sermon timer isn't set back here any more: each service's
+        // start does it (SermonTimerAutoReset), whether or not the service
+        // before left its last slide up for the restart to go ahead.
         let crumb = switch source {
         case .schedule: late ? "scheduler.late" : "scheduler.fired"
         case .timer: "scheduler.timerFired"
