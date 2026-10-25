@@ -7,7 +7,8 @@ import SwiftUI
 /// and Claude reads it, picks the type, colors, backgrounds and bar, and
 /// every design appears ready to use. Nothing needs choosing before Done;
 /// Edit Colors & Fonts… is there for changing a pick, Try Again for
-/// another read.
+/// another read, and Edit Theme saves and opens the designs in the theme
+/// editor for anything more.
 struct PhotoSeriesPane: View {
     let model: AppModel
     let kind: PhotoSeriesTheme.Kind
@@ -90,6 +91,9 @@ struct PhotoSeriesPane: View {
                     .keyboardShortcut(.defaultAction)
                 }
                 if phase == .ready {
+                    Button("Edit Theme") { Task { await done(thenEdit: true) } }
+                        .disabled(saving)
+                        .help("Save the theme and open every design in the theme editor")
                     Button(saving ? "Saving…" : "Done") { Task { await done() } }
                         .keyboardShortcut(.defaultAction)
                         .disabled(saving)
@@ -355,7 +359,9 @@ struct PhotoSeriesPane: View {
         preview = draft?.previewTheme(name: name, overrides: overrides)
     }
 
-    private func done() async {
+    /// Saves the theme. `thenEdit` opens it in the theme editor once the
+    /// sheet has done what it does with a new theme.
+    private func done(thenEdit: Bool = false) async {
         guard let draft else { return }
         saving = true
         defer { saving = false }
@@ -365,6 +371,7 @@ struct PhotoSeriesPane: View {
             let id = try await PhotoSeries.save(draft, name: typed.isEmpty ? draft.suggestedName : typed,
                                                 overrides: overrides, model: model, imported: imported)
             onCreated(id)
+            if thenEdit { ThemeEditorRouter.shared.open(id) }
         } catch {
             saveError = error.localizedDescription
         }
@@ -390,7 +397,10 @@ struct SeriesDesignPreview: View {
                 } else {
                     Color.black
                 }
-                ForEach(Array(design.objects.reversed().enumerated()), id: \.offset) { _, object in
+                // In list order, the last on top, as the slide renderer
+                // draws them. Drawn reversed, this preview once showed text
+                // the real screens had hidden under the art.
+                ForEach(Array(design.objects.enumerated()), id: \.offset) { _, object in
                     if object.hidden != true {
                         let width = (object.width ?? 1920) * scale, height = (object.height ?? 1080) * scale
                         content(object, scale: scale)

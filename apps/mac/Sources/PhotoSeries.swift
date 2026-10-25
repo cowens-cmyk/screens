@@ -216,14 +216,17 @@ enum PhotoSeries {
             return (await localAnalysis(art, variant: variant),
                     false, "Built from the art's colors. Add a Claude key in Settings for a closer match.")
         }
+        // The palette's read is made first: it fills whatever Claude's
+        // answer leaves out, and stands in for all of it if there's none.
+        let local = await localAnalysis(art, variant: variant)
         do {
             guard let small = await Task.detached(operation: { art.jpegForClaude() }).value else { throw CouldNotRender() }
             let analysis = try await ClaudeClient.analyzeArt(
-                jpeg: small.data, fileName: art.fileName, width: small.width, height: small.height, fonts: families)
+                jpeg: small.data, fileName: art.fileName, width: small.width, height: small.height, fonts: families,
+                fallback: local)
             return (analysis, true, nil)
         } catch {
-            return (await localAnalysis(art, variant: variant),
-                    false, "Claude couldn't read the art, so it was built from its colors. \(Self.reason(error))")
+            return (local, false, "Claude couldn't read the art, so it was built from its colors. \(Self.reason(error))")
         }
     }
 

@@ -184,6 +184,10 @@ private let analysisJSON = """
 
 // MARK: Theme
 
+private func firstText(_ design: Slide) -> SlideObject? {
+    design.objects.first { $0.objectKind == .text }
+}
+
 private func input(_ analysis: ArtAnalysis, blurred: Bool = false) -> PhotoSeriesTheme.Input {
     var analysis = analysis.sanitized(installedFamilies: ["Helvetica Neue", "Avenir Next"])
     if blurred { analysis.textBackground = .init(kind: .blurredArt, tone: .dark, strength: 0.7, blur: 0.7, colors: []) }
@@ -210,7 +214,8 @@ private func input(_ analysis: ArtAnalysis, blurred: Bool = false) -> PhotoSerie
         #expect(lower?.objects.contains { $0.name == "Bar" } == true, "\(category)")
         // Every design keeps the text boxes the sermon import fills.
         let design = try #require(slides.first { $0.name == category && $0.folder == nil })
-        #expect(design.objects.last?.fill?.mediaId == "soft", "\(category) sits on the blurred art")
+        #expect(design.objects.first?.fill?.mediaId == "soft", "\(category) sits on the blurred art")
+        #expect(design.objects.last?.objectKind == .text, "\(category) text is drawn over it")
     }
     #expect(theme.streamDesigns?.first { $0.category == SermonSeriesTheme.titleCategory }?.mode == .clear)
     #expect(SermonSeriesTheme.upgraded(theme) == nil, "nothing left to add")
@@ -218,40 +223,40 @@ private func input(_ analysis: ArtAnalysis, blurred: Bool = false) -> PhotoSerie
     // The Title slide is the art itself, with the message title (not the
     // series title, which the art already carries) in the calm zone.
     let title = try #require(slides.first { $0.name == SermonSeriesTheme.titleCategory })
-    #expect(title.objects.last?.fill?.mediaId == "art")
-    #expect(title.objects.map(\.name).prefix(2) == ["Title", "Subtitle"])
-    let titleBox = try #require(title.objects.first)
+    #expect(title.objects.first?.fill?.mediaId == "art")
+    #expect(title.objects.map(\.name).suffix(2) == ["Title", "Subtitle"])
+    let titleBox = try #require(title.objects.first { $0.name == "Title" })
     #expect((titleBox.y ?? 0) >= 1080 * 0.7 - 1, "in the zone at the bottom of the art")
     #expect((titleBox.textStyle?.fontSize ?? 0) <= 72, "a caption to the art, not a second title")
 
     // Text reads on what it sits on.
     let point = try #require(slides.first { $0.name == SermonSeriesTheme.pointCategory })
-    let text = try #require(SeriesColor(hex: point.objects.first?.textStyle?.colorHex ?? ""))
+    let text = try #require(SeriesColor(hex: firstText(point)?.textStyle?.colorHex ?? ""))
     #expect(SeriesContrast.worst(text, on: [SeriesColor(hex: "#2A2A2A")!, SeriesColor(hex: "#3A3530")!]) >= 4.5)
-    #expect(point.objects.first?.textStyle?.fontName == "HelveticaNeue-Bold")
+    #expect(firstText(point)?.textStyle?.fontName == "HelveticaNeue-Bold")
     let scripture = try #require(slides.first { $0.name == SermonSeriesTheme.scriptureCategory })
-    #expect(scripture.objects.first?.textStyle?.fontName == "AvenirNext-Italic")
+    #expect(firstText(scripture)?.textStyle?.fontName == "AvenirNext-Italic")
 }
 
 @Test func flatArtGetsAGradientBackgroundAndAFloatingGlassBar() throws {
     let theme = PhotoSeriesTheme.make(input(try ArtAnalysis.decode(analysisJSON)))
     let slides = theme.slides ?? []
     let point = try #require(slides.first { $0.name == SermonSeriesTheme.pointCategory })
-    let background = try #require(point.objects.last)
+    let background = try #require(point.objects.first)
     #expect(background.fill?.fillKind == .linearGradient)
     #expect(background.fill?.gradientStops?.count == 2)
     let worship = try #require(slides.first { $0.name == SermonSeriesTheme.worshipCategory && $0.folder == nil })
-    #expect(worship.objects.last?.fill?.fillKind == .linearGradient)
+    #expect(worship.objects.first?.fill?.fillKind == .linearGradient)
 
     let lower = try #require(slides.first { $0.name == "\(SermonSeriesTheme.pointCategory) (Lower Third)" })
     let bar = try #require(lower.objects.first { $0.name == "Bar" })
     #expect(bar.shapeKind == .roundedRectangle, "floating")
     #expect(lower.objects.contains { $0.name == "Accent Rule" })
-    #expect((lower.objects.first?.x ?? 0) > 80, "text pulled in from the inset bar's edge")
+    #expect((firstText(lower)?.x ?? 0) > 80, "text pulled in from the inset bar's edge")
     // The pale glass bar was made solid enough for its text.
     let barColor = try #require(SeriesColor(hex: bar.fill?.colorHex ?? ""))
     let alpha = Double(Int(bar.fill?.colorHex?.suffix(2) ?? "", radix: 16) ?? 0) / 255
-    let textColor = try #require(SeriesColor(hex: lower.objects.first?.textStyle?.colorHex ?? ""))
+    let textColor = try #require(SeriesColor(hex: firstText(lower)?.textStyle?.colorHex ?? ""))
     let backdrops = [barColor.composited(alpha: alpha, over: .black), barColor.composited(alpha: alpha, over: .white)]
     #expect(SeriesContrast.worst(textColor, on: backdrops) >= 4.4, "rounding the alpha to a byte costs a hair")
 }
@@ -266,7 +271,7 @@ private func input(_ analysis: ArtAnalysis, blurred: Bool = false) -> PhotoSerie
     #expect(colors.text == pink && colors.titleText == pink)
     #expect(colors.bar == SeriesColor(hex: "#330022")!)
     let slides = PhotoSeriesTheme.make(made).slides ?? []
-    #expect(slides.first?.objects.first?.textStyle?.colorHex == pink.hex())
+    #expect(slides.first.flatMap(firstText)?.textStyle?.colorHex == pink.hex())
 }
 
 @Test func artThatCantBeCroppedLeavesTheTitleOnTheBackground() throws {
@@ -275,7 +280,7 @@ private func input(_ analysis: ArtAnalysis, blurred: Bool = false) -> PhotoSerie
     analysis.artHasTitle = false
     let theme = PhotoSeriesTheme.make(input(analysis, blurred: true))
     let title = try #require(theme.slides?.first { $0.name == SermonSeriesTheme.titleCategory })
-    #expect(title.objects.last?.fill?.mediaId == "soft")
+    #expect(title.objects.first?.fill?.mediaId == "soft")
     #expect(!(title.objects.contains { $0.fill?.mediaId == "art" }))
 }
 
@@ -301,13 +306,13 @@ private func input(_ analysis: ArtAnalysis, blurred: Bool = false) -> PhotoSerie
     }
     // Lyrics land in the Lyrics box, on the same background as the rest.
     let lyrics = try #require(slides.first)
-    #expect(lyrics.objects.first?.name == "Lyrics")
-    #expect(lyrics.objects.last?.fill?.mediaId == "soft")
+    #expect(lyrics.objects.last?.name == "Lyrics")
+    #expect(lyrics.objects.first?.fill?.mediaId == "soft")
 
     let announcements = try #require(slides.first { $0.name == "Announcements" })
-    #expect(announcements.objects.prefix(2).map(\.name) == ["Title", "Body"])
-    #expect(announcements.objects[1].textStyle?.fontName == "AvenirNext-Regular", "the paragraph is in the body font")
-    #expect(announcements.objects.last?.fill?.mediaId == "soft")
+    #expect(announcements.objects.filter { $0.objectKind == .text }.map(\.name) == ["Title", "Body"])
+    #expect(announcements.objects.last?.textStyle?.fontName == "AvenirNext-Regular", "the paragraph is in the body font")
+    #expect(announcements.objects.first?.fill?.mediaId == "soft")
 
     // Livestream routes follow the renames and each points at a design that exists.
     let routes = theme.streamDesigns ?? []
@@ -353,9 +358,9 @@ private let designExport = SeriesExport(
     made.lowerThirdSamples = [SeriesColor(hex: "#B8C4D0")!, SeriesColor(hex: "#DDE3EA")!]
     let theme = PhotoSeriesTheme.make(made)
     let lower = try #require(theme.slides?.first { $0.name == "\(SermonSeriesTheme.pointCategory) (Lower Third)" })
-    #expect(lower.objects.last?.fill?.mediaId == "bar-art")
+    #expect(lower.objects.first?.fill?.mediaId == "bar-art")
     #expect(!lower.objects.contains { $0.name == "Bar" || $0.name == "Accent Rule" })
-    let text = try #require(SeriesColor(hex: lower.objects.first?.textStyle?.colorHex ?? ""))
+    let text = try #require(SeriesColor(hex: firstText(lower)?.textStyle?.colorHex ?? ""))
     #expect(SeriesContrast.worst(text, on: made.lowerThirdSamples) >= 4.4, "rounding the color to a byte costs a hair")
     #expect(text.luminance < 0.2, "dark text on the pale bar")
 }

@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import PresenterCore
 import SwiftUI
 
@@ -119,6 +120,22 @@ struct SermonSeriesSheet: View {
             withFamily: family, traits: [], weight: 5, size: 72) else { return family }
         if bold { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) }
         return font.fontName
+    }
+}
+
+/// Opens a theme in the theme editor from a sheet (the one that just built
+/// it, Message & Series): the main window switches to Edit with the theme
+/// open, and the sheets over it close.
+@MainActor
+@Observable
+final class ThemeEditorRouter {
+    static let shared = ThemeEditorRouter()
+    private(set) var themeID: String?
+    private(set) var requests = 0
+
+    func open(_ themeID: String) {
+        self.themeID = themeID
+        requests += 1
     }
 }
 

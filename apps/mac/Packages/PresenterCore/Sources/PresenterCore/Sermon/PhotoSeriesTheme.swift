@@ -89,6 +89,42 @@ public enum PhotoSeriesTheme {
         /// series' own accent unless that would vanish into the bar.
         public var barRule: SeriesColor
         public var background: SeriesColor
+        /// How solid a veil (see `scrimColor`) between the background and
+        /// the text on the full-screen designs has to be for the text to
+        /// read: 0 when it reads without one. Busy mid-tone art, where
+        /// neither white nor black text reaches the minimum, needs one.
+        public var textScrim: Double = 0
+        /// The same for the Title slide's text over the art, in its box.
+        public var titleScrim: Double = 0
+        /// The same for lower-third text on an image bar (a download's),
+        /// which can't itself be made more solid.
+        public var barScrim: Double = 0
+    }
+
+    /// The veil that helps text most: black under light text, white under
+    /// dark.
+    public static func scrimColor(for text: SeriesColor) -> SeriesColor {
+        text.contrast(with: .black) >= text.contrast(with: .white) ? .black : .white
+    }
+
+    /// How solid a veil in `scrimColor(for:)` laid over the samples has to
+    /// be for every one of `texts` to reach the minimum against them,
+    /// rounded up to the next 5%: 0 when they already do.
+    public static func scrimOpacity(for texts: [SeriesColor], on samples: [SeriesColor]) -> Double {
+        guard !samples.isEmpty, let first = texts.first else { return 0 }
+        let veil = scrimColor(for: first)
+        func passes(_ alpha: Double) -> Bool {
+            let veiled = samples.map { veil.composited(alpha: alpha, over: $0) }
+            return texts.allSatisfy { SeriesContrast.worst($0, on: veiled) >= SeriesContrast.minimum }
+        }
+        guard !passes(0) else { return 0 }
+        guard passes(1) else { return 1 }
+        var low = 0.0, high = 1.0
+        for _ in 0..<20 {
+            let mid = (low + high) / 2
+            if passes(mid) { high = mid } else { low = mid }
+        }
+        return min(1, (high * 20).rounded(.up) / 20)
     }
 
     public typealias Box = (x: Double, y: Double, width: Double, height: Double)
@@ -112,6 +148,55 @@ public enum PhotoSeriesTheme {
         return (160, 300, 1600, 480)
     }
 
+    /// A color that reads is kept. One that has to move is moved well clear
+    /// of the line where it can be: a projector washes out text that only
+    /// just passes on paper (white asked for on cream art came out a mid
+    /// grey).
+    static func fixed(_ wanted: SeriesColor, on samples: [SeriesColor]) -> SeriesColor {
+        guard SeriesContrast.worst(wanted, on: samples) < SeriesContrast.minimum else { return wanted }
+        let strong = SeriesContrast.readable(wanted, on: samples, minimum: 7)
+        return SeriesContrast.worst(strong, on: samples) >= 7 ? strong : SeriesContrast.readable(wanted, on: samples)
+    }
+
+    /// A series Claude drew from its name alone (SeriesGenerator), whose
+    /// background and bar are its own artwork: built like any series, with
+    /// the colors Claude chose checked against that artwork where the text
+    /// sits, as a series from a photo is, and a scrim under text no color
+    /// would read on. With no solid bar where its text goes, lower-third
+    /// text is checked against the darkest and brightest camera shot.
+    public static func make(_ style: SermonSeriesStyle, backgroundSamples: [SeriesColor], barSamples: [SeriesColor],
+                            id: String = UUID().uuidString) -> Theme {
+        var style = style
+        func color(_ hex: String?, _ fallback: SeriesColor) -> SeriesColor { hex.flatMap(SeriesColor.init(hex:)) ?? fallback }
+        let background = backgroundSamples.isEmpty ? [SeriesColor.black] : backgroundSamples
+        let bar = barSamples.isEmpty ? [SeriesColor.black, .white] : barSamples
+        let text = fixed(color(style.textColor, .white), on: background)
+        let accent = fixed(color(style.accentColor, text), on: background)
+        let barText = fixed(color(style.lowerThirdTextColor, .white), on: bar)
+        let barAccent = fixed(color(style.lowerThirdAccentColor, barText), on: bar)
+        style.textColor = text.hex()
+        style.accentColor = accent.hex()
+        style.lowerThirdTextColor = barText.hex()
+        style.lowerThirdAccentColor = barAccent.hex()
+        var colors = Colors(text: text, accent: accent, titleText: text, bar: bar[0], barOpacity: 1, barText: barText,
+                            barAccent: barAccent, barRule: barAccent, background: background[0])
+        colors.textScrim = scrimOpacity(for: [text, accent], on: background)
+        colors.barScrim = scrimOpacity(for: [barText, barAccent], on: bar)
+
+        var theme = SermonSeriesTheme.make(style, id: id)
+        theme.slides = theme.slides?.map { design in
+            var design = design
+            if SermonSeriesTheme.isLowerThird(design) {
+                if colors.barScrim > 0 { design.objects.append(barScrim(colors)) }
+            } else if colors.textScrim > 0 {
+                design.objects.append(fullScrim(colors))
+            }
+            design.objects = SermonSeriesTheme.layered(design.objects)
+            return design
+        }
+        return SermonSeriesTheme.completed(theme)
+    }
+
     /// Text colors that read on what they sit on. Staff's own picks win on
     /// the full-screen designs; the bar always keeps its text readable,
     /// darkening the bar if no text color alone would do.
@@ -124,10 +209,10 @@ public enum PhotoSeriesTheme {
             : input.textBackgroundSamples
         let wantedText = SeriesColor(hex: analysis.textColor) ?? .white
         let wantedAccent = SeriesColor(hex: analysis.accentColor) ?? wantedText
-        let text = input.textColorOverride ?? SeriesContrast.readable(wantedText, on: backgroundSamples)
-        let accent = input.accentColorOverride ?? SeriesContrast.readable(wantedAccent, on: backgroundSamples)
+        let text = input.textColorOverride ?? fixed(wantedText, on: backgroundSamples)
+        let accent = input.accentColorOverride ?? fixed(wantedAccent, on: backgroundSamples)
         let titleText = input.textColorOverride
-            ?? (input.titleSamples.isEmpty ? text : SeriesContrast.readable(wantedText, on: input.titleSamples))
+            ?? (input.titleSamples.isEmpty ? text : fixed(wantedText, on: input.titleSamples))
 
         let barAccent = input.accentColorOverride ?? SeriesColor(hex: analysis.lowerThird.accentColor) ?? accent
         let wantedBarText = SeriesColor(hex: analysis.lowerThird.textColor) ?? .white
@@ -139,18 +224,32 @@ public enum PhotoSeriesTheme {
             let samples = input.lowerThirdSamples.isEmpty ? [SeriesColor.black, .white] : input.lowerThirdSamples
             let measured = input.lowerThirdSamples.first ?? darkest
             let fixedAccent = SeriesContrast.readable(barAccent, on: samples)
-            return Colors(text: text, accent: accent, titleText: titleText, bar: measured, barOpacity: 1,
-                          barText: SeriesContrast.readable(wantedBarText, on: samples), barAccent: fixedAccent,
-                          barRule: fixedAccent, background: backgroundSamples.first ?? darkest)
+            let fixedBarText = SeriesContrast.readable(wantedBarText, on: samples)
+            var colors = Colors(text: text, accent: accent, titleText: titleText, bar: measured, barOpacity: 1,
+                                barText: fixedBarText, barAccent: fixedAccent,
+                                barRule: fixedAccent, background: backgroundSamples.first ?? darkest)
+            colors.barScrim = scrimOpacity(for: [fixedBarText, fixedAccent], on: samples)
+            return scrimmed(colors, input: input, backgroundSamples: backgroundSamples)
         }
         let bar = input.barColorOverride ?? SeriesColor(hex: analysis.lowerThird.color) ?? darkest
         let fixed = barText(
             bar: bar, opacity: analysis.lowerThird.opacity,
             text: wantedBarText, accent: barAccent)
         let rule = barAccent.contrast(with: bar.composited(alpha: fixed.opacity, over: .black)) >= 2 ? barAccent : fixed.accent
-        return Colors(text: text, accent: accent, titleText: titleText, bar: bar, barOpacity: fixed.opacity,
-                      barText: fixed.text, barAccent: fixed.accent, barRule: rule,
-                      background: backgroundSamples.first ?? darkest)
+        let colors = Colors(text: text, accent: accent, titleText: titleText, bar: bar, barOpacity: fixed.opacity,
+                            barText: fixed.text, barAccent: fixed.accent, barRule: rule,
+                            background: backgroundSamples.first ?? darkest)
+        return scrimmed(colors, input: input, backgroundSamples: backgroundSamples)
+    }
+
+    /// The scrims the full-screen text needs, measured with the colors it
+    /// ended up with. Staff's own picks included: a pick that doesn't read
+    /// gets a veil under it rather than being changed.
+    private static func scrimmed(_ colors: Colors, input: Input, backgroundSamples: [SeriesColor]) -> Colors {
+        var colors = colors
+        colors.textScrim = scrimOpacity(for: [colors.text, colors.accent], on: backgroundSamples)
+        colors.titleScrim = scrimOpacity(for: [colors.titleText], on: input.titleSamples)
+        return colors
     }
 
     /// Lower-third text over a camera shot: the bar is see-through, so the
@@ -211,25 +310,50 @@ public enum PhotoSeriesTheme {
         // Gradient and solid backgrounds are drawn as shapes, so they stay
         // sharp and can be changed later in the theme editor.
         let backdrop = blurred == nil ? backgroundShape(analysis.textBackground, colors: colors) : nil
+        // Objects are drawn in order, the last on top, so each design lists
+        // its background, then any scrim, then its text.
         theme.slides = theme.slides?.map { design in
             var design = design
             if SermonSeriesTheme.isLowerThird(design) {
                 if let image = input.lowerThirdMediaID {
-                    design.objects = design.objects.filter { $0.objectKind == .text } + [SlideObject(
+                    var under = [SlideObject(
                         id: UUID().uuidString, objectKind: .shape, name: "Series Lower Third", text: "",
                         x: 0, y: 0, width: 1920, height: 1080, shapeKind: .rectangle,
                         fill: ObjectFill(fillKind: .media, mediaId: image, mediaScaleMode: .fill))]
+                    if colors.barScrim > 0 { under.append(barScrim(colors)) }
+                    design.objects = under + design.objects.filter { $0.objectKind == .text }
                 } else {
                     design.objects = lowerThirdObjects(design.objects, analysis: analysis.lowerThird, colors: colors)
                 }
             } else if design.name == SermonSeriesTheme.titleCategory {
                 design.objects = titleObjects(design.objects, input: input, colors: colors, backdrop: backdrop)
-            } else if let backdrop {
-                design.objects.append(backdrop)
+            } else {
+                if let backdrop { design.objects.insert(backdrop, at: 0) }
+                if colors.textScrim > 0 { design.objects.append(fullScrim(colors)) }
             }
+            design.objects = SermonSeriesTheme.layered(design.objects)
             return design
         }
-        return input.kind == .general ? SermonSeriesTheme.general(from: theme) : theme
+        let made = input.kind == .general ? SermonSeriesTheme.general(from: theme) : theme
+        return SermonSeriesTheme.completed(made)
+    }
+
+    /// A veil over the whole background, under the text, for art too busy
+    /// for any text color alone.
+    static func fullScrim(_ colors: Colors) -> SlideObject {
+        SlideObject(id: UUID().uuidString, objectKind: .shape, name: "Scrim", text: "",
+                    x: 0, y: 0, width: 1920, height: 1080, shapeKind: .rectangle,
+                    fill: ObjectFill(fillKind: .solid,
+                                     colorHex: scrimColor(for: colors.text).hex(alpha: colors.textScrim)))
+    }
+
+    /// A veil across the bottom of the frame, under lower-third text on an
+    /// image bar it doesn't read on.
+    static func barScrim(_ colors: Colors) -> SlideObject {
+        SlideObject(id: UUID().uuidString, objectKind: .shape, name: "Scrim", text: "",
+                    x: 0, y: 860, width: 1920, height: 220, shapeKind: .rectangle,
+                    fill: ObjectFill(fillKind: .solid,
+                                     colorHex: scrimColor(for: colors.barText).hex(alpha: colors.barScrim)))
     }
 
     private static func backgroundShape(_ background: ArtAnalysis.TextBackground, colors: Colors) -> SlideObject {
@@ -261,12 +385,15 @@ public enum PhotoSeriesTheme {
                 x: 0, y: 0, width: 1920, height: 1080, shapeKind: .rectangle,
                 fill: ObjectFill(fillKind: .media, mediaId: art, mediaScaleMode: .fill))]
         } else if let backdrop {
-            rest.append(backdrop)
+            rest.insert(backdrop, at: 0)
         }
+        // Off the art, the title sits on the same background as the other
+        // designs and takes the same scrim.
+        if !usesArt, colors.textScrim > 0 { rest.append(fullScrim(colors)) }
         guard var title = objects.first(where: { $0.name == SermonSeriesTheme.titleText }),
               var subtitle = objects.first(where: { $0.name == SermonSeriesTheme.subtitleText })
-        else { return objects.filter { $0.objectKind == .text } + rest }
-        guard usesArt else { return [title, subtitle] + rest }
+        else { return rest + objects.filter { $0.objectKind == .text } }
+        guard usesArt else { return rest + [title, subtitle] }
 
         let box = titleBox(for: analysis, artWidth: input.artWidth, artHeight: input.artHeight)
         let caption = analysis.artHasTitle
@@ -292,10 +419,23 @@ public enum PhotoSeriesTheme {
         set(&title, y: box.y, height: titleHeight, size: size, color: colors.titleText)
         set(&subtitle, y: box.y + titleHeight, height: box.height - titleHeight, size: (size * 0.45).rounded(),
             color: colors.titleText)
-        return [title, subtitle] + rest
+        if colors.titleScrim > 0 {
+            // A soft plate behind the title where the art is too busy for
+            // any color to read on it alone.
+            let pad = 28.0
+            let x = max(0, box.x - pad), y = max(0, box.y - pad)
+            rest.append(SlideObject(
+                id: UUID().uuidString, objectKind: .shape, name: "Scrim", text: "",
+                x: x, y: y, width: min(1920 - x, box.width + pad * 2), height: min(1080 - y, box.height + pad * 2),
+                shapeKind: .roundedRectangle, cornerRadius: 24,
+                fill: ObjectFill(fillKind: .solid,
+                                 colorHex: scrimColor(for: colors.titleText).hex(alpha: colors.titleScrim))))
+        }
+        return rest + [title, subtitle]
     }
 
-    /// The bar, drawn as shapes in the series colors, under the text.
+    /// The bar, drawn as shapes in the series colors, under the text: first
+    /// in the list, which is drawn first.
     private static func lowerThirdObjects(_ objects: [SlideObject], analysis bar: ArtAnalysis.LowerThird, colors: Colors) -> [SlideObject] {
         let floating = bar.placement == .floating
         var texts = objects.filter { $0.objectKind == .text }
@@ -347,10 +487,11 @@ public enum PhotoSeriesTheme {
                                 rounded: floating))
         }
         if bar.accentRule {
+            // On the bar, so after it.
             let ruleX = (texts.first?.x ?? 80)
-            shapes.insert(shape("Accent Rule", x: ruleX, y: floating ? frame.y + 14 : frame.y, w: 140, h: 6,
-                                fill: ObjectFill(fillKind: .solid, colorHex: colors.barRule.hex())), at: 0)
+            shapes.append(shape("Accent Rule", x: ruleX, y: floating ? frame.y + 14 : frame.y, w: 140, h: 6,
+                                fill: ObjectFill(fillKind: .solid, colorHex: colors.barRule.hex())))
         }
-        return texts + shapes
+        return shapes + texts
     }
 }

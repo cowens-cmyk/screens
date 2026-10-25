@@ -143,6 +143,63 @@ public struct ArtAnalysis: Codable, Equatable, Sendable {
         try JSONDecoder().decode(ArtAnalysis.self, from: Data(json.utf8))
     }
 
+    public struct NotAnObject: LocalizedError {
+        public var errorDescription: String? { "Claude's answer couldn't be read." }
+    }
+
+    /// Claude's answer laid over `fallback` field by field: anything
+    /// missing, null, misspelt or of the wrong kind keeps the fallback's
+    /// value, so an answer that's partly wrong still builds every design
+    /// instead of none. Throws only when the answer isn't a JSON object.
+    public static func decode(_ json: String, filling fallback: ArtAnalysis) throws -> ArtAnalysis {
+        guard let answer = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any],
+              let encoded = try? JSONEncoder().encode(fallback),
+              var merged = (try? JSONSerialization.jsonObject(with: encoded)) as? [String: Any]
+        else { throw NotAnObject() }
+        func decodes(_ candidate: [String: Any]) -> Bool {
+            guard let data = try? JSONSerialization.data(withJSONObject: candidate) else { return false }
+            return (try? JSONDecoder().decode(ArtAnalysis.self, from: data)) != nil
+        }
+        // Each value is tried on its own, kept only if the whole still
+        // decodes; objects (the bar, the background) are gone into.
+        func apply(_ answer: [String: Any], at path: [String]) {
+            for (key, value) in answer.sorted(by: { $0.key < $1.key }) {
+                let keyPath = path + [key]
+                guard let current = Self.value(at: keyPath, in: merged) else { continue }
+                if let nested = value as? [String: Any], current is [String: Any] {
+                    apply(nested, at: keyPath)
+                    continue
+                }
+                var candidate = merged
+                Self.set(value, at: keyPath, in: &candidate)
+                if decodes(candidate) { merged = candidate }
+            }
+        }
+        apply(answer, at: [])
+        guard let data = try? JSONSerialization.data(withJSONObject: merged),
+              let result = try? JSONDecoder().decode(ArtAnalysis.self, from: data)
+        else { return fallback }
+        return result
+    }
+
+    private static func value(at path: [String], in object: [String: Any]) -> Any? {
+        guard let first = path.first else { return object }
+        guard let next = object[first] else { return nil }
+        if path.count == 1 { return next }
+        return (next as? [String: Any]).flatMap { value(at: Array(path.dropFirst()), in: $0) }
+    }
+
+    private static func set(_ newValue: Any, at path: [String], in object: inout [String: Any]) {
+        guard let first = path.first else { return }
+        if path.count == 1 {
+            object[first] = newValue
+            return
+        }
+        var nested = object[first] as? [String: Any] ?? [:]
+        set(newValue, at: Array(path.dropFirst()), in: &nested)
+        object[first] = nested
+    }
+
     // MARK: Asking Claude
 
     /// The structured-output schema. Fonts are plain strings, not an enum:
