@@ -53,6 +53,13 @@ struct PlanShell: View {
     @State private var templatePlanID: String?
     @State private var simpleModePIN: PinFlow?
     @State private var confirmingSimpleMode = false
+    /// Where the Add to Plan popover is open from, if it is.
+    @State private var addAnchor: AddAnchor?
+    @State private var newSongShown = false
+    @State private var libraryPick: LibraryPick?
+    /// The plan bubble, its peeking card and the docked column share one
+    /// shape, and so do the strip and the screens column: matched in here.
+    @Namespace private var shellSpace
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -169,6 +176,7 @@ struct PlanShell: View {
         .focusedSceneValue(\.presentLibrarySearch, findInLibraryAction)
         .focusedSceneValue(\.presentNewSlide, mode == .present && !runOnly ? Self.presentNewSlideAction : nil)
         .focusedSceneValue(\.presentScripture, runOnly ? nil : MenuAction("scripture") { scriptureShown = true })
+        .focusedSceneValue(\.presentAddToPlan, addToPlanAction)
         .focusedSceneValue(\.presentSimpleMode, runOnly || layout == nil ? nil : MenuAction("simpleMode") { requestSimpleMode() })
         .environment(\.runOnly, runOnly)
         .sheet(item: $simpleModePIN) { flow in
@@ -209,22 +217,31 @@ struct PlanShell: View {
             // next to a two-column split, an inspector's size negotiation
             // never settles and AppKit ends the app. Folded and peeking, they
             // float over the slides and take no room from them.
+            //
+            // Docked, each is a card inset from the window's edge by the
+            // same gap the floating pieces keep, below the title bar, so its
+            // header never crowds the traffic lights. Its shape is matched
+            // with the bubble's (see MorphingPanel): a pin grows the one into
+            // the other, so it comes in without a slide of its own.
             HStack(spacing: 0) {
                 if panelsShown && planPanel.isPinned {
-                    dockedPlanPanel
-                        .frame(width: ShellMetrics.planWidth)
-                        .frame(maxHeight: .infinity)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                    Divider()
+                    DockedPanel(id: Self.planShapeID, namespace: shellSpace) {
+                        planPanelContent(pinned: true)
+                    }
+                    .frame(width: ShellMetrics.planWidth)
+                    .frame(maxHeight: .infinity)
+                    .padding([.leading, .top, .bottom], ShellMetrics.inset)
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
                 }
                 slidesArea
                 if panelsShown && screensPanel.isPinned, let render {
-                    Divider()
-                    screensColumn(render, pinned: true)
-                        .frame(width: ShellMetrics.screensWidth)
-                        .frame(maxHeight: .infinity)
-                        .dockedPanel()
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    DockedPanel(id: Self.screensShapeID, namespace: shellSpace) {
+                        screensColumn(render, pinned: true)
+                    }
+                    .frame(width: ShellMetrics.screensWidth)
+                    .frame(maxHeight: .infinity)
+                    .padding([.trailing, .top, .bottom], ShellMetrics.inset)
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
                 }
             }
             .background { ShellBackdrop() }
@@ -259,7 +276,7 @@ struct PlanShell: View {
 
     /// The View menu, its shortcut, or a toolbar button.
     private func togglePanel(_ side: ShellPanel.Side) {
-        withAnimation(HopeMotion.ui(reduced: reduceMotion)) {
+        withAnimation(HopeMotion.bubble(reduced: reduceMotion)) {
             switch side {
             case .plans: planPanel.toggle()
             case .screens: screensPanel.toggle()
@@ -270,7 +287,7 @@ struct PlanShell: View {
     /// The bubble, the strip, or a panel's pin.
     private func clickPanel(_ side: ShellPanel.Side) {
         let now = ProcessInfo.processInfo.systemUptime
-        withAnimation(HopeMotion.ui(reduced: reduceMotion)) {
+        withAnimation(HopeMotion.bubble(reduced: reduceMotion)) {
             switch side {
             case .plans: planPanel.click(at: now)
             case .screens: screensPanel.click(at: now)
@@ -283,6 +300,10 @@ struct PlanShell: View {
     private var slidesArea: some View {
         center
             .frame(minWidth: 320, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+            // The page stays between the docked columns, so nothing on it
+            // draws over their edges; above and below it still scrolls on
+            // under the bubble and the control bar.
+            .clipShape(SideClip())
             .animation(HopeMotion.ui(reduced: reduceMotion), value: modeRaw)
             // The whole-plan page scrolls to an item instead of
             // swapping views, and its selection moves as it scrolls.
@@ -305,8 +326,8 @@ struct PlanShell: View {
             // of the slides for as long as a microphone is open.
             .safeAreaInset(edge: .top, spacing: 0) { LiveListeningBar() }
             .animation(HopeMotion.ui(reduced: reduceMotion), value: LiveAssist.shared.listening)
-            .animation(HopeMotion.ui(reduced: reduceMotion), value: planPanel.mode)
-            .animation(HopeMotion.ui(reduced: reduceMotion), value: screensPanel.mode)
+            .animation(HopeMotion.bubble(reduced: reduceMotion), value: planPanel.mode)
+            .animation(HopeMotion.bubble(reduced: reduceMotion), value: screensPanel.mode)
     }
 
     /// The control bar centred under the slides, and in Present the slide
@@ -353,62 +374,72 @@ struct PlanShell: View {
         return itemID.flatMap { id in plan.items.first { $0.id == id } }
     }
 
-    private func planHandle(pinned: Bool) -> PlanBubbleLabel {
+    private var planHandle: PlanBubbleLabel {
         let item = currentItem
         return PlanBubbleLabel(
             planName: currentPlan?.name,
             itemName: item.map { $0.name.isEmpty ? "Untitled" : $0.name },
-            kind: item.map { HopeStyle.kind(of: $0, presentation: $0.itemKind == .presentation ? model.presentation($0.refId) : nil) },
-            pinned: pinned)
+            kind: item.map { HopeStyle.kind(of: $0, presentation: $0.itemKind == .presentation ? model.presentation($0.refId) : nil) })
     }
 
-    /// The bubble when folded, the whole panel when peeking: one view, so
-    /// the pointer stays inside it while the one becomes the other.
+    static let planShapeID = "shell.plan"
+    static let screensShapeID = "shell.screens"
+
+    /// The bubble when folded, the whole panel when peeking: one shape that
+    /// grows from the one into the other.
     private var planFloat: some View {
-        ZStack(alignment: .topLeading) {
-            if planPanel.isPeeking {
-                VStack(spacing: 0) {
-                    planHeaderButton(pinned: false)
-                    Divider()
-                    sidebar
-                }
-                .frame(width: ShellMetrics.planWidth)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .peekCard()
-                .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .topLeading)))
-            } else {
-                Button { clickPanel(.plans) } label: {
-                    planHandle(pinned: false)
-                        .padding(.horizontal, 12)
-                        .frame(width: 236, height: ShellMetrics.bubbleHeight)
-                }
-                .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: Capsule())
-                .help("The plan. Point at it to look, click to keep it open (⌃⌘S).")
-                .transition(.opacity)
+        MorphingPanel(
+            panel: $planPanel, id: Self.planShapeID, namespace: shellSpace,
+            foldedWidth: ShellMetrics.bubbleWidth, foldedHeight: ShellMetrics.bubbleHeight,
+            foldedRadius: ShellMetrics.bubbleHeight / 2, openWidth: ShellMetrics.planWidth
+        ) {
+            Button { clickPanel(.plans) } label: {
+                planHandle
+                    .padding(.horizontal, 10)
+                    .frame(width: ShellMetrics.bubbleWidth, height: ShellMetrics.bubbleHeight)
             }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .help("The plan. Point at it to look, click to keep it open (⌃⌘S).")
+            .popover(isPresented: addShown(.bubble), arrowEdge: .bottom) { addPopover }
+        } open: {
+            planPanelContent(pinned: false)
         }
-        .modifier(ShellPanelHover(panel: $planPanel))
-        .padding(ShellMetrics.inset)
     }
 
-    private func planHeaderButton(pinned: Bool) -> some View {
-        Button { clickPanel(.plans) } label: {
-            planHandle(pinned: pinned)
-                .padding(.horizontal, 12)
-                .frame(height: ShellMetrics.bubbleHeight)
-        }
-        .buttonStyle(.plain)
-        .help(pinned ? "Fold the plan to a bubble (⌃⌘S)" : "Keep the plan open beside the slides (⌃⌘S)")
-    }
-
-    private var dockedPlanPanel: some View {
+    /// The plan panel, peeking or docked: its header, then the plans (or
+    /// the library) and the plan's items.
+    private func planPanelContent(pinned: Bool) -> some View {
         VStack(spacing: 0) {
-            planHeaderButton(pinned: true)
+            planPanelHeader(pinned: pinned)
             Divider()
             sidebar
         }
-        .dockedPanel()
+    }
+
+    /// The plan and its item, which pins or folds the panel like the pin
+    /// does, then Add to Plan and the pin. The text starts where the list's
+    /// rows do, and both buttons sit centred on the same line.
+    private func planPanelHeader(pinned: Bool) -> some View {
+        let help = pinned ? "Fold the plan to a bubble (⌃⌘S)" : "Keep the plan open beside the slides (⌃⌘S)"
+        return HStack(spacing: 8) {
+            Button { clickPanel(.plans) } label: { planHandle }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .help(help)
+            if canAddToPlan {
+                PanelHeaderButton(symbol: "plus", tint: HopeStyle.blue, help: "Add to the plan (⌥⌘N)") {
+                    addAnchor = .header
+                }
+                .popover(isPresented: addShown(.header), arrowEdge: .bottom) { addPopover }
+            }
+            PanelHeaderButton(
+                symbol: pinned ? "pin.fill" : "pin", tint: pinned ? HopeStyle.blue : nil, help: help
+            ) { clickPanel(.plans) }
+        }
+        .padding(.leading, ShellMetrics.rowLeading)
+        .padding(.trailing, 12)
+        .frame(height: ShellMetrics.headerHeight)
     }
 
     // MARK: The screens panel
@@ -421,30 +452,74 @@ struct PlanShell: View {
             onEditStage: { editStageDisplay() })
     }
 
-    /// The strip when folded, the whole column when peeking.
+    /// The strip when folded, the whole column when peeking, as one shape.
     private func screensFloatView(_ render: RenderContext) -> some View {
-        ZStack(alignment: .topTrailing) {
-            if screensPanel.isPeeking {
-                screensColumn(render, pinned: false)
-                    .frame(width: ShellMetrics.screensWidth)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .peekCard()
-                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .topTrailing)))
-            } else {
-                // Built only while folded: the full previews aren't drawn at all then.
-                Button { clickPanel(.screens) } label: {
-                    ScreensStrip(
-                        render: render, controls: controls,
-                        screens: MonitorsPanel.shownScreens(render: render, setup: ShowSetup.shared, hiddenList: hiddenScreens))
-                }
-                .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .help("The screens. Point at them to look, click to keep them open (⌃⌘R).")
-                .transition(.opacity)
+        MorphingPanel(
+            panel: $screensPanel, id: Self.screensShapeID, namespace: shellSpace, alignment: .topTrailing,
+            foldedWidth: nil, foldedHeight: ShellMetrics.stripHeight,
+            foldedRadius: ShellMetrics.stripRadius, openWidth: ShellMetrics.screensWidth
+        ) {
+            // Built only while folded: the full previews aren't drawn at all then.
+            Button { clickPanel(.screens) } label: {
+                ScreensStrip(
+                    render: render, controls: controls,
+                    screens: MonitorsPanel.shownScreens(render: render, setup: ShowSetup.shared, hiddenList: hiddenScreens))
             }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .help("The screens. Point at them to look, click to keep them open (⌃⌘R).")
+        } open: {
+            screensColumn(render, pinned: false)
         }
-        .modifier(ShellPanelHover(panel: $screensPanel))
-        .padding(ShellMetrics.inset)
+    }
+
+    // MARK: Add to Plan
+
+    /// Where the Add to Plan popover opens from: the panel's header, the
+    /// bubble while the plan is folded, or the plan's own header in Edit.
+    enum AddAnchor { case header, bubble, sidebar }
+
+    private var canAddToPlan: Bool { !runOnly && model.currentServiceID != nil }
+
+    /// Where the popover goes when it's asked for from the menu or ⌥⌘N.
+    private var addAnchorNow: AddAnchor {
+        if mode == .edit { return .sidebar }
+        return planPanel.mode == .collapsed ? .bubble : .header
+    }
+
+    private var addToPlanAction: MenuAction? {
+        guard canAddToPlan else { return nil }
+        return MenuAction("addToPlan") { addAnchor = addAnchorNow }
+    }
+
+    private func addShown(_ anchor: AddAnchor) -> Binding<Bool> {
+        Binding(
+            get: { addAnchor == anchor },
+            set: { shown in if !shown, addAnchor == anchor { addAnchor = nil } })
+    }
+
+    private var addPopover: some View {
+        AddToPlanPopover { choice in
+            addAnchor = nil
+            add(choice)
+        }
+    }
+
+    /// Everything lands after the selected item (or at the end) and is
+    /// selected. A new song opens in the song editor; a new presentation
+    /// starts empty and stays here, where its page offers to add slides.
+    private func add(_ choice: AddToPlanChoice) {
+        guard let planID = model.currentServiceID else { return }
+        switch choice {
+        case .song: newSongShown = true
+        case .presentation: addPresentation(planID, kind: .deck)
+        case .slideshow: addPresentation(planID, kind: .slideshow)
+        case .scripture: scriptureShown = true
+        case .media: libraryPick = LibraryPick(scopes: [.media])
+        case .header: addHeader(planID)
+        case .messageNotes: notesPlanID = planID
+        case .library: libraryPick = LibraryPick(scopes: [])
+        }
     }
 
     /// Simple Mode from the toolbar or View menu: the first time sets the
@@ -500,13 +575,18 @@ struct PlanShell: View {
             .fixedSize()
             Spacer(minLength: 0)
             if topPane == .plans {
-                Button { creatingPlan = true } label: { Image(systemName: "plus") }
-                    .buttonStyle(.borderless)
-                    .help("New plan")
+                Button { creatingPlan = true } label: {
+                    Image(systemName: "calendar.badge.plus")
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help("New plan")
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.leading, ShellMetrics.rowLeading - 4)
+        .padding(.trailing, 12)
+        .padding(.vertical, 8)
     }
 
     private var planList: some View {
@@ -533,7 +613,9 @@ struct PlanShell: View {
                 }
             }
         }
-        .listStyle(.sidebar)
+        // Inset like the plan's items below, so the two lists' text lines up.
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
         .font(.system(size: 12))
         .environment(\.defaultMinListRowHeight, 22)
     }
@@ -660,13 +742,30 @@ struct PlanShell: View {
                         .truncationMode(.middle)
                     Spacer(minLength: 4)
                     if !runOnly {
-                        Button { messagePlanID = planID } label: { Image(systemName: "text.book.closed") }
-                            .buttonStyle(.borderless)
-                            .help("This plan's message, sermon series and what every screen shows")
+                        Button { messagePlanID = planID } label: {
+                            Image(systemName: "text.book.closed")
+                                .frame(width: 24, height: 24)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                        .help("This plan's message, sermon series and what every screen shows")
+                    }
+                    // Edit has no panel header, so Add to Plan is here.
+                    if mode == .edit, canAddToPlan {
+                        Button { addAnchor = .sidebar } label: {
+                            Image(systemName: "plus")
+                                .fontWeight(.semibold)
+                                .frame(width: 24, height: 24)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Add to the plan (⌥⌘N)")
+                        .popover(isPresented: addShown(.sidebar), arrowEdge: .bottom) { addPopover }
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
+                .padding(.leading, ShellMetrics.rowLeading)
+                .padding(.trailing, 12)
+                .padding(.vertical, 4)
                 RunOrderList(
                     model: model, controls: controls, serviceID: planID, render: render,
                     selectedItemID: $itemID,
@@ -971,6 +1070,20 @@ struct PlanShell: View {
             .sheet(isPresented: $themeFromImage) {
                 ThemeFromImageSheet(model: model) { id in editTheme(id) }
             }
+            .sheet(isPresented: $newSongShown) {
+                NewSongSheet { title, lyrics in addSong(title: title, lyrics: lyrics) }
+            }
+            .sheet(item: $libraryPick) { pick in
+                if let planID = model.currentServiceID {
+                    LibrarySearchSheet(
+                        model: model, serviceID: planID, initialScopes: pick.scopes,
+                        onAdd: { addEntry($0) },
+                        onImportFile: pick.scopes == [.media] ? {
+                            // Once the sheet has gone: the file panel can't open over it.
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { addingVideo = true }
+                        } : nil)
+                }
+            }
             .onChange(of: ThemeEditorRouter.shared.requests) { _, _ in
                 if let id = ThemeEditorRouter.shared.themeID { editTheme(id) }
             }
@@ -1008,15 +1121,17 @@ struct PlanShell: View {
         append(item, to: planID)
     }
 
-    /// A new presentation with no slides yet, added at the end of the plan
-    /// (or after the selected item) and opened for editing.
-    private func addPresentation(_ planID: String, kind: NewKind) {
+    /// A new presentation with no slides yet, added after the selected item
+    /// (or at the end of the plan) and selected. A song opens in the song
+    /// editor, where its words go; any other kind stays where it is, and
+    /// its empty page offers to add slides.
+    private func addPresentation(_ planID: String, kind: NewKind, name songName: String? = nil) {
         let name: String
         var presentation = Presentation(
             id: UUID().uuidString, name: "", presentationKind: .deck, themeId: "", slides: [])
         switch kind {
         case .song:
-            name = "New Song"
+            name = songName ?? "New Song"
             presentation.presentationKind = .song
             presentation.category = PresentationTypes.worship
             presentation.themeId = model.slideBuilding.lyricsImportThemeId ?? BasicTemplates.worshipThemeID
@@ -1036,7 +1151,40 @@ struct PlanShell: View {
         presentation.name = name
         model.createInDrive(presentation)
         append(ServiceItem(id: UUID().uuidString, itemKind: .presentation, name: name, refId: presentation.id), to: planID)
+        if kind == .song { modeRaw = AppMode.edit.rawValue }
+    }
+
+    /// New Song from Add to Plan. Words pasted in become its slides, read
+    /// the way a dropped SongSelect or ChordPro file is; with none, it's an
+    /// empty song. Either way it opens in the song editor.
+    private func addSong(title: String, lyrics: String) {
+        guard let planID = model.currentServiceID else { return }
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            addPresentation(planID, kind: .song, name: title.isEmpty ? nil : title)
+            return
+        }
+        let song = LyricsFetcher.shared.importText(lyrics, title: title.isEmpty ? "New Song" : title, model: model)
+        if !title.isEmpty, song.name != title {
+            model.updatePresentation(song.id) { $0.name = title }
+        }
+        append(ServiceItem(id: UUID().uuidString, itemKind: .presentation, name: title.isEmpty ? song.name : title, refId: song.id), to: planID)
         modeRaw = AppMode.edit.rawValue
+    }
+
+    /// Something picked from the library, after the selected item.
+    private func addEntry(_ entry: LibraryIndex.Entry) {
+        guard let planID = model.currentServiceID else { return }
+        let kind: ServiceItemKind? = switch entry.kind {
+        case .presentation: .presentation
+        case .media: .media
+        case .audio: .audio
+        case .playlist: .playlist
+        default: nil
+        }
+        guard let kind else { return }
+        append(ServiceItem(id: UUID().uuidString, itemKind: kind, name: entry.name, refId: entry.id), to: planID)
+        model.markUsed(entry.id)
     }
 
     private func addMedia(_ urls: [URL]) async {
@@ -1060,6 +1208,151 @@ struct PlanShell: View {
 /// A plain id for sheet(item:).
 struct IdentifiedID: Identifiable, Hashable {
     let id: String
+}
+
+/// The library sheet opened from Add to Plan, and which kinds it starts on.
+struct LibraryPick: Identifiable {
+    let id = UUID()
+    let scopes: Set<LibrarySection>
+}
+
+enum AddToPlanChoice {
+    case song, presentation, scripture, media, header, slideshow, messageNotes, library
+}
+
+/// Add to Plan: the four things most often added, large, then the rest.
+/// Whatever is chosen goes in after the selected item.
+struct AddToPlanPopover: View {
+    let choose: (AddToPlanChoice) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Add to Plan")
+                .font(.headline)
+            Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                GridRow {
+                    tile("New Song", kind: .song, .song)
+                    tile("New Presentation", kind: .presentation, .presentation)
+                }
+                GridRow {
+                    tile("Scripture", symbol: "book.fill", color: HopeStyle.lightBlue, .scripture)
+                    tile("Media", kind: .video, .media)
+                }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 2) {
+                row("Header", symbol: "textformat", .header)
+                row("Slideshow", symbol: "play.rectangle.on.rectangle", .slideshow)
+                row("Message Notes…", symbol: "text.book.closed", .messageNotes)
+                row("Add from Library…", symbol: "books.vertical", .library)
+            }
+            Text("Goes after the selected item.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(width: 280)
+    }
+
+    private func tile(_ title: String, kind: HopeStyle.ItemKind, _ choice: AddToPlanChoice) -> some View {
+        tile(title, symbol: kind.symbol, color: kind.color, choice)
+    }
+
+    private func tile(_ title: String, symbol: String, color: Color, _ choice: AddToPlanChoice) -> some View {
+        Button { choose(choice) } label: {
+            VStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(color.gradient, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                Text(title)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func row(_ title: String, symbol: String, _ choice: AddToPlanChoice) -> some View {
+        Button { choose(choice) } label: {
+            Label(title, systemImage: symbol)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(AddRowStyle())
+    }
+}
+
+/// A popover row that lights on hover, like a menu item.
+private struct AddRowStyle: ButtonStyle {
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                Color.primary.opacity(configuration.isPressed ? 0.12 : hovering ? 0.07 : 0),
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .onHover { hovering = $0 }
+    }
+}
+
+/// New Song from Add to Plan: a title and, if they're to hand, the words.
+/// Pasted SongSelect or ChordPro text keeps its sections; plain lines are
+/// split into slides. Left empty, the song editor takes it from there.
+struct NewSongSheet: View {
+    let add: (_ title: String, _ lyrics: String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
+    @State private var lyrics = ""
+    @FocusState private var titleFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New Song").font(.headline)
+            TextField("Title", text: $title)
+                .textFieldStyle(.roundedBorder)
+                .focused($titleFocused)
+            TextEditor(text: $lyrics)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .padding(4)
+                .frame(height: 220)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if lyrics.isEmpty {
+                        Text("Paste or type the words (optional)")
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 4)
+                            .padding(.leading, 9)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.separator))
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Add Song") {
+                    add(title, lyrics)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty
+                    && lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(16)
+        .frame(width: 440)
+        .onAppear { titleFocused = true }
+    }
 }
 
 /// Asks for the microphone only when the person clicks, so the prompt never
@@ -1127,10 +1420,18 @@ private struct SlideSizeControl: View {
 }
 
 private extension View {
-    /// A small floating control over the slides.
+    /// A small floating control over the slides, as tall as the control bar.
     func glassChip() -> some View {
         padding(.horizontal, 12)
-            .frame(height: 34)
+            .frame(height: ShowControlBar.height)
             .glassEffect(.regular, in: Capsule())
+    }
+}
+
+/// Clips only at the left and right: the slides page keeps scrolling on
+/// under the floating pieces above and below it.
+private struct SideClip: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(CGRect(x: rect.minX, y: rect.minY - 10_000, width: rect.width, height: rect.height + 20_000))
     }
 }

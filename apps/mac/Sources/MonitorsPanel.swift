@@ -94,10 +94,12 @@ struct MonitorsPanel: View {
 
     // MARK: Which screens show
 
+    /// Laid out like the plan panel's header: the same height and margins,
+    /// and the same round buttons centred on one line.
     private var header: some View {
-        HStack {
-            Text("Screens").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            Spacer()
+        HStack(spacing: 8) {
+            Text("Screens").font(.callout.weight(.semibold))
+            Spacer(minLength: 0)
             Menu {
                 ForEach(allScreens, id: \.id) { screen in
                     Toggle(screen.label, isOn: Binding(
@@ -107,22 +109,23 @@ struct MonitorsPanel: View {
                 Divider()
                 Button("Show All") { hiddenList = "" }
             } label: {
-                Image(systemName: "eye")
+                PanelHeaderGlyph(symbol: "eye")
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
             .fixedSize()
             .help("Choose which screens preview here")
             if let onPin {
-                Button(action: onPin) {
-                    Image(systemName: pinned ? "pin.fill" : "pin")
-                        .foregroundStyle(pinned ? AnyShapeStyle(HopeStyle.blue) : AnyShapeStyle(.secondary))
-                }
-                .buttonStyle(.borderless)
-                .help(pinned ? "Fold the screens back to the strip (⌃⌘R)" : "Keep the screens open beside the slides (⌃⌘R)")
+                PanelHeaderButton(
+                    symbol: pinned ? "pin.fill" : "pin", tint: pinned ? HopeStyle.blue : nil,
+                    help: pinned ? "Fold the screens back to the strip (⌃⌘R)" : "Keep the screens open beside the slides (⌃⌘R)",
+                    action: onPin)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.leading, ShellMetrics.rowLeading)
+        .padding(.trailing, 12)
+        .frame(height: ShellMetrics.headerHeight)
     }
 
     /// One screen the column previews, for the folded strip.
