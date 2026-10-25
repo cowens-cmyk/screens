@@ -74,6 +74,11 @@ struct RunOrderList: View {
                 ScrollViewReader { proxy in
                     runOrderList(service: service, visible: visible, order: order, changed: changed)
                         .animation(HopeMotion.ui(reduced: reduceMotion), value: order)
+                        .overlay {
+                            CurrentItemHighlight(
+                                frame: selectedItemID.flatMap { rowFrames[$0] }, itemID: selectedItemID,
+                                reduceMotion: reduceMotion)
+                        }
                         // The whole-plan page moves the selection as it
                         // scrolls; keep that row in sight.
                         .onChange(of: selectedItemID) { _, id in
@@ -1229,4 +1234,33 @@ struct PlanAddActions {
     var slideshow: () -> Void
     var media: () -> Void
     var message: () -> Void
+}
+
+/// The item the slides are on, marked in the plan list with an accent band
+/// that glides from row to row as the whole-plan page scrolls. The list's
+/// own selection turns grey whenever the page has focus, which is nearly
+/// always while presenting, so on its own it barely shows.
+private struct CurrentItemHighlight: View {
+    let frame: CGRect?
+    let itemID: String?
+    let reduceMotion: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let frame {
+                let origin = proxy.frame(in: .global).origin
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.22))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1))
+                    .frame(width: max(frame.width - 12, 0), height: frame.height - 2)
+                    .position(x: frame.midX - origin.x, y: frame.midY - origin.y)
+            }
+        }
+        .clipped()
+        .allowsHitTesting(false)
+        // Only a change of item animates; the list scrolling under it doesn't.
+        .animation(reduceMotion ? nil : .spring(duration: 0.35, bounce: 0.15), value: itemID)
+    }
 }
