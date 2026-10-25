@@ -382,7 +382,7 @@ struct AppSettingsView: View {
         if let model {
             rows.append(SettingsRowSpec(
                 id: "show.typeScreens", category: .showSetup,
-                title: "Screens by Type",
+                title: "Lower Thirds",
                 caption: nil,
                 keywords: "lower third lower thirds theme worship message sermon scripture bible announcements livestream stream type default series song",
                 control: AnyView(ScreensByTypeForm(model: model, render: controls?.render)),

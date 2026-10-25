@@ -124,7 +124,7 @@ struct SongEditorView: View {
                 Divider()
                 ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
             }
-            .help("Set for every song in More › Lower Thirds & Themes. A theme picked here wins for this song.")
+            .help("Set for every song in More › Lower Thirds. A theme picked here wins for this song.")
             .task(id: model.version(of: .theme)) { lowerThirds = await LowerThirdCatalog.load(model) }
             Picker("Stage", selection: optionalBinding(\.stageLayoutId)) {
                 Text("Worship (chords, current, next, key, time)").tag("")

@@ -78,7 +78,7 @@ struct ThemeRoutingTable: View {
         let series = types.contains(PresentationTypes.sermon)
             && settings.screens(forType: PresentationTypes.sermon).livestream == .series
             ? " The Message follows the plan's sermon series, which uses the series theme's table." : ""
-        return "Screens by Type sets the livestream for \(list) presentations, ahead of this table.\(series) Change it in More › Lower Thirds & Themes."
+        return "More › Lower Thirds sets the livestream for \(list) presentations, ahead of this table.\(series)"
     }
 
     private func designMenu(for category: String) -> some View {

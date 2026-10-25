@@ -32,7 +32,7 @@ The window title is the current plan's name. It has three columns.
 - Mode picker: **Present / Edit / Schedule** (also View menu, ⌘1 / ⌘2 / ⌘3).
 - **Schedule Service**: when this plan's services start and when the countdown starts.
 - **Bible**: click to add scripture (⌘⇧B); the arrow opens a menu with **Add Scripture…**, **Listen for Scripture** / **Stop Listening**, and a **Bible Theme** list.
-- **More** (…): **Message & Series…**, **Timers & Macros…**, **Lower Thirds & Themes…** (Screens by Type, see Livestream), **Screen Setup…** (opens the Screen Configuration window), **Edit Stage Display…**.
+- **More** (…): **Message & Series…**, **Timers & Macros…**, **Lower Thirds…** (the livestream lower third for each type, see Livestream), **Screen Setup…** (opens the Screen Configuration window), **Edit Stage Display…**.
 - **Screens**: shows or hides the right column.
 
 ## Menu bar and shortcuts
@@ -129,7 +129,7 @@ When Anthem triggers a song that is in the plan twice, the slide lands on the li
 - **Import Lyrics…**: paste lyrics or **Load File…**; SongSelect and ChordPro text are detected.
 - **Import Chord Chart…** (File) or **Attach Chord Chart…** (editor inspector): PDF, ChordPro or text; rebuilds lyrics, sections, chords and key.
 
-**Song editor** (opens when you edit a song): song title and **Key** at the top; the lyrics with each section name on its own line (Verse 1, Chorus, Bridge); a lines-per-slide stepper (1 to 6); **Update Slides** (⌘Return) rebuilds the slides; **Slide Editor…** opens the full editor. **Song Order**: drag sections to reorder, click a section chip to add it again. **Screens**: Audience theme, Livestream (left on "Worship default: …" it follows Screens by Type; pick a theme to use that theme's lower thirds for this song only), Stage (Worship layout or another layout).
+**Song editor** (opens when you edit a song): song title and **Key** at the top; the lyrics with each section name on its own line (Verse 1, Chorus, Bridge); a lines-per-slide stepper (1 to 6); **Update Slides** (⌘Return) rebuilds the slides; **Slide Editor…** opens the full editor. **Song Order**: drag sections to reorder, click a section chip to add it again. **Screens**: Audience theme, Livestream (left on "Worship default: …" it follows Lower Thirds; pick a theme to use that theme's lower thirds for this song only), Stage (Worship layout or another layout).
 
 **Arrangements.** In the slide editor, group slides into sections first (right-click a slide › **Start New Section Here…**). Then the **Arrangement** button: **New Arrangement**, **Add Block**, remove blocks; repeat a chorus without duplicating slides. Pick the arrangement per plan with the item's **Arrangement** submenu, or with the arrangement strip above the slide grid.
 
@@ -220,21 +220,21 @@ A series theme has five full-screen designs: **Title**, **Point**, **Scripture**
 
 ## Livestream
 
-The livestream screen is keyed over the camera. In order, these decide what it shows: a playing video, then the slide's own choice, then the Livestream switch, then (on Lower Third) the presentation's own Livestream theme, its type's choice in Screens by Type, and last the slide's theme's routing.
+The livestream screen is keyed over the camera. In order, these decide what it shows: a playing video, then the slide's own choice, then the Livestream switch, then (on Lower Third) the presentation's own Livestream theme, its type's choice in Lower Thirds, and last the slide's theme's routing.
 
 **1. The Livestream switch** (Livestream card menu in the screens column, or Settings › Show Setup):
 - **Lower Third** (default): each slide shows in the lower third set up for it (below); anything without one leaves the camera clear.
 - **Full Screen**: the room's slide, edge to edge.
 - **Transparent**: nothing over the camera.
 
-**2. Screens by Type** (More › **Lower Thirds & Themes…**, or Settings › Show Setup › Screens by Type). One row each for **Worship** (songs count as Worship), **Message**, **Scripture**, **Announcements** and **Other** (no type, Video, or any other type). Church-wide, synced to every Mac.
-- **Audience**: the theme new presentations of that type start in. Worship is the theme new songs get, Message the series for plans that haven't picked one, Scripture the scripture theme. Presentations already made keep their own. Announcements and Other always keep each presentation's own.
-- **Livestream**: what goes over the camera for every presentation of that type: **Each theme's own lower third** (the theme's Where It Goes table), **The plan's sermon series** (the plan's series theme's lower thirds; the Message's default), **Same as audience (full screen)**, **Nothing (camera only)**, **All <theme> lower thirds** (a theme's lower thirds, matched by category), or one lower-third design from any theme or series. A preview shows the choice over a stand-in camera picture.
-- Example: to put the Worship lower third on every song, set Worship › Livestream to the Worship theme's Lyrics lower third. A song still wins with its own Livestream theme (song editor › Screens), and a slide with its own choice.
+**2. Lower Thirds** (More › **Lower Thirds…**, or Settings › Show Setup › Lower Thirds). One row each for **Worship** (songs count as Worship), **Message**, **Scripture** and **Announcements**, each with one picker and a preview over a stand-in camera picture. Church-wide, synced to every Mac.
+- The picker lists every lower third in the library by name (Lyrics, Sermon Points, Bible…), plus **Camera only**. **Not set** leaves it to each slide's theme. The Message's default is **Sermon series**: the plan's series theme's lower thirds.
+- Example: to put the Worship lower third on every song, set Worship to **Lyrics**. A song still wins with its own Livestream theme (song editor › Screens), and a slide with its own choice.
+- It sets only the livestream; what the room sees doesn't change.
 
-**3. A presentation's own Livestream theme** (song editor › Screens › Livestream, or the slide editor's inspector › Presentation › Livestream). Left on "<Type> default: …" it follows Screens by Type; a theme picked here wins over the type for that presentation.
+**3. A presentation's own Livestream theme** (song editor › Screens › Livestream, or the slide editor's inspector › Presentation › Livestream). Left on "<Type> default: …" it follows Lower Thirds; a theme picked here wins over the type for that presentation.
 
-**4. The theme's routing** (theme editor › Where It Goes): what each category shows when nothing above decided. Its note says when Screens by Type decides first.
+**4. The theme's routing** (theme editor › Where It Goes): what each category shows when nothing above decided. Its note says when Lower Thirds decides first.
 
 **5. The slide's own choice** (right-click › Livestream, Screens…, or the editor's Livestream picker). It wins over the switch and everything above:
 - **Theme Default**: follow the switch, the presentation, its type and its theme.
@@ -376,7 +376,7 @@ Settings › Network & API: **Local API** on/off, **Port**, **Connect at** (open
 ## Settings overview
 
 Open with ⌘,. A search field finds any setting. Pages:
-- **Show Setup**: the three screens and the Livestream switch, Screens by Type (each type's theme and livestream lower third), Blackmagic DeckLink, Live Assist.
+- **Show Setup**: the three screens and the Livestream switch, Lower Thirds (each type's livestream lower third), Blackmagic DeckLink, Live Assist.
 - **Present**: media and slide transitions, default animations, slides across, thumbnail options, Confidence NEXT skips blank slides, **Present layouts**, **Run-Only Mode** (locks editing for volunteers behind a 4 to 6 digit passcode; **Enter Run-Only Mode…**, **Change Passcode…**), **Presentation types**.
 - **Audio/Video Inputs**, **MIDI**.
 - **Screens**: opens Screen Configuration.
@@ -418,7 +418,7 @@ The comparison is done in Screens; only the differences go to Claude, never whol
 
 - Ask before deleting anything: slides, presentations, plan items, media or themes. Say exactly what will be removed. Removing an item from a plan is not the same as deleting the presentation from the library; prefer the former unless asked.
 - Keep slide names short. Announcement slides are named after the event title.
-- Leave a slide's livestream choice on **Theme Default** unless someone asks for something else. When someone wants a lower third on every song (or every message, or all scripture), point them to More › Lower Thirds & Themes rather than setting each slide or song.
+- Leave a slide's livestream choice on **Theme Default** unless someone asks for something else. When someone wants a lower third on every song (or every message, or all scripture), point them to More › Lower Thirds rather than setting each slide or song.
 - Pre-service slideshows advance every 10 seconds per slide and loop.
 - When adding announcements, use the event's card image as the full-slide background and remove slides for events that have passed (after asking).
 - New presentations for a plan should be added to the plan as well as the library.

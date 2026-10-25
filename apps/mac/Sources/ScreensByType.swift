@@ -13,8 +13,28 @@ struct LowerThirdCatalog {
         var id: String { theme.id }
     }
 
+    /// One lower third, as the pickers list it.
+    struct Choice: Identifiable {
+        let themeID: String
+        let slideID: String
+        let title: String
+        var id: String { themeID + "|" + slideID }
+    }
+
     var groups: [Group] = []
     var themes: [String: Theme] = [:]
+
+    /// Every lower third outside the series, by name. Two with the same
+    /// name say which theme each is from.
+    var choices: [Choice] {
+        let designs = groups.filter { !$0.isSeries }.flatMap { group in group.designs.map { (group.theme, $0) } }
+        let names = designs.map { LowerThirdCatalog.shortName($0.1) }
+        return designs.map { theme, design in
+            let name = LowerThirdCatalog.shortName(design)
+            let shared = names.filter { $0.caseInsensitiveCompare(name) == .orderedSame }.count > 1
+            return Choice(themeID: theme.id, slideID: design.id, title: shared ? "\(name) (\(theme.name))" : name)
+        }
+    }
 
     @MainActor
     static func load(_ model: AppModel) async -> LowerThirdCatalog {
@@ -44,13 +64,14 @@ struct LowerThirdCatalog {
     }
 }
 
-/// The livestream choices for a type, worded the same in Screens by Type,
-/// the song editor and the presentation inspector.
+/// The livestream choices for a type, worded the same in the Lower Thirds
+/// sheet, the song editor and the presentation inspector. Plain names: the
+/// lower third itself, not where it's filed.
 enum TypeStreamWording {
-    static let theme = "Each theme's own lower third"
-    static let series = "The plan's sermon series"
-    static let audience = "Same as audience (full screen)"
-    static let clear = "Nothing (camera only)"
+    static let theme = "Not set"
+    static let series = "Sermon series"
+    static let audience = "Full screen"
+    static let clear = "Camera only"
 
     @MainActor
     static func title(_ stream: TypeStream, catalog: LowerThirdCatalog, model: AppModel) -> String {
@@ -60,43 +81,56 @@ enum TypeStreamWording {
         case .audience: return audience
         case .clear: return clear
         case .design(let themeID, let slideID):
-            let name = catalog.themes[themeID]?.name ?? model.entry(themeID)?.name ?? "Missing theme"
-            guard let slideID else { return "\(name) — all lower thirds" }
-            let design = catalog.themes[themeID]?.slides?.first { $0.id == slideID }
-            return design.map { "\(name) › \(LowerThirdCatalog.shortName($0))" } ?? name
+            let name = catalog.themes[themeID]?.name ?? model.entry(themeID)?.name ?? "Missing lower third"
+            guard let slideID else { return name }
+            return catalog.choices.first { $0.themeID == themeID && $0.slideID == slideID }?.title
+                ?? catalog.themes[themeID]?.slides?.first { $0.id == slideID }.map(LowerThirdCatalog.shortName)
+                ?? name
         }
     }
 }
 
-/// One type's livestream choice: the type's own options, then every lower
-/// third in the library, grouped by theme.
+/// One type's lower third: "Not set" (or the sermon series, for the
+/// Message), then each lower third in the library by name, then camera
+/// only. Series lower thirds aren't listed; "Sermon series" covers them and
+/// they change every few weeks.
 struct TypeStreamPicker: View {
+    let model: AppModel
     let type: String
     @Binding var selection: TypeStream
     let catalog: LowerThirdCatalog
 
     var body: some View {
-        Picker("Livestream", selection: $selection) {
-            if type == PresentationTypes.sermon { Text(TypeStreamWording.series).tag(TypeStream.series) }
-            Text(TypeStreamWording.theme).tag(TypeStream.theme)
-            if type != PresentationTypes.sermon { Text(TypeStreamWording.series).tag(TypeStream.series) }
-            Text(TypeStreamWording.audience).tag(TypeStream.audience)
-            Text(TypeStreamWording.clear).tag(TypeStream.clear)
-            ForEach(catalog.groups) { group in
-                Section(group.isSeries ? "\(group.theme.name) (series)" : group.theme.name) {
-                    Text("All \(group.theme.name) lower thirds").tag(TypeStream.design(themeId: group.theme.id, slideId: nil))
-                    ForEach(group.designs, id: \.id) { design in
-                        Text(LowerThirdCatalog.shortName(design))
-                            .tag(TypeStream.design(themeId: group.theme.id, slideId: design.id))
-                    }
-                }
+        Picker("Lower third", selection: $selection) {
+            if type == PresentationTypes.sermon {
+                Text(TypeStreamWording.series).tag(TypeStream.series)
+            } else {
+                Text(TypeStreamWording.theme).tag(TypeStream.theme)
             }
-            // A choice whose theme is gone still shows what it was.
-            if case .design(let themeID, _) = selection, catalog.themes[themeID] == nil {
-                Text("Missing theme").tag(selection)
+            Divider()
+            ForEach(catalog.choices) { choice in
+                Text(choice.title).tag(TypeStream.design(themeId: choice.themeID, slideId: choice.slideID))
+            }
+            Divider()
+            Text(TypeStreamWording.clear).tag(TypeStream.clear)
+            // A choice the list doesn't offer (set before, or its lower
+            // third was deleted) still shows what it is.
+            if !offered(selection) {
+                Text(TypeStreamWording.title(selection, catalog: catalog, model: model)).tag(selection)
             }
         }
         .labelsHidden()
+    }
+
+    private func offered(_ stream: TypeStream) -> Bool {
+        switch stream {
+        case .series: type == PresentationTypes.sermon
+        case .theme: type != PresentationTypes.sermon
+        case .clear: true
+        case .audience: false
+        case .design(let themeID, let slideID):
+            catalog.choices.contains { $0.themeID == themeID && $0.slideID == slideID }
+        }
     }
 }
 
@@ -119,12 +153,12 @@ struct LowerThirdPreview: View {
             case .clear:
                 caption("Camera only")
             case .theme:
-                caption("Follows each slide's theme")
+                caption("Not set")
             case .series, .design:
                 if let design = resolved {
                     LowerThirdImage(model: model, render: render, theme: design.theme, design: design.slide)
                 } else {
-                    caption(stream == .series ? "No series chosen" : "No lower third")
+                    caption(stream == .series ? "No series yet" : "Missing")
                 }
             }
         }
@@ -248,46 +282,41 @@ struct CameraBackdrop: View {
     }
 }
 
-/// Settings › Show Setup › Screens by Type, also a sheet from the toolbar's
-/// More menu: one row per presentation type, with the theme new ones start
-/// in and the lower third the livestream puts over the camera for all of
-/// them, so worship gets its lower third once instead of song by song.
+/// Settings › Show Setup › Lower Thirds, also a sheet from the toolbar's
+/// More menu: for each part of the service, the lower third the
+/// livestream puts over the camera, chosen once instead of song by song.
 struct ScreensByTypeForm: View {
     let model: AppModel
     let render: RenderContext?
 
     @State private var catalog = LowerThirdCatalog()
 
+    /// "Other" (no type, videos) stays on each theme's own lower third;
+    /// listing it only raised questions.
+    private let types = [PresentationTypes.worship, PresentationTypes.sermon, PresentationTypes.bible, PresentationTypes.announcements]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                GridRow {
-                    Text("Type")
-                    Text("Audience")
-                    Text("Livestream")
-                    Text("")
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                ForEach(PresentationTypes.screensTypes, id: \.self) { type in
-                    GridRow(alignment: .center) {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("The lower third shown on the livestream for each part of the service.")
+                .font(.callout).foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                ForEach(types, id: \.self) { type in
+                    if type != types.first { Divider() }
+                    HStack(spacing: 16) {
                         Text(PresentationTypes.screensTitle(type))
-                            .frame(minWidth: 90, alignment: .leading)
-                        audience(type)
-                            .frame(minWidth: 160, maxWidth: 220, alignment: .leading)
-                        TypeStreamPicker(type: type, selection: binding(type), catalog: catalog)
-                            .frame(minWidth: 200, maxWidth: 260, alignment: .leading)
+                            .font(.headline)
+                            .frame(width: 120, alignment: .leading)
+                        TypeStreamPicker(model: model, type: type, selection: binding(type), catalog: catalog)
+                            .frame(width: 200, alignment: .leading)
+                        Spacer(minLength: 0)
                         LowerThirdPreview(
                             model: model, render: render, type: type,
                             stream: model.slideBuilding.screens(forType: type).livestream, catalog: catalog)
-                            .frame(width: 128)
+                            .frame(width: 176)
                     }
+                    .padding(.vertical, 10)
                 }
             }
-            Text("Audience: the theme new songs, messages and scripture start in. Presentations already made keep their own.")
-                .font(.caption).foregroundStyle(.secondary)
-            Text("Livestream: what goes over the camera for every presentation of that type while Livestream is on Lower Third. A presentation's own Livestream theme, or a slide's own choice, wins over it.")
-                .font(.caption).foregroundStyle(.secondary)
         }
         .task(id: model.version(of: .theme)) { catalog = await LowerThirdCatalog.load(model) }
     }
@@ -296,33 +325,6 @@ struct ScreensByTypeForm: View {
         Binding(
             get: { model.slideBuilding.screens(forType: type).livestream },
             set: { value in model.updateSlideBuilding { $0.updateScreens(forType: type) { $0.livestream = value } } })
-    }
-
-    /// The theme new presentations of a type start in. These are the same
-    /// settings the song, scripture and series pickers write, so there's one
-    /// answer wherever it's asked.
-    @ViewBuilder
-    private func audience(_ type: String) -> some View {
-        switch type {
-        case PresentationTypes.worship:
-            themePicker(model.slideBuildingBinding(\.lyricsImportThemeId), none: "None")
-        case PresentationTypes.sermon:
-            themePicker(model.slideBuildingBinding(\.sermonThemeId), none: "Each plan's series")
-                .help("The series for plans that haven't picked their own. Change a plan's series in More › Message & Series.")
-        case PresentationTypes.bible:
-            themePicker(model.slideBuildingBinding(\.scriptureThemeId), none: "The presentation's own theme")
-        default:
-            Text("Each presentation's own").foregroundStyle(.secondary)
-        }
-    }
-
-    private func themePicker(_ selection: Binding<String>, none: String) -> some View {
-        Picker("Audience", selection: selection) {
-            Text(none).tag("")
-            Divider()
-            ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
-        }
-        .labelsHidden()
     }
 }
 
@@ -342,7 +344,7 @@ struct ScreensByTypeSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Lower Thirds & Themes").font(.title3.weight(.semibold))
+            Text("Lower Thirds").font(.title3.weight(.semibold))
             ScreensByTypeForm(model: model, render: render)
             HStack {
                 Spacer()
@@ -350,7 +352,7 @@ struct ScreensByTypeSheet: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 720)
+        .frame(width: 600)
     }
 }
 

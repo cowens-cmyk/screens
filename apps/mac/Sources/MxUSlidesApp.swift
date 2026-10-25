@@ -238,7 +238,7 @@ struct MxUSlidesApp: App {
                 .sheet(isPresented: $showFeedback) {
                     FeedbackView(model: appModel) { showFeedback = false }
                 }
-                // Lower Thirds & Themes from the toolbar's More menu.
+                // Lower Thirds from the toolbar's More menu.
                 .sheet(isPresented: Bindable(ScreensByTypeRouter.shared).shown) {
                     ScreensByTypeSheet(model: appModel, render: renderContext)
                 }

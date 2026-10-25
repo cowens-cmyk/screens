@@ -14,7 +14,7 @@ struct ShowSetupForm: View {
                 ForEach(ShowSetup.StreamMode.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
-            Text("Transparent: nothing over the camera. Lower Third: each slide shows in the lower third chosen for its type in Screens by Type, or its presentation's or theme's own; anything without one leaves the camera clear. Full Screen: the room's slide, edge to edge.")
+            Text("Transparent: nothing over the camera. Lower Third: each slide shows in the lower third chosen for its type in Lower Thirds, or its presentation's or theme's own; anything without one leaves the camera clear. Full Screen: the room's slide, edge to edge.")
                 .font(.caption).foregroundStyle(.secondary)
             Picker("Stage messages show for", selection: $setup.stageMessageDuration) {
                 ForEach(StageMessageDuration.allCases) { Text($0.title).tag($0) }

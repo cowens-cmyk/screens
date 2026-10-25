@@ -268,7 +268,7 @@ struct SlideObjectInspector: View {
                 Divider()
                 ForEach(model.appModel.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
             }
-            .help("Set for every presentation of this type in More › Lower Thirds & Themes. A theme picked here wins for this presentation; a slide's own Livestream wins over both.")
+            .help("Set for every presentation of this type in More › Lower Thirds. A theme picked here wins for this presentation; a slide's own Livestream wins over both.")
             .task(id: model.appModel.version(of: .theme)) { lowerThirds = await LowerThirdCatalog.load(model.appModel) }
 
             Button("Attach Chord Chart…") { attachChordChart() }
