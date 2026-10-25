@@ -91,7 +91,7 @@ struct PresentGridView: View {
                         roundedCorners: roundedCorners,
                         hideScopedBackgrounds: hideScopedBackgrounds,
                         legibleText: legibleText,
-                        slidesAcross: slidesAcross,
+                        chosenAcross: slidesAcross,
                         deleteRequests: deleteRequests,
                         clipboardRequests: clipboardRequests,
                         pastesAtEnd: true,
@@ -188,9 +188,10 @@ enum SlideGridMetrics {
     }
     static let continuousWidthKey = "slideGrid.continuousWidth"
 
-    static let labelHeight: CGFloat = 18
+    static let labelHeight: CGFloat = 16
 
-    static let labelGap: CGFloat = 0
+    /// The space between a slide and its number and name.
+    static let labelGap: CGFloat = 4
 
     static func tileAspect(for presentation: Presentation) -> CGFloat {
         SlidesAcross.tileAspect(canvas: SlideSceneBuilder.canvasSize(for: presentation))
@@ -411,7 +412,13 @@ struct SlideGridBody: View {
     let hideScopedBackgrounds: Bool
     let legibleText: Bool
 
-    let slidesAcross: Int
+    /// The stored Slides Across choice; automatic resolves against this
+    /// grid's own width.
+    let chosenAcross: Int
+
+    private var slidesAcross: Int {
+        SlidesAcross.resolved(chosenAcross, width: measuredWidth, spacing: SlideGridMetrics.spacing)
+    }
 
     var deleteRequests = 0
 
@@ -457,16 +464,9 @@ struct SlideGridBody: View {
                     }
                 }
             }
-            if !runOnly {
-                Button {
-                    addSlideTarget = NewSlideTarget(after: presentation.slides.last)
-                } label: {
-                    Label(slides.isEmpty ? "Add a Slide" : "Add Slide", systemImage: "plus")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Add a slide from any theme, or a blank one")
-            }
+            // No Add Slide row in Present: the last tile's + (on hover), its
+            // right-click New Slide After…, the item header's Add Slide…
+            // and File › New Slide still add one.
         }
     }
 
@@ -577,8 +577,6 @@ struct SlideGridBody: View {
     @State private var slideShowPresented = false
 
     @State private var newSlideTarget: NewSlideTarget?
-    /// The Add Slide button opens straight on the theme picker.
-    @State private var addSlideTarget: NewSlideTarget?
 
     @State private var applyThemeTarget: ApplyThemeTarget?
 
@@ -685,11 +683,6 @@ struct SlideGridBody: View {
         .sheet(item: $livestreamPrompt) { LivestreamPromptSheet(model: model, request: $0) }
         .sheet(item: $newSlideTarget) { target in
             NewSlideSheet(appModel: model, render: render, deckThemeId: presentation.themeId) { choice in
-                insertNewSlide(choice, after: target.after)
-            }
-        }
-        .sheet(item: $addSlideTarget) { target in
-            NewSlideSheet(appModel: model, render: render, deckThemeId: presentation.themeId, startsWithThemes: true) { choice in
                 insertNewSlide(choice, after: target.after)
             }
         }
@@ -1337,8 +1330,7 @@ struct SlideGridBody: View {
             roundedCorners: roundedCorners,
             hideScopedBackgrounds: hideScopedBackgrounds,
             legibleText: legibleText,
-            contextID: contextID,
-            mediaMissing: !missingMedia(of: slide).isEmpty
+            contextID: contextID
         ) {
             handleTap(index: index, slide: slide)
         }
@@ -1674,7 +1666,6 @@ struct SlideTile: View {
 
     var contextID: String? = nil
 
-    var mediaMissing = false
     let fire: () -> Void
 
     private var isLive: Bool {
@@ -1696,17 +1687,10 @@ struct SlideTile: View {
         return presentation.sections?.first { $0.id == id }
     }
 
-    /// The bar's color: the slide's group, else a neutral gray.
-    private var sectionHex: String? {
-        section?.resolvedColorHex(paletteColors: model.groupColors)
-    }
-
-    private var barColor: Color {
-        sectionHex.flatMap(GroupColor.color) ?? Color(.sRGB, white: 0.24)
-    }
-
-    private var barText: Color {
-        sectionHex == nil ? Color(.sRGB, white: 0.85) : GroupColor.text(onHex: sectionHex)
+    /// The slide's group color, drawn as a thin bar along the tile's bottom
+    /// edge; slides outside any group get none.
+    private var groupColor: Color? {
+        section?.resolvedColorHex(paletteColors: model.groupColors).flatMap(GroupColor.color)
     }
 
     /// The group's name on its first slide (as ProPresenter shows it), else
@@ -1726,10 +1710,18 @@ struct SlideTile: View {
             == .name ? slide.name : nil
     }
 
+    /// The slide an arrow key fires next, from wherever the live slide is.
+    private var isNext: Bool {
+        guard let contextID, let next = controls?.nextPlace else { return false }
+        return next.contextID == contextID && next.occurrence == index
+    }
+
+    private var cornerRadius: CGFloat { roundedCorners ? CornerStandard.element : 0 }
+
     var body: some View {
-        // Like ProPresenter: the slide, then a bar in its group's color with
-        // the number and group name, one tile with one outline.
-        VStack(alignment: .leading, spacing: 0) {
+        // The slide gets the weight: its group is a thin colored edge, and
+        // the number and name sit under it as plain text, not a filled strip.
+        VStack(alignment: .leading, spacing: SlideGridMetrics.labelGap) {
             SlideThumbnailView(
                 model: model, render: render,
                 slide: slide, presentation: presentation, theme: theme,
@@ -1738,122 +1730,127 @@ struct SlideTile: View {
                 legibleText: legibleText
             )
             .aspectRatio(aspect, contentMode: .fit)
-
-            .overlay(alignment: .topTrailing) {
-                if mediaMissing {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 9, weight: .bold))
+            .background(Color.black.opacity(0.35))
+            .overlay(alignment: .bottom) {
+                if let groupColor {
+                    Rectangle().fill(groupColor).frame(height: 3)
+                }
+            }
+            .clipShape(tileShape)
+            .overlay { outline }
+            // Its own view, so a new suggestion redraws one outline, not every tile.
+            .overlay { FollowSuggestionOutline(controls: controls, contextID: contextID, index: index, shape: tileShape) }
+            .overlay(alignment: .topLeading) {
+                if isLive {
+                    Text("LIVE")
+                        .font(.system(size: 9, weight: .heavy))
+                        .tracking(0.6)
                         .foregroundStyle(.white)
-                        .padding(3)
-                        .background(Color.orange, in: Circle())
-                        .padding(4)
-                        .help("Media file missing on this Mac — right-click it in the Library › Locate Missing Media…")
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(HopeStyle.live, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                        .padding(5)
+                        .allowsHitTesting(false)
                 }
             }
-            HStack(spacing: 5) {
-                Text("\(index + 1)")
-                    .font(.system(size: 11, weight: .bold).monospacedDigit())
-                if let name = barName {
-                    Text(String(name.prefix(30)))
-                        .font(.system(size: 11, weight: .semibold))
-                        .lineLimit(1)
-                }
-
-                if hasClippedText {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.orange)
-                        .tileHelp("Text on this slide doesn't fit its box — the overflow is clipped on the output. Open the slide in Edit to see the outlined box.")
-                }
-
-                if stepCount > 0 {
-                    Text("\(isLive ? 1 + (liveAnimationStep ?? 0) : 0)/\(stepCount + 1)")
-                        .font(.system(size: 8, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(isLive ? Color.white : Color.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(
-                            (isLive ? Color.green : Color(.sRGB, white: 0.5).opacity(0.25)),
-                            in: Capsule()
-                        )
-                        .tileHelp(isLive
-                              ? "Click \(1 + (liveAnimationStep ?? 0)) of \(stepCount + 1): the fire was click 1. Advance (or click this tile) is the next; after the last, Advance moves on."
-                              : "\(stepCount + 1) clicks on this slide: the fire, then \(stepCount) more step\(stepCount == 1 ? "" : "s").")
-                } else if hasAnySteps {
-
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 8))
-                        .foregroundStyle(isLive ? Color.green : Color.secondary)
-                        .tileHelp("Animation plays on this slide when it fires, with no extra clicks. This includes steps an output's routed theme adds.")
-                }
-                Spacer(minLength: 4)
-
-                if let advance = slide.autoAdvance {
-                    Glyph(kind: .timers, size: 9)
-                        .foregroundStyle(.tertiary)
-                        .tileHelp(autoAdvanceSummary(advance))
-                }
-
-                if !actionBadges.isEmpty {
-                    let actions = slide.actions ?? []
-                    HStack(spacing: 3) {
-
-                        ForEach(Array(actions.prefix(4)), id: \.id) { action in
-                            Glyph(kind: badgeGlyph(action.kind), size: 9)
-                                .foregroundStyle(.tertiary)
-                                .tileHelp(slideActionLabel(
-                                    action, model: model,
-                                    timers: actionRouter?.timerChoices ?? [],
-                                    confidenceScreens: actionRouter?.confidenceScreenChoices ?? []))
-                        }
-                        if actionBadges.count > 4 {
-                            Text("+\(actionBadges.count - 4)")
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundStyle(.tertiary)
-                                .tileHelp(actionSummary)
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 5)
-            .frame(height: SlideGridMetrics.labelHeight)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .foregroundStyle(barText)
-            .background(barColor)
+            label
         }
-        .clipShape(tileShape)
-        .overlay {
-            if isLive {
-                tileShape.strokeBorder(HopeStyle.amber, lineWidth: 3)
-            } else if isSelected {
-                tileShape.strokeBorder(Color.accentColor, lineWidth: 2)
-            } else {
-                tileShape.strokeBorder(.separator, lineWidth: 1)
-            }
-        }
-        // Its own view, so a new suggestion redraws one outline, not every tile.
-        .overlay { FollowSuggestionOutline(controls: controls, contextID: contextID, index: index, shape: tileShape) }
         .contentShape(Rectangle())
         .onTapGesture(perform: fire)
 
-        .task(id: clippedTextKey) {
+        .task(id: stepCountKey) {
             let slide = slide
             let theme = theme
-            let presentation = presentation
-            let measured = await Task.detached(priority: .utility) {
-                let clipped = !SlideSceneBuilder.clippedTextObjectIDs(
-                    for: slide, theme: theme, presentation: presentation
-                ).isEmpty
-
-                let steps = PlaceholderAnimations.advanceCount(slide: slide, themes: [theme])
-                return (clipped, steps)
+            pagedStepCount = await Task.detached(priority: .utility) {
+                PlaceholderAnimations.advanceCount(slide: slide, themes: [theme])
             }.value
-            hasClippedText = measured.0
-            pagedStepCount = measured.1
         }
     }
 
-    @State private var hasClippedText = false
+    /// Live is a heavy red ring just outside the slide, so it never covers
+    /// the picture or the group's edge; next is a quiet ring.
+    @ViewBuilder
+    private var outline: some View {
+        if isLive {
+            RoundedRectangle(cornerRadius: cornerRadius + 3, style: .continuous)
+                .strokeBorder(HopeStyle.live, lineWidth: 3)
+                .padding(-3)
+                .allowsHitTesting(false)
+        } else if isSelected {
+            tileShape.strokeBorder(Color.accentColor, lineWidth: 2)
+        } else if isNext {
+            tileShape.strokeBorder(Color.primary.opacity(0.55), lineWidth: 1.5)
+        } else {
+            tileShape.strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
+        }
+    }
+
+    private var label: some View {
+        HStack(spacing: 5) {
+            Text("\(index + 1)")
+                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                .foregroundStyle(isLive ? HopeStyle.live : Color.secondary)
+            if let name = barName {
+                Text(String(name.prefix(30)))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.primary.opacity(0.85))
+                    .lineLimit(1)
+            }
+
+            if stepCount > 0 {
+                Text("\(isLive ? 1 + (liveAnimationStep ?? 0) : 0)/\(stepCount + 1)")
+                    .font(.system(size: 8, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(isLive ? Color.white : Color.secondary)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(
+                        (isLive ? HopeStyle.live : Color(.sRGB, white: 0.5).opacity(0.25)),
+                        in: Capsule()
+                    )
+                    .tileHelp(isLive
+                          ? "Click \(1 + (liveAnimationStep ?? 0)) of \(stepCount + 1): the fire was click 1. Advance (or click this tile) is the next; after the last, Advance moves on."
+                          : "\(stepCount + 1) clicks on this slide: the fire, then \(stepCount) more step\(stepCount == 1 ? "" : "s").")
+            } else if hasAnySteps {
+
+                Image(systemName: "sparkles")
+                    .font(.system(size: 8))
+                    .foregroundStyle(isLive ? HopeStyle.live : Color.secondary)
+                    .tileHelp("Animation plays on this slide when it fires, with no extra clicks. This includes steps an output's routed theme adds.")
+            }
+            Spacer(minLength: 4)
+
+            if let advance = slide.autoAdvance {
+                Glyph(kind: .timers, size: 9)
+                    .foregroundStyle(.secondary)
+                    .tileHelp(autoAdvanceSummary(advance))
+            }
+
+            if !actionBadges.isEmpty {
+                let actions = slide.actions ?? []
+                HStack(spacing: 3) {
+
+                    ForEach(Array(actions.prefix(4)), id: \.id) { action in
+                        Glyph(kind: badgeGlyph(action.kind), size: 9)
+                            .foregroundStyle(.secondary)
+                            .tileHelp(slideActionLabel(
+                                action, model: model,
+                                timers: actionRouter?.timerChoices ?? [],
+                                confidenceScreens: actionRouter?.confidenceScreenChoices ?? []))
+                    }
+                    if actionBadges.count > 4 {
+                        Text("+\(actionBadges.count - 4)")
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .tileHelp(actionSummary)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 2)
+        .frame(height: SlideGridMetrics.labelHeight)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var predictedThemes: [Theme?] { [theme] }
 
     private var stepCount: Int {
@@ -1867,13 +1864,13 @@ struct SlideTile: View {
         PlaceholderAnimations.hasAnimationSteps(slide: slide, themes: predictedThemes)
     }
 
-    private struct ClippedTextKey: Equatable {
+    private struct StepCountKey: Equatable {
         let slide: Slide
         let theme: Theme?
     }
 
-    private var clippedTextKey: ClippedTextKey {
-        ClippedTextKey(slide: slide, theme: theme)
+    private var stepCountKey: StepCountKey {
+        StepCountKey(slide: slide, theme: theme)
     }
 
     private var actionBadges: [GlyphKind] {
@@ -2662,7 +2659,7 @@ struct LyricFollowChip: View {
 }
 
 /// The slide lyric follow expects next: a pulsing dashed outline, apart from
-/// the live slide's solid amber one.
+/// the live slide's solid red one.
 struct FollowSuggestionOutline: View {
     let controls: ServiceControls?
     let contextID: String?

@@ -243,8 +243,8 @@ struct AppSettingsView: View {
             SettingsRowSpec(
                 id: "present.slidesAcross", category: .present,
                 title: "Slides across",
-                caption: "How many slide thumbnails share a row in Present — a fixed count, never a fit to the window or the sidebars.",
-                keywords: "slide grid columns across per row thumbnails size zoom",
+                caption: "How many slide thumbnails share a row in Present. Auto fits them to the window; drag the slider for a fixed count.",
+                keywords: "slide grid columns across per row thumbnails size zoom auto automatic fit",
                 control: AnyView(SlidesAcrossControl(count: $slidesAcross).frame(width: 190))
             ),
             SettingsRowSpec(

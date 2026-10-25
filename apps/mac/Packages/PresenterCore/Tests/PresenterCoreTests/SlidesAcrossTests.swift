@@ -3,17 +3,44 @@ import Testing
 @testable import PresenterCore
 
 struct SlidesAcrossTests {
-    @Test func rangeIsOneToSixAndTheFallbackSitsInside() {
-        #expect(SlidesAcross.range == 1 ... 6)
-        #expect(SlidesAcross.range.contains(SlidesAcross.fallback))
+    @Test func rangeIsOneToEightAndTheFallbackIsAutomatic() {
+        #expect(SlidesAcross.range == 1 ... 8)
+        #expect(SlidesAcross.fallback == SlidesAcross.automatic)
+        #expect(SlidesAcross.isAutomatic(SlidesAcross.fallback))
+        #expect(!SlidesAcross.range.contains(SlidesAcross.automatic), "automatic is never a count someone chose")
+        #expect(SlidesAcross.range.contains(SlidesAcross.automaticRange.lowerBound))
+        #expect(SlidesAcross.range.contains(SlidesAcross.automaticRange.upperBound))
     }
 
     @Test func clampsToTheRange() {
         #expect(SlidesAcross.clamped(0) == 1)
         #expect(SlidesAcross.clamped(-3) == 1)
         #expect(SlidesAcross.clamped(3) == 3)
-        #expect(SlidesAcross.clamped(6) == 6)
-        #expect(SlidesAcross.clamped(40) == 6)
+        #expect(SlidesAcross.clamped(8) == 8)
+        #expect(SlidesAcross.clamped(40) == 8)
+    }
+
+    @Test func automaticFitsTilesNearTheTargetWidth() {
+        #expect(SlidesAcross.fitting(width: 700, spacing: 12) == 3, "(700 − 24) / 3 = 225; 4 across would be 166")
+        #expect(SlidesAcross.fitting(width: 1000, spacing: 12) == 4, "241 beats 190")
+        #expect(SlidesAcross.fitting(width: 1400, spacing: 12) == 6, "(1400 − 60) / 6 = 223")
+        #expect(SlidesAcross.fitting(width: 2000, spacing: 12) == 8, "239.5")
+        #expect(SlidesAcross.fitting(width: 4000, spacing: 12) == 8, "never more than 8")
+        #expect(SlidesAcross.fitting(width: 300, spacing: 12) == 3, "never fewer than 3")
+        #expect(SlidesAcross.fitting(width: 0, spacing: 12) == 4, "not measured yet")
+        for width in stride(from: CGFloat(700), through: 1900, by: 10) {
+            let count = SlidesAcross.fitting(width: width, spacing: 12)
+            let tile = (width - 12 * CGFloat(count - 1)) / CGFloat(count)
+            #expect(tile >= 180 && tile <= 260, "\(width) pt → \(count) across, \(tile) pt tiles")
+        }
+    }
+
+    @Test func aChosenCountOverridesAutomatic() {
+        #expect(SlidesAcross.resolved(SlidesAcross.automatic, width: 1000, spacing: 12) == 4)
+        #expect(SlidesAcross.resolved(SlidesAcross.automatic, width: 2000, spacing: 12) == 8)
+        #expect(SlidesAcross.resolved(2, width: 2000, spacing: 12) == 2, "the slider wins")
+        #expect(SlidesAcross.resolved(99, width: 2000, spacing: 12) == 8, "held to the range")
+        #expect(SlidesAcross.resolved(-1, width: 700, spacing: 12) == 3, "anything below 1 is automatic")
     }
 
     @Test func everyTileGridUsesTheChosenColumnCount() throws {
@@ -53,7 +80,7 @@ struct SlidesAcrossTests {
         ])
         #expect(SlidesAcross.rows(count: 1, across: 4) == [.init(indices: 0 ..< 1, fillers: 3)], "the media card's poster")
         #expect(SlidesAcross.rows(count: 0, across: 4).isEmpty)
-        #expect(SlidesAcross.rows(count: 3, across: 99).first?.fillers == 3, "held to the 1…6 range")
+        #expect(SlidesAcross.rows(count: 3, across: 99).first?.fillers == 5, "held to the 1…8 range")
     }
 
     @Test func aTileHasAnExactSizeOnceTheGridWidthIsKnown() {
@@ -62,7 +89,7 @@ struct SlidesAcrossTests {
         #expect(SlidesAcross.cell(width: 1000, across: 4, spacing: 12, aspect: 4 / 3, labelGap: 4, labelHeight: 0)
                     == CGSize(width: 241, height: 181 + 4), "another tile shape, no strip: 241×3/4 = 180.75 → 181, plus the gap")
         #expect(SlidesAcross.cell(width: 0, across: 4, spacing: 12, aspect: 16 / 9, labelGap: 4, labelHeight: 14) == nil, "not measured yet")
-        #expect(SlidesAcross.cell(width: 700, across: 99, spacing: 12, aspect: 16 / 9, labelGap: 4, labelHeight: 14)?.width == 106, "held to 6 across")
+        #expect(SlidesAcross.cell(width: 700, across: 99, spacing: 12, aspect: 16 / 9, labelGap: 4, labelHeight: 14)?.width == 77, "held to 8 across: (700 − 84) / 8 = 77")
     }
 
     @Test func aDecksTilesTakeItsCanvasShape() {

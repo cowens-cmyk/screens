@@ -37,6 +37,17 @@ struct ServiceContinuousView: View {
 
     @State private var headerHeights: [String: CGFloat] = [:]
 
+    /// The page's width, for the media rows' automatic slides across (the
+    /// slide grids measure their own).
+    @State private var pageWidth: CGFloat = 0
+
+    /// Add Slide for a presentation with no slides: there is no grid to
+    /// answer New Slide, so the page asks.
+    @State private var emptyDeckNewSlide: EmptyDeckNewSlide?
+
+    /// The page's side margin; the slide grids reach their marquee over it.
+    static let pageMargin: CGFloat = 12
+
     /// The items the operator picked in the plan list, for LiveSlideFollow.
     @State private var picks = PresentPicks()
 
@@ -83,7 +94,8 @@ struct ServiceContinuousView: View {
                                 }
                             }
 
-                            .padding([.horizontal, .bottom], 12)
+                            .padding(.horizontal, Self.pageMargin)
+                            .padding(.bottom, 12)
 
                             .background(alignment: .topLeading) {
                                 PresentScrollWatch().frame(width: 1, height: 1)
@@ -95,14 +107,16 @@ struct ServiceContinuousView: View {
                         .onAppear {
                             viewportHeight = viewport.size.height
                             PresentCardFrames.shared.viewportHeight = viewport.size.height
+                            pageWidth = viewport.size.width
                         }
                         .onChange(of: viewport.size.height) { _, height in
                             viewportHeight = height
                             PresentCardFrames.shared.viewportHeight = height
                         }
 
-                        .onChange(of: viewport.size.width) { _, _ in
+                        .onChange(of: viewport.size.width) { _, width in
                             PresentCardFrames.shared.keepPlace(because: "width")
+                            pageWidth = width
                         }
                         .onChange(of: slidesAcross) { _, _ in
                             PresentCardFrames.shared.keepPlace(because: "slides across")
@@ -151,27 +165,35 @@ struct ServiceContinuousView: View {
             .onChange(of: model.listVersion) {
                 controls?.refreshNextSlide()
             }
+            .onChange(of: NewSlideRouter.shared.requests) { _, _ in newSlideForEmptyDeck(service) }
+            .sheet(item: $emptyDeckNewSlide) { target in
+                NewSlideSheet(appModel: model, render: render, deckThemeId: target.themeId, startsWithThemes: true) { choice in
+                    model.insertSlide(
+                        target.presentationID,
+                        slide: choice.slide(sectionId: nil, deckThemeId: target.themeId),
+                        afterSlideID: target.afterSlideID)
+                }
+            }
             .mediaCueSheets(model: model, state: mediaMenuState)
+            // The page sits on the window's dark backdrop and paints no
+            // background of its own, so it reads as dark whatever the Mac's
+            // appearance.
+            .environment(\.colorScheme, .dark)
         } else {
             ContentUnavailableView(
                 "No Service", systemImage: "calendar",
                 description: Text("Choose a service to present.")
             )
+            .environment(\.colorScheme, .dark)
         }
     }
 
-    private static let cardHeaderShape = UnevenRoundedRectangle(
-        cornerRadii: .init(
-            topLeading: CornerStandard.element, topTrailing: CornerStandard.element
-        ),
-        style: .continuous
-    )
-    private static let cardBodyShape = UnevenRoundedRectangle(
-        cornerRadii: .init(
-            bottomLeading: CornerStandard.element, bottomTrailing: CornerStandard.element
-        ),
-        style: .continuous
-    )
+    /// Space under each item before the next one's hairline.
+    private static let itemGap: CGFloat = 28
+
+    private static var hairline: some View {
+        Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
+    }
 
     @ViewBuilder
     private func itemSection(_ item: ServiceItem, proxy: ScrollViewProxy) -> some View {
@@ -182,23 +204,23 @@ struct ServiceContinuousView: View {
                     .fill((headerTint(item) ?? Color(nsColor: .separatorColor)).opacity(0.45))
                     .frame(height: 1)
                     .padding(.top, 4)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 14)
                     .id(item.id)
             } else {
                 // A solid band in the header's color, as in the plan list
                 // and ProPresenter's playlist.
                 Text(item.name)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(GroupColor.text(onHex: item.colorHex))
                     .lineLimit(1)
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
                     .background(
                         headerTint(item) ?? HopeStyle.navy.opacity(0.85),
                         in: RoundedRectangle.standard(CornerStandard.element)
                     )
                     .padding(.top, 4)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 14)
                     .id(item.id)
             }
         case .info:
@@ -209,10 +231,16 @@ struct ServiceContinuousView: View {
                 CardRefresh(model: model) { unlinkedCard(item) }
             }
         case .presentation:
-            stickySection(item) {
-                CardRefresh(model: model) { presentationBodyFresh(item) }
-            } header: {
-                CardRefresh(model: model) { presentationHeaderFresh(item, proxy: proxy) }
+            if let presentation = model.presentation(item.refId),
+               model.arrangedSlides(presentation, arrangementId: item.arrangementId).isEmpty {
+                // Nothing to fire: one line, not an empty grid.
+                CardRefresh(model: model) { emptyPresentationRow(item) }
+            } else {
+                stickySection(item) {
+                    CardRefresh(model: model) { presentationBodyFresh(item) }
+                } header: {
+                    CardRefresh(model: model) { presentationHeaderFresh(item, proxy: proxy) }
+                }
             }
         case .media:
             stickySection(item) {
@@ -316,7 +344,7 @@ struct ServiceContinuousView: View {
             let isLive = controls?.state.liveAudio
                 .contains { $0.playlistId == playlist.id } ?? false
 
-            VStack(spacing: 0) {
+            VStack(spacing: 2) {
 
                 if let player = controls?.audio.player(forPlaylist: playlist.id) {
                     AudioTransportControls(model: model, player: player) { EmptyView() }
@@ -330,17 +358,8 @@ struct ServiceContinuousView: View {
                     cardAddTrackRow(playlist)
                 }
             }
-            .padding(12)
+            .padding(.top, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.cardSurface, in: Self.cardBodyShape)
-            .overlay(
-                Self.cardBodyShape.strokeBorder(
-                    isLive
-                        ? Color.green.opacity(0.6)
-                        : Color(nsColor: .separatorColor).opacity(0.5),
-                    lineWidth: 1
-                )
-            )
             .overlay(alignment: .bottom) {
 
                 if playlistDropTarget?.playlistID == playlist.id,
@@ -359,8 +378,7 @@ struct ServiceContinuousView: View {
                     ? PlaylistDropTarget(playlistID: playlist.id, beforeEntryID: nil)
                     : (playlistDropTarget?.beforeEntryID == nil ? nil : playlistDropTarget)
             }
-            .modifier(BottomCutRounding(boundary: viewportHeight))
-            .padding(.bottom, 12)
+            .padding(.bottom, Self.itemGap)
         }
     }
 
@@ -508,20 +526,15 @@ struct ServiceContinuousView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 8)
         .frame(height: 32)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.cardSurface, in: Self.cardBodyShape)
-        .overlay(
-            Self.cardBodyShape.strokeBorder(
-                isLive
-                    ? Color.green.opacity(0.6)
-                    : Color(nsColor: .separatorColor).opacity(0.5),
-                lineWidth: 1
-            )
+        .background(
+            isLive ? Color.green.opacity(0.10) : Color.clear,
+            in: RoundedRectangle.standard(CornerStandard.element)
         )
-        .modifier(BottomCutRounding(boundary: viewportHeight))
-        .padding(.bottom, 12)
+        .padding(.top, 4)
+        .padding(.bottom, Self.itemGap)
     }
 
     private func timecode(_ seconds: TimeInterval) -> String {
@@ -556,7 +569,10 @@ struct ServiceContinuousView: View {
         if let presentation = model.presentation(item.refId) {
             let slides = model.arrangedSlides(presentation, arrangementId: item.arrangementId)
             cardHeader(item) {
-
+                // One count for the whole item instead of a triangle on every tile.
+                PresentationIssuesBadge(
+                    model: model, presentation: presentation,
+                    arrangementId: item.arrangementId, slides: slides)
                 CardSlidePosition(controls: controls, itemID: item.id, slideCount: slides.count)
             } leading: {
 
@@ -587,7 +603,7 @@ struct ServiceContinuousView: View {
                 LyricFollowChip(controls: controls, presentation: presentation)
             } accessory: {
 
-                if presentation.sections?.isEmpty == false {
+                if showsSectionChips(item, presentation) {
                     ArrangementStrip(
                         model: model, presentation: presentation,
                         selection: Binding(
@@ -607,12 +623,69 @@ struct ServiceContinuousView: View {
             }
 
             .contextMenu {
-                if !runOnly { arrangementMenu(item, presentation) }
+                if !runOnly { presentationMenu(item, presentation) }
             }
         } else {
 
             cardHeader(item) { EmptyView() }
         }
+    }
+
+    /// The section chips help when there's somewhere to jump: an
+    /// arrangement, or more than one section in the plain order.
+    private func showsSectionChips(_ item: ServiceItem, _ presentation: Presentation) -> Bool {
+        guard presentation.sections?.isEmpty == false else { return false }
+        if activeArrangementName(item, presentation) != nil { return true }
+        return SlideSceneBuilder.arrangementBlockStarts(
+            for: presentation, arrangementId: item.arrangementId
+        ).count > 1
+    }
+
+    @ViewBuilder
+    private func presentationMenu(_ item: ServiceItem, _ presentation: Presentation) -> some View {
+        Button("Add Slide\u{2026}") { requestNewSlide(item) }
+        arrangementMenu(item, presentation)
+    }
+
+    /// Present has no Add Slide row; this goes through New Slide's router,
+    /// so the item's grid (or, with no slides yet, the page) answers.
+    private func requestNewSlide(_ item: ServiceItem) {
+        NewSlideRouter.shared.route = NewSlideRoute(contextID: item.id)
+        NewSlideRouter.shared.request()
+    }
+
+    private func newSlideForEmptyDeck(_ service: Service) {
+        guard !runOnly, let id = NewSlideRouter.shared.route.contextID,
+              let item = service.items.first(where: { $0.id == id && $0.itemKind == .presentation }),
+              let presentation = model.presentation(item.refId),
+              model.arrangedSlides(presentation, arrangementId: item.arrangementId).isEmpty
+        else { return }
+        emptyDeckNewSlide = EmptyDeckNewSlide(
+            presentationID: presentation.id, themeId: presentation.themeId,
+            afterSlideID: presentation.slides.last?.id)
+    }
+
+    private func emptyPresentationRow(_ item: ServiceItem) -> some View {
+        let presentation = model.presentation(item.refId)
+        return HStack(spacing: 8) {
+            ItemKindBadge(kind: HopeStyle.kind(of: item, presentation: presentation))
+            Text(displayName(item))
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+            Text("No slides yet")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+        }
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) { Self.hairline }
+        .contentShape(Rectangle())
+        .contextMenu {
+            if !runOnly, let presentation { presentationMenu(item, presentation) }
+        }
+        .padding(.bottom, 12)
+        .id(item.id)
     }
 
     private func cardHeader(
@@ -621,13 +694,15 @@ struct ServiceContinuousView: View {
         @ViewBuilder leading: () -> some View = { EmptyView() },
         @ViewBuilder accessory: () -> some View = { EmptyView() }
     ) -> some View {
+        // No card: a hairline above, the name, the item's controls, and the
+        // section chips; the page's own background shows through.
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 // The same badge as the item's row in the plan list.
                 ItemKindBadge(kind: HopeStyle.kind(
                     of: item, presentation: item.itemKind == .presentation ? model.presentation(item.refId) : nil))
                 Text(displayName(item))
-                    .font(.subheadline.weight(.medium))
+                    .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                 leading()
                 Spacer(minLength: 8)
@@ -636,15 +711,10 @@ struct ServiceContinuousView: View {
 
             accessory()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.cardSurface, in: Self.cardHeaderShape)
-        .overlay(
-            Self.cardHeaderShape.strokeBorder(
-                Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1
-            )
-        )
-        .background(Color.basePlane)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) { Self.hairline }
         .id(item.id)
     }
 
@@ -721,7 +791,7 @@ struct ServiceContinuousView: View {
                     roundedCorners: roundedCorners,
                     hideScopedBackgrounds: hideScopedBackgrounds,
                     legibleText: legibleText,
-                    slidesAcross: slidesAcross,
+                    chosenAcross: slidesAcross,
                     deleteRequests: deleteRequests,
                     clipboardRequests: clipboardRequests,
                     pastesAtEnd: focusItemID == item.id,
@@ -731,16 +801,9 @@ struct ServiceContinuousView: View {
                     marqueeMargin: 12
                 )
         }
-        .padding(12)
+        .padding(.top, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.cardSurface, in: Self.cardBodyShape)
-        .overlay(
-            Self.cardBodyShape.strokeBorder(
-                Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1
-            )
-        )
-        .modifier(BottomCutRounding(boundary: viewportHeight))
-        .padding(.bottom, 12)
+        .padding(.bottom, Self.itemGap)
     }
 
     @ViewBuilder
@@ -764,16 +827,35 @@ struct ServiceContinuousView: View {
             roundedCorners ? CornerStandard.element : 0
         )
 
-        let row = SlidesAcross.rows(count: 1, across: slidesAcross)[0]
+        let across = SlidesAcross.resolved(
+            slidesAcross, width: pageWidth - Self.pageMargin * 2, spacing: SlideGridMetrics.spacing)
+        let row = SlidesAcross.rows(count: 1, across: across)[0]
+        let radius = roundedCorners ? CornerStandard.element : 0
         return HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
             PosterImage(model: model, mediaId: item.refId)
                 .aspectRatio(16 / 9, contentMode: .fit)
+                .background(Color.black.opacity(0.35))
                 .clipShape(tileShape)
+                // Live as on the slide tiles: a red ring just outside, and the tag.
                 .overlay {
                     if isLive {
-                        tileShape.strokeBorder(.green, lineWidth: 3)
+                        RoundedRectangle(cornerRadius: radius + 3, style: .continuous)
+                            .strokeBorder(HopeStyle.live, lineWidth: 3)
+                            .padding(-3)
                     } else {
-                        tileShape.strokeBorder(.separator, lineWidth: 1)
+                        tileShape.strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
+                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    if isLive {
+                        Text("LIVE")
+                            .font(.system(size: 9, weight: .heavy))
+                            .tracking(0.6)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(HopeStyle.live, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                            .padding(5)
                     }
                 }
 
@@ -800,16 +882,9 @@ struct ServiceContinuousView: View {
                 Color.clear.frame(height: 0).frame(maxWidth: .infinity)
             }
         }
-        .padding(12)
+        .padding(.top, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.cardSurface, in: Self.cardBodyShape)
-        .overlay(
-            Self.cardBodyShape.strokeBorder(
-                Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1
-            )
-        )
-        .modifier(BottomCutRounding(boundary: viewportHeight))
-        .padding(.bottom, 12)
+        .padding(.bottom, Self.itemGap)
     }
 
     @ViewBuilder
@@ -941,40 +1016,13 @@ private struct PillDropDelegate: DropDelegate {
     }
 }
 
-private struct BottomCutRounding: ViewModifier {
-
-    let boundary: CGFloat
-
-    func body(content: Content) -> some View {
-        content.mask {
-            GeometryReader { geo in
-                let overhang = boundary > 0
-                    ? max(0, geo.frame(in: .named(ServiceContinuousView.scrollSpace)).maxY - boundary)
-                    : 0
-                UnevenRoundedRectangle(
-                    cornerRadii: .init(
-                        bottomLeading: CornerStandard.element,
-                        bottomTrailing: CornerStandard.element
-                    ),
-                    style: .continuous
-                )
-                .frame(
-                    height: max(CornerStandard.element * 2, geo.size.height - overhang),
-                    alignment: .top
-                )
-                .frame(maxHeight: .infinity, alignment: .top)
-            }
-        }
-    }
-}
-
 extension ServiceContinuousView {
 
     func unlinkedCard(_ item: ServiceItem) -> some View {
         HStack(spacing: 8) {
             ItemKindBadge(kind: HopeStyle.kind(of: item, presentation: nil))
             Text(item.name)
-                .font(.subheadline.weight(.medium))
+                .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
             Spacer(minLength: 8)
             if item.refId.isEmpty, item.mxuSongTitle != nil {
@@ -997,17 +1045,16 @@ extension ServiceContinuousView {
                 .padding(.vertical, 2)
                 .background(Color.primary.opacity(0.08), in: Capsule())
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.cardSurface, in: RoundedRectangle.standard(CornerStandard.element))
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle.standard(CornerStandard.element))
         .overlay(
             RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                .strokeBorder(Color.primary.opacity(0.2), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         )
 
         .padding(.bottom, 12)
-        .background(Color.basePlane)
 
         .id(Self.anchor(unlinked: item.id))
     }
@@ -1032,6 +1079,7 @@ extension ServiceContinuousView {
 
                     .fixedSize(horizontal: false, vertical: true)
                     .background(headerHeightReader(item))
+                    .background { StuckHeaderBackdrop(margin: Self.pageMargin).opacity(stick > 0 ? 1 : 0) }
                     .frame(width: geo.size.width, alignment: .topLeading)
                     .offset(y: stick)
             }
@@ -1345,7 +1393,7 @@ struct ArrangementStrip: View {
     private var insertionBar: some View {
         Capsule()
             .fill(Color.accentColor)
-            .frame(width: 2, height: 16)
+            .frame(width: 2, height: 14)
     }
 
     private func sectionIsEmpty(_ sectionId: String) -> Bool {
@@ -1400,23 +1448,21 @@ struct ArrangementStrip: View {
     private func pill(_ name: String, section: PresentationSection?, prominent: Bool) -> some View {
         let hex = section?.resolvedColorHex(paletteColors: model.groupColors)
         let fill = hex.flatMap(GroupColor.color)
+        // Outlined in the group's color, not filled: the tiles already carry
+        // the colors, and the chips are for jumping, not reading.
         return Text(name)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(
-                fill != nil
-                    ? AnyShapeStyle(GroupColor.text(onHex: hex))
-                    : AnyShapeStyle(prominent ? Color.primary : Color.secondary)
-            )
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(prominent ? Color.primary : Color.primary.opacity(0.8))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
             .background(
-                fill.map { $0.opacity(prominent ? 1 : 0.55) }
+                fill.map { $0.opacity(prominent ? 0.22 : 0.10) }
                     ?? Color.primary.opacity(prominent ? 0.08 : 0.04),
                 in: Capsule()
             )
             .overlay(
                 Capsule().strokeBorder(
-                    Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1
+                    (fill ?? Color.primary.opacity(0.35)).opacity(prominent ? 0.9 : 0.6), lineWidth: 1
                 )
             )
     }
@@ -1526,7 +1572,7 @@ private struct CardSlidePosition: View {
     var body: some View {
         Text(detail)
             .font(.caption.monospacedDigit())
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
     }
 
     private var detail: String {
@@ -1535,5 +1581,151 @@ private struct CardSlidePosition: View {
         } else {
             slideCount == 1 ? "1 slide" : "\(slideCount) slides"
         }
+    }
+}
+
+private struct EmptyDeckNewSlide: Identifiable {
+    let presentationID: String
+    let themeId: String
+    let afterSlideID: String?
+    var id: String { presentationID }
+}
+
+/// Behind an item header only while it is pinned at the top, so tiles
+/// scrolling under it don't show through its text. It reaches over the page
+/// margins to the edges.
+private struct StuckHeaderBackdrop: View {
+    let margin: CGFloat
+
+    var body: some View {
+        Rectangle()
+            .fill(.regularMaterial)
+            .overlay(Color.black.opacity(0.25))
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
+            }
+            .padding(.horizontal, -margin)
+            .allowsHitTesting(false)
+    }
+}
+
+/// What on an item's slides needs a look before the service, as one count in
+/// its header rather than a triangle on every tile. Clicking it lists them.
+private struct PresentationIssuesBadge: View {
+    let model: AppModel
+    let presentation: Presentation
+    let arrangementId: String?
+    let slides: [Slide]
+
+    @State private var clippedSlideIDs: Set<String> = []
+    @State private var listing = false
+
+    private struct Issue: Identifiable {
+        let id: String
+        let number: Int
+        let text: String
+    }
+
+    private struct CheckKey: Equatable {
+        let presentation: Presentation
+        let arrangementId: String?
+        let themes: [Theme?]
+    }
+
+    /// Each slide once, numbered where it first plays.
+    private var firstPlays: [(number: Int, slide: Slide)] {
+        var seen = Set<String>()
+        return slides.enumerated().compactMap { index, slide in
+            seen.insert(slide.id).inserted ? (index + 1, slide) : nil
+        }
+    }
+
+    private func theme(for slide: Slide) -> Theme? {
+        slide.themeId != nil || slide.unthemed == true
+            ? model.theme(for: slide, in: presentation) : model.theme(presentation.themeId)
+    }
+
+    private var issues: [Issue] {
+        firstPlays.flatMap { number, slide -> [Issue] in
+            var found: [Issue] = []
+            let missing = MediaReferences.ids(in: slide).sorted().filter(model.isMediaMissing(mediaID:))
+            if !missing.isEmpty {
+                let names = missing.compactMap { model.media($0)?.name }
+                found.append(Issue(
+                    id: slide.id + "|media", number: number,
+                    text: names.isEmpty
+                        ? "A media file isn't on this Mac"
+                        : "\u{201C}\(names.joined(separator: "\u{201D}, \u{201C}"))\u{201D} isn't on this Mac"))
+            }
+            if clippedSlideIDs.contains(slide.id) {
+                found.append(Issue(
+                    id: slide.id + "|text", number: number,
+                    text: "Text doesn't fit its box; the overflow is cut off"))
+            }
+            return found
+        }
+    }
+
+    var body: some View {
+        let issues = issues
+        let plays = firstPlays
+        Group {
+            if !issues.isEmpty {
+                Button { listing.toggle() } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10))
+                        Text("\(issues.count)")
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 6)
+                    .frame(height: 20)
+                    .background(Color.orange.opacity(0.14), in: Capsule())
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help(issues.count == 1 ? "1 thing to check on these slides" : "\(issues.count) things to check on these slides")
+                .popover(isPresented: $listing, arrowEdge: .bottom) { list(issues) }
+            }
+        }
+        .task(id: CheckKey(presentation: presentation, arrangementId: arrangementId, themes: plays.map { theme(for: $0.slide) })) {
+            let checks = plays.map { ($0.slide, theme(for: $0.slide)) }
+            let presentation = presentation
+            let clipped = await Task.detached(priority: .utility) {
+                Set(checks.filter { slide, theme in
+                    !SlideSceneBuilder.clippedTextObjectIDs(
+                        for: slide, theme: theme, presentation: presentation
+                    ).isEmpty
+                }.map(\.0.id))
+            }.value
+            if clipped != clippedSlideIDs { clippedSlideIDs = clipped }
+        }
+    }
+
+    private func list(_ issues: [Issue]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(issues.prefix(12)) { issue in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Slide \(issue.number)")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .frame(width: 58, alignment: .leading)
+                    Text(issue.text)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if issues.count > 12 {
+                Text("and \(issues.count - 12) more")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Divider()
+            Text("Fix text in Edit. Locate missing media from the Library.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(width: 320, alignment: .leading)
     }
 }

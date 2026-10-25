@@ -1428,6 +1428,14 @@ final class ServiceControls {
 
     private(set) var nextSlideCue: NextSlideCue?
 
+    /// Where the next arrow key lands: the slide grid outlines that tile.
+    struct SlidePlace: Equatable {
+        let contextID: String
+        let occurrence: Int
+    }
+
+    private(set) var nextPlace: SlidePlace?
+
     private(set) var slidePosition: ConfidenceInfo.SlidePosition?
     private(set) var currentItemName: String?
     private(set) var nextItemName: String?
@@ -1437,6 +1445,7 @@ final class ServiceControls {
         var slidePosition: ConfidenceInfo.SlidePosition?
         var currentItemName: String?
         var nextItemName: String?
+        var nextPlace: SlidePlace?
     }
 
     static let nextSkipsBlanksKey = "confidence.nextSkipsBlankSlides"
@@ -1494,6 +1503,7 @@ final class ServiceControls {
         slidePosition = context.slidePosition
         currentItemName = context.currentItemName
         nextItemName = context.nextItemName
+        if nextPlace != context.nextPlace { nextPlace = context.nextPlace }
         if state.hasLinkedText {
 
             apply()
@@ -1540,6 +1550,10 @@ final class ServiceControls {
                 $0.itemID == contextID && $0.occurrence == occurrence
             }) else { return context }
             context.upcoming = positions[(current + 1)...].map { ($0.slide, $0.presentation) }
+            if positions.indices.contains(current + 1) {
+                let next = positions[current + 1]
+                context.nextPlace = SlidePlace(contextID: next.itemID, occurrence: next.occurrence)
+            }
             context.slidePosition = ConfidenceInfo.SlidePosition(
                 index: occurrence + 1,
                 total: positions.filter { $0.itemID == contextID }.count
@@ -1565,6 +1579,7 @@ final class ServiceControls {
         }
         if slides.indices.contains(occurrence + 1) {
             context.upcoming = slides[(occurrence + 1)...].map { ($0, presentation) }
+            context.nextPlace = SlidePlace(contextID: contextID, occurrence: occurrence + 1)
         }
         return context
     }

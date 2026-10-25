@@ -2,12 +2,50 @@ import Foundation
 
 public enum SlidesAcross {
     public static let key = "slideGrid.slidesAcross"
-    public static let range = 1 ... 6
+    public static let range = 1 ... 8
 
-    public static let fallback = 4
+    /// The stored value that means "fit the window": until someone drags the
+    /// slider, the count follows the page's width.
+    public static let automatic = 0
+
+    public static let fallback = automatic
+
+    /// Automatic aims for tiles about this wide: big enough to read a lyric
+    /// slide from across the booth, small enough to see what's coming.
+    public static let targetTileWidth: CGFloat = 220
+    public static let automaticRange = 3 ... 8
+
+    /// The count used before a grid knows its width.
+    public static let unmeasuredCount = 4
 
     public static func clamped(_ count: Int) -> Int {
         min(max(count, range.lowerBound), range.upperBound)
+    }
+
+    public static func isAutomatic(_ stored: Int) -> Bool {
+        stored <= automatic
+    }
+
+    /// The count whose tiles come closest to the target width; on a tie the
+    /// bigger tiles win.
+    public static func fitting(width: CGFloat, spacing: CGFloat) -> Int {
+        guard width > 0 else { return unmeasuredCount }
+        var best = automaticRange.lowerBound
+        var bestGap = CGFloat.infinity
+        for count in automaticRange {
+            let tile = (width - spacing * CGFloat(count - 1)) / CGFloat(count)
+            let gap = abs(tile - targetTileWidth)
+            if gap < bestGap {
+                best = count
+                bestGap = gap
+            }
+        }
+        return best
+    }
+
+    /// The stored choice made concrete for a grid this wide.
+    public static func resolved(_ stored: Int, width: CGFloat, spacing: CGFloat) -> Int {
+        isAutomatic(stored) ? fitting(width: width, spacing: spacing) : clamped(stored)
     }
 
     public static func cell(
