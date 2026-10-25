@@ -181,7 +181,7 @@ final class LyricsFetcher {
     // MARK: Helpers
 
     /// SongSelect and ChordPro text, read as a song (sections, CCLI number).
-    private func importText(_ text: String, title: String, model: AppModel) -> Presentation {
+    func importText(_ text: String, title: String, model: AppModel) -> Presentation {
         var presentation = LyricTextImporter.makePresentation(
             LyricCleanup.clean(text), fallbackTitle: title,
             folder: model.newPlacement.folder(for: .presentation),
