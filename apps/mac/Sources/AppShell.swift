@@ -213,10 +213,17 @@ struct ViewCommands: Commands {
     @AppStorage(PlanShell.wholePlanKey) private var showWholePlan = true
     @FocusedValue(\.planPanelToggle) private var planPanelToggle
     @FocusedValue(\.screensPanelToggle) private var screensPanelToggle
+    @FocusedValue(\.presentAddToPlan) private var presentAddToPlan
     @AppStorage(ShellPanel.Side.plans.defaultsKey) private var planPinned = ShellPanel.Side.plans.pinnedByDefault
     @AppStorage(ShellPanel.Side.screens.defaultsKey) private var screensPinned = ShellPanel.Side.screens.pinnedByDefault
 
     var body: some Commands {
+        // File › Add to Plan…: the plan panel's + from the keyboard.
+        CommandGroup(after: .newItem) {
+            Button("Add to Plan…") { presentAddToPlan?() }
+                .keyboardShortcut("n", modifiers: [.command, .option])
+                .disabled(presentAddToPlan == nil || runOnly)
+        }
         CommandGroup(before: .sidebar) {
             Button("Present") { modeRaw = AppMode.present.rawValue }
                 .keyboardShortcut(command: .modePresent)
@@ -1770,6 +1777,8 @@ extension FocusedValues {
     @Entry var planPanelToggle: MenuAction?
     /// View › Pin Screens / Fold Screens, likewise.
     @Entry var screensPanelToggle: MenuAction?
+    /// File › Add to Plan…: opens the plan's Add to Plan popover.
+    @Entry var presentAddToPlan: MenuAction?
 
     @Entry var serviceControls: ServiceControls?
 

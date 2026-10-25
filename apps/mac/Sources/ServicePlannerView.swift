@@ -1,3 +1,4 @@
+import AppKit
 import PresenterCore
 import SlideScene
 import SwiftUI
@@ -72,12 +73,19 @@ struct RunOrderList: View {
             let changed = model.versionChangedItemIDs(serviceID)
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
+                    let current = selectedItemID.flatMap { rowFrames[$0] }
                     runOrderList(service: service, visible: visible, order: order, changed: changed)
                         .animation(HopeMotion.ui(reduced: reduceMotion), value: order)
+                        // One highlight, the list's own selection hidden:
+                        // its fill under the rows, its edge over them, so it
+                        // also rings a header's colored band.
+                        .background {
+                            CurrentItemHighlight(
+                                layer: .fill, frame: current, itemID: selectedItemID, reduceMotion: reduceMotion)
+                        }
                         .overlay {
                             CurrentItemHighlight(
-                                frame: selectedItemID.flatMap { rowFrames[$0] }, itemID: selectedItemID,
-                                reduceMotion: reduceMotion)
+                                layer: .edge, frame: current, itemID: selectedItemID, reduceMotion: reduceMotion)
                         }
                         // The whole-plan page moves the selection as it
                         // scrolls; keep that row in sight.
@@ -168,13 +176,16 @@ struct RunOrderList: View {
                 if item.itemKind == .header {
 
                     headerRow(item, order: order, service: service)
+                        .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
                         .tag(item.id)
                         .listRowSeparator(.hidden)
+                        .listRowInsets(Self.rowInsets)
                         .listRowBackground(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            Self.rowShape
                                 .fill(headerColor(item))
-                                .padding(.vertical, 1)
-                                .padding(.horizontal, 6))
+                                .overlay(Self.rowShape.strokeBorder(
+                                    Color.accentColor.opacity(extraSelected(item.id) ? 0.8 : 0), lineWidth: 1.5))
+                                .padding(Self.rowBackgroundInsets))
                         .reportingGlobalFrame(id: item.id, into: $rowFrames)
 
                         .draggablePayload(runOnly ? nil : "svc::" + item.id)
@@ -182,10 +193,12 @@ struct RunOrderList: View {
                     itemRow(
                         item, order: order, changed: changed.contains(item.id),
                         position: positions[item.id], service: service)
+                        .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
                         .transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity))
                         .tag(item.id)
                         .listRowSeparator(.hidden)
-                        .listRowBackground(liveRowBackground(item))
+                        .listRowInsets(Self.rowInsets)
+                        .listRowBackground(rowBackground(item))
                         .reportingGlobalFrame(id: item.id, into: $rowFrames)
                         .draggablePayload(runOnly ? nil : "svc::" + item.id)
                 }
@@ -235,8 +248,9 @@ struct RunOrderList: View {
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
-        // ProPresenter-dense rows, so a whole service fits without scrolling.
-        .environment(\.defaultMinListRowHeight, 22)
+        // Dense rows, so a whole service fits without scrolling.
+        .environment(\.defaultMinListRowHeight, Self.rowHeight)
+        .background { NativeSelectionHidden() }
 
         .onDeleteCommand {
             guard !runOnly, !selection.isEmpty else { return }
@@ -394,7 +408,6 @@ struct RunOrderList: View {
                 .layoutPriority(1)
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 1)
         .contentShape(Rectangle())
         .contextMenu {
             if !runOnly {
@@ -485,10 +498,13 @@ struct RunOrderList: View {
 
             if item.itemKind == .presentation,
                let override = arrangementName(item) {
+                // Kept whole: the name gives way first. Fixed sizes here
+                // pushed the row past its cell, which cut the end off.
                 Text(override)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .layoutPriority(2)
             }
             AnthemMismatchBadge(model: model, serviceID: serviceID, itemID: item.id)
             lightingBadges(item, position: position)
@@ -593,8 +609,8 @@ struct RunOrderList: View {
                     .font(.caption2)
                     .foregroundStyle(item.lightingCue == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
-                    .fixedSize()
-                    .help("Lightkey: \(position.title)" + (item.lightingCue == nil ? "" : " (chosen for this item)"))
+                    .layoutPriority(2)
+                    .help("Lightkey:\(position.title)" + (item.lightingCue == nil ? "" : " (chosen for this item)"))
             } else if item.lightingCue == ServicePosition.noneKey {
                 Image(systemName: "lightbulb.slash")
                     .font(.caption2)
@@ -690,12 +706,46 @@ struct RunOrderList: View {
         GetLyricsButton(model: model, serviceID: serviceID, item: item)
     }
 
+    // MARK: Row geometry
+
+    /// Every row is this tall, its content filling it, so the highlight and
+    /// the header bands can be drawn from the content's frame alone.
+    static let rowHeight: CGFloat = 26
+    /// No insets of the list's own: the inset list's margin already puts
+    /// content 16 from the edge, and the rows fill their height.
+    static let rowInsets = EdgeInsets()
+    /// Bands, fills and the highlight sit 8 from the list's edges and leave
+    /// a point between rows, so text has 8 either side inside them.
+    static let rowBackgroundInsets = EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8)
+    static let rowShape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+
+    /// The highlight's rectangle for a row whose content has this frame.
+    static func highlightRect(for content: CGRect) -> CGRect {
+        CGRect(
+            x: content.minX - rowBackgroundInsets.leading + rowInsets.leading,
+            y: content.minY + rowBackgroundInsets.top,
+            width: content.width + rowBackgroundInsets.leading + rowBackgroundInsets.trailing,
+            height: content.height - rowBackgroundInsets.top - rowBackgroundInsets.bottom)
+    }
+
+    /// Selected along with others, for a multi-item action: a lighter fill
+    /// than the highlight, which stays on the one item the slides follow.
+    private func extraSelected(_ id: String) -> Bool {
+        selection.count > 1 && selection.contains(id) && id != selectedItemID
+    }
+
+    /// A row's own background: the lighter fill when it's one of several
+    /// selected, else a faint one while it's live.
     @ViewBuilder
-    private func liveRowBackground(_ item: ServiceItem) -> some View {
-        if isItemLive(item) {
-            RoundedRectangle.standard(CornerStandard.element)
+    private func rowBackground(_ item: ServiceItem) -> some View {
+        if extraSelected(item.id) {
+            Self.rowShape
+                .fill(Color.accentColor.opacity(0.16))
+                .padding(Self.rowBackgroundInsets)
+        } else if isItemLive(item) {
+            Self.rowShape
                 .fill(Color.primary.opacity(0.08))
-                .padding(.vertical, 1)
+                .padding(Self.rowBackgroundInsets)
         }
     }
 
@@ -930,8 +980,9 @@ struct RunOrderList: View {
         .menuStyle(.borderlessButton)
         .controlSize(.small)
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.leading, 12)
+        .padding(.trailing, ShellMetrics.rowLeading)
+        .padding(.vertical, 8)
     }
 
     private func itemCountLabel(_ service: Service) -> String {
@@ -994,6 +1045,12 @@ struct ServiceItemDetailView: View {
 struct LibrarySearchSheet: View {
     let model: AppModel
     let serviceID: String
+    /// The kinds it starts on (Media from Add to Plan); empty is everything.
+    var initialScopes: Set<LibrarySection> = []
+    /// Where a click puts the item; without it, at the end of the plan.
+    var onAdd: ((LibraryIndex.Entry) -> Void)? = nil
+    /// Offers Import File… for media not in the library yet.
+    var onImportFile: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
@@ -1039,15 +1096,24 @@ struct LibrarySearchSheet: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                if let onImportFile {
+                    Button("Import File…") {
+                        dismiss()
+                        onImportFile()
+                    }
+                }
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
-            .padding(10)
+            .padding(12)
             Divider()
             resultsList
         }
-        .frame(width: 380, height: 420)
-        .onAppear { fieldFocused = true }
+        .frame(width: 400, height: 420)
+        .onAppear {
+            scopes = initialScopes.count == addableTabs.count ? [] : initialScopes
+            fieldFocused = true
+        }
         .task(id: searchText) {
             searchHits = await model.search(searchText)
         }
@@ -1058,7 +1124,11 @@ struct LibrarySearchSheet: View {
         let hits = results
         List(hits, id: \.entry.id) { hit in
             Button {
-                model.addServiceItem(serviceID, refID: hit.entry.id)
+                if let onAdd {
+                    onAdd(hit.entry)
+                } else {
+                    model.addServiceItem(serviceID, refID: hit.entry.id)
+                }
             } label: {
                 HStack(alignment: .firstTextBaseline) {
                     Glyph(
@@ -1236,11 +1306,16 @@ struct PlanAddActions {
     var message: () -> Void
 }
 
-/// The item the slides are on, marked in the plan list with an accent band
-/// that glides from row to row as the whole-plan page scrolls. The list's
-/// own selection turns grey whenever the page has focus, which is nearly
-/// always while presenting, so on its own it barely shows.
+/// The item the slides are on, marked in the plan list by one rounded
+/// highlight that springs from row to row with a little overshoot, like the
+/// iPhone's Dynamic Island, as the selection moves or the whole-plan page
+/// scrolls to another item. It's drawn in two layers from the same frame:
+/// the fill under the rows and the edge over them. Reduce Motion fades it
+/// out at one row and in at the next instead.
 private struct CurrentItemHighlight: View {
+    enum Layer { case fill, edge }
+    let layer: Layer
+    /// The row's content frame, in global coordinates.
     let frame: CGRect?
     let itemID: String?
     let reduceMotion: Bool
@@ -1249,18 +1324,85 @@ private struct CurrentItemHighlight: View {
         GeometryReader { proxy in
             if let frame {
                 let origin = proxy.frame(in: .global).origin
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.32))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1))
-                    .frame(width: max(frame.width - 8, 0), height: frame.height - 2)
-                    .position(x: frame.midX - origin.x, y: frame.midY - origin.y)
+                let rect = RunOrderList.highlightRect(for: frame)
+                Group {
+                    switch layer {
+                    case .fill:
+                        RunOrderList.rowShape.fill(Color.accentColor.opacity(0.30))
+                    case .edge:
+                        RunOrderList.rowShape.strokeBorder(Color.accentColor.opacity(0.75), lineWidth: 1)
+                    }
+                }
+                .frame(width: max(rect.width, 0), height: max(rect.height, 0))
+                .position(x: rect.midX - origin.x, y: rect.midY - origin.y)
+                // With Reduce Motion each row's highlight is its own view,
+                // so a change of item fades rather than moves.
+                .id(reduceMotion ? itemID : nil)
+                .transition(.opacity)
             }
         }
         .clipped()
         .allowsHitTesting(false)
         // Only a change of item animates; the list scrolling under it doesn't.
-        .animation(reduceMotion ? nil : .spring(duration: 0.35, bounce: 0.15), value: itemID)
+        .animation(HopeMotion.bubble(reduced: reduceMotion), value: itemID)
+    }
+}
+
+/// Turns off the plan list's own selection highlight, so the one drawn by
+/// CurrentItemHighlight is the only one. SwiftUI's List is an outline view
+/// underneath; this finds the one whose scroll view has this view's frame
+/// (it sits in the list's background) and sets its highlight style to none.
+/// Selection itself, the keyboard and multi-select are untouched.
+struct NativeSelectionHidden: NSViewRepresentable {
+    final class Finder: NSView {
+        private weak var table: NSTableView?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            schedule()
+        }
+
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            schedule()
+        }
+
+        func schedule() {
+            // After SwiftUI has put the list's own views in the window.
+            DispatchQueue.main.async { [weak self] in self?.apply() }
+        }
+
+        private func apply() {
+            if let table, table.window === window {
+                if table.selectionHighlightStyle != .none { table.selectionHighlightStyle = .none }
+                return
+            }
+            guard let window, let root = window.contentView, !bounds.isEmpty else { return }
+            let mine = convert(bounds, to: nil)
+            table = Self.table(in: root, matching: mine)
+            table?.selectionHighlightStyle = .none
+        }
+
+        private static func table(in view: NSView, matching frame: CGRect) -> NSTableView? {
+            if let table = view as? NSTableView, let scroll = table.enclosingScrollView {
+                let theirs = scroll.convert(scroll.bounds, to: nil)
+                if abs(theirs.midX - frame.midX) < 2, abs(theirs.midY - frame.midY) < 2,
+                   abs(theirs.width - frame.width) < 4, abs(theirs.height - frame.height) < 4 {
+                    return table
+                }
+            }
+            for subview in view.subviews {
+                if let found = table(in: subview, matching: frame) { return found }
+            }
+            return nil
+        }
+    }
+
+    func makeNSView(context: Context) -> Finder { Finder() }
+
+    func updateNSView(_ nsView: Finder, context: Context) {
+        nsView.schedule()
     }
 }
