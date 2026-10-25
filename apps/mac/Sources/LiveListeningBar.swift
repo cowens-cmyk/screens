@@ -5,9 +5,10 @@ import SwiftUI
 /// microphone, so nobody has to hover over a toolbar icon to know: a red
 /// pulsing mic, which input it's hearing (click to change it), the level,
 /// the words as they're heard, the passage it last heard (click to show it,
-/// with the other readings beside it), and Stop. When the input has carried
-/// no sound for a few seconds it says so, since a wrong input otherwise looks
-/// exactly like a quiet room.
+/// with the other readings beside it), a passage found from the pastor
+/// reading it ("Following Romans 8:29" while he reads on), and Stop. When
+/// the input has carried no sound for a few seconds it says so, since a
+/// wrong input otherwise looks exactly like a quiet room.
 struct LiveListeningBar: View {
     @Bindable private var assist = LiveAssist.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -32,12 +33,17 @@ struct LiveListeningBar: View {
                         .frame(width: 110, height: 8)
                         .help("Microphone level")
 
-                    if assist.mode == .sermon, let heard = assist.detected.first {
+                    if assist.mode == .sermon, assist.reading != nil || !assist.detected.isEmpty {
                         Divider().frame(height: 22)
-                        heardButton(heard.reference, primary: true)
-                        ForEach(Array(heard.alternatives.prefix(2).enumerated()), id: \.offset) { _, alternative in
-                            heardButton(alternative, primary: false)
+                        // Newest first: a passage read aloud or one named.
+                        if readingIsNewer { readingButton }
+                        if let heard = assist.detected.first {
+                            heardButton(heard.reference, primary: true)
+                            ForEach(Array(heard.alternatives.prefix(2).enumerated()), id: \.offset) { _, alternative in
+                                heardButton(alternative, primary: false)
+                            }
                         }
+                        if !readingIsNewer { readingButton }
                     }
 
                     Spacer(minLength: 8)
@@ -117,12 +123,63 @@ struct LiveListeningBar: View {
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.orange)
         } else {
-            Text(heardText)
-                .font(.callout)
-                .foregroundStyle(assist.transcript.isEmpty ? .secondary : .primary)
-                .lineLimit(1)
-                .truncationMode(.head)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 8) {
+                if let verse = following(now: now) {
+                    Label("Following \(verse.display)", systemImage: "text.book.closed")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(HopeStyle.live)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(HopeStyle.live.opacity(0.15), in: Capsule())
+                        .fixedSize()
+                        .help("The pastor is reading this passage; the slides move on with him")
+                }
+                Text(heardText)
+                    .font(.callout)
+                    .foregroundStyle(assist.transcript.isEmpty ? .secondary : .primary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    /// The verse being read, while the last phrase that fit it is recent.
+    private func following(now: Date) -> BibleReference? {
+        guard assist.mode == .sermon, let verse = assist.followingVerse,
+              let matched = assist.lastReadingMatch, now.timeIntervalSince(matched) < 30
+        else { return nil }
+        return verse
+    }
+
+    private var readingIsNewer: Bool {
+        guard let reading = assist.reading else { return false }
+        return assist.detectedAt.map { reading.heardAt > $0 } ?? true
+    }
+
+    /// The passage found from reading, as a button that puts it up at the
+    /// verse he's on.
+    @ViewBuilder
+    private var readingButton: some View {
+        if let reading = assist.reading {
+            Button {
+                showing = reading.reference.display
+                Task {
+                    await assist.showReading()
+                    showing = nil
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "book.fill").font(.system(size: 10))
+                    Text("\(reading.reference.display) (reading)")
+                        .font(.callout.weight(readingIsNewer ? .semibold : .regular))
+                        .lineLimit(1)
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(showing != nil)
+            .help("Heard being read. Click to show it from this verse.")
         }
     }
 
