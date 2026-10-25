@@ -17,23 +17,28 @@ Use this guide to answer "how do I…" questions and to stay consistent with how
 
 ## The main window
 
-The window title is the current plan's name. It has three columns.
+The window title is the current plan's name. The slides fill the middle, over a dark backdrop. In Present and Schedule the plan and the screens are panels on either side of the slides, and each one is either **pinned** (docked beside the slides as a column) or **folded** (a small piece floating over the slides, which take the full width):
 
-**Left column.** At the top, a segmented control switches between **Plans** and **Library**. With Plans showing, the list has sections **Upcoming** (soonest first; the first one is tagged Next), **Templates**, and **Past**, and a **+** button ("New plan"). Below that is the chosen plan's items, headed by the plan name in capitals and a book button that opens **Message & Sermon Series** for that plan. At the bottom is the **Add Item** menu and an item count.
+- **Plan panel** (left). Folded, it's a bubble at the top left of the slides showing the plan's name and the item the show is on, with its kind icon. Point at the bubble and the whole panel opens over the slides (it doesn't move them); move the pointer away and it folds again a moment later. Choosing an item from it works as usual. Click the bubble, or the panel's header with the pin, to pin it as a column; click the header again to fold it. It starts pinned.
+- **Screens panel** (right). Folded, it's a strip at the top right with a tiny live preview of each screen the column shows (Audience, Livestream, Stage, then any others), each labelled, with a red edge while something is up on it. Point at the strip to see the full column over the slides; click the strip, or the pin in the column's header, to pin it; click the pin again to fold it. It starts folded.
+- **View › Pin Plan / Fold Plan** (⌃⌘S) and **View › Pin Screens / Fold Screens** (⌃⌘R) do the same, as do the two sidebar buttons in the toolbar. Each Mac remembers which panels are pinned. Edit doesn't show these panels.
+- **Control bar**: a small bar centred at the bottom of the slides in Present and Schedule, whatever the panels are doing: a red microphone while Screens is listening, the sermon timer (green, red once it's past 0:00), and **Clear All** (⇧Esc, or F1). In Present the slide size control sits at the bottom right.
+
+**Plan panel contents.** At the top, a segmented control switches between **Plans** and **Library**. With Plans showing, the list has sections **Upcoming** (soonest first; the first one is tagged Next), **Templates**, and **Past**, and a **+** button ("New plan"). Below that is the chosen plan's items, headed by the plan name in capitals and a book button that opens **Message & Sermon Series** for that plan. At the bottom is the **Add Item** menu and an item count.
 
 **Center.** Depends on the mode:
-- **Present**: the whole plan on one page that scrolls from top to bottom, every item in plan order, like ProPresenter's playlist view. Items sit on the page itself, divided by a thin line, not in boxes. Each item has a header row (its kind badge, name, and its controls: arrangement, key, Slide Show, Follow, the Anthem ⚠ chip, the slide count, and the section pills when there is somewhere to jump) that stays pinned at the top while its slides scroll past; under it are its slides as the same tiles as the grid (click to fire, right-click menus). If any slides need a look (text that doesn't fit its box, a media file missing on this Mac), the header shows an orange ⚠ with a count; click it for the list. Right-click the header for **Add Slide…** and **Arrangement**. A presentation with no slides is one line, "No slides yet"; right-click it to add one. Plan headers show as colored bands. Videos and the countdown show as a tile with a Play button (right-click for **When Video Ends**); audio and playlists show their tracks; items that aren't linked show as a slim row, with **Get Lyrics** for a planned song with no slides. Clicking an item in the plan list scrolls the page to it; clicking the selected item again scrolls back to it. Scrolling the page highlights the item at the top in the plan list. When a slide goes live (arrow keys, the remote, Anthem, a slideshow's timing) the page scrolls to keep it in view, except for 3 seconds after you scroll the page yourself; pressing an arrow key ends that pause. Arrows, Space and Return go from the last slide of one item to the first of the next. Slide size fits the window by itself (about 220 pt wide tiles, 3 to 8 per row). The slider at the bottom right overrides it (drag right for bigger slides, fewer per row); Settings › Present › **Slides across** has **Auto** to go back. **View › Show Whole Plan** (on by default; also Settings › Present) turns this off to show only the selected item's slides.
-- **Edit**: the editor for the selected plan item or library item. The left column folds away while something is open, and the screens column hides.
+- **Present**: the whole plan on one page that scrolls from top to bottom, every item in plan order, like ProPresenter's playlist view. Items sit on the page itself, divided by a thin line, not in boxes. Each item has a header row (its kind badge, name, and its controls: arrangement, key, Slide Show, Follow, the Anthem ⚠ chip, the slide count, and the section pills when there is somewhere to jump) that stays pinned at the top while its slides scroll past; under it are its slides as the same tiles as the grid (click to fire, right-click menus). If any slides need a look (text that doesn't fit its box, a media file missing on this Mac), the header shows an orange ⚠ with a count; click it for the list. Right-click the header for **Add Slide…** and **Arrangement**. A presentation with no slides is one line, "No slides yet"; right-click it to add one. Plan headers show as colored bands. Videos and the countdown show as a tile with a Play button (right-click for **When Video Ends**); audio and playlists show their tracks; items that aren't linked show as a slim row, with **Get Lyrics** for a planned song with no slides. Clicking an item in the plan list scrolls the page to it; clicking the selected item again scrolls back to it. Scrolling the page highlights the item at the top in the plan list. When a slide goes live (arrow keys, the remote, Anthem, a slideshow's timing) the page scrolls to keep it in view, except for 3 seconds after you scroll the page yourself; pressing an arrow key ends that pause. Arrows, Space and Return go from the last slide of one item to the first of the next. Slide size fits the window by itself (about 220 pt wide tiles, 3 to 8 per row). The slider at the bottom right overrides it (drag right for bigger slides, fewer per row); its **Auto** button, or Settings › Present › **Slides across**, goes back to fitting. **View › Show Whole Plan** (on by default; also Settings › Present) turns this off to show only the selected item's slides.
+- **Edit**: the editor for the selected plan item or library item, with the plans and library in the window's sidebar. The sidebar folds away while something is open; the screens and the control bar don't show.
 - **Schedule**: the Scheduler board.
 
-**Right column ("Screens").** Live previews of every screen: **Audience**, **Livestream** (with a checkerboard where the stream is transparent), **Stage**, then any others. The eye menu in the column header chooses which previews show (**Show All** brings them all back). The Audience card's edge lights briefly when the live slide changes. The Livestream card has a menu to switch the livestream mode. The Stage card has a menu for the stage mode and **Edit Stage Display…**, and a **Message to stage** field with **Send**. **Clear All** is at the bottom (⇧Esc).
+**Screens panel contents.** Live previews of every screen: **Audience**, **Livestream** (with a checkerboard where the stream is transparent), **Stage**, then any others. The eye menu in the column header chooses which previews show (**Show All** brings them all back); the folded strip leaves the hidden ones out too. The Audience card's edge lights briefly when the live slide changes. The Livestream card has a menu to switch the livestream mode. The Stage card has a menu for the stage mode and **Edit Stage Display…**, the sermon timer controls, and a **Message to stage** field with **Send**. **Clear All** is in the control bar over the slides.
 
 **Toolbar.**
 - Mode picker: **Present / Edit / Schedule** (also View menu, ⌘1 / ⌘2 / ⌘3).
 - **Schedule Service**: when this plan's services start and when the countdown starts.
 - **Bible**: click to add scripture (⌘⇧B); the arrow opens a menu with **Add Scripture…**, **Listen for Scripture** / **Stop Listening**, and a **Bible Theme** list.
 - **More** (…): **Message & Series…**, **Themes** (this plan's series first, then every theme by name: pick one to open it in the theme editor; also **New Theme from Image…** and **Show Themes in Library**), **Timers & Macros…**, **Lower Thirds…** (the livestream lower third for each type, see Livestream), **Screen Setup…** (opens the Screen Configuration window), **Edit Stage Display…**.
-- **Screens**: shows or hides the right column.
+- **Plan** (left sidebar button) and **Screens** (right sidebar button): pin or fold each panel, in Present and Schedule.
 
 ## Menu bar and shortcuts
 
@@ -46,11 +51,11 @@ The window title is the current plan's name. It has three columns.
 - **Import** submenu (Theme…, Presentation…) and **Export** submenu (the current presentation, or a theme). Shared files are `.screenstheme` and `.screenspres`; double-clicking one imports it.
 - **Export Library Backup…**, **Import Library Backup…**
 
-Song Search, Point Slides, Import Lyrics and Import Sermon are run by the Library pane. If one is greyed out, switch the left column to **Library** and try again.
+Song Search, Point Slides, Import Lyrics and Import Sermon are run by the Library pane. If one is greyed out, switch the plan panel (or Edit's sidebar) to **Library** and try again.
 
 **Edit**: Undo ⌘Z, Redo ⇧⌘Z, Group ⌘G, Ungroup ⇧⌘G (objects in the slide editor).
 
-**View**: **Present** ⌘1, **Edit** ⌘2, **Scheduler** ⌘3, **Show Whole Plan** (Present's one scrolling page; off shows one item at a time), **Edit Slides** ⌘4, **Edit Themes** ⌘5, **Edit Confidence** ⌘6, **Find in Library** ⌘F (switches the left column to Library and focuses its search).
+**View**: **Present** ⌘1, **Edit** ⌘2, **Scheduler** ⌘3, **Show Whole Plan** (Present's one scrolling page; off shows one item at a time), **Edit Slides** ⌘4, **Edit Themes** ⌘5, **Edit Confidence** ⌘6, **Find in Library** ⌘F (switches the plan panel to Library and focuses its search), **Pin Plan / Fold Plan** ⌃⌘S, **Pin Screens / Fold Screens** ⌃⌘R.
 
 **Present**: **Clear Slides** F2, **Clear Media** F3, **Clear Alerts** F6, **Clear Layer** submenu (one entry per layer), **Clear All** F1.
 
@@ -167,7 +172,7 @@ The plan item's **Slideshow** submenu is the quickest way: pick "10 seconds per 
 
 ## Library
 
-Switch the left column to **Library**. Tabs: **Slides** (presentations), **Media**, **Themes**, **Confidence** (stage layouts). The search field searches names and lyrics; a filter menu limits which libraries it searches. With no search, the menu sorts and can show only items **Used in an Upcoming Service**.
+Switch the plan panel (or Edit's sidebar) to **Library**. Tabs: **Slides** (presentations), **Media**, **Themes**, **Confidence** (stage layouts). The search field searches names and lyrics; a filter menu limits which libraries it searches. With no search, the menu sorts and can show only items **Used in an Upcoming Service**.
 
 The bottom bar has **New** (in Confidence, New offers Blank, Worship and Sermon templates), **Import…** (Media), **Folder**, a grid/list toggle and thumbnail size. Media that needs converting shows **Transcode N**.
 
@@ -222,7 +227,7 @@ A series theme has five full-screen designs: **Title**, **Point**, **Scripture**
 
 The livestream screen is keyed over the camera. In order, these decide what it shows: a playing video, then the slide's own choice, then the Livestream switch, then (on Lower Third) the presentation's own Livestream theme, its type's choice in Lower Thirds, and last the slide's theme's routing.
 
-**1. The Livestream switch** (Livestream card menu in the screens column, or Settings › Show Setup):
+**1. The Livestream switch** (Livestream card menu in the screens panel, or Settings › Show Setup):
 - **Lower Third** (default): each slide shows in the lower third set up for it (below); anything without one leaves the camera clear.
 - **Full Screen**: the room's slide, edge to edge.
 - **Transparent**: nothing over the camera.
@@ -332,7 +337,7 @@ Default transitions: Settings › Present › **Media transition** and **Slide t
 
 **Slide actions** (right-click › Add Action) run when the slide fires: Livestream, Stage Display, Microphone, Lightkey Cue, Clear, Fire Media…, Fire Presentation, Alert, Live Input, Stage Layout, Timer (Start, Pause, Reset, Set To), Macro, MIDI Out.
 
-**Clearing**: Present menu or F-keys (Clear All F1, Clear Slides F2, Clear Media F3, Clear Alerts F6), **Clear Layer** for one layer, or the **Clear All** button under the screens (⇧Esc).
+**Clearing**: Present menu or F-keys (Clear All F1, Clear Slides F2, Clear Media F3, Clear Alerts F6), **Clear Layer** for one layer, or the **Clear All** button in the control bar at the bottom of the slides (⇧Esc).
 
 ## Slide editing
 

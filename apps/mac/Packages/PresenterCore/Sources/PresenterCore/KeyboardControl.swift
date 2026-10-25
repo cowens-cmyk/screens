@@ -246,8 +246,8 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .modePresent: "Go to Present"
         case .modeEdit: "Go to Edit"
         case .modeScheduler: "Go to Scheduler"
-        case .toggleSidebar: "Toggle Sidebar"
-        case .toggleRightPanels: "Toggle Right Panels"
+        case .toggleSidebar: "Pin or Fold Plan"
+        case .toggleRightPanels: "Pin or Fold Screens"
         case .openKeyboardSettings: "Open Keyboard Settings"
         }
     }

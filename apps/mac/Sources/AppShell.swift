@@ -204,7 +204,6 @@ struct EditContextSwitcher: View {
 struct ViewCommands: Commands {
     @FocusedValue(\.libraryModel) private var model
     @AppStorage("appMode") private var modeRaw = AppMode.edit.rawValue
-    @AppStorage("shell.sidebarVisible") private var sidebarVisible = true
     @AppStorage(PresentLayoutController.rightRailHiddenKey) private var rightRailHidden = false
     @AppStorage("preview.screenTarget") private var previewTarget = ""
     @Environment(\.openWindow) private var openWindow
@@ -212,6 +211,10 @@ struct ViewCommands: Commands {
     @AppStorage(PresentLayoutController.lockedKey) private var runOnly = false
     @FocusedValue(\.presentSimpleMode) private var presentSimpleMode
     @AppStorage(PlanShell.wholePlanKey) private var showWholePlan = true
+    @FocusedValue(\.planPanelToggle) private var planPanelToggle
+    @FocusedValue(\.screensPanelToggle) private var screensPanelToggle
+    @AppStorage(ShellPanel.Side.plans.defaultsKey) private var planPinned = ShellPanel.Side.plans.pinnedByDefault
+    @AppStorage(ShellPanel.Side.screens.defaultsKey) private var screensPinned = ShellPanel.Side.screens.pinnedByDefault
 
     var body: some Commands {
         CommandGroup(before: .sidebar) {
@@ -242,15 +245,16 @@ struct ViewCommands: Commands {
                 .disabled(model == nil || runOnly)
             }
             Divider()
-            Button(sidebarVisible ? "Hide Sidebar" : "Show Sidebar") {
-                sidebarVisible.toggle()
-            }
-            .keyboardShortcut(command: .toggleSidebar)
+            // Present and Schedule: the plan panel and the screens panel,
+            // docked beside the slides or folded to the bubble and strip.
+            // The main window hands these over; anywhere else they grey out.
+            Button(planPinned ? "Fold Plan" : "Pin Plan") { planPanelToggle?() }
+                .keyboardShortcut(command: .toggleSidebar)
+                .disabled(planPanelToggle == nil)
 
-            Button(rightRailHidden ? "Show Right Panels" : "Hide Right Panels") {
-                rightRailHidden.toggle()
-            }
-            .keyboardShortcut(command: .toggleRightPanels)
+            Button(screensPinned ? "Fold Screens" : "Pin Screens") { screensPanelToggle?() }
+                .keyboardShortcut(command: .toggleRightPanels)
+                .disabled(screensPanelToggle == nil)
             Button("Move Right Panels to Windows") {
                 rightRailHidden = true
                 openWindow(id: "preview", value: previewTarget)
@@ -1761,6 +1765,11 @@ extension FocusedValues {
 
     /// View › Simple Mode…: the main window's entry into the volunteer view.
     @Entry var presentSimpleMode: MenuAction?
+
+    /// View › Pin Plan / Fold Plan, while Present or Schedule is showing.
+    @Entry var planPanelToggle: MenuAction?
+    /// View › Pin Screens / Fold Screens, likewise.
+    @Entry var screensPanelToggle: MenuAction?
 
     @Entry var serviceControls: ServiceControls?
 

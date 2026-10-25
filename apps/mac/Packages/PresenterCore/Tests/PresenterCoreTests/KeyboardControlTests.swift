@@ -183,7 +183,7 @@ final class KeyboardControlTests: XCTestCase {
             KeyCommand.toggleRightPanels.defaultChords,
             [KeyChord("r", command: true, control: true)])
         XCTAssertEqual(KeyCommand.toggleRightPanels.scope, .anywhere)
-        XCTAssertEqual(KeyCommand.toggleRightPanels.displayName, "Toggle Right Panels")
+        XCTAssertEqual(KeyCommand.toggleRightPanels.displayName, "Pin or Fold Screens")
     }
 
     func testEffectiveHotKeyFallsBackToSeeds() {

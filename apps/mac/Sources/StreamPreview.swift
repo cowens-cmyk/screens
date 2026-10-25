@@ -54,9 +54,13 @@ struct Checkerboard: View {
 struct TransparentScenePreview: NSViewRepresentable {
     let compositor: Compositor
     let provider: @Sendable () -> RenderScene
+    /// The same ceiling as the other previews; the folded strip asks for less.
+    var maximumFramesPerSecond: Float = 30
 
     func makeNSView(context: Context) -> TransparentScenePreviewNSView {
-        TransparentScenePreviewNSView(compositor: compositor, provider: provider)
+        let view = TransparentScenePreviewNSView(compositor: compositor, provider: provider)
+        view.maximumFramesPerSecond = maximumFramesPerSecond
+        return view
     }
 
     func updateNSView(_ view: TransparentScenePreviewNSView, context: Context) {
@@ -67,6 +71,7 @@ struct TransparentScenePreview: NSViewRepresentable {
 @MainActor
 final class TransparentScenePreviewNSView: NSView {
     var provider: @Sendable () -> RenderScene
+    var maximumFramesPerSecond: Float = 30
     private let compositor: Compositor
     private let metalLayer = CAMetalLayer()
     private var displayLink: CAMetalDisplayLink?
@@ -99,7 +104,8 @@ final class TransparentScenePreviewNSView: NSView {
         resize()
         let link = CAMetalDisplayLink(metalLayer: metalLayer)
         link.delegate = self
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 10, maximum: 30, preferred: 30)
+        let most = max(1, maximumFramesPerSecond)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: min(10, most), maximum: most, preferred: most)
         link.add(to: .main, forMode: .common)
         displayLink = link
     }

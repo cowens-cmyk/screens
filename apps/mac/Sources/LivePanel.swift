@@ -174,20 +174,24 @@ struct LiveSceneView: NSViewRepresentable {
     let render: RenderContext
 
     var screenTargetID: String?
+    /// 30 for a preview you watch; the folded screens strip asks for less.
+    var maximumFramesPerSecond: Float = 30
 
-    init(render: RenderContext, screenTargetID: String? = nil) {
+    init(render: RenderContext, screenTargetID: String? = nil, maximumFramesPerSecond: Float = 30) {
         self.render = render
         self.screenTargetID = screenTargetID
+        self.maximumFramesPerSecond = maximumFramesPerSecond
     }
 
     func makeNSView(context: Context) -> MetalSceneView {
         let view = MetalSceneView(compositor: render.compositor)
-        view.maximumFramesPerSecond = 30
+        view.maximumFramesPerSecond = maximumFramesPerSecond
         apply(to: view)
         return view
     }
 
     func updateNSView(_ nsView: MetalSceneView, context: Context) {
+        nsView.maximumFramesPerSecond = maximumFramesPerSecond
         apply(to: nsView)
     }
 

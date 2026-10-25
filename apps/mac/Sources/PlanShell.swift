@@ -3,11 +3,14 @@ import RenderEngine
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The main window, laid out like ProPresenter: on the left, the plans (or
-/// the library) above the chosen plan's items; the slides fill the middle;
-/// every screen previews down the right, with Clear All under them. Native
-/// split view and toolbar, so macOS draws the glass and nothing custom
-/// redraws behind it.
+/// The main window: the plans (or the library) above the chosen plan's
+/// items, the slides, and every screen's preview. In Present and Schedule
+/// the plan and the screens are panels that fold away to give the slides
+/// the room (see ShellPanel): the plan to a bubble at the top left, the
+/// screens to a strip of tiny previews at the top right, each opening on
+/// hover and docking beside the slides on a click. Clear All, the sermon
+/// time and the microphone sit in a bar over the slides either way. Edit
+/// keeps the split view's own sidebar.
 struct PlanShell: View {
     @Bindable var model: AppModel
     let render: RenderContext?
@@ -15,7 +18,12 @@ struct PlanShell: View {
     let layout: PresentLayoutController?
 
     @AppStorage("appMode") private var modeRaw = AppMode.present.rawValue
-    @AppStorage("shell.screensShown") private var screensShown = true
+    @AppStorage(ShellPanel.Side.plans.defaultsKey) private var planPinnedStored = ShellPanel.Side.plans.pinnedByDefault
+    @AppStorage(ShellPanel.Side.screens.defaultsKey) private var screensPinnedStored = ShellPanel.Side.screens.pinnedByDefault
+    @State private var planPanel = ShellPanel(pinned: ShellPanel.Side.plans.storedPinned(in: .standard))
+    @State private var screensPanel = ShellPanel(pinned: ShellPanel.Side.screens.storedPinned(in: .standard))
+    /// The screens hidden from the column (its eye menu); the strip leaves them out too.
+    @AppStorage("monitors.hidden") private var hiddenScreens = ""
     @AppStorage("shell.topPane") private var topPane = TopPane.plans
     /// View › Show Whole Plan: Present shows every item's slides on one
     /// scrolling page, in order; off, just the selected item's.
@@ -24,7 +32,12 @@ struct PlanShell: View {
     /// Whether the page has already scrolled to the selected item, so a
     /// selection that came from the page itself doesn't jump it.
     @State private var presentFocusScroll = PresentFocusScroll()
-    @State private var columns = NavigationSplitViewVisibility.all
+    /// The bottom bar's room, measured: what fits beside the control bar.
+    @State private var bottomBarWidth: CGFloat = 0
+    /// The split view's own sidebar is Edit's; Present and Schedule start
+    /// with it folded, so it doesn't flash open on launch.
+    @State private var columns: NavigationSplitViewVisibility =
+        UserDefaults.standard.string(forKey: "appMode") == AppMode.edit.rawValue ? .all : .detailOnly
     @State private var creatingPlan = false
     @State private var controlsShown = false
     @State private var addingVideo = false
@@ -42,10 +55,6 @@ struct PlanShell: View {
     @State private var confirmingSimpleMode = false
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    /// The screens column's width: room for a 16:9 preview a third of the
-    /// window wide, and a fixed number so nothing in it can resize the split.
-    static let screensWidth: CGFloat = 360
 
     /// Shared with Settings › Present and the View menu.
     static let wholePlanKey = "present.continuous"
@@ -184,48 +193,258 @@ struct PlanShell: View {
         // view re-run constraints forever, and AppKit then ends the app.
         NavigationSplitView(columnVisibility: $columns) {
             // Narrow like ProPresenter's: the library's tab row folds extra
-            // tabs into its ··· menu, so 180 is enough.
-            sidebar
-                .frame(minWidth: 180, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .clipped()
-                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 360)
+            // tabs into its ··· menu, so 180 is enough. Only Edit uses this
+            // column; Present and Schedule have the plan panel instead, so
+            // nothing is built here for them.
+            Group {
+                if mode == .edit { sidebar } else { Color.clear }
+            }
+            .frame(minWidth: 180, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+            .clipped()
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 360)
+            .toolbar(removing: mode == .edit ? nil : .sidebarToggle)
         } detail: {
-            // The screens sit beside the slides at a fixed width rather than
-            // in a split-view inspector: next to a two-column split, the
-            // inspector's size negotiation never settles and AppKit ends the app.
+            // The docked panels sit beside the slides at fixed widths in a
+            // plain HStack rather than as split-view columns or an inspector:
+            // next to a two-column split, an inspector's size negotiation
+            // never settles and AppKit ends the app. Folded and peeking, they
+            // float over the slides and take no room from them.
             HStack(spacing: 0) {
-                center
-                    .frame(minWidth: 320, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                    .background(Color(nsColor: .underPageBackgroundColor))
-                    .animation(HopeMotion.ui(reduced: reduceMotion), value: modeRaw)
-                    // The whole-plan page scrolls to an item instead of
-                    // swapping views, and its selection moves as it scrolls.
-                    .animation(HopeMotion.ui(reduced: reduceMotion), value: wholePlanShown ? nil : itemID)
-                    // Listening is never a secret: a red bar across the top
-                    // of the slides for as long as a microphone is open.
-                    .safeAreaInset(edge: .top, spacing: 0) { LiveListeningBar() }
-                    .animation(HopeMotion.ui(reduced: reduceMotion), value: LiveAssist.shared.listening)
-                // Edit gives the editor the room; Present and Schedule show the screens.
-                if screensShown && mode != .edit, let render {
-                    Divider()
-                    MonitorsPanel(
-                        render: render, liveKey: controls?.liveSlideID,
-                        onClearAll: controls.map { controls in { controls.clearAll() } },
-                        controls: controls,
-                        onEditStage: { editStageDisplay() })
-                        .frame(width: Self.screensWidth)
+                if panelsShown && planPanel.isPinned {
+                    dockedPlanPanel
+                        .frame(width: ShellMetrics.planWidth)
                         .frame(maxHeight: .infinity)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    Divider()
+                }
+                slidesArea
+                if panelsShown && screensPanel.isPinned, let render {
+                    Divider()
+                    screensColumn(render, pinned: true)
+                        .frame(width: ShellMetrics.screensWidth)
+                        .frame(maxHeight: .infinity)
+                        .dockedPanel()
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
+            .background { ShellBackdrop() }
             // Edit folds the left column away so the slide canvas gets the
             // room; Present and Schedule bring it back.
-            .onChange(of: modeRaw, initial: true) { syncSidebar() }
+            .onChange(of: modeRaw, initial: true) {
+                syncSidebar()
+                planPanel.dismissPeek()
+                screensPanel.dismissPeek()
+            }
             .onChange(of: itemID) { syncSidebar() }
             .onChange(of: model.selectedEntryID) { syncSidebar() }
+            .onChange(of: planPanel.isPinned) { _, pinned in planPinnedStored = pinned }
+            .onChange(of: screensPanel.isPinned) { _, pinned in screensPinnedStored = pinned }
+            .onChange(of: planPinnedStored) { _, pinned in planPanel.setPinned(pinned) }
+            .onChange(of: screensPinnedStored) { _, pinned in screensPanel.setPinned(pinned) }
             .navigationTitle(model.currentServiceID.flatMap { model.resident.services.value($0)?.name } ?? "Screens")
         }
         .toolbar { toolbar }
+        // View › Pin Plan / Pin Screens and their shortcuts.
+        .focusedSceneValue(\.planPanelToggle, panelsShown ? MenuAction("planPanel") { togglePanel(.plans) } : nil)
+        .focusedSceneValue(\.screensPanelToggle, screensMenuShown ? MenuAction("screensPanel") { togglePanel(.screens) } : nil)
+    }
+
+    // MARK: Panels (Present and Schedule)
+
+    /// Edit gives the editor the room; Present and Schedule have the panels.
+    private var panelsShown: Bool { mode != .edit }
+    private var screensMenuShown: Bool { panelsShown && render != nil }
+    private var planFloats: Bool { panelsShown && !planPanel.isPinned }
+    private var screensFloat: Bool { screensMenuShown && !screensPanel.isPinned }
+
+    /// The View menu, its shortcut, or a toolbar button.
+    private func togglePanel(_ side: ShellPanel.Side) {
+        withAnimation(HopeMotion.ui(reduced: reduceMotion)) {
+            switch side {
+            case .plans: planPanel.toggle()
+            case .screens: screensPanel.toggle()
+            }
+        }
+    }
+
+    /// The bubble, the strip, or a panel's pin.
+    private func clickPanel(_ side: ShellPanel.Side) {
+        let now = ProcessInfo.processInfo.systemUptime
+        withAnimation(HopeMotion.ui(reduced: reduceMotion)) {
+            switch side {
+            case .plans: planPanel.click(at: now)
+            case .screens: screensPanel.click(at: now)
+            }
+        }
+    }
+
+    /// The slides, with the floating pieces over them: the bubble, the
+    /// strip and their peeking cards, and the control bar.
+    private var slidesArea: some View {
+        center
+            .frame(minWidth: 320, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+            .animation(HopeMotion.ui(reduced: reduceMotion), value: modeRaw)
+            // The whole-plan page scrolls to an item instead of
+            // swapping views, and its selection moves as it scrolls.
+            .animation(HopeMotion.ui(reduced: reduceMotion), value: wholePlanShown ? nil : itemID)
+            // Room at the top for the bubble and the strip, so the first row
+            // of slides isn't under them; the page scrolls up beneath.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Color.clear
+                    .frame(height: ShellMetrics.band(planFloats: planFloats, screensFloat: screensFloat))
+                    .allowsHitTesting(false)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
+            .overlay(alignment: .topLeading) {
+                if planFloats { planFloat }
+            }
+            .overlay(alignment: .topTrailing) {
+                if screensFloat, let render { screensFloatView(render) }
+            }
+            // Listening is never a secret: a red bar across the top
+            // of the slides for as long as a microphone is open.
+            .safeAreaInset(edge: .top, spacing: 0) { LiveListeningBar() }
+            .animation(HopeMotion.ui(reduced: reduceMotion), value: LiveAssist.shared.listening)
+            .animation(HopeMotion.ui(reduced: reduceMotion), value: planPanel.mode)
+            .animation(HopeMotion.ui(reduced: reduceMotion), value: screensPanel.mode)
+    }
+
+    /// The control bar centred under the slides, and in Present the slide
+    /// size at the right. On a clear background: the page scrolls beneath.
+    /// What fits is decided from the measured width of the slides, not by
+    /// trying layouts, so a resize can't make it flip back and forth.
+    @ViewBuilder
+    private var bottomBar: some View {
+        if panelsShown {
+            let sizeWanted = mode == .present && model.currentServiceID != nil
+            let side = SlideSizeControl.width + 8
+            let sizeShown = sizeWanted && bottomBarWidth >= ShowControlBar.width + side
+            let balanced = sizeShown && bottomBarWidth >= ShowControlBar.width + side * 2
+            HStack(spacing: 8) {
+                // Balances the slide size control, so the bar stays centred.
+                if balanced { Color.clear.frame(width: SlideSizeControl.width, height: 1) }
+                Spacer(minLength: 0)
+                if let controls { ShowControlBar(controls: controls) }
+                Spacer(minLength: 0)
+                if sizeShown { SlideSizeControl().glassChip() }
+            }
+            .padding(.horizontal, ShellMetrics.inset)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width - ShellMetrics.inset * 2 } action: { width in
+                let rounded = (width / 8).rounded(.down) * 8
+                if rounded != bottomBarWidth { bottomBarWidth = rounded }
+            }
+        }
+    }
+
+    // MARK: The plan panel
+
+    private var currentPlan: Service? {
+        model.currentServiceID.flatMap { model.resident.services.value($0) }
+    }
+
+    /// The item the show is on, else the one chosen in the list.
+    private var currentItem: ServiceItem? {
+        guard let plan = currentPlan else { return nil }
+        if let live = controls?.liveContextID, let item = plan.items.first(where: { $0.id == live }) {
+            return item
+        }
+        return itemID.flatMap { id in plan.items.first { $0.id == id } }
+    }
+
+    private func planHandle(pinned: Bool) -> PlanBubbleLabel {
+        let item = currentItem
+        return PlanBubbleLabel(
+            planName: currentPlan?.name,
+            itemName: item.map { $0.name.isEmpty ? "Untitled" : $0.name },
+            kind: item.map { HopeStyle.kind(of: $0, presentation: $0.itemKind == .presentation ? model.presentation($0.refId) : nil) },
+            pinned: pinned)
+    }
+
+    /// The bubble when folded, the whole panel when peeking: one view, so
+    /// the pointer stays inside it while the one becomes the other.
+    private var planFloat: some View {
+        ZStack(alignment: .topLeading) {
+            if planPanel.isPeeking {
+                VStack(spacing: 0) {
+                    planHeaderButton(pinned: false)
+                    Divider()
+                    sidebar
+                }
+                .frame(width: ShellMetrics.planWidth)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .peekCard()
+                .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .topLeading)))
+            } else {
+                Button { clickPanel(.plans) } label: {
+                    planHandle(pinned: false)
+                        .padding(.horizontal, 12)
+                        .frame(width: 236, height: ShellMetrics.bubbleHeight)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: Capsule())
+                .help("The plan. Point at it to look, click to keep it open (⌃⌘S).")
+                .transition(.opacity)
+            }
+        }
+        .modifier(ShellPanelHover(panel: $planPanel))
+        .padding(ShellMetrics.inset)
+    }
+
+    private func planHeaderButton(pinned: Bool) -> some View {
+        Button { clickPanel(.plans) } label: {
+            planHandle(pinned: pinned)
+                .padding(.horizontal, 12)
+                .frame(height: ShellMetrics.bubbleHeight)
+        }
+        .buttonStyle(.plain)
+        .help(pinned ? "Fold the plan to a bubble (⌃⌘S)" : "Keep the plan open beside the slides (⌃⌘S)")
+    }
+
+    private var dockedPlanPanel: some View {
+        VStack(spacing: 0) {
+            planHeaderButton(pinned: true)
+            Divider()
+            sidebar
+        }
+        .dockedPanel()
+    }
+
+    // MARK: The screens panel
+
+    private func screensColumn(_ render: RenderContext, pinned: Bool) -> some View {
+        MonitorsPanel(
+            render: render, liveKey: controls?.liveSlideID,
+            onPin: { clickPanel(.screens) }, pinned: pinned,
+            controls: controls,
+            onEditStage: { editStageDisplay() })
+    }
+
+    /// The strip when folded, the whole column when peeking.
+    private func screensFloatView(_ render: RenderContext) -> some View {
+        ZStack(alignment: .topTrailing) {
+            if screensPanel.isPeeking {
+                screensColumn(render, pinned: false)
+                    .frame(width: ShellMetrics.screensWidth)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .peekCard()
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .topTrailing)))
+            } else {
+                // Built only while folded: the full previews aren't drawn at all then.
+                Button { clickPanel(.screens) } label: {
+                    ScreensStrip(
+                        render: render, controls: controls,
+                        screens: MonitorsPanel.shownScreens(render: render, setup: ShowSetup.shared, hiddenList: hiddenScreens))
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .help("The screens. Point at them to look, click to keep them open (⌃⌘R).")
+                .transition(.opacity)
+            }
+        }
+        .modifier(ShellPanelHover(panel: $screensPanel))
+        .padding(ShellMetrics.inset)
     }
 
     /// Simple Mode from the toolbar or View menu: the first time sets the
@@ -481,12 +700,12 @@ struct PlanShell: View {
             if let planID = model.currentServiceID {
                 Group {
                     if showWholePlan {
+                        // No background of its own: the window's backdrop shows through.
                         ServiceContinuousView(
                             model: model, render: render, controls: controls,
                             serviceID: planID, focusItemID: itemID,
                             focusScroll: $presentFocusScroll,
                             onShowItem: { showItem($0) })
-                            .background(Color.basePlane)
                             // A new plan starts at its top.
                             .id(planID)
                     } else {
@@ -494,21 +713,9 @@ struct PlanShell: View {
                             model: model, render: render, controls: controls, serviceID: planID, itemID: itemID)
                     }
                 }
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        VStack(spacing: 0) {
-                            Divider()
-                            HStack {
-                                Spacer()
-                                SlideSizeControl()
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                        }
-                        .background(.bar)
-                    }
             } else {
                 HopeEmptyState(title: "Nothing to Show", symbol: "sparkles.rectangle.stack",
-                               message: "Pick a plan on the left.")
+                               message: "Pick a plan in the plan panel.")
             }
         case .edit:
             editor
@@ -552,13 +759,15 @@ struct PlanShell: View {
         }
     }
 
-    /// Edit folds the left column away when something is open, so the slide
-    /// canvas gets the room; everywhere else it shows. `columns` only reads
-    /// the state: setting it grew the window by the column's width each time
-    /// the column came back, while the split view's own toggle doesn't.
+    /// The split view's sidebar is Edit's alone, and Edit folds it away when
+    /// something is open, so the slide canvas gets the room. Present and
+    /// Schedule keep it folded: their plan is the plan panel. `columns` only
+    /// reads the state: setting it grew the window by the column's width
+    /// each time the column came back, while the split view's own toggle
+    /// doesn't.
     private func syncSidebar() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            let fold = mode == .edit && selectedRefID != nil
+            let fold = mode != .edit || selectedRefID != nil
             let hidden = columns == .detailOnly
             guard fold != hidden else { return }
             NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
@@ -578,6 +787,14 @@ struct PlanShell: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            if panelsShown {
+                Button { togglePanel(.plans) } label: {
+                    Label(planPanel.isPinned ? "Fold Plan" : "Pin Plan", systemImage: "sidebar.left")
+                }
+                .help(planPanel.isPinned ? "Fold the plan to a bubble (⌃⌘S)" : "Keep the plan open beside the slides (⌃⌘S)")
+            }
+        }
         ToolbarItem(placement: .principal) {
             if !runOnly {
                 Picker("Mode", selection: $modeRaw) {
@@ -623,10 +840,12 @@ struct PlanShell: View {
                 Label("More", systemImage: "ellipsis")
             }
             .help("Message & Series, Themes, Simple Mode, Timers & Macros, Screen Setup")
-            Button { withAnimation(HopeMotion.ui(reduced: reduceMotion)) { screensShown.toggle() } } label: {
-                Label("Screens", systemImage: "sidebar.right")
+            if screensMenuShown {
+                Button { togglePanel(.screens) } label: {
+                    Label(screensPanel.isPinned ? "Fold Screens" : "Pin Screens", systemImage: "sidebar.right")
+                }
+                .help(screensPanel.isPinned ? "Fold the screens to the strip (⌃⌘R)" : "Keep the screens open beside the slides (⌃⌘R)")
             }
-            .help("Show or hide the screens")
         }
     }
 
@@ -858,28 +1077,60 @@ private struct MicrophoneAccessBanner: View {
 }
 
 /// Slide size at the bottom of the slides, like ProPresenter's: drag right
-/// for bigger slides (fewer to a row), left for more at once.
+/// for bigger slides (fewer to a row), left for more at once. Auto, the
+/// default, fits the slides to the page's width; dragging picks a size, and
+/// clicking Auto goes back to fitting.
 private struct SlideSizeControl: View {
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
+    /// With its chip's padding; the control bar is centred against it.
+    static let width: CGFloat = 214
+
+    private var automatic: Bool { SlidesAcross.isAutomatic(slidesAcross) }
 
     var body: some View {
         let range = SlidesAcross.range
+        // While fitting, the thumb sits where an unmeasured page starts
+        // rather than at an end, which would read as a choice.
+        let shown = automatic ? SlidesAcross.unmeasuredCount : SlidesAcross.clamped(slidesAcross)
         HStack(spacing: 6) {
+            Button {
+                slidesAcross = SlidesAcross.automatic
+            } label: {
+                Text("Auto")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(automatic ? Color.white : Color.secondary)
+                    .padding(.horizontal, 6)
+                    .frame(height: 18)
+                    .background(automatic ? HopeStyle.blue : Color.primary.opacity(0.08), in: Capsule())
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help(automatic ? "Fitting the slides to the window" : "Go back to fitting the slides to the window")
             Image(systemName: "square.grid.3x3.fill").font(.system(size: 10))
             Slider(
                 value: Binding(
                     // Reversed: the right end is the fewest across, the biggest slides.
-                    get: { Double(range.upperBound + range.lowerBound - SlidesAcross.clamped(slidesAcross)) },
+                    get: { Double(range.upperBound + range.lowerBound - shown) },
                     set: { raw in
                         let next = SlidesAcross.clamped(range.upperBound + range.lowerBound - Int(raw.rounded()))
                         if next != slidesAcross { slidesAcross = next }
                     }),
                 in: Double(range.lowerBound) ... Double(range.upperBound), step: 1)
                 .controlSize(.small)
-                .frame(width: 120)
+                .frame(width: 110)
+                .opacity(automatic ? 0.6 : 1)
             Image(systemName: "square.fill").font(.system(size: 12))
         }
         .foregroundStyle(.secondary)
         .help("Slide size")
+    }
+}
+
+private extension View {
+    /// A small floating control over the slides.
+    func glassChip() -> some View {
+        padding(.horizontal, 12)
+            .frame(height: 34)
+            .glassEffect(.regular, in: Capsule())
     }
 }

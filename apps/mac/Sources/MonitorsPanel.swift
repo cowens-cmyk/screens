@@ -7,14 +7,16 @@ import SwiftUI
 /// The show view's right column: a live preview of every screen Screens is
 /// driving — the room, the livestream and the stage first, then any other
 /// outputs. Each can be hidden from the column; all show by default, and
-/// the column scrolls when they don't fit.
+/// the column scrolls when they don't fit. Clear All lives in the control
+/// bar over the slides, so it's there even when this is folded away.
 struct MonitorsPanel: View {
     let render: RenderContext
     /// What's live on the audience screen; when it changes, that card's edge
     /// lights briefly, like a switcher's tally, to confirm the take.
     var liveKey: String? = nil
-    /// Clears every layer on every screen; the one button the column keeps.
-    var onClearAll: (() -> Void)? = nil
+    /// Pins the column beside the slides, or folds it back to the strip.
+    var onPin: (() -> Void)? = nil
+    var pinned = false
     /// Sends typed messages to the stage screen.
     var controls: ServiceControls? = nil
     /// Opens the stage layout in the editor.
@@ -71,21 +73,6 @@ struct MonitorsPanel: View {
             }
             .scrollContentBackground(.hidden)
             .animation(HopeMotion.ui(reduced: reduceMotion), value: hiddenList)
-
-            if let onClearAll {
-                Divider()
-                Button(action: onClearAll) {
-                    Label("Clear All", systemImage: "xmark.circle.fill")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4)
-                }
-                .buttonStyle(.glass)
-                .tint(nil)
-                .keyboardShortcut(.escape, modifiers: [.shift])
-                .help("Clear every screen (⇧Esc)")
-                .padding(12)
-            }
         }
 
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
@@ -125,9 +112,46 @@ struct MonitorsPanel: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help("Choose which screens preview here")
+            if let onPin {
+                Button(action: onPin) {
+                    Image(systemName: pinned ? "pin.fill" : "pin")
+                        .foregroundStyle(pinned ? AnyShapeStyle(HopeStyle.blue) : AnyShapeStyle(.secondary))
+                }
+                .buttonStyle(.borderless)
+                .help(pinned ? "Fold the screens back to the strip (⌃⌘R)" : "Keep the screens open beside the slides (⌃⌘R)")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    /// One screen the column previews, for the folded strip.
+    struct Entry: Identifiable {
+        enum Role { case audience, stream, stage, other }
+        let id: String
+        let title: String
+        let target: String?
+        let role: Role
+    }
+
+    /// The screens the column shows, in its order and with its hidden ones
+    /// left out, so the strip matches the column it folds from.
+    static func shownScreens(render: RenderContext, setup: ShowSetup, hiddenList: String) -> [Entry] {
+        let hidden = Set(hiddenList.split(separator: "\n").map(String.init))
+        let targets = ShowTargets(setup: setup, render: render)
+        var list: [Entry] = []
+        func add(_ title: String, _ target: String?, _ role: Entry.Role) {
+            guard !hidden.contains(target ?? "") else { return }
+            list.append(Entry(id: title + (target ?? ""), title: title, target: target, role: role))
+        }
+        add("Audience", targets.audience, .audience)
+        add("Livestream", targets.stream, .stream)
+        add("Stage", targets.stage, .stage)
+        let roles = Set([targets.audience, targets.stream, targets.stage].compactMap { $0 })
+        for screen in PreviewTargets.screens(render) where !roles.contains(screen.id) {
+            add(screen.name, screen.id, .other)
+        }
+        return list
     }
 
     private var hidden: Set<String> {
@@ -605,14 +629,15 @@ struct SermonTimerControl: View {
 
 /// The sermon timer's digits: the only part that ticks, so the card around
 /// it isn't redrawn twice a second.
-private struct SermonTimeReadout: View {
+struct SermonTimeReadout: View {
     let timer: TimerSnapshot?
+    var size: CGFloat = 22
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
             let overtime = timer?.isOvertime(at: context.date) == true
             Text(timer?.displayString(at: context.date) ?? TimerSnapshot.timecode(SermonTimer.defaultSeconds))
-                .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
+                .font(.system(size: size, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(overtime ? Color.red : Color.green)
         }
     }
