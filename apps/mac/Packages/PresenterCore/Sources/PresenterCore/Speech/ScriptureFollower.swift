@@ -29,6 +29,9 @@ public struct ScriptureFollower: Sendable {
         /// words count half): how sure the place is.
         public var evidence: Double
         public var kind: Kind
+        /// How far into the verse's words he is, 0…1: a verse long enough
+        /// to need two slides moves to the second partway through.
+        public var progress: Double
     }
 
     /// The thresholds, together, so the tests and the app read the same ones.
@@ -37,14 +40,22 @@ public struct ScriptureFollower: Sendable {
         public static let locate = 5.0
         /// Putting a passage found from reading on screen without being asked.
         public static let show = 6.0
+        /// The same over another presentation the operator chose (sermon
+        /// notes): it must be a reading, not a verse quoted from memory, so
+        /// more words and `streak` phrases in a row.
+        public static let showOverOther = 8.0
+        public static let streak = 2
         /// Reading on into the next verse or two.
         public static let follow = 3.0
-        /// Words in the newest phrase that must match before anything moves (one
-        /// distinctive word, or two common ones),
-        /// so an old match can't carry commentary along with it.
+        /// Words in the newest phrase that must match before anything moves
+        /// (one distinctive word, or two common ones), so an old match can't
+        /// carry commentary along with it.
         public static let fresh = 1.0
-        /// Words in the verse being moved into.
-        public static let landing = 1.5
+        /// Distinctive words in order in the verse being moved into, all
+        /// from the newest phrase (a misheard one counts half): an old match
+        /// carried through commentary never moves into the next verse on one
+        /// shared word.
+        public static let landing = 2.0
         /// How much better than any other part of the chapter a found place
         /// must fit (alignment score).
         public static let margin = 3.0
@@ -58,8 +69,16 @@ public struct ScriptureFollower: Sendable {
     /// The last phrase fit the text where he is (moving or not): he's
     /// still reading.
     public private(set) var matchedLastPhrase = false
+    /// Finished phrases in a row that fit the text in order: two or more
+    /// is someone reading, where one could be a verse quoted in passing.
+    public private(set) var streak = 0
+    /// How far into the current verse's words he is, 0…1.
+    public private(set) var progress = 0.0
 
     private let tokens: [Token]
+    /// Each verse's first token and its number of tokens.
+    private let verseStart: [Int]
+    private let verseLength: [Int]
     private var heard: [String] = []
     private var currentIndex: Int?
 
@@ -67,10 +86,19 @@ public struct ScriptureFollower: Sendable {
     /// or nil to wait until the reading itself says where it is.
     public init(verses: [BibleVerse], at verse: Int? = nil) {
         self.verses = verses
-        tokens = Self.tokens(for: verses)
+        let tokens = Self.tokens(for: verses)
+        self.tokens = tokens
+        var start = [Int](repeating: 0, count: verses.count)
+        var length = [Int](repeating: 0, count: verses.count)
+        for (index, token) in tokens.enumerated().reversed() {
+            start[token.verse] = index
+            length[token.verse] += 1
+        }
+        verseStart = start
+        verseLength = length
         if let verse, let index = verses.firstIndex(where: { $0.verse == verse }) {
             currentIndex = index
-            place = Place(chapter: verses[index].chapter, verse: verse, evidence: 0, kind: .located)
+            place = Place(chapter: verses[index].chapter, verse: verse, evidence: 0, kind: .located, progress: 0)
         }
     }
 
@@ -85,12 +113,25 @@ public struct ScriptureFollower: Sendable {
 
     @discardableResult
     public mutating func hear(words new: [String]) -> Place? {
+        let wasMatching = matchedLastPhrase
         matchedLastPhrase = false
         let new = new.filter { !Self.fillers.contains($0) }
         guard !new.isEmpty, !tokens.isEmpty else { return nil }
         heard = Array((heard + new).suffix(Self.memory))
         let freshStart = heard.count - min(new.count, heard.count)
         let ends = Self.align(heard, tokens, freshFrom: freshStart)
+        let result = decide(ends)
+        // A phrase that fit after one that fit, in order, extends the streak;
+        // a jump back starts a new one.
+        if matchedLastPhrase {
+            streak = wasMatching && result?.kind != .jumped ? streak + 1 : 1
+        } else {
+            streak = 0
+        }
+        return result
+    }
+
+    private mutating func decide(_ ends: [Int: End]) -> Place? {
         guard let best = ends.values.max(by: { $0.score < $1.score || ($0.score == $1.score && $0.verse > $1.verse) })
         else { return nil }
 
@@ -103,9 +144,11 @@ public struct ScriptureFollower: Sendable {
                near.evidence >= Threshold.follow, near.freshEvidence >= Threshold.fresh {
                 guard near.verse > current else {
                     matchedLastPhrase = true
+                    progress = fraction(of: near)
+                    if let place { self.place?.progress = max(place.progress, progress) }
                     return nil
                 }
-                guard near.landingEvidence >= Threshold.landing else { return nil }
+                guard near.landingFresh >= Threshold.landing else { return nil }
                 return move(to: near, kind: .forward)
             }
         }
@@ -119,26 +162,36 @@ public struct ScriptureFollower: Sendable {
         case let current? where (current + 1...current + 2).contains(best.verse): .forward
         default: .jumped
         }
+        guard kind == .located || best.landingFresh >= Threshold.landing else { return nil }
         return move(to: best, kind: kind)
     }
 
     private mutating func move(to end: End, kind: Place.Kind) -> Place {
         matchedLastPhrase = true
         currentIndex = end.verse
+        progress = fraction(of: end)
         let verse = verses[end.verse]
-        let place = Place(chapter: verse.chapter, verse: verse.verse, evidence: end.evidence, kind: kind)
+        let place = Place(
+            chapter: verse.chapter, verse: verse.verse, evidence: end.evidence, kind: kind, progress: progress)
         self.place = place
         return place
+    }
+
+    private func fraction(of end: End) -> Double {
+        let length = verseLength[end.verse]
+        guard length > 0 else { return 0 }
+        return min(1, max(0, Double(end.token - verseStart[end.verse] + 1) / Double(length)))
     }
 
     // MARK: Search
 
     /// What to ask the ESV search for, from the latest finished words
-    /// (newest last): the distinctive words of the last 14, then the last
-    /// four and the first four on their own, since a single misheard word
-    /// sinks a search for all of them. Empty when the words are too few or
-    /// too plain to be worth a request, or sound like someone talking
-    /// rather than reading.
+    /// (newest last): the distinctive words of the last 14, then, only if
+    /// that finds nothing, the last four on their own, since a single
+    /// misheard word sinks a search for all of them. Never more than two
+    /// per phrase: the ESV allowance is shared with every passage shown.
+    /// Empty when the words are too few or too plain to be worth a request,
+    /// or sound like someone talking rather than reading.
     public static func searchQueries(recent: [String]) -> [String] {
         let window = Array(recent.filter { !fillers.contains($0) }.suffix(14))
         guard window.count >= 8, !window.contains(where: talkWords.contains) else { return [] }
@@ -151,7 +204,6 @@ public struct ScriptureFollower: Sendable {
         guard content.count >= 5, content.filter({ weight(of: $0) == .distinctive }).count >= 3 else { return [] }
         var queries = [content.joined(separator: " ")]
         if content.count >= 6 { queries.append(content.suffix(4).joined(separator: " ")) }
-        if content.count >= 8 { queries.append(content.prefix(4).joined(separator: " ")) }
         return queries
     }
 
@@ -179,17 +231,37 @@ public struct ScriptureFollower: Sendable {
 
     // MARK: Slides
 
-    /// The slide whose verses include this one, from the slides' names
-    /// ("Romans 8:28–30", as ScriptureSlideBuilder names them). The first
-    /// such slide, so a verse split over two slides starts at its beginning.
-    public static func slideIndex(book: BibleBook, chapter: Int, verse: Int, slideNames: [String]) -> Int? {
-        slideNames.firstIndex { name in
-            guard let range = BibleReference.parse(name), range.book == book,
+    /// The slide holding this verse, from the slides' names ("Romans
+    /// 8:28–30", as ScriptureSlideBuilder names them). A verse too long for
+    /// one slide continues on the next ones under the same name; `progress`
+    /// (how far into the verse he is) picks among them by their share of
+    /// the verse's words (`wordCounts`, one per slide, else equal shares).
+    public static func slideIndex(
+        book: BibleBook, chapter: Int, verse: Int, progress: Double = 0,
+        slideNames: [String], wordCounts: [Int]? = nil
+    ) -> Int? {
+        let holding = slideNames.indices.filter { index in
+            guard let range = BibleReference.parse(slideNames[index]), range.book == book,
                   let start = range.startVerse else { return false }
             let first = (range.chapter, start)
             let last = (range.endChapter ?? range.chapter, range.endVerse ?? start)
             return (chapter, verse) >= first && (chapter, verse) <= last
         }
+        guard let first = holding.first else { return nil }
+        guard holding.count > 1 else { return first }
+        let shares = holding.map { index in
+            Double(max(1, wordCounts.flatMap { $0.indices.contains(index) ? $0[index] : nil } ?? 1))
+        }
+        let total = shares.reduce(0, +)
+        var reached = 0.0
+        for (offset, share) in shares.enumerated() {
+            reached += share / total
+            // Moves on a little before the end of a part: phrases arrive a
+            // moment after they're said, and the next part should be up as
+            // he reaches it.
+            if progress < reached - 0.1 * share / total || offset == holding.count - 1 { return holding[offset] }
+        }
+        return holding.last
     }
 
     // MARK: Alignment
@@ -224,17 +296,21 @@ public struct ScriptureFollower: Sendable {
         var score: Double
         var evidence: Double
         var freshEvidence: Double
-        var landingEvidence: Double
-        /// Index into `verses` of the last content word matched.
+        /// Distinctive words in this verse matched from the newest phrase.
+        var landingFresh: Double
+        /// Index into `verses` of the last content word matched, and of
+        /// that word in the chapter.
         var verse: Int
+        var token: Int
     }
 
     private struct Cell {
         var score = 0.0
         var evidence = 0.0
         var freshEvidence = 0.0
-        var landingEvidence = 0.0
+        var landingFresh = 0.0
         var verse = -1
+        var token = -1
     }
 
     static func tokens(for verses: [BibleVerse]) -> [Token] {
@@ -267,8 +343,10 @@ public struct ScriptureFollower: Sendable {
                     if gained > 0 {
                         cell.evidence += gained
                         if fresh { cell.freshEvidence += gained }
-                        cell.landingEvidence = token.verse == cell.verse ? cell.landingEvidence + gained : gained
+                        let landed = fresh && token.weight == .distinctive ? (likeness >= 0.75 ? 1.0 : 0.5) : 0
+                        cell.landingFresh = token.verse == cell.verse ? cell.landingFresh + landed : landed
                         cell.verse = token.verse
+                        cell.token = column - 1
                     }
                     if cell.score > best.score { best = cell }
                 } else if diagonal.score > 0 {
@@ -289,7 +367,7 @@ public struct ScriptureFollower: Sendable {
                 if fresh, best.verse >= 0, best.score > 0, best.score > (ends[best.verse]?.score ?? 0) {
                     ends[best.verse] = End(
                         score: best.score, evidence: best.evidence, freshEvidence: best.freshEvidence,
-                        landingEvidence: best.landingEvidence, verse: best.verse)
+                        landingFresh: best.landingFresh, verse: best.verse, token: best.token)
                 }
             }
             previous = current
@@ -368,16 +446,26 @@ public struct ScriptureFollower: Sendable {
     ]
 }
 
-/// Keeps scripture searches inside the ESV API's limits (60 a minute, 1,000
-/// an hour, 5,000 a day): one request every few seconds at most, a daily
-/// ceiling under theirs, and backing off when the API says too many.
+/// Keeps scripture searches well inside the ESV API's limits (60 a minute,
+/// 1,000 an hour, 5,000 a day), which passages shown by reference share.
+/// Requests are spaced at least `minimumInterval` apart and drawn from a
+/// small allowance that refills slowly, so a sermon of ordinary talk spends
+/// it evenly (about five a minute) rather than using an hour's worth in the
+/// first half and then finding nothing for the rest. Hard ceilings per hour
+/// and per day sit under the API's, and a 429 backs off.
 public struct ScriptureSearchPacer: Sendable {
-    public var minimumInterval: TimeInterval = 4
-    /// Below the API's 5,000 a day, so passages said by reference (which use
-    /// the same allowance) still load late in a long day.
-    public var dailyLimit = 3000
+    public var minimumInterval: TimeInterval = 6
+    public var hourlyLimit = 300
+    public var dailyLimit = 1500
+    /// The allowance: up to `burst` requests at once, one more every
+    /// `refill` seconds.
+    public var burst = 10.0
+    public var refill: TimeInterval = 12
 
+    private var tokens: Double?
+    private var tokensAt: Date?
     private var lastRequest: Date?
+    private var lastHour: [Date] = []
     private var blockedUntil: Date?
     private var backoff: TimeInterval = 0
     private var day = ""
@@ -385,17 +473,35 @@ public struct ScriptureSearchPacer: Sendable {
 
     public init() {}
 
-    /// How long until the next request may go, or nil when today's
-    /// allowance is spent.
+    /// How long until the next search may go, or nil when the hour's or
+    /// day's ceiling is reached and nothing will free up soon enough to wait
+    /// for (the day's).
     public func wait(at now: Date) -> TimeInterval? {
         if Self.dayKey(now) == day, dayCount >= dailyLimit { return nil }
         var ready = lastRequest.map { $0.addingTimeInterval(minimumInterval) } ?? now
         if let blockedUntil { ready = max(ready, blockedUntil) }
+        let hour = lastHour.filter { now.timeIntervalSince($0) < 3600 }
+        if hour.count >= hourlyLimit, let oldest = hour.first {
+            ready = max(ready, oldest.addingTimeInterval(3600))
+        }
+        let available = allowance(at: now)
+        if available < 1 { ready = max(ready, now.addingTimeInterval((1 - available) * refill)) }
         return max(0, ready.timeIntervalSince(now))
     }
 
+    /// A search sent: spaced and drawn from the allowance.
     public mutating func recordRequest(at now: Date) {
         lastRequest = now
+        count(at: now)
+    }
+
+    /// A request that goes regardless (a passage someone asked for, or the
+    /// chapter of one just found): never held back, but counted, so the
+    /// searches after it slow down instead.
+    public mutating func count(at now: Date) {
+        tokens = allowance(at: now) - 1
+        tokensAt = now
+        lastHour = lastHour.filter { now.timeIntervalSince($0) < 3600 } + [now]
         let key = Self.dayKey(now)
         if key != day { day = key; dayCount = 0 }
         dayCount += 1
@@ -411,6 +517,11 @@ public struct ScriptureSearchPacer: Sendable {
     public mutating func rateLimited(at now: Date, retryAfter: TimeInterval?) {
         backoff = min(max(backoff * 2, 60), 3600)
         blockedUntil = now.addingTimeInterval(max(retryAfter ?? 0, backoff))
+    }
+
+    private func allowance(at now: Date) -> Double {
+        guard let tokens, let tokensAt else { return burst }
+        return min(burst, tokens + now.timeIntervalSince(tokensAt) / refill)
     }
 
     private static func dayKey(_ date: Date) -> String {
