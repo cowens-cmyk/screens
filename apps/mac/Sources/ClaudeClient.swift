@@ -82,8 +82,12 @@ extension ClaudeClient {
 
     /// Has Claude look at a series graphic and say how to build the series
     /// from it. The image goes as a JPEG already scaled to what Claude
-    /// reads; fonts are the families installed here (see ArtAnalysis).
-    static func analyzeArt(jpeg: Data, fileName: String, width: Int, height: Int, fonts: [String]) async throws -> ArtAnalysis {
+    /// reads; fonts are the families installed here (see ArtAnalysis). Any
+    /// part of the answer that's missing or can't be read is taken from
+    /// `fallback`, the art's palette read, so one bad field never costs the
+    /// whole read.
+    static func analyzeArt(jpeg: Data, fileName: String, width: Int, height: Int, fonts: [String],
+                           fallback: ArtAnalysis) async throws -> ArtAnalysis {
         let json = try await send(
             system: ArtAnalysis.instructions, schema: ArtAnalysis.schema, effort: "high", adaptiveThinking: true,
             content: [
@@ -91,7 +95,7 @@ extension ClaudeClient {
                  "source": ["type": "base64", "media_type": "image/jpeg", "data": jpeg.base64EncodedString()]],
                 ["type": "text", "text": ArtAnalysis.prompt(fileName: fileName, width: width, height: height, fonts: fonts)],
             ])
-        return try ArtAnalysis.decode(json)
+        return try ArtAnalysis.decode(json, filling: fallback)
     }
 
     private static func send(

@@ -31,6 +31,7 @@ struct PlanShell: View {
     /// Songs open in the song editor; this switches to the slide editor.
     @State private var songSlideEditor = false
     @State private var messagePlanID: String?
+    @State private var themeFromImage = false
     @State private var scriptureShown = false
     /// The plan whose message notes are being imported.
     @State private var notesPlanID: String?
@@ -144,7 +145,7 @@ struct PlanShell: View {
             if runOnly {
                 SimpleModeView(model: model, render: render, controls: controls, layout: layout)
             } else {
-                workspace
+                themeRouted
             }
         }
         // Notes from the phone remote's stage view, over either face.
@@ -608,6 +609,7 @@ struct PlanShell: View {
                 if let planID = model.currentServiceID, !runOnly {
                     Button("Message & Series…", systemImage: "text.book.closed") { messagePlanID = planID }
                 }
+                if !runOnly { themesMenu }
                 if !runOnly, layout != nil {
                     Button("Simple Mode…", systemImage: "lock") { requestSimpleMode() }
                 }
@@ -620,7 +622,7 @@ struct PlanShell: View {
             } label: {
                 Label("More", systemImage: "ellipsis")
             }
-            .help("Message & Series, Simple Mode, Timers & Macros, Screen Setup")
+            .help("Message & Series, Themes, Simple Mode, Timers & Macros, Screen Setup")
             Button { withAnimation(HopeMotion.ui(reduced: reduceMotion)) { screensShown.toggle() } } label: {
                 Label("Screens", systemImage: "sidebar.right")
             }
@@ -708,6 +710,58 @@ struct PlanShell: View {
            PresentationTypes.category(of: live) == PresentationTypes.bible {
             model.applyTheme(to: live.id, themeID: themeID)
         }
+    }
+
+    // MARK: Themes
+
+    /// Every theme, one click from the editor: this plan's series first,
+    /// since that's the one most often adjusted, then the rest by name.
+    private var themesMenu: some View {
+        let seriesID = model.currentServiceID.flatMap { model.resident.services.value($0)?.sermonThemeId }
+            ?? model.slideBuilding.sermonThemeId
+        let themes = model.entries(of: .theme)
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let series = themes.first { $0.id == seriesID }
+        let others = themes.filter { $0.id != series?.id }
+        return Menu("Themes", systemImage: "paintpalette") {
+            if let series {
+                Section("This Plan’s Series") {
+                    Button(series.name) { editTheme(series.id) }
+                }
+                Section("Other Themes") {
+                    ForEach(others, id: \.id) { theme in Button(theme.name) { editTheme(theme.id) } }
+                }
+            } else {
+                ForEach(others, id: \.id) { theme in Button(theme.name) { editTheme(theme.id) } }
+            }
+            Divider()
+            Button("New Theme from Image…") { themeFromImage = true }
+            Button("Show Themes in Library") {
+                topPane = .library
+                model.switchLibrarySection(.themes)
+            }
+        }
+    }
+
+    /// The workspace, with More › Themes › New Theme from Image… and the
+    /// requests from sheets that made or picked a theme to open it in the
+    /// editor. Kept out of `body`, whose chain of modifiers is already as
+    /// long as the compiler will check.
+    private var themeRouted: some View {
+        workspace
+            .sheet(isPresented: $themeFromImage) {
+                ThemeFromImageSheet(model: model) { id in editTheme(id) }
+            }
+            .onChange(of: ThemeEditorRouter.shared.requests) { _, _ in
+                if let id = ThemeEditorRouter.shared.themeID { editTheme(id) }
+            }
+    }
+
+    /// Opens the theme in the editor, in place of whatever plan item was open.
+    private func editTheme(_ id: String) {
+        itemID = nil
+        model.openInEditor(entryID: id)
+        modeRaw = AppMode.edit.rawValue
     }
 
     // MARK: Stage display

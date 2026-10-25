@@ -38,10 +38,11 @@ public enum BasicTemplates {
             text("worship.full.text", "Lyrics", "Amazing grace how sweet the sound\nThat saved a wretch like me",
                  x: 160, y: 190, w: 1600, h: 700, size: 84, font: bold),
         ])
+        // The bar first: objects are drawn in order, the last on top.
         let lower = slide("worship.lower", "Lyrics (Lower Third)", folder: lowerThirds, [
+            barShape("worship.lower.bar", y: 840, h: 210),
             text("worship.lower.text", "Lyrics", "Amazing grace how sweet the sound\nThat saved a wretch like me",
                  x: 120, y: 860, w: 1680, h: 170, size: 46, font: bold),
-            barShape("worship.lower.bar", y: 840, h: 210),
         ])
         return theme(worshipThemeID, "Worship", [full, lower], tie: [("Lyrics", lower.id)])
     }
@@ -54,11 +55,11 @@ public enum BasicTemplates {
                  x: 220, y: 800, w: 1480, h: 70, size: 36, font: bold, color: accent, align: .left),
         ])
         let lower = slide("scripture.lower", "Bible (Lower Third)", folder: lowerThirds, [
+            barShape("scripture.lower.bar", y: 810, h: 250),
             text("scripture.lower.verse", "Verse", "For God so loved the world, that he gave his only Son…",
                  x: 120, y: 830, w: 1680, h: 150, size: 38, font: font, align: .left),
             text("scripture.lower.ref", "Reference", "John 3:16 ESV",
                  x: 120, y: 985, w: 1680, h: 50, size: 28, font: bold, color: accent, align: .left),
-            barShape("scripture.lower.bar", y: 810, h: 250),
         ])
         return theme(scriptureThemeID, "Scripture", [full, lower], tie: [("Bible", lower.id)])
     }
@@ -69,9 +70,9 @@ public enum BasicTemplates {
                  x: 160, y: 300, w: 1600, h: 480, size: 96, font: bold),
         ])
         let lower = slide("points.lower", "Sermon Points (Lower Third)", folder: lowerThirds, [
+            barShape("points.lower.bar", y: 840, h: 210),
             text("points.lower.text", "Point", "Grace changes everything",
                  x: 120, y: 870, w: 1680, h: 140, size: 54, font: bold),
-            barShape("points.lower.bar", y: 840, h: 210),
         ])
         return theme(pointsThemeID, "Points", [full, lower], tie: [("Sermon Points", lower.id)])
     }

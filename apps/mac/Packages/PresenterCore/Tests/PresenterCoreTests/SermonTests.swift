@@ -44,9 +44,10 @@ import Testing
     #expect(slides.contains { $0.name == SermonSeriesTheme.titleCategory && $0.folder == nil })
     let titleRoute = theme.streamDesigns?.first { $0.category == SermonSeriesTheme.titleCategory }
     #expect(titleRoute?.mode == .clear && titleRoute?.slideId == nil)
-    // Text first, art beneath, on every full-screen design.
+    // Art first and text after it on every full-screen design: the last
+    // object is drawn on top.
     for design in slides where design.folder == nil {
-        #expect(design.objects.first?.objectKind == .text && design.objects.last?.fill?.mediaId == "bg", "\(design.name)")
+        #expect(design.objects.first?.fill?.mediaId == "bg" && design.objects.last?.objectKind == .text, "\(design.name)")
     }
     // Point stays the fallback design.
     #expect(slides.first?.name == SermonSeriesTheme.pointCategory)
@@ -93,16 +94,17 @@ private func legacySeries() -> Theme {
     #expect(Array(slides.prefix(6)) == old.slides, "existing designs untouched")
 
     let title = try #require(slides.first { $0.name == SermonSeriesTheme.titleCategory })
-    #expect(title.objects.first?.textStyle?.fontName == "Gotham-Black")
-    #expect(title.objects.first?.textStyle?.colorHex == "#0E1B2AFF")
-    #expect(title.objects[1].textStyle?.colorHex == "#C8102EFF", "subtitle in the accent color")
-    #expect(title.objects.last?.fill?.mediaId == "old-bg")
+    let titleTexts = title.objects.filter { $0.objectKind == .text }
+    #expect(titleTexts.first?.textStyle?.fontName == "Gotham-Black")
+    #expect(titleTexts.first?.textStyle?.colorHex == "#0E1B2AFF")
+    #expect(titleTexts[1].textStyle?.colorHex == "#C8102EFF", "subtitle in the accent color")
+    #expect(title.objects.first?.fill?.mediaId == "old-bg")
     let worship = try #require(slides.first { $0.name == SermonSeriesTheme.worshipCategory && $0.folder == nil })
-    #expect(worship.objects.first?.name == "Lyrics")
-    #expect(worship.objects.last?.fill?.mediaId == "old-bg")
+    #expect(worship.objects.last?.name == "Lyrics")
+    #expect(worship.objects.first?.fill?.mediaId == "old-bg")
     let worshipLower = try #require(slides.first { $0.name == "Worship (Lower Third)" })
     #expect(worshipLower.folder == BasicTemplates.lowerThirds)
-    #expect(worshipLower.objects.last?.fill?.mediaId == "old-bar")
+    #expect(worshipLower.objects.first?.fill?.mediaId == "old-bar")
 
     let routes = upgraded.streamDesigns ?? []
     #expect(routes.first { $0.category == "Title" }?.mode == .clear)

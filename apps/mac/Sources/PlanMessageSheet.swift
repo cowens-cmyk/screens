@@ -34,6 +34,10 @@ struct PlanMessageSheet: View {
                             Text("Choose…").tag("")
                             ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
                         }
+                        if series != nil {
+                            Button("Edit Theme") { ThemeEditorRouter.shared.open(seriesID) }
+                                .help("Open the series' designs and lower thirds in the theme editor")
+                        }
                         Button("New Series…") {
                             seriesArt = []
                             creatingSeries = true
@@ -97,6 +101,8 @@ struct PlanMessageSheet: View {
             SermonSeriesSheet(model: model, dropped: seriesArt, onCreated: chooseSeries)
         }
         .sheet(isPresented: $importingNotes) { SermonImportSheet(model: model, planID: planID) }
+        // The editor opens in the window behind; this sheet would cover it.
+        .onChange(of: ThemeEditorRouter.shared.requests) { _, _ in dismiss() }
     }
 
     private func check(_ screen: String, ok: Bool, detail: String) -> some View {

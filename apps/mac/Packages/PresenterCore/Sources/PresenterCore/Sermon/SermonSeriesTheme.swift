@@ -93,34 +93,36 @@ public enum SermonSeriesTheme {
             Slide(id: UUID().uuidString, name: name, objects: objects, folder: folder)
         }
 
-        let point = slide(pointCategory, [
+        // A design's objects are drawn in order, the last on top: the art
+        // and bars come first so the text is drawn over them.
+        let point = slide(pointCategory, art(style.backgroundMediaID) + [
             text("Point", "Main point goes here", x: 160, y: 300, w: 1600, h: 480, size: 90, bold: true),
-        ] + art(style.backgroundMediaID))
-        let scripture = slide(scriptureCategory, [
+        ])
+        let scripture = slide(scriptureCategory, art(style.backgroundMediaID) + [
             text("Verse", "For God so loved the world…", x: 220, y: 230, w: 1480, h: 540, size: 60, verse: true, align: .left),
             text("Reference", "John 3:16 ESV", x: 220, y: 800, w: 1480, h: 70, size: 36, bold: true, accent: true, align: .left),
-        ] + art(style.backgroundMediaID))
-        let pointScripture = slide(pointScriptureCategory, [
+        ])
+        let pointScripture = slide(pointScriptureCategory, art(style.backgroundMediaID) + [
             text("Point", "Main point goes here", x: 160, y: 170, w: 1600, h: 300, size: 80, bold: true),
             text("Verse", "For God so loved the world…", x: 260, y: 520, w: 1400, h: 300, size: 44, verse: true),
             text("Reference", "John 3:16 ESV", x: 260, y: 840, w: 1400, h: 60, size: 32, bold: true, accent: true),
-        ] + art(style.backgroundMediaID))
+        ])
 
         let thirds = BasicTemplates.lowerThirds
         // Lower-third text sits inside the bottom ~200px, where series bars
         // are drawn, inset from the left like a broadcast graphic.
-        let pointLower = slide("\(pointCategory) (Lower Third)", [
+        let pointLower = slide("\(pointCategory) (Lower Third)", bar() + [
             text("Point", "Main point goes here", x: 80, y: 895, w: 1760, h: 150, size: 50, bold: true, onBar: true, align: .left),
-        ] + bar(), folder: thirds)
-        let scriptureLower = slide("\(scriptureCategory) (Lower Third)", [
+        ], folder: thirds)
+        let scriptureLower = slide("\(scriptureCategory) (Lower Third)", bar() + [
             text("Verse", "For God so loved the world…", x: 80, y: 890, w: 1760, h: 115, size: 36, verse: true, onBar: true, align: .left),
             text("Reference", "John 3:16 ESV", x: 80, y: 1008, w: 1760, h: 44, size: 26, bold: true, accent: true, onBar: true, align: .left),
-        ] + bar(), folder: thirds)
-        let pointScriptureLower = slide("\(pointScriptureCategory) (Lower Third)", [
+        ], folder: thirds)
+        let pointScriptureLower = slide("\(pointScriptureCategory) (Lower Third)", bar() + [
             text("Point", "Main point goes here", x: 80, y: 885, w: 1760, h: 60, size: 40, bold: true, onBar: true, align: .left),
             text("Verse", "For God so loved the world…", x: 80, y: 948, w: 1760, h: 62, size: 28, verse: true, onBar: true, align: .left),
             text("Reference", "John 3:16 ESV", x: 80, y: 1012, w: 1760, h: 38, size: 22, bold: true, accent: true, onBar: true, align: .left),
-        ] + bar(), folder: thirds)
+        ], folder: thirds)
 
         // Title and Worship take the Point design's look, the same way an
         // older series is brought up to date, so both paths agree.
@@ -281,6 +283,131 @@ public enum SermonSeriesTheme {
         slides.contains { $0.name.caseInsensitiveCompare(category) == .orderedSame }
     }
 
+    // MARK: Layers
+
+    /// The shapes a series design is built on, by how low they sit: the
+    /// art, background and bar at the bottom, then a scrim or the bar's
+    /// edge, then the accent rule on the bar.
+    static let backdropRanks: [String: Int] = [
+        "Series Art": 0, "Series Background": 0, "Series Lower Third": 0, "Bar": 0,
+        "Scrim": 1, "Bar Edge": 1, "Accent Rule": 2,
+    ]
+
+    /// A design's objects with its backdrop shapes moved beneath everything
+    /// else. Slides are drawn in list order, the last object on top.
+    public static func layered(_ objects: [SlideObject]) -> [SlideObject] {
+        func rank(_ object: SlideObject) -> Int? {
+            object.objectKind == .text ? nil : backdropRanks[object.name]
+        }
+        let backdrop = objects.enumerated()
+            .compactMap { offset, object in rank(object).map { (rank: $0, offset: offset, object: object) } }
+            .sorted { ($0.rank, $0.offset) < ($1.rank, $1.offset) }
+        let moved = Set(backdrop.map(\.offset))
+        return backdrop.map(\.object) + objects.enumerated().filter { !moved.contains($0.offset) }.map(\.element)
+    }
+
+    /// Whether a text box sits under one of the design's backdrop shapes,
+    /// as every series design did before they were built back to front:
+    /// the art covered the text on the audience screens and the bar dimmed
+    /// it on the livestream.
+    static func hasTextUnderBackdrop(_ objects: [SlideObject]) -> Bool {
+        guard let lastBackdrop = objects.lastIndex(where: { $0.objectKind != .text && backdropRanks[$0.name] != nil })
+        else { return false }
+        return objects[..<lastBackdrop].contains { $0.objectKind == .text }
+    }
+
+    /// The theme with any design that has text under its own art or bar put
+    /// right; nil when none does. A design staff arranged differently is
+    /// left alone.
+    public static func relayered(_ theme: Theme) -> Theme? {
+        guard var slides = theme.slides, slides.contains(where: { hasTextUnderBackdrop($0.objects) }) else { return nil }
+        for index in slides.indices where hasTextUnderBackdrop(slides[index].objects) {
+            slides[index].objects = layered(slides[index].objects)
+        }
+        var result = theme
+        result.slides = slides
+        return result
+    }
+
+    // MARK: Text boxes
+
+    /// The text boxes a design needs so every slide made in it has
+    /// somewhere to put its words.
+    static func requiredText(for design: Slide) -> [String] {
+        let name = design.name.replacingOccurrences(of: " (Lower Third)", with: "")
+        switch name {
+        case titleCategory: return [titleText, subtitleText]
+        case pointCategory: return ["Point"]
+        case scriptureCategory: return ["Verse", "Reference"]
+        case pointScriptureCategory: return ["Point", "Verse", "Reference"]
+        case worshipCategory, lyricsCategory: return [lyricsText]
+        case announcementsCategory: return [titleText, bodyText]
+        default: return []
+        }
+    }
+
+    /// Where a missing text box goes: the usual layout for its design.
+    private static func defaultFrame(_ box: String, design: String, lower: Bool)
+        -> (x: Double, y: Double, w: Double, h: Double, size: Double) {
+        if lower {
+            switch (design, box) {
+            case (pointScriptureCategory, "Point"): return (80, 885, 1760, 60, 40)
+            case (pointScriptureCategory, "Verse"): return (80, 948, 1760, 62, 28)
+            case (pointScriptureCategory, "Reference"): return (80, 1012, 1760, 38, 22)
+            case (_, "Verse"): return (80, 890, 1760, 115, 36)
+            case (_, "Reference"): return (80, 1008, 1760, 44, 26)
+            default: return (80, 895, 1760, 150, 48)
+            }
+        }
+        switch (design, box) {
+        case (pointScriptureCategory, "Point"): return (160, 170, 1600, 300, 80)
+        case (pointScriptureCategory, "Verse"): return (260, 520, 1400, 300, 44)
+        case (pointScriptureCategory, "Reference"): return (260, 840, 1400, 60, 32)
+        case (announcementsCategory, titleText): return (160, 180, 1600, 220, 76)
+        case (_, titleText): return (160, 300, 1600, 360, 100)
+        case (_, subtitleText): return (160, 660, 1600, 120, 44)
+        case (_, "Verse"): return (220, 230, 1480, 540, 60)
+        case (_, "Reference"): return (220, 800, 1480, 70, 36)
+        case (_, lyricsText): return (160, 190, 1600, 700, 80)
+        case (_, bodyText): return (160, 430, 1600, 470, 56)
+        default: return (160, 300, 1600, 480, 90)
+        }
+    }
+
+    /// The theme with every text box its designs need, any missing one
+    /// added in the usual place in the color of the design's other text
+    /// (or the theme's), and every design layered with its text on top. A
+    /// design never comes out as art alone, whatever went wrong making it.
+    public static func completed(_ theme: Theme) -> Theme {
+        guard var slides = theme.slides else { return theme }
+        let lowerColor = slides.first { isLowerThird($0) }?.objects
+            .first { $0.objectKind == .text }?.textStyle?.colorHex
+        for index in slides.indices {
+            var design = slides[index]
+            let lower = isLowerThird(design)
+            let names = Set(design.objects.filter { $0.objectKind == .text }.map { $0.name.lowercased() })
+            let missing = requiredText(for: design).filter { !names.contains($0.lowercased()) }
+            let sibling = design.objects.first { $0.objectKind == .text }?.textStyle
+            let base = design.name.replacingOccurrences(of: " (Lower Third)", with: "")
+            for name in missing {
+                let frame = defaultFrame(name, design: base, lower: lower)
+                let color = sibling?.colorHex ?? (lower ? lowerColor : nil) ?? theme.textColorHex
+                design.objects.append(SlideObject(
+                    id: UUID().uuidString, objectKind: .text, name: name, text: name,
+                    x: frame.x, y: frame.y, width: frame.w, height: frame.h,
+                    textStyle: TextStyle(
+                        fontName: sibling?.fontName ?? theme.fontFamily, fontSize: frame.size, colorHex: color,
+                        horizontalAlignment: lower ? .left : (sibling?.horizontalAlignment ?? .center),
+                        verticalAlignment: .middle, autoShrink: true, minFontSize: (frame.size * 0.5).rounded())))
+            }
+            design.objects = layered(design.objects)
+            slides[index] = design
+        }
+        var result = theme
+        result.slides = slides
+        return result
+    }
+
     // MARK: Designs taken from Point
 
     /// The message title, large, in the Point's box, with the series name or
@@ -360,7 +487,8 @@ public enum SermonSeriesTheme {
     }
 
     /// A copy of a design with its text boxes swapped for new ones and
-    /// everything else (series art, bar) kept beneath, under fresh ids.
+    /// everything else (series art, bar) kept beneath, under fresh ids:
+    /// first in the list, since the last object is drawn on top.
     private static func derived(from design: Slide, name: String, texts: [SlideObject]) -> Slide {
         let rest = design.objects.filter { $0.objectKind != .text }.map { object -> SlideObject in
             var copy = object
@@ -370,7 +498,7 @@ public enum SermonSeriesTheme {
         var slide = design
         slide.id = UUID().uuidString
         slide.name = name
-        slide.objects = texts + rest
+        slide.objects = rest + texts
         // Animation order and history name the old design's objects.
         slide.animationOrder = nil
         slide.history = nil
@@ -394,7 +522,9 @@ public enum SermonSeriesTheme {
 public extension Library {
 
     /// Brings every sermon series in the library up to the five designs
-    /// (see SermonSeriesTheme.upgraded). Other themes are left alone. It
+    /// (see SermonSeriesTheme.upgraded), and puts text back on top of the
+    /// art and bars in any theme that has it underneath (see
+    /// SermonSeriesTheme.relayered). Other themes are left alone. It
     /// runs as the library opens, so one theme that can't be read or saved
     /// is reported to `failed` and passed over rather than keeping the
     /// library shut; the import upgrades that series when it's next used.
@@ -404,11 +534,13 @@ public extension Library {
         for id in try store.ids(of: .theme) {
             do {
                 let document = try open(Theme.self, id: id)
-                guard let theme = SermonSeriesTheme.upgraded(document.value) else { continue }
+                let grown = SermonSeriesTheme.upgraded(document.value)
+                let relayered = SermonSeriesTheme.relayered(grown ?? document.value)
+                guard let theme = relayered ?? grown else { continue }
                 try document.update { stored in
                     stored.slides = theme.slides
                     stored.streamDesigns = theme.streamDesigns
-                    stored.isSermonSeries = true
+                    if theme.isSermonSeries == true { stored.isSermonSeries = true }
                 }
                 try save(document)
                 upgraded += 1

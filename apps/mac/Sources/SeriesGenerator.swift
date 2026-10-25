@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import PresenterCore
 
 /// Turns a series name into a finished series theme: Claude draws the
@@ -47,7 +48,14 @@ enum SeriesGenerator {
             lowerThirdTextColor: SeriesDesign.color(design.lowerThirdTextColor, fallback: "#FFFFFFFF"),
             lowerThirdAccentColor: SeriesDesign.color(design.lowerThirdAccentColor, fallback: "#FFB21EFF"),
             headingCaps: design.headingAllCaps)
-        let theme = SermonSeriesTheme.make(style)
+        // Claude's colors are checked against the artwork as drawn, where
+        // the text sits, like a series made from a photo.
+        func picture(_ png: Data) -> CGImage? {
+            CGImageSourceCreateWithData(png as CFData, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+        }
+        let backgroundSamples = picture(background).map { SeriesArt.samples(of: $0, in: SeriesArt.textArea) } ?? []
+        let barSamples = picture(lowerThird).map { PhotoSeriesTheme.barSamples(SeriesArt.barPixels(of: $0)) } ?? []
+        let theme = PhotoSeriesTheme.make(style, backgroundSamples: backgroundSamples, barSamples: barSamples)
         // Wait for the save so the theme is in the library (and the
         // pickers) before anything selects it.
         _ = try await model.createInDrive(theme).value
