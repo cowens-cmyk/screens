@@ -578,6 +578,8 @@ struct SlideGridBody: View {
 
     @State private var newSlideTarget: NewSlideTarget?
 
+    @State private var mediaSlideTarget: MediaSlideTarget?
+
     @State private var applyThemeTarget: ApplyThemeTarget?
 
     @State private var mediaMenuState = MediaCueMenuState()
@@ -682,8 +684,16 @@ struct SlideGridBody: View {
         .onChange(of: NewSlideRouter.shared.requests) { _, _ in newSlideFromMenu() }
         .sheet(item: $livestreamPrompt) { LivestreamPromptSheet(model: model, request: $0) }
         .sheet(item: $newSlideTarget) { target in
-            NewSlideSheet(appModel: model, render: render, deckThemeId: presentation.themeId) { choice in
+            NewSlideSheet(
+                appModel: model, render: render, deckThemeId: presentation.themeId,
+                startsWithThemes: target.startsWithThemes
+            ) { choice in
                 insertNewSlide(choice, after: target.after)
+            }
+        }
+        .sheet(item: $mediaSlideTarget) { target in
+            MediaSlidePickerSheet(model: model) { mediaIDs in
+                _ = insertMediaSlides(mediaIDs: mediaIDs, beforeIndex: target.beforeIndex)
             }
         }
         .sheet(item: $applyThemeTarget) { target in
@@ -933,10 +943,10 @@ struct SlideGridBody: View {
             }
         }
         Button("Copy \(slideIDs.count) Slides") { copySlides(slideIDs) }
+        // Every slide may go: an empty presentation shows its drop area.
         Button("Delete \(slideIDs.count) Slides", role: .destructive) {
             deleteSlides(slideIDs)
         }
-        .disabled(slideIDs.count >= presentation.slides.count)
     }
 
     private func copySlides(_ slideIDs: [String]) {
@@ -1002,7 +1012,7 @@ struct SlideGridBody: View {
     private func deleteSelectedSlides() {
         guard !runOnly, !selectedOccurrences.isEmpty else { return }
         let slideIDs = SlideBulkEdit.slideIDs(occurrences: selectedOccurrences, slides: slides)
-        guard !slideIDs.isEmpty, slideIDs.count < presentation.slides.count else { return }
+        guard !slideIDs.isEmpty else { return }
         deleteSlides(slideIDs)
     }
 
@@ -1305,9 +1315,14 @@ struct SlideGridBody: View {
     private func gridTile(index: Int, slide: Slide, aspect: CGFloat) -> some View {
         tile(index: index, slide: slide, aspect: aspect)
 
-            .newSlideEdgeButton(enabled: !runOnly && index == slides.count - 1) {
-                newSlideTarget = NewSlideTarget(after: slide)
-            }
+            .newSlideEdgeMenu(enabled: !runOnly && index == slides.count - 1, choices: AddSlideChoices(
+                fromTheme: { newSlideTarget = NewSlideTarget(after: slide, startsWithThemes: true) },
+                fromMedia: {
+                    mediaSlideTarget = MediaSlideTarget(
+                        presentationID: presentation.id, afterSlideID: slide.id, beforeIndex: index + 1)
+                },
+                blank: { insertNewSlide(.blank, after: slide) }
+            ))
 
             .id("tileMenu|\(slide.id)|\(cueMediaIDs(of: slide).contains { model.media($0) == nil })|\(missingMedia(of: slide).isEmpty)")
             .contextMenu { tileMenu(index: index, slide: slide) }
@@ -1549,14 +1564,7 @@ struct SlideGridBody: View {
         let anchorSection = slides.indices.contains(index) ? slides[index].sectionId : nil
         let afterID = index > 0 && slides.indices.contains(index - 1)
             ? slides[index - 1].id : nil
-        let added = mediaIDs.compactMap { model.media($0) }.map { item in
-            Slide(
-                id: UUID().uuidString,
-                name: item.name,
-                objects: [],
-                background: CueMedia.droppedAsNewSlide(for: item),
-                sectionId: anchorSection)
-        }
+        let added = MediaSlides.make(mediaIDs, model: model, sectionId: anchorSection)
         guard !added.isEmpty else { return false }
         model.insertSlides(presentation.id, slides: added, afterSlideID: afterID)
         askLivestream(for: added)

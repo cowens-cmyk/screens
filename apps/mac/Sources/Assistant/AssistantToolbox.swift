@@ -384,7 +384,6 @@ final class AssistantToolbox {
     private func deleteSlides(_ input: AssistantJSON) async throws -> (AssistantJSON, String?) {
         let deck = try await presentation(input["presentation_id"]?.string)
         let doomed = try slides(input["slide_ids"]?.array?.compactMap(\.string) ?? [], in: deck)
-        guard doomed.count < deck.slides.count else { throw Failure("A presentation keeps at least one slide.") }
         let ids = Set(doomed.map(\.id))
         model.updatePresentation(deck.id) { $0.slides.removeAll { ids.contains($0.id) } }
         return (["deleted": AssistantJSON(doomed.map { label(of: $0, in: deck) }),

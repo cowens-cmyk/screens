@@ -1233,6 +1233,24 @@ final class SlideEditorModel {
         }
     }
 
+    /// Paste into a presentation with no slides: there is no slide to paste
+    /// after, so they become its first.
+    private func pasteSlidesIntoEmpty() {
+        let pasted = SlidePasteboard.pasteAll()
+        if !pasted.isEmpty {
+            let landing = isThemeEditor
+                ? SlideBulkEdit.adoptedForTheme(pasted, existing: [])
+                : pasted.map { slide in
+                    var slide = slide
+                    slide.sectionId = nil
+                    return slide
+                }
+            updateDocument { $0.slides.append(contentsOf: landing) }
+            selectSlide(landing[0].id)
+            selectedSlideIDs = Set(landing.map(\.id))
+        }
+    }
+
     func copySelectedSlides() {
         copySlides(Array(selectedSlideIDs))
     }
@@ -1405,6 +1423,8 @@ final class SlideEditorModel {
         case .slides:
             if let anchor = presentation.slides.last(where: { selectedSlideIDs.contains($0.id) })?.id ?? selectedSlideID {
                 pasteSlides(after: anchor)
+            } else if presentation.slides.isEmpty {
+                pasteSlidesIntoEmpty()
             }
         case .files:
             let urls = NSPasteboard.general.readObjects(
