@@ -148,10 +148,15 @@ struct ConfidenceModule: View {
                 Spacer()
             }
             if let live = controls.state.liveAlert, live.showsOnConfidence {
-                Text("On stage: \(live.message)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 2)
+                HStack(spacing: 4) {
+                    Text("On stage: \(live.message)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    StageMessageCountdown(alert: live)
+                }
+                .padding(.horizontal, 2)
             }
         }
     }

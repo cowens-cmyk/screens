@@ -374,7 +374,7 @@ struct AppSettingsView: View {
                 id: "show.screens", category: .showSetup,
                 title: "Screens",
                 caption: nil,
-                keywords: "audience livestream stream stage display confidence screen monitor output decklink ndi resolution 4k 1080p alpha key lower third transparent full screen",
+                keywords: "audience livestream stream stage display confidence screen monitor output decklink ndi resolution 4k 1080p alpha key lower third transparent full screen stage message seconds clear",
                 control: AnyView(ShowSetupForm(controls: controls)),
                 stacked: true
             ))

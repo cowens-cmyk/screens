@@ -411,8 +411,9 @@ extension View {
     }
 }
 
-/// A message to whoever is on stage: typed, sent, shown as a red bar across
-/// the top of the stage screen until cleared. Sending (or Escape) hands the
+/// A message to whoever is on stage: typed, sent, shown large on the stage
+/// screen (in place of the clock and key in Worship) for the time set in
+/// Settings › Show Setup, or until cleared. Sending (or Escape) hands the
 /// keyboard back to the window, so Space and the arrows move the slides
 /// again rather than typing into the field.
 struct StageMessageField: View {
@@ -422,9 +423,9 @@ struct StageMessageField: View {
     var onDone: () -> Void = {}
     @State private var draft = ""
 
-    private var onStage: String? {
+    private var onStage: CueAlert? {
         guard let live = controls.state.liveAlert, live.showsOnConfidence else { return nil }
-        return live.message
+        return live
     }
 
     var body: some View {
@@ -442,11 +443,12 @@ struct StageMessageField: View {
             if let onStage {
                 HStack(spacing: 6) {
                     Circle().fill(Color.red).frame(width: 6, height: 6)
-                    Text(onStage)
+                    Text(onStage.message)
                         .font(.caption)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 4)
+                    StageMessageCountdown(alert: onStage)
                     Button("Clear") { controls.dismissAlert() }
                         .controlSize(.small)
                         .buttonStyle(.borderless)
@@ -468,6 +470,22 @@ struct StageMessageField: View {
     private func done() {
         KeyboardFocus.release()
         onDone()
+    }
+}
+
+/// The time left before a stage message clears itself, counting down on its
+/// own (no clock of ours ticks it). Nothing for one that stays until cleared.
+struct StageMessageCountdown: View {
+    let alert: CueAlert
+
+    var body: some View {
+        if let expiresAt = alert.expiresAt, expiresAt > alert.firedAt {
+            Text(timerInterval: alert.firedAt...expiresAt, countsDown: true)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 30, alignment: .trailing)
+                .help("Clears from the stage by itself then (Settings › Show Setup › Stage messages)")
+        }
     }
 }
 

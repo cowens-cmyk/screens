@@ -183,11 +183,12 @@ public enum StageScenes {
         )
     }
 
-    /// Stage messages still reach the stage over a mirror or a video.
+    /// Stage messages still reach the stage over a mirror or a video: the
+    /// large bar across the top, since there is no layout to rearrange.
     static func addStageAlert(to scene: inout RenderScene, info: ConfidenceInfo, at date: Date) {
-        guard let alert = info.alert, alert.showsOnConfidence, info.alertVisible else { return }
+        guard let alert = info.stageAlert(at: date), info.alertVisible else { return }
         for item in AlertSceneBuilder.bannerItems(
-            for: alert, canvasSize: scene.canvasSize, info: info, at: date
+            for: alert, canvasSize: scene.canvasSize, info: info, at: date, size: .stage
         ) {
             scene.addItem(item, to: .alerts)
         }

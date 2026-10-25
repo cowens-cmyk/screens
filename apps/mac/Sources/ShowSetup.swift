@@ -79,6 +79,13 @@ final class ShowSetup {
         didSet { UserDefaults.standard.set(stageFollowsItems, forKey: "show.stageFollowsItems") }
     }
 
+    /// How long a message sent to the stage stays up before the stage goes
+    /// back to what it showed. Messages that also reach the audience screen
+    /// are not timed.
+    var stageMessageDuration: StageMessageDuration {
+        didSet { UserDefaults.standard.set(stageMessageDuration.rawValue, forKey: "show.stageMessageSeconds") }
+    }
+
     var audienceTarget: String { didSet { save(audienceTarget, "show.audienceTarget") } }
     var streamTarget: String { didSet { save(streamTarget, "show.streamTarget"); changed() } }
     var stageTarget: String { didSet { save(stageTarget, "show.stageTarget") } }
@@ -104,6 +111,8 @@ final class ShowSetup {
         streamMode = defaults.string(forKey: "show.streamMode").flatMap(StreamMode.init(rawValue:)) ?? .auto
         stageMode = defaults.string(forKey: "show.stageMode").flatMap(StageMode.init(rawValue:)) ?? .worship
         stageFollowsItems = defaults.object(forKey: "show.stageFollowsItems") as? Bool ?? true
+        stageMessageDuration = StageMessageDuration(
+            stored: defaults.object(forKey: "show.stageMessageSeconds") as? Int)
     }
 
     private func save(_ value: String, _ key: String) {

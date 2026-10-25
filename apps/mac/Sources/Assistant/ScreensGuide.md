@@ -256,7 +256,13 @@ The stage follows what goes live: a song switches it to Worship; the message swi
 
 **Sermon timer control** (always in the Stage card): time left (green, red past zero), **−1** / **+1** minute, play/pause and reset. Reset stops it at the message's full length (40 minutes unless the message says otherwise). Click the time to type an exact number of minutes. Changes apply instantly, even while it runs, and the stage updates at once. A timer still running from the service before (started over 45 minutes ago, or more than 5 minutes past zero) starts again when the message goes live; each pre-service restart also resets it.
 
-**Stage messages.** Type in **Message to stage** under the Stage preview and **Send**. It shows as a red bar across the top of the stage screen until cleared; the card shows it with a **Clear** button. The phone remote's Stage tab can send them too.
+**Stage messages.** Type in **Message to stage** under the Stage preview and **Send**. Where it shows depends on what the stage shows:
+- **Message**: the message fills the screen in large white type inside a thin red edge, and the sermon timer (still green, red past zero) and the clock move to a strip along the bottom. It fades in, and fades back to the usual layout when its time is up.
+- **Worship**: the lyrics and next slide are not touched. The message replaces the clock and song key along the bottom in a red band with white type, which blinks white three times as it appears, then holds.
+- **Audience screen** and a playing video: a red bar across the top, a fifth of the screen tall.
+- A stage layout with its own **Stage Message** box (Add Live Info › Stage Message) shows it there and nowhere else. Other custom layouts get the Worship band if they have lyrics with the clock or key along the bottom, the Message takeover if they show only times, and otherwise the top bar.
+
+A message stays up for 30 seconds, then the stage goes back to exactly what it showed. Settings › Show Setup › **Stage messages show for** sets 15, 30 or 60 seconds, or **Until cleared**. **Clear** takes it down at once; sending another message replaces it and starts the time again. Timers and the clock keep running throughout. The Stage card shows the message on stage with the time left and a **Clear** button. Alert presets aimed only at the stage are timed the same way; alerts that also show on the audience screen stay until cleared. The phone remote's Stage tab can send messages too and shows the time left.
 
 **Edit Stage Display…** (More menu or the Stage card menu) opens the current mode's layout in the editor: the Worship layout for Worship and the audience screen, the Message layout for Message. The stage editor adds **Add Live Info**: Current Slide, Next Slide, Clock, Timer, Stage Message, Song Key, Slide Notes, Group Name, Video Countdown, Next Service Item. Stage layouts also live in Library › Confidence (Edit Confidence, ⌘6).
 
