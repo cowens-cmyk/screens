@@ -112,7 +112,7 @@ struct InspectorView: View {
                     Text("Foreground").tag(MediaClassification.foreground)
                 }
                 Toggle("Favorite", isOn: binding(item, \.favorite))
-                Toggle("Loops", isOn: binding(item, \.loops))
+                Toggle("Loops", isOn: binding(item, \.loopsSetting))
                 Picker("Full-Screen Scaling", selection: binding(item, \.scaleMode)) {
                     Text("Fit (black bars)").tag(MediaScaleMode?.none)
                     Text("Fill (crop)").tag(MediaScaleMode?.some(.fill))

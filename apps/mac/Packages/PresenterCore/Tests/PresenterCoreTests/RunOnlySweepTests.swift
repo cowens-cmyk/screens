@@ -173,6 +173,8 @@ import Testing
         let placed: Set<String> = [
             "\"main\"", "\"module\"", "\"serviceControls\"", "\"preview\"", "\"outputs\"",
             "\"liveAssist\"", "\"assistant\"",
+            // Browsable in run-only; its drags, menus and imports ask the lock.
+            "\"mediaLibrary\"",
         ]
         let scenePattern = /(?:Window|WindowGroup)\((?:"[^"]*",\s*)?id:\s*("[^"]+")/
         var unplaced: [String] = []

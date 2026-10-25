@@ -962,8 +962,9 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
     public var autoAdvance: AutoAdvance?
     public var scaleMode: MediaScaleMode?
     public var endAction: MediaEndAction?
+    public var loopOverride: Bool?
 
-    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil, scaleMode: MediaScaleMode? = nil, endAction: MediaEndAction? = nil) {
+    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil, scaleMode: MediaScaleMode? = nil, endAction: MediaEndAction? = nil, loopOverride: Bool? = nil) {
         self.id = id
         self.name = name
         self.mediaKind = mediaKind
@@ -992,6 +993,7 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
         self.autoAdvance = autoAdvance
         self.scaleMode = scaleMode
         self.endAction = endAction
+        self.loopOverride = loopOverride
     }
 }
 

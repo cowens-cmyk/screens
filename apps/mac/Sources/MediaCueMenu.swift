@@ -62,8 +62,9 @@ struct MediaCueMenuItems: View {
         if let item = model.media(mediaID) {
             if item.mediaKind == .video {
                 // First, so a video's ending is one right-click away wherever
-                // it's shown: the plan, the fire view, the library.
-                VideoEndMenu(model: model, mediaID: mediaID)
+                // it's shown: the plan, the fire view, the library. It covers
+                // looping too, so there's no separate Loop switch here.
+                WhenItEndsMenu(model: model, mediaID: mediaID)
                 Divider()
             }
             Button("Media Settings…") { state.settingsTargetID = mediaID }
@@ -85,16 +86,6 @@ struct MediaCueMenuItems: View {
             )) {
                 Text("Foreground").tag(MediaClassification.foreground)
                 Text("Background").tag(MediaClassification.background)
-            }
-            if item.mediaKind == .video {
-
-                Picker("Loop", selection: Binding(
-                    get: { model.media(mediaID)?.loops ?? false },
-                    set: { value in model.updateMedia(mediaID) { $0.loops = value } }
-                )) {
-                    Text("On").tag(true)
-                    Text("Off").tag(false)
-                }
             }
             Picker("Favorite", selection: Binding(
                 get: { model.media(mediaID)?.favorite ?? false },

@@ -98,6 +98,9 @@ struct SlideEditorView: View {
         }
 
         .focusedSceneValue(\.slideEditor, model)
+        // The Media Library's Use as Background reaches the editor here.
+        .onChange(of: model.map(ObjectIdentifier.init), initial: true) { SlideEditorRegistry.shared.note(model) }
+        .onDisappear { SlideEditorRegistry.shared.forget(model) }
         .task(id: presentationID) {
 
             let built = if isTheme {

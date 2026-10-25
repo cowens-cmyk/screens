@@ -25,7 +25,7 @@ extension CueMedia {
     public static func droppedOnSlide(for item: MediaItem) -> CueMedia {
         CueMedia(
             mediaId: item.id, mode: .untilReplaced, layer: .loopingVideos,
-            loops: item.mediaKind == .video ? true : nil, classification: .background,
+            loops: item.loopsWhenPlaced(otherwise: true), classification: .background,
             scaleMode: item.scaleMode)
     }
 
@@ -33,7 +33,7 @@ extension CueMedia {
         CueMedia(
             mediaId: item.id,
             layer: item.mediaKind == .image ? .stillGraphics : .videos,
-            loops: item.mediaKind == .video ? false : nil, classification: .foreground,
+            loops: item.loopsWhenPlaced(otherwise: false), classification: .foreground,
             scaleMode: item.scaleMode)
     }
 }
