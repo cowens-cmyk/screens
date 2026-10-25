@@ -1,10 +1,13 @@
 import Foundation
 
-/// Who decides what the livestream shows for the live slide. A choice made
-/// on the slide itself (right-click › Livestream, or the Screens sheet) is
-/// the operator asking for exactly that, so it beats the Show Setup switch;
-/// the switch beats the theme; the theme's routing table only speaks when
-/// the switch is on Lower Third and the slide has no choice of its own.
+/// Who decides what the livestream shows for the live slide. A playing
+/// video comes first. Then a choice made on the slide itself (right-click ›
+/// Livestream, or the Screens sheet) is the operator asking for exactly
+/// that, so it beats the Show Setup switch. Full Screen and Transparent on
+/// the switch are the operator too, so they beat everything set up ahead
+/// of time. On Lower Third the look comes from, in order: the
+/// presentation's own Livestream theme, its type's choice in Screens by
+/// Type, then the slide's theme's routing table (see `source`).
 public enum StreamPrecedence {
 
     /// The Show Setup switch (Lower Third · Full Screen · Transparent).
@@ -22,7 +25,7 @@ public enum StreamPrecedence {
         /// The slide's own design, or its theme's lower third when the slide
         /// asked for a lower third without naming one.
         case slideDesign
-        /// The theme's pick for the slide's category.
+        /// Set up ahead of time: the presentation, its type, then the theme.
         case themeRoute
         /// The slide's own lower-third picture (a PNG over the camera).
         case slideImage(mediaID: String)

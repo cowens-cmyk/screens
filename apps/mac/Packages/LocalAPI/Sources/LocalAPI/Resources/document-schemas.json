@@ -4029,6 +4029,12 @@
           "items": {
             "$ref": "#/components/schemas/LightingCue"
           }
+        },
+        "typeScreens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/PresentationTypeScreens"
+          }
         }
       },
       "required": [
@@ -4136,6 +4142,26 @@
       "required": [
         "category",
         "actions"
+      ]
+    },
+    "PresentationTypeScreens": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "stream": {
+          "type": "string"
+        },
+        "streamThemeId": {
+          "type": "string"
+        },
+        "streamSlideId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "category"
       ]
     },
     "StreamDesignMode": {

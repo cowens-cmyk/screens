@@ -614,6 +614,7 @@ struct PlanShell: View {
                 if controls != nil {
                     Button("Timers & Macros…", systemImage: "timer") { controlsShown = true }
                 }
+                if !runOnly { Button("Lower Thirds & Themes…", systemImage: "rectangle.bottomthird.inset.filled") { ScreensByTypeRouter.shared.shown = true } }
                 Button("Screen Setup…", systemImage: "display.2") { openWindow(id: "outputs") }
                 Button("Edit Stage Display…", systemImage: "rectangle.inset.filled.and.person.filled") { editStageDisplay() }
             } label: {

@@ -379,6 +379,16 @@ struct AppSettingsView: View {
                 stacked: true
             ))
         }
+        if let model {
+            rows.append(SettingsRowSpec(
+                id: "show.typeScreens", category: .showSetup,
+                title: "Screens by Type",
+                caption: nil,
+                keywords: "lower third lower thirds theme worship message sermon scripture bible announcements livestream stream type default series song",
+                control: AnyView(ScreensByTypeForm(model: model, render: controls?.render)),
+                stacked: true
+            ))
+        }
         if controls != nil {
             rows.append(SettingsRowSpec(
                 id: "show.decklink", category: .showSetup,

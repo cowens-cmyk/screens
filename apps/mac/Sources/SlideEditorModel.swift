@@ -2081,6 +2081,11 @@ final class SlideEditorModel {
         updateDocument { $0.category = category }
     }
 
+    /// The presentation's own Livestream theme; nil follows its type.
+    func setStreamTheme(_ themeID: String?) {
+        updateDocument { $0.streamThemeId = themeID }
+    }
+
     func setMusicKey(_ key: String?) {
         updateDocument { presentation in
             presentation.musicKey = key

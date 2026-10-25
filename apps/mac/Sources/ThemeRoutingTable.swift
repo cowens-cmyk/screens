@@ -23,6 +23,10 @@ struct ThemeRoutingTable: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Audience screens show these designs as they are. Choose what the livestream shows for each when Livestream is on Lower Third. A slide's own Livestream choice wins over these.")
                 .font(.caption).foregroundStyle(.secondary)
+            if let note = typeOverrideNote {
+                Label(note, systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             ForEach(categories, id: \.id) { category in
                 HStack(alignment: .firstTextBaseline) {
                     Text(category.name)
@@ -61,6 +65,20 @@ struct ThemeRoutingTable: View {
             }
             designs = loaded
         }
+    }
+
+    /// Screens by Type decides before this table for any type not left to
+    /// each theme, which would otherwise look like this table being ignored.
+    private var typeOverrideNote: String? {
+        let settings = appModel.slideBuilding
+        let types = PresentationTypes.screensTypes.filter { settings.screens(forType: $0).livestream != .theme }
+        guard !types.isEmpty else { return nil }
+        let names = types.map(PresentationTypes.screensTitle)
+        let list = names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " and " + names.last!
+        let series = types.contains(PresentationTypes.sermon)
+            && settings.screens(forType: PresentationTypes.sermon).livestream == .series
+            ? " The Message follows the plan's sermon series, which uses the series theme's table." : ""
+        return "Screens by Type sets the livestream for \(list) presentations, ahead of this table.\(series) Change it in More › Lower Thirds & Themes."
     }
 
     private func designMenu(for category: String) -> some View {
