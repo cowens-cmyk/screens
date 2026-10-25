@@ -293,8 +293,12 @@ enum PhotoSeries {
                 samples = soft.map { SeriesArt.samples(of: $0, in: SeriesArt.textArea) } ?? []
                 // A designed background is dimmed until the download's own
                 // text color reads; a picture's may move its text color first.
-                let best = sharp ? wanted : SeriesContrast.readable(wanted, on: samples)
-                if SeriesContrast.worst(best, on: samples) >= SeriesContrast.minimum || strength >= 1 { break }
+                // Held to what body text is held to in the room (see
+                // PhotoSeriesTheme.bodyContrast); a plate or veil makes up
+                // whatever dimming can't.
+                let target = PhotoSeriesTheme.bodyContrast
+                let best = sharp ? wanted : SeriesContrast.readable(wanted, on: samples, minimum: target)
+                if SeriesContrast.worst(best, on: samples) >= target || strength >= 1 { break }
                 strength = min(1, strength + 0.15)
             }
             settled.textBackground.strength = strength

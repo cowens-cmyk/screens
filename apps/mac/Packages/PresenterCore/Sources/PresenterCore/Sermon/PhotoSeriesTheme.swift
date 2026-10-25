@@ -94,6 +94,9 @@ public enum PhotoSeriesTheme {
         /// read: 0 when it reads without one. Busy mid-tone art, where
         /// neither white nor black text reaches the minimum, needs one.
         public var textScrim: Double = 0
+        /// The art behind the text is busy, so the veil is a plate behind
+        /// each design's block of text rather than over the whole background.
+        public var textPlate = false
         /// The same for the Title slide's text over the art, in its box.
         public var titleScrim: Double = 0
         /// The same for lower-third text on an image bar (a download's),
@@ -101,21 +104,49 @@ public enum PhotoSeriesTheme {
         public var barScrim: Double = 0
     }
 
+    /// What generated body text (points, verses, lyrics) is held to on the
+    /// full-screen designs. A projector washes colors out, so text that only
+    /// just makes WCAG's 4.5:1 on paper reads weakly in the room. References
+    /// and subtitles, set in the accent, are held to 4.5:1; staff's own picks
+    /// are used as picked, with a veil under them if they don't reach 4.5:1.
+    public static let bodyContrast = 7.0
+
+    /// How solid a plate behind text on busy art is at least: enough to
+    /// quiet the art behind the words, not to hide it.
+    static let plateOpacity = 0.6
+
     /// The veil that helps text most: black under light text, white under
     /// dark.
     public static func scrimColor(for text: SeriesColor) -> SeriesColor {
         text.contrast(with: .black) >= text.contrast(with: .white) ? .black : .white
     }
 
-    /// How solid a veil in `scrimColor(for:)` laid over the samples has to
-    /// be for every one of `texts` to reach the minimum against them,
-    /// rounded up to the next 5%: 0 when they already do.
-    public static func scrimOpacity(for texts: [SeriesColor], on samples: [SeriesColor]) -> Double {
+    /// Whether the art behind a block of text is busy: neighboring samples
+    /// swing in lightness (stripes, lettering, a sharp photo), so even text
+    /// that passes on average breaks up over it. A smooth gradient or a
+    /// soft blur isn't busy.
+    public static func isBusy(_ samples: [SeriesColor]) -> Bool {
+        guard samples.count >= 2 else { return false }
+        func lightness(_ color: SeriesColor) -> Double {
+            let y = color.luminance
+            return y > 0.008856 ? 116 * cbrt(y) - 16 : 903.3 * y
+        }
+        let values = samples.map(lightness)
+        let steps = zip(values, values.dropFirst()).map { abs($0 - $1) }
+        return steps.reduce(0, +) / Double(steps.count) > 10
+    }
+
+    /// How solid a veil (in `veil`, or `scrimColor(for:)` the first text)
+    /// laid over the samples has to be for every one of `texts` to reach
+    /// `minimum` against them, rounded up to the next 5%: 0 when they
+    /// already do.
+    public static func scrimOpacity(for texts: [SeriesColor], on samples: [SeriesColor],
+                                    minimum: Double = SeriesContrast.minimum, veil: SeriesColor? = nil) -> Double {
         guard !samples.isEmpty, let first = texts.first else { return 0 }
-        let veil = scrimColor(for: first)
+        let veil = veil ?? scrimColor(for: first)
         func passes(_ alpha: Double) -> Bool {
             let veiled = samples.map { veil.composited(alpha: alpha, over: $0) }
-            return texts.allSatisfy { SeriesContrast.worst($0, on: veiled) >= SeriesContrast.minimum }
+            return texts.allSatisfy { SeriesContrast.worst($0, on: veiled) >= minimum }
         }
         guard !passes(0) else { return 0 }
         guard passes(1) else { return 1 }
@@ -154,8 +185,40 @@ public enum PhotoSeriesTheme {
     /// grey).
     static func fixed(_ wanted: SeriesColor, on samples: [SeriesColor]) -> SeriesColor {
         guard SeriesContrast.worst(wanted, on: samples) < SeriesContrast.minimum else { return wanted }
-        let strong = SeriesContrast.readable(wanted, on: samples, minimum: 7)
-        return SeriesContrast.worst(strong, on: samples) >= 7 ? strong : SeriesContrast.readable(wanted, on: samples)
+        let strong = SeriesContrast.readable(wanted, on: samples, minimum: bodyContrast)
+        return SeriesContrast.worst(strong, on: samples) >= bodyContrast
+            ? strong : SeriesContrast.readable(wanted, on: samples)
+    }
+
+    /// Full-screen text on a background: the body color held to
+    /// `bodyContrast` (moved the least it can, else the better of white or
+    /// black), the veil it needs to get there, and the accent made to read
+    /// on that. Busy art always gets a plate. Picked colors stay as picked,
+    /// and the veil is made solid enough for them to reach 4.5:1.
+    static func backed(text wantedText: SeriesColor, accent wantedAccent: SeriesColor, on samples: [SeriesColor],
+                       textPicked: Bool, accentPicked: Bool)
+        -> (text: SeriesColor, accent: SeriesColor, scrim: Double, plate: Bool) {
+        guard !samples.isEmpty else { return (wantedText, wantedAccent, 0, false) }
+        let bodyMinimum = textPicked ? SeriesContrast.minimum : bodyContrast
+        var text = wantedText
+        if !textPicked, SeriesContrast.worst(text, on: samples) < bodyContrast {
+            let strong = SeriesContrast.readable(text, on: samples, minimum: bodyContrast)
+            let passing = SeriesContrast.readable(text, on: samples)
+            text = SeriesContrast.worst(strong, on: samples) >= bodyContrast ? strong
+                : SeriesContrast.worst(passing, on: samples) >= SeriesContrast.minimum ? passing
+                : SeriesContrast.plainText(on: samples)
+        }
+        let veil = scrimColor(for: text)
+        let plate = isBusy(samples)
+        var scrim = scrimOpacity(for: [text], on: samples, minimum: bodyMinimum, veil: veil)
+        if plate { scrim = max(scrim, plateOpacity) }
+        var accent = wantedAccent
+        if accentPicked {
+            scrim = max(scrim, scrimOpacity(for: [accent], on: samples, veil: veil))
+        } else {
+            accent = fixed(wantedAccent, on: samples.map { veil.composited(alpha: scrim, over: $0) })
+        }
+        return (text, accent, scrim, plate)
     }
 
     /// A series Claude drew from its name alone (SeriesGenerator), whose
@@ -170,17 +233,18 @@ public enum PhotoSeriesTheme {
         func color(_ hex: String?, _ fallback: SeriesColor) -> SeriesColor { hex.flatMap(SeriesColor.init(hex:)) ?? fallback }
         let background = backgroundSamples.isEmpty ? [SeriesColor.black] : backgroundSamples
         let bar = barSamples.isEmpty ? [SeriesColor.black, .white] : barSamples
-        let text = fixed(color(style.textColor, .white), on: background)
-        let accent = fixed(color(style.accentColor, text), on: background)
+        let full = backed(text: color(style.textColor, .white), accent: color(style.accentColor, .white),
+                          on: background, textPicked: false, accentPicked: false)
         let barText = fixed(color(style.lowerThirdTextColor, .white), on: bar)
         let barAccent = fixed(color(style.lowerThirdAccentColor, barText), on: bar)
-        style.textColor = text.hex()
-        style.accentColor = accent.hex()
+        style.textColor = full.text.hex()
+        style.accentColor = full.accent.hex()
         style.lowerThirdTextColor = barText.hex()
         style.lowerThirdAccentColor = barAccent.hex()
-        var colors = Colors(text: text, accent: accent, titleText: text, bar: bar[0], barOpacity: 1, barText: barText,
-                            barAccent: barAccent, barRule: barAccent, background: background[0])
-        colors.textScrim = scrimOpacity(for: [text, accent], on: background)
+        var colors = Colors(text: full.text, accent: full.accent, titleText: full.text, bar: bar[0], barOpacity: 1,
+                            barText: barText, barAccent: barAccent, barRule: barAccent, background: background[0])
+        colors.textScrim = full.scrim
+        colors.textPlate = full.plate
         colors.barScrim = scrimOpacity(for: [barText, barAccent], on: bar)
 
         var theme = SermonSeriesTheme.make(style, id: id)
@@ -188,8 +252,8 @@ public enum PhotoSeriesTheme {
             var design = design
             if SermonSeriesTheme.isLowerThird(design) {
                 if colors.barScrim > 0 { design.objects.append(barScrim(colors)) }
-            } else if colors.textScrim > 0 {
-                design.objects.append(fullScrim(colors))
+            } else if let backing = textBacking(colors, under: design.objects) {
+                design.objects.append(backing)
             }
             design.objects = SermonSeriesTheme.layered(design.objects)
             return design
@@ -209,8 +273,11 @@ public enum PhotoSeriesTheme {
             : input.textBackgroundSamples
         let wantedText = SeriesColor(hex: analysis.textColor) ?? .white
         let wantedAccent = SeriesColor(hex: analysis.accentColor) ?? wantedText
-        let text = input.textColorOverride ?? fixed(wantedText, on: backgroundSamples)
-        let accent = input.accentColorOverride ?? fixed(wantedAccent, on: backgroundSamples)
+        let full = backed(text: input.textColorOverride ?? wantedText, accent: input.accentColorOverride ?? wantedAccent,
+                          on: backgroundSamples, textPicked: input.textColorOverride != nil,
+                          accentPicked: input.accentColorOverride != nil)
+        let text = full.text
+        let accent = full.accent
         let titleText = input.textColorOverride
             ?? (input.titleSamples.isEmpty ? text : fixed(wantedText, on: input.titleSamples))
 
@@ -229,7 +296,7 @@ public enum PhotoSeriesTheme {
                                 barText: fixedBarText, barAccent: fixedAccent,
                                 barRule: fixedAccent, background: backgroundSamples.first ?? darkest)
             colors.barScrim = scrimOpacity(for: [fixedBarText, fixedAccent], on: samples)
-            return scrimmed(colors, input: input, backgroundSamples: backgroundSamples)
+            return scrimmed(colors, input: input, full: full)
         }
         let bar = input.barColorOverride ?? SeriesColor(hex: analysis.lowerThird.color) ?? darkest
         let fixed = barText(
@@ -239,16 +306,20 @@ public enum PhotoSeriesTheme {
         let colors = Colors(text: text, accent: accent, titleText: titleText, bar: bar, barOpacity: fixed.opacity,
                             barText: fixed.text, barAccent: fixed.accent, barRule: rule,
                             background: backgroundSamples.first ?? darkest)
-        return scrimmed(colors, input: input, backgroundSamples: backgroundSamples)
+        return scrimmed(colors, input: input, full: full)
     }
 
-    /// The scrims the full-screen text needs, measured with the colors it
+    /// The veils the full-screen text needs, measured with the colors it
     /// ended up with. Staff's own picks included: a pick that doesn't read
-    /// gets a veil under it rather than being changed.
-    private static func scrimmed(_ colors: Colors, input: Input, backgroundSamples: [SeriesColor]) -> Colors {
+    /// gets a veil under it rather than being changed. The title over the
+    /// art is a heading, held to 4.5:1, with a plate behind it on busy art.
+    private static func scrimmed(_ colors: Colors, input: Input,
+                                 full: (text: SeriesColor, accent: SeriesColor, scrim: Double, plate: Bool)) -> Colors {
         var colors = colors
-        colors.textScrim = scrimOpacity(for: [colors.text, colors.accent], on: backgroundSamples)
-        colors.titleScrim = scrimOpacity(for: [colors.titleText], on: input.titleSamples)
+        colors.textScrim = full.scrim
+        colors.textPlate = full.plate
+        let title = scrimOpacity(for: [colors.titleText], on: input.titleSamples)
+        colors.titleScrim = isBusy(input.titleSamples) ? max(title, plateOpacity) : title
         return colors
     }
 
@@ -329,7 +400,7 @@ public enum PhotoSeriesTheme {
                 design.objects = titleObjects(design.objects, input: input, colors: colors, backdrop: backdrop)
             } else {
                 if let backdrop { design.objects.insert(backdrop, at: 0) }
-                if colors.textScrim > 0 { design.objects.append(fullScrim(colors)) }
+                if let backing = textBacking(colors, under: design.objects) { design.objects.append(backing) }
             }
             design.objects = SermonSeriesTheme.layered(design.objects)
             return design
@@ -338,13 +409,34 @@ public enum PhotoSeriesTheme {
         return SermonSeriesTheme.completed(made)
     }
 
-    /// A veil over the whole background, under the text, for art too busy
-    /// for any text color alone.
-    static func fullScrim(_ colors: Colors) -> SlideObject {
-        SlideObject(id: UUID().uuidString, objectKind: .shape, name: "Scrim", text: "",
-                    x: 0, y: 0, width: 1920, height: 1080, shapeKind: .rectangle,
-                    fill: ObjectFill(fillKind: .solid,
-                                     colorHex: scrimColor(for: colors.text).hex(alpha: colors.textScrim)))
+    /// What goes between the background and a full-screen design's text,
+    /// if anything: on busy art a soft plate behind the design's block of
+    /// text, so the words sit on something calm while the art shows around
+    /// them; otherwise, when the text needs help, a veil over the whole
+    /// background.
+    static func textBacking(_ colors: Colors, under objects: [SlideObject]) -> SlideObject? {
+        guard colors.textScrim > 0 else { return nil }
+        let fill = ObjectFill(fillKind: .solid, colorHex: scrimColor(for: colors.text).hex(alpha: colors.textScrim))
+        let texts = objects.filter { $0.objectKind == .text }
+        guard colors.textPlate, !texts.isEmpty else {
+            return SlideObject(id: UUID().uuidString, objectKind: .shape, name: "Scrim", text: "",
+                               x: 0, y: 0, width: 1920, height: 1080, shapeKind: .rectangle, fill: fill)
+        }
+        let left = texts.map { $0.x ?? 0 }.min() ?? 0
+        let top = texts.map { $0.y ?? 0 }.min() ?? 0
+        let right = texts.map { ($0.x ?? 0) + ($0.width ?? 1920) }.max() ?? 1920
+        let bottom = texts.map { ($0.y ?? 0) + ($0.height ?? 1080) }.max() ?? 1080
+        return plate(x: left, y: top, width: right - left, height: bottom - top, fill: fill)
+    }
+
+    /// A rounded plate around a block of text, padded and kept on the slide.
+    static func plate(x: Double, y: Double, width: Double, height: Double, fill: ObjectFill) -> SlideObject {
+        let pad = 40.0
+        let left = max(24, x - pad), top = max(24, y - pad)
+        let right = min(1896, x + width + pad), bottom = min(1056, y + height + pad)
+        return SlideObject(id: UUID().uuidString, objectKind: .shape, name: "Scrim", text: "",
+                           x: left, y: top, width: right - left, height: bottom - top,
+                           shapeKind: .roundedRectangle, cornerRadius: 28, fill: fill)
     }
 
     /// A veil across the bottom of the frame, under lower-third text on an
@@ -389,7 +481,7 @@ public enum PhotoSeriesTheme {
         }
         // Off the art, the title sits on the same background as the other
         // designs and takes the same scrim.
-        if !usesArt, colors.textScrim > 0 { rest.append(fullScrim(colors)) }
+        if !usesArt, let backing = textBacking(colors, under: objects) { rest.append(backing) }
         guard var title = objects.first(where: { $0.name == SermonSeriesTheme.titleText }),
               var subtitle = objects.first(where: { $0.name == SermonSeriesTheme.subtitleText })
         else { return rest + objects.filter { $0.objectKind == .text } }
@@ -420,16 +512,10 @@ public enum PhotoSeriesTheme {
         set(&subtitle, y: box.y + titleHeight, height: box.height - titleHeight, size: (size * 0.45).rounded(),
             color: colors.titleText)
         if colors.titleScrim > 0 {
-            // A soft plate behind the title where the art is too busy for
-            // any color to read on it alone.
-            let pad = 28.0
-            let x = max(0, box.x - pad), y = max(0, box.y - pad)
-            rest.append(SlideObject(
-                id: UUID().uuidString, objectKind: .shape, name: "Scrim", text: "",
-                x: x, y: y, width: min(1920 - x, box.width + pad * 2), height: min(1080 - y, box.height + pad * 2),
-                shapeKind: .roundedRectangle, cornerRadius: 24,
-                fill: ObjectFill(fillKind: .solid,
-                                 colorHex: scrimColor(for: colors.titleText).hex(alpha: colors.titleScrim))))
+            // A soft plate behind the title where the art is busy or no
+            // color reads on it alone.
+            rest.append(plate(x: box.x, y: box.y, width: box.width, height: box.height, fill: ObjectFill(
+                fillKind: .solid, colorHex: scrimColor(for: colors.titleText).hex(alpha: colors.titleScrim))))
         }
         return rest + [title, subtitle]
     }

@@ -60,8 +60,11 @@ private func expectReadable(_ theme: Theme, background: [SeriesColor], title: [S
         }
         for text in texts {
             let color = hex(text.textStyle?.colorHex ?? "#000000")
-            // Colors are stored as bytes, which can cost a hair of contrast.
-            #expect(SeriesContrast.worst(color, on: behind) >= 4.4,
+            // Body text is held to 7:1 for the projector; headings over the
+            // art and accent lines (references, subtitles) to 4.5:1. Colors
+            // are stored as bytes, which can cost a hair of contrast.
+            let body = !onArt && ["Point", "Verse", "Lyrics", "Body", "Title"].contains(text.name)
+            #expect(SeriesContrast.worst(color, on: behind) >= (body ? 6.9 : 4.4),
                     "\(design.name) \(text.name): \(color.hex()) reads", sourceLocation: sourceLocation)
         }
     }
@@ -90,6 +93,24 @@ private func expectReadable(_ theme: Theme, background: [SeriesColor], title: [S
     #expect(PhotoSeriesTheme.colors(for: made).text.luminance < 0.2)
 }
 
+@Test func bodyTextThatOnlyJustPassesIsMadeStronger() throws {
+    // Grey on charcoal is 5:1, a pass on paper and weak on a projector.
+    let charcoal = [hex("#1A1A1A")]
+    let grey = hex("#8A8A8A")
+    #expect(SeriesContrast.worst(grey, on: charcoal) > 4.5 && SeriesContrast.worst(grey, on: charcoal) < 7)
+    let made = input(analysis(textColor: grey.hex(), tone: .dark, swatches: ["#1A1A1A"]), background: charcoal, title: charcoal)
+    let colors = PhotoSeriesTheme.colors(for: made)
+    #expect(SeriesContrast.worst(colors.text, on: charcoal) >= 7)
+    #expect(colors.text.luminance > grey.luminance, "lightened, not swapped for another color")
+    expectReadable(PhotoSeriesTheme.make(made), background: charcoal, title: charcoal)
+
+    // Picked by hand, it's used as picked: it already reads at 4.5:1.
+    var picked = made
+    picked.textColorOverride = grey
+    let pickedColors = PhotoSeriesTheme.colors(for: picked)
+    #expect(pickedColors.text == grey && pickedColors.textScrim == 0)
+}
+
 @Test func busyMidToneArtGetsAScrim() throws {
     // Black, white and mid grey all behind the same lines: no text color
     // alone reaches 4.5:1, so a veil goes between the art and the text.
@@ -101,8 +122,22 @@ private func expectReadable(_ theme: Theme, background: [SeriesColor], title: [S
     #expect(colors.titleScrim > 0)
     let theme = PhotoSeriesTheme.make(made)
     expectReadable(theme, background: busy, title: busy)
+    #expect(colors.textPlate, "busy art gets a plate behind the text, not a veil over all of it")
+    for category in [SermonSeriesTheme.pointCategory, SermonSeriesTheme.scriptureCategory,
+                     SermonSeriesTheme.pointScriptureCategory, SermonSeriesTheme.worshipCategory] {
+        let design = try #require(theme.slides?.first { $0.name == category && $0.folder == nil })
+        let plate = try #require(design.objects.first { $0.name == "Scrim" }, "\(category)")
+        #expect(plate.shapeKind == .roundedRectangle && (plate.width ?? 1920) < 1920, "\(category)")
+        #expect(alpha(of: plate.fill?.colorHex) >= 0.59, "\(category): solid enough to quiet the art")
+        for text in design.objects where text.objectKind == .text {
+            let inside = (text.x ?? 0) >= (plate.x ?? 0) && (text.y ?? 0) >= (plate.y ?? 0)
+                && (text.x ?? 0) + (text.width ?? 0) <= (plate.x ?? 0) + (plate.width ?? 0)
+                && (text.y ?? 0) + (text.height ?? 0) <= (plate.y ?? 0) + (plate.height ?? 0)
+            #expect(inside, "\(category) \(text.name) sits on the plate")
+        }
+    }
     let point = try #require(theme.slides?.first { $0.name == SermonSeriesTheme.pointCategory })
-    #expect(point.objects.map(\.name) == ["Series Art", "Scrim", "Point"], "art, then the veil, then the words")
+    #expect(point.objects.map(\.name) == ["Series Art", "Scrim", "Point"], "art, then the plate, then the words")
     let title = try #require(theme.slides?.first { $0.name == SermonSeriesTheme.titleCategory })
     let plate = try #require(title.objects.first { $0.name == "Scrim" })
     #expect((plate.width ?? 1920) < 1920, "on the Title slide only behind the title, not over the whole art")

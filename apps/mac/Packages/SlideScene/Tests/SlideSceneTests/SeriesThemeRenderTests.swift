@@ -237,9 +237,15 @@ struct SeriesThemeRenderTests {
 
         let measured = textContrast(with: shown, without: bare, in: (220, 230, 1480, 540))
         #expect(measured != nil, "\(art): the verse is drawn on the audience screen")
-        #expect((measured?.contrast ?? 0) >= 4.5, "\(art): the verse reads at \(measured?.contrast ?? 0):1")
+        // Verses are held to 7:1 for the projector; the reference to 4.5:1.
+        #expect((measured?.contrast ?? 0) >= 7, "\(art): the verse reads at \(measured?.contrast ?? 0):1")
         let reference = textContrast(with: shown, without: bare, in: (220, 800, 1480, 70))
         #expect((reference?.contrast ?? 0) >= 4.5, "\(art): the reference reads at \(reference?.contrast ?? 0):1")
+
+        // On busy art the verse sits on a plate, not straight on the stripes.
+        let bible = try #require(theme.slides?.first { $0.name == "Bible" && $0.folder == nil })
+        let plate = bible.objects.first { $0.name == "Scrim" && ($0.width ?? 1920) < 1920 }
+        #expect((plate != nil) == (art == .busy), "\(art): a plate only where the art is busy")
     }
 
     @Test(arguments: SampleArt.allCases)
@@ -289,7 +295,9 @@ struct SeriesThemeRenderTests {
                 let box = (object.x ?? 0, object.y ?? 0, object.width ?? 1920, object.height ?? 1080)
                 let measured = textContrast(with: shown, without: bare, in: box)
                 #expect(measured != nil, "\(art) \(category): \(object.name) is drawn")
-                #expect((measured?.contrast ?? 0) >= 4.5,
+                // Body text 7:1; the title over the art and accent lines 4.5:1.
+                let body = ["Point", "Verse", "Lyrics"].contains(object.name)
+                #expect((measured?.contrast ?? 0) >= (body ? 7 : 4.5),
                         "\(art) \(category): \(object.name) reads at \(measured?.contrast ?? 0):1")
             }
         }
