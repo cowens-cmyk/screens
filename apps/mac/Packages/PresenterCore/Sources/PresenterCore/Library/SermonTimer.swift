@@ -55,9 +55,10 @@ public enum SermonTimer {
 extension MediaItem {
     /// What a video does when it finishes. One that plays once goes on to
     /// the next item in the plan unless it's been set otherwise (or has an
-    /// auto-advance of its own); a looping video never finishes.
+    /// auto-advance of its own); a looping video (by its own choice or its
+    /// category's, see `playsLooping`) never finishes.
     public var resolvedEndAction: MediaEndAction? {
-        guard mediaKind == .video, !loops else { return nil }
+        guard mediaKind == .video, !playsLooping else { return nil }
         if let endAction { return endAction }
         return autoAdvance == nil ? .next : nil
     }

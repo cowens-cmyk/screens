@@ -327,6 +327,18 @@ struct MxUSlidesApp: App {
         }
         .defaultSize(width: 1, height: 1)
 
+        // Window › Media Library, or Media Library in the library's Media
+        // tab. In Run-Only it can be browsed; nothing in it drags, imports
+        // or changes anything.
+        Window("Media Library", id: "mediaLibrary") {
+            if let appModel {
+                MediaLibraryView(model: appModel)
+                    .environment(\.runOnly, presentLayout.runOnly)
+            }
+        }
+        .defaultSize(width: 980, height: 640)
+        .keyboardShortcut("m", modifiers: [.command, .shift])
+
         Window("Live Assist", id: "liveAssist") {
             LiveAssistView()
         }

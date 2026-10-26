@@ -990,7 +990,7 @@ struct ServiceContinuousView: View {
                     .foregroundStyle(.tertiary)
                     .help("Trimmed")
             }
-            if media.loops {
+            if media.playsLooping {
                 Image(systemName: "repeat")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)

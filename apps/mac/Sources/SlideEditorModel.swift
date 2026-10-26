@@ -2263,12 +2263,12 @@ final class SlideEditorModel {
     }
 
     func backgroundLoops(_ background: CueMedia) -> Bool {
-        background.loops ?? (appModel.media(background.mediaId)?.loops ?? true)
+        background.loops ?? (appModel.media(background.mediaId)?.playsLooping ?? true)
     }
 
     func fillLoops(_ object: SlideObject) -> Bool {
         object.fill?.loops
-            ?? (appModel.media(object.fill?.mediaId ?? "")?.loops ?? true)
+            ?? (appModel.media(object.fill?.mediaId ?? "")?.playsLooping ?? true)
     }
 
     func backgroundMediaName(_ background: CueMedia) -> String {

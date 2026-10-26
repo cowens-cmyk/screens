@@ -739,7 +739,7 @@ final class ServiceControls {
     }
 
     private func resolvedLoops(override: Bool?, mediaID: String) -> Bool {
-        override ?? (appModel.media(mediaID)?.loops ?? true)
+        override ?? (appModel.media(mediaID)?.playsLooping ?? true)
     }
 
     private func restart(mediaID: String) {
@@ -797,7 +797,7 @@ final class ServiceControls {
         // whatever the video is set to elsewhere.
         let countdown = contextID.map(isCountdownItem) ?? false
         let loops: Bool? = countdown && mediaItem.mediaKind == .video ? false : loopsOverride
-        let playsOnce = mediaItem.mediaKind == .video && !(loops ?? mediaItem.loops)
+        let playsOnce = mediaItem.mediaKind == .video && !(loops ?? mediaItem.playsLooping)
 
         // A plan's video that plays once (its countdown above all) takes
         // the screens from the slides: left running, the looping pre-service
@@ -1863,7 +1863,7 @@ final class ServiceControls {
                     if let prepared = try? await render.media.prepare(url: url) {
                         render.media.play(
                             prepared, id: mediaID,
-                            loop: (wanted[mediaID] ?? nil) ?? item.loops,
+                            loop: (wanted[mediaID] ?? nil) ?? item.playsLooping,
 
                             options: PlaybackOptions(
                                 inPoint: item.inPoint, outPoint: item.outPoint,

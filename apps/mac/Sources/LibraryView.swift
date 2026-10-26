@@ -1034,6 +1034,7 @@ struct LibrarySidebar: View {
             }
         }
         if entry.kind == .media {
+            WhenItEndsMenu(model: model, mediaID: entry.id)
             Button("Media Settings…") { mediaSettingsTarget = MediaSettingsTarget(id: entry.id) }
 
             MediaCueGrammarItems(
@@ -1260,6 +1261,17 @@ struct LibrarySidebar: View {
                     if isGridMode {
                         thumbnailSizer
                     }
+                }
+                if model.selectedSection == .media || model.selectedSection == .audio {
+                    Button {
+                        openWindow(id: "mediaLibrary")
+                    } label: {
+                        Image(systemName: "rectangle.grid.3x2")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Media Library (⇧⌘M)")
                 }
                 if model.selectedSection == .media, model.flaggedMediaCount() > 0 {
                     Button {

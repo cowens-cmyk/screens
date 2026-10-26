@@ -1513,6 +1513,9 @@
         },
         "endAction": {
           "$ref": "#/components/schemas/MediaEndAction"
+        },
+        "loopOverride": {
+          "type": "boolean"
         }
       },
       "required": [

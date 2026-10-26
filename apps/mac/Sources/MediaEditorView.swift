@@ -882,7 +882,7 @@ struct MediaEditorView: View {
                 Text("Foreground").tag(MediaClassification.foreground)
             }
             if item.mediaKind == .video {
-                Toggle("Loops", isOn: mediaBinding(item, \.loops))
+                Toggle("Loops", isOn: mediaBinding(item, \.loopsSetting))
                 playRatePicker(item)
             }
             transitionRows

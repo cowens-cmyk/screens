@@ -101,128 +101,23 @@ struct EmptySlidesDropArea: View {
 }
 
 /// Picks pictures and videos to become slides, each with its media as the
-/// background. A plain searchable grid of the Media library; it stands on
-/// its own so the library's full browser can take its place.
+/// background: the Media Library's browser (its categories and search) in
+/// picking mode.
 struct MediaSlidePickerSheet: View {
     let model: AppModel
     /// The picked media ids, in the order they were picked.
     let onPick: ([String]) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var query = ""
-    @State private var picked: [String] = []
-    @FocusState private var searchFocused: Bool
-
-    private static let columns = [GridItem(.adaptive(minimum: 128), spacing: 10)]
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 5) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                    .imageScale(.small)
-                TextField("Search Media", text: $query)
-                    .textFieldStyle(.plain)
-                    .focused($searchFocused)
-            }
-            .padding(10)
-            Divider()
-            let entries = results
-            if entries.isEmpty {
-                ContentUnavailableView(
-                    "No Media", systemImage: "photo.on.rectangle.angled",
-                    description: Text(query.isEmpty
-                        ? "Import images or videos in the Media section first."
-                        : "Nothing matches \u{201C}\(query)\u{201D}.")
-                )
-                .frame(maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: Self.columns, spacing: 10) {
-                        ForEach(entries, id: \.id) { entry in
-                            tile(entry)
-                        }
-                    }
-                    .padding(10)
-                }
-            }
-            Divider()
-            HStack {
-                Text("Click to pick, double-click to add one.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button(picked.count > 1 ? "Add \(picked.count) Slides" : "Add Slide") { add(picked) }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(picked.isEmpty)
-            }
-            .padding(10)
-        }
-        .frame(width: 620, height: 480)
-        .onAppear { searchFocused = true }
-    }
-
-    private func tile(_ entry: LibraryIndex.Entry) -> some View {
-        let isPicked = picked.contains(entry.id)
-        let shape = RoundedRectangle.standard(CornerStandard.element)
-        return VStack(spacing: 4) {
-            Color.black
-                .overlay { PosterImage(model: model, mediaId: entry.id) }
-                .aspectRatio(16 / 9, contentMode: .fit)
-                .clipShape(shape)
-                .overlay {
-                    shape.strokeBorder(
-                        isPicked ? Color.accentColor : Color.primary.opacity(0.14),
-                        lineWidth: isPicked ? 3 : 1)
-                }
-                .overlay(alignment: .topTrailing) {
-                    if let order = picked.firstIndex(of: entry.id), picked.count > 1 {
-                        Text("\(order + 1)")
-                            .font(.caption2.weight(.bold).monospacedDigit())
-                            .foregroundStyle(.white)
-                            .frame(minWidth: 18, minHeight: 18)
-                            .background(Circle().fill(Color.accentColor))
-                            .padding(5)
-                    }
-                }
-            Text(entry.name)
-                .font(.caption)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: .infinity)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { add([entry.id]) }
-        .onTapGesture {
-            if let index = picked.firstIndex(of: entry.id) {
-                picked.remove(at: index)
-            } else {
-                picked.append(entry.id)
-            }
-        }
-        .help(entry.name)
-    }
-
-    private var results: [LibraryIndex.Entry] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        let entries = model.entries(of: .media)
-        let matching = trimmed.isEmpty ? entries : entries.filter { $0.name.localizedStandardContains(trimmed) }
-        return matching.sorted { a, b in
-            switch (a.lastUsedAt, b.lastUsedAt) {
-            case let (usedA?, usedB?): usedA > usedB
-            case (.some, nil): true
-            case (nil, .some): false
-            case (nil, nil): a.name.localizedStandardCompare(b.name) == .orderedAscending
-            }
-        }
-    }
-
-    private func add(_ ids: [String]) {
-        guard !ids.isEmpty else { return }
-        onPick(ids)
-        dismiss()
+        MediaLibraryView(model: model, picking: MediaLibraryPicking(
+            add: { ids in
+                guard !ids.isEmpty else { return }
+                onPick(ids)
+                dismiss()
+            },
+            cancel: { dismiss() }))
     }
 }
 
