@@ -2,14 +2,15 @@ import Foundation
 
 /// What a fresh library starts with: three themes — Worship, Scripture and
 /// Points — each with a full-screen design for the room and a matching
-/// lower third for the livestream, already tied together, plus the Worship
-/// and Message stage layouts.
+/// lower third for the livestream, already tied together, plus the Worship,
+/// Message and Video stage layouts.
 public enum BasicTemplates {
     public static let worshipThemeID = "screens.theme.worship"
     public static let scriptureThemeID = "screens.theme.scripture"
     public static let pointsThemeID = "screens.theme.points"
     public static let worshipStageID = "screens.stage.worship"
     public static let messageStageID = "screens.stage.message"
+    public static let videoStageID = "screens.stage.video"
 
     static let font = "Helvetica Neue"
     static let bold = "HelveticaNeue-Bold"
@@ -28,7 +29,9 @@ public enum BasicTemplates {
         worship.id = worshipStageID
         var message = ConfidenceLayoutTemplate.sermon.make(name: "Message")
         message.id = messageStageID
-        return [worship, message]
+        var video = ConfidenceLayoutTemplate.video.make(name: "Video")
+        video.id = videoStageID
+        return [worship, message, video]
     }
 
     // MARK: Themes

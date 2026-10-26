@@ -510,7 +510,7 @@ final class AppModel {
     }
 
     /// The Worship, Scripture and Points themes (each tied to its own lower
-    /// third) and the Worship and Message stage layouts.
+    /// third) and the Worship, Message and Video stage layouts.
     @LibraryActor private static func seedBasics(_ prepared: Library, rootURL: URL) throws {
         let marker = rootURL.appendingPathComponent(".seeded-basics-v1")
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }

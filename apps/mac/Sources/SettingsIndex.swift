@@ -145,6 +145,11 @@ enum SettingsIndex {
             caption: "Worship for songs, Message for the message. Off, the stage changes only when someone changes it.",
             keywords: "stage follow automatic switch layout song message"),
         SettingsEntry(
+            id: "stage.videos", category: .stage,
+            title: "Show videos on the stage",
+            caption: "While a video plays, the stage shows it with the time left (the Video stage layout), then goes back. Off, the stage keeps its layout.",
+            keywords: "stage video countdown time left remaining automatic switch layout"),
+        SettingsEntry(
             id: "show.stageMessages", category: .stage,
             title: "Stage messages show for",
             caption: "Then the stage goes back to what it showed. Clear takes a message down sooner; sending another starts the time again.",

@@ -38,7 +38,7 @@ The window title is the current plan's name. The slides fill the middle, over a 
 - Mode picker: **Present / Edit / Schedule** (also View menu, ⌘1 / ⌘2 / ⌘3).
 - **Schedule Service**: when this plan's services start and when the countdown starts.
 - **Bible**: click to add scripture (⌘⇧B); the arrow opens a menu with **Add Scripture…**, **Listen for Scripture** / **Stop Listening**, and a **Bible Theme** list.
-- **More** (…): **Message & Series…**, **Themes** (this plan's series first, then every theme by name: pick one to open it in the theme editor; also **New Theme from Image…** and **Show Themes in Library**), **Timers & Macros…**, **Lower Thirds…** (the livestream lower third for each type, see Livestream), **Screen Setup…** (opens Settings › Screens), **Edit Stage Display…**.
+- **More** (…): **Message & Series…**, **Themes** (this plan's series first, then every theme by name: pick one to open it in the theme editor; also **New Theme from Image…** and **Show Themes in Library**), **Timers & Macros…**, **Lower Thirds…** (the livestream lower third for each type, see Livestream), **Screen Setup…** (opens Settings › Screens), **Edit Stage Display…**, **Edit Video Stage…**.
 - **Plan** (left sidebar button) and **Screens** (right sidebar button): pin or fold each panel, in Present and Schedule.
 
 ## Simple Mode
@@ -236,7 +236,7 @@ The grid shows each item's poster, name and length; a ↻ badge marks videos tha
 
 ## Themes
 
-A theme holds full-screen designs named by category (Title, Bible, Sermon Points, Worship, Point + Scripture, Announcements…) and lower-third designs for the livestream. A slide asks its theme for a design by category, so changing theme keeps a verse a verse. A new library starts with Worship, Scripture and Points themes and Worship and Message stage layouts.
+A theme holds full-screen designs named by category (Title, Bible, Sermon Points, Worship, Point + Scripture, Announcements…) and lower-third designs for the livestream. A slide asks its theme for a design by category, so changing theme keeps a verse a verse. A new library starts with Worship, Scripture and Points themes and Worship, Message and Video stage layouts.
 
 - **Change a presentation's theme**: library right-click › **Apply Theme**, plan item › **Apply Theme…**, or slide right-click › **Apply Theme…** / **Change Theme**. The Apply Theme sheet has **Apply “Theme”** (each slide keeps its kind of design) or pick one design for every slide.
 - **Theme editor**: toolbar **More › Themes** and pick the theme (the plan's series is listed first), **Edit Theme** on Message & Series or after building a series or theme from art, or View › Edit Themes (⌘5). A design's objects are drawn in list order, the last on top, so text belongs after the art and bars it sits on. Each design's inspector has **Where It Goes**, which sets what the livestream shows for each category when Livestream is on Lower Third (Lower Third, Full Screen, Nothing, or a specific design), and which theme's lower thirds to use.
@@ -263,7 +263,7 @@ A theme holds full-screen designs named by category (Title, Bible, Sermon Points
 
 Screens can't drive Claude Design itself (it has no connection for apps); the automatic choices above come from Claude reading the art through the Anthropic API.
 
-A series theme has five full-screen designs: **Title**, **Point**, **Scripture**, **Point + Scripture** and **Worship**, with a matching lower third for each except Title. On the livestream the Title slide leaves the camera clear. The stage keeps its own Worship and Message layouts for every series: their colors mean something (green and red sermon timer, yellow current lyrics against white next lyrics), so a series doesn't recolor them.
+A series theme has five full-screen designs: **Title**, **Point**, **Scripture**, **Point + Scripture** and **Worship**, with a matching lower third for each except Title. On the livestream the Title slide leaves the camera clear. The stage keeps its own Worship, Message and Video layouts for every series: their colors mean something (green and red sermon timer, white current lyrics against grey next lyrics, gold section names, chords and key), so a series doesn't recolor them.
 
 **Sermon import** (File › Import Sermon… ⌘⇧I, Add Item › Message Notes…, or Import Notes…): pick the **Series** (or **New Series from These Notes**), drop the notes (PDF or Pages) or **Choose File…**. Claude lists the slides as Title, Point, Scripture or Point + Scripture; edit, reorder, delete or **Add Slide**. Choose **Put slides in** (a new presentation, or an existing one, optionally **Replace that presentation's slides**), then **Build Slides**. Opened for a plan, the result becomes that plan's message.
 
@@ -308,11 +308,11 @@ Slide actions can also change the switch (Add Action › Livestream).
 ## Stage display
 
 The Stage card's menu sets the stage mode:
-- **Worship**: lyrics, next slide, clock and key.
+- **Worship**: the words being sung, large, bold and white, starting at the same place on every slide (a line gets smaller before it breaks, and never smaller than about two thirds), with the section name ("VERSE 1", "CHORUS") small in gold above them and chords (Nashville numbers) in gold over the words. Under them a small "NEXT" and the next slide's first two lines, smaller and grey; on the last slide both go away. Along the bottom: the clock, the song's name and its key in gold.
 - **Message**: a large sermon countdown (40:00 by default) under a small "MESSAGE" caption, green while time is left and red, still counting, past 0:00; under it "TIME" and the clock in white.
 - **Show Audience Screen** (a toggle in the menu, and the one-click button on the Stage card): the stage shows exactly what the audience sees; clicking again returns to the previous mode. Right-click a slide › **Show on Stage Display** does this for that slide only.
 
-A video that plays once takes over the stage while it plays: a large m:ss countdown of time left across the top (orange in the last 10 s, red in the last 5 s), the video smaller under it, its name below. When it ends the stage shows whatever it showed before. Timers never stop for a video; a running sermon timer is simply shown again.
+**Videos on the stage.** A video that plays once (a plan video, the countdown, a video played on the background layer once) switches the stage to the **Video** stage layout while it plays: the time it has left across the top, large, in the same green and bold font as the sermon timer (green to the end; it counts down to the end of the video, so for the countdown it is the time until the service starts), and the video itself, as the audience sees it, under that. Along the bottom, smaller: the clock in white on the right, and during the Message (the stage in Message mode, or the sermon timer running) the sermon timer on the left in its green (red past zero). They are the same timer and clock, so they carry on without a jump. A paused video shows "Paused" at the foot of the picture. When the video ends or is cleared the stage goes straight back to what it showed before, the Message layout during the message. Timers never stop for a video. The Stage card shows **Video** while this is on. Turn it off in the Stage card menu (**Show Videos on Stage**) or Settings › Stage › **Show videos on the stage**; then the stage keeps its layout through videos. **Edit Video Stage…** (More menu or the Stage card menu) opens the Video layout in the editor: the box named **Video** is where the video plays (move or resize it; the video fits inside at its own shape), and a box showing the Sermon timer shows only during the Message.
 
 The stage follows what goes live: a song switches it to Worship; the message switches it to Message and starts the "Sermon" countdown at the message's timer length. It does not switch while showing the audience screen or when the presentation has its own stage layout.
 
@@ -323,12 +323,12 @@ The stage follows what goes live: a song switches it to Worship; the message swi
 **Stage messages.** Type in **Message to stage** under the Stage preview and **Send**. Where it shows depends on what the stage shows:
 - **Message**: the message fills the screen in large white type inside a thin red edge, and the sermon timer (still green, red past zero) and the clock move to a strip along the bottom. It fades in, and fades back to the usual layout when its time is up.
 - **Worship**: the lyrics and next slide are not touched. The message replaces the clock and song key along the bottom in a red band with white type, which blinks white three times as it appears, then holds.
-- **Audience screen** and a playing video: a red bar across the top, a fifth of the screen tall.
+- **Audience screen** and a playing video: a red bar across the top, a fifth of the screen tall; the video keeps playing under it.
 - A stage layout with its own **Stage Message** box (Add Live Info › Stage Message) shows it there and nowhere else. Other custom layouts get the Worship band if they have lyrics with the clock or key along the bottom, the Message takeover if they show only times, and otherwise the top bar.
 
 A message stays up for 30 seconds, then the stage goes back to exactly what it showed. Settings › Stage › **Stage messages show for** sets 15, 30 or 60 seconds, or **Until cleared**. **Clear** takes it down at once; sending another message replaces it and starts the time again. Timers and the clock keep running throughout. The Stage card shows the message on stage with the time left and a **Clear** button. Alert presets aimed only at the stage are timed the same way; alerts that also show on the audience screen stay until cleared. The phone remote's Stage tab can send messages too and shows the time left.
 
-**Edit Stage Display…** (More menu or the Stage card menu) opens the current mode's layout in the editor: the Worship layout for Worship and the audience screen, the Message layout for Message. The stage editor adds **Add Live Info**: Current Slide, Next Slide, Clock, Timer, Stage Message, Song Key, Slide Notes, Group Name, Video Countdown, Next Service Item. Stage layouts also live in Library › Confidence (Edit Confidence, ⌘6).
+**Edit Stage Display…** (More menu or the Stage card menu) opens the current mode's layout in the editor: the Worship layout for Worship and the audience screen, the Message layout for Message. A Worship or Message layout nobody has changed takes the current design by itself; one that has been changed is left as it is. The stage editor adds **Add Live Info**: Current Slide, Next Slide, Clock, Timer, Stage Message, Song Key, Slide Notes, Group Name, Video Countdown, Next Service Item. Stage layouts also live in Library › Confidence (Edit Confidence, ⌘6).
 
 A slide can bring up a specific layout (Screens… › Stage, or Add Action › Stage Layout). Settings › Stage › **Confidence NEXT skips blank slides** controls the next-slide preview.
 
@@ -448,7 +448,7 @@ Open with ⌘,. The sidebar lists the sections; Settings opens on the last one u
 - **General**: **Show whole plan**, **Present layouts**, **Simple Mode** (the volunteer view behind a passcode; **Enter Simple Mode…**, **Change Passcode…**), and Service Day's **Run on this Mac**.
 - **Screens**: the displays and the Audience, Livestream and Stage outputs, NDI and Blackmagic DeckLink (see Screens and outputs).
 - **Livestream**: **Livestream shows** (the switch) and **Lower Thirds**.
-- **Stage**: **Stage shows**, **Follow what's live**, **Confidence NEXT skips blank slides**, **Stage messages show for**, **Sermon Timer** (**Reset the sermon timer at each service's start**, kept per Mac, with the next reset time; it acts only on the Mac with Run on this Mac on), and **Presentation types**.
+- **Stage**: **Stage shows**, **Follow what's live**, **Show videos on the stage**, **Confidence NEXT skips blank slides**, **Stage messages show for**, **Sermon Timer** (**Reset the sermon timer at each service's start**, kept per Mac, with the next reset time; it acts only on the Mac with Run on this Mac on), and **Presentation types**.
 - **Slides & Themes**: slide and media transitions, default animations, and the slide grid (slides across, thumbnail options).
 - **Bible**: **Bible translations** (API.Bible and ESV keys), **Default translation**, passage text options, **Scripture and points themes**.
 - **Live Listening**: Live Assist's input, **Advance lyrics as they're sung** and its threshold, **Watch for spoken Bible references**.

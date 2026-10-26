@@ -25,11 +25,12 @@ struct StageEditorButton: View {
         if let id = Self.open(model: model) { show(id) }
     }
 
-    /// The current stage mode's layout, created from its template the first
-    /// time; nil until the library has loaded (then try again).
+    /// The current stage mode's layout (or the fixed stage layout `id`, such
+    /// as the Video layout), created from its template the first time; nil
+    /// until the library has loaded (then try again).
     @discardableResult
-    static func open(model: AppModel, then show: ((String) -> Void)? = nil) -> String? {
-        let id = StageLayouts.id(for: ShowSetup.shared.stageMode)
+    static func open(model: AppModel, id layoutID: String? = nil, then show: ((String) -> Void)? = nil) -> String? {
+        let id = layoutID ?? StageLayouts.id(for: ShowSetup.shared.stageMode)
         if model.indexEntry(id) != nil {
             show?(id)
             return id

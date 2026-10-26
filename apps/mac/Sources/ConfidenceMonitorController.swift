@@ -139,6 +139,7 @@ final class ConfidenceMonitorController {
         var layouts: [UUID: ConfidenceLayout] = [:]
         var pruned = false
         upgradeMessageLayoutIfUntouched()
+        upgradeWorshipLayoutIfUntouched()
         for (screenID, layoutID) in assignments where layoutID != StageLayouts.audienceID {
             if let layout = appModel.resident.confidenceLayouts.value(layoutID) {
                 layouts[screenID] = layout
@@ -150,8 +151,9 @@ final class ConfidenceMonitorController {
         }
         render.confidenceLayoutsBox.value = layouts
         let modeLayout = refreshStagePlan()
+        let videoLayout = render.stageBox.value.video?.layout
         var wants: [String: Bool?] = [:]
-        for layout in layouts.values + [modeLayout].compactMap({ $0 }) {
+        for layout in layouts.values + [modeLayout, videoLayout].compactMap({ $0 }) {
             wants.merge(SlideSceneBuilder.mediaWants(for: layout.objects)) { first, _ in first }
         }
         controls?.setConfidenceMediaWants(wants)
@@ -178,8 +180,34 @@ final class ConfidenceMonitorController {
         let audience = ShowTargets.mirrorSource(setup: setup, render: render)
             .map { render.outputs.previewProvider(for: $0) }
         let mirrored = Set(assignments.filter { $0.value == StageLayouts.audienceID }.keys)
-        render.stageBox.value = StagePlan(source: source, audience: audience, mirroredScreens: mirrored)
+        let video = setup.stageShowsVideos ? StageVideoPlan(
+            layout: appModel.resident.confidenceLayouts.value(StageLayouts.videoID)
+                ?? StageLayouts.fallback(for: StageLayouts.videoID),
+            isMessage: setup.stageMode == .message
+        ) : nil
+        render.stageBox.value = StagePlan(
+            source: source, audience: audience, mirroredScreens: mirrored, video: video)
         return modeLayout
+    }
+
+    private var checkedWorshipLayout = false
+
+    /// The Worship layout got a new design (white lyrics with the section
+    /// name above, a dimmer next slide, clock, song and key along the
+    /// bottom). A saved copy still exactly as the old template made it takes
+    /// the new design once; one anybody has changed is left as it is.
+    private func upgradeWorshipLayoutIfUntouched() {
+        guard !checkedWorshipLayout,
+              let layout = appModel.resident.confidenceLayouts.value(StageLayouts.worshipID)
+        else { return }
+        checkedWorshipLayout = true
+        guard ConfidenceLayoutTemplate.upgradedWorshipObjects(for: layout) != nil else { return }
+        DiagnosticsStore.shared.note("stage.worshipLayout.upgraded", detail: layout.name)
+        appModel.updateConfidenceLayout(StageLayouts.worshipID) { layout in
+            if let objects = ConfidenceLayoutTemplate.upgradedWorshipObjects(for: layout) {
+                layout.objects = objects
+            }
+        }
     }
 
     private var checkedMessageLayout = false
@@ -202,11 +230,13 @@ final class ConfidenceMonitorController {
         }
     }
 
-    /// Re-plans when the audience screen (the one Mirror shows) changes.
+    /// Re-plans when the audience screen (the one Mirror shows) changes, or
+    /// the stage is set to switch for videos or not.
     private func armStageWatch() {
         withObservationTracking {
             _ = ShowTargets.mirrorSource(setup: ShowSetup.shared, render: render)
             _ = render.outputs.screenRoles
+            _ = ShowSetup.shared.stageShowsVideos
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }

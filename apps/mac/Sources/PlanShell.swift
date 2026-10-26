@@ -475,7 +475,8 @@ struct PlanShell: View {
             render: render, liveKey: controls?.liveSlideID,
             onPin: { clickPanel(.screens) }, pinned: pinned,
             controls: controls,
-            onEditStage: { editStageDisplay() })
+            onEditStage: { editStageDisplay() },
+            onEditVideoStage: { editStageDisplay(StageLayouts.videoID) })
     }
 
     /// The strip when folded, the whole column when peeking or docked, as
@@ -969,6 +970,7 @@ struct PlanShell: View {
                 if !runOnly { Button("Lower Thirds…", systemImage: "rectangle.bottomthird.inset.filled") { ScreensByTypeRouter.shared.shown = true } }
                 Button("Screen Setup…", systemImage: "display.2") { openWindow(id: "outputs") }
                 Button("Edit Stage Display…", systemImage: "rectangle.inset.filled.and.person.filled") { editStageDisplay() }
+                Button("Edit Video Stage…", systemImage: "play.rectangle") { editStageDisplay(StageLayouts.videoID) }
             } label: {
                 Label("More", systemImage: "ellipsis")
             }
@@ -1156,8 +1158,9 @@ struct PlanShell: View {
 
     // MARK: Stage display
 
-    private func editStageDisplay() {
-        StageEditorButton.open(model: model) { id in
+    /// The current mode's stage layout, or the one named (the Video layout).
+    private func editStageDisplay(_ layoutID: String? = nil) {
+        StageEditorButton.open(model: model, id: layoutID) { id in
             itemID = nil
             model.openInEditor(entryID: id)
             modeRaw = AppMode.edit.rawValue
