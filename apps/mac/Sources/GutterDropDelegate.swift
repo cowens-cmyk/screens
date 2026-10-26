@@ -197,8 +197,8 @@ struct GutterDropDelegate: DropDelegate {
 struct CanvasDropDelegate: DropDelegate {
     let enabled: Bool
 
-    let viewSize: () -> CGSize
-    let canvasSize: CGSize
+    /// The drop's slide point, through the canvas's zoom and pan.
+    let scenePoint: (CGPoint) -> CGPoint
     let setTargeted: (Bool) -> Void
     let performText: (String, CGPoint) -> Bool
     let performFiles: ([URL], CGPoint) -> Void
@@ -212,11 +212,6 @@ struct CanvasDropDelegate: DropDelegate {
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         DropProposal(operation: .copy)
-    }
-
-    private func scenePoint(_ location: CGPoint) -> CGPoint {
-        EditorGeometry.scenePoint(
-            fromView: location, viewSize: viewSize(), canvas: canvasSize, inset: EditorGeometry.pasteboardInset)
     }
 
     func performDrop(info: DropInfo) -> Bool {

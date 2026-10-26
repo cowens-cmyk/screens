@@ -1332,10 +1332,10 @@ struct SlideEditorView: View {
 
                 ZStack {
 
-                    TransparencyGrid(square: 12)
-                        .aspectRatio(model.canvasSize, contentMode: .fit)
-                        .padding(EditorGeometry.pasteboardInset)
-                    SceneCanvas(render: render, transparentBackground: true, inset: EditorGeometry.pasteboardInset)
+                    CanvasCheckerboard(navigator: model.canvasNavigator)
+                    SceneCanvas(
+                        render: render, transparentBackground: true, inset: EditorGeometry.pasteboardInset,
+                        navigator: model.canvasNavigator)
                     EditorInteractionView(model: model)
 
                     if model.presentation.slides.isEmpty {
@@ -1350,22 +1350,23 @@ struct SlideEditorView: View {
                     }
 
                     if model.editorMode == .animate {
-                        AnimateCanvasOverlay(model: model)
-                            .aspectRatio(model.canvasSize, contentMode: .fit)
-                            .padding(EditorGeometry.pasteboardInset)
+                        CanvasPlaced(navigator: model.canvasNavigator) { visible in
+                            AnimateCanvasOverlay(model: model, visibleRect: visible)
+                        }
                     }
                     if canvasDropTargeted {
-
-                        Rectangle()
-                            .strokeBorder(
-                                Color(nsColor: .controlAccentColor).opacity(0.9),
-                                lineWidth: 2
-                            )
-                            .aspectRatio(model.canvasSize, contentMode: .fit)
-                            .padding(EditorGeometry.pasteboardInset)
-                            .allowsHitTesting(false)
+                        CanvasPlaced(navigator: model.canvasNavigator) { _ in
+                            Rectangle()
+                                .strokeBorder(
+                                    Color(nsColor: .controlAccentColor).opacity(0.9),
+                                    lineWidth: 2
+                                )
+                        }
+                        .allowsHitTesting(false)
                     }
                 }
+                // Zoomed in, the slide's layers reach past the canvas.
+                .clipped()
                 .background {
                     GeometryReader { proxy in
                         Color.clear
@@ -1380,8 +1381,9 @@ struct SlideEditorView: View {
                         // With no slide there is nothing to place media on;
                         // the empty presentation's drop area takes it.
                         enabled: !model.presentation.slides.isEmpty,
-                        viewSize: { canvasViewSize },
-                        canvasSize: model.canvasSize,
+                        scenePoint: { [navigator = model.canvasNavigator] location in
+                            navigator.canvasPoint(fromView: location, in: canvasViewSize)
+                        },
                         setTargeted: { canvasDropTargeted = $0 },
                         performText: { payload, point in
                             guard !payload.contains("::") else { return false }
@@ -1395,6 +1397,12 @@ struct SlideEditorView: View {
                 .padding(12)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottomTrailing) {
+                if !model.presentation.slides.isEmpty {
+                    CanvasZoomControl(model: model, viewSize: canvasViewSize)
+                        .padding(10)
+                }
+            }
 
             .overlay(alignment: .top) {
                 if let editing = model.animationStateEditing {
@@ -1488,6 +1496,32 @@ struct EditorCommands: Commands {
             Button("Redo") { redo() }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(UndoMenuLogic.disabled(editorOpen: editor != nil, editorCan: editor?.canRedo ?? false))
+        }
+        // View › the editor canvas's zoom. ⌘1 is the Present page here; with
+        // the canvas focused, the canvas takes ⌘1 for Actual Size first.
+        CommandGroup(after: .toolbar) {
+            let canvas = editor.flatMap { $0.currentSlide == nil ? nil : $0 }
+            Divider()
+            Button("Zoom In") {
+                if let canvas { canvas.canvasNavigator.step(up: true, focus: canvas.canvasSelectionBounds) }
+            }
+            .keyboardShortcut("+", modifiers: .command)
+            .disabled(canvas == nil)
+            Button("Zoom Out") {
+                if let canvas { canvas.canvasNavigator.step(up: false, focus: canvas.canvasSelectionBounds) }
+            }
+            .keyboardShortcut("-", modifiers: .command)
+            .disabled(canvas == nil)
+            Button("Zoom to Fit") { canvas?.canvasNavigator.fit() }
+                .keyboardShortcut("0", modifiers: .command)
+                .disabled(canvas == nil)
+            Button("Actual Size") { canvas?.canvasNavigator.actualSize() }
+                .disabled(canvas == nil)
+            Button("Zoom to Selection") {
+                if let canvas, let rect = canvas.canvasSelectionBounds { canvas.canvasNavigator.zoom(toSelection: rect) }
+            }
+            .keyboardShortcut("0", modifiers: [.command, .option])
+            .disabled(canvas?.selectedObjectIDs.isEmpty ?? true)
         }
     }
 

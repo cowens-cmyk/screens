@@ -18,23 +18,45 @@ import Testing
 
     @Test func sceneAndInteractionSpanThePasteboard() throws {
         let editor = try source("SlideEditorView.swift")
-        let scene = try #require(editor.range(of: "SceneCanvas(render: render, transparentBackground: true, inset: EditorGeometry.pasteboardInset)\n"))
+        let scene = try #require(editor.range(of: """
+            SceneCanvas(
+                                    render: render, transparentBackground: true, inset: EditorGeometry.pasteboardInset,
+                                    navigator: model.canvasNavigator)
+
+            """))
         let next = editor[scene.upperBound...].prefix(120)
         #expect(next.contains("EditorInteractionView(model: model)\n"), "the interaction view sits right over the scene")
         #expect(!next.contains(".aspectRatio("), "neither is cut to the slide's aspect")
-        #expect(editor.contains("TransparencyGrid(square: 12)\n                        .aspectRatio(model.canvasSize, contentMode: .fit)\n                        .padding(EditorGeometry.pasteboardInset)"),
-                "the checkerboard stays the slide's size")
+        #expect(editor.contains("CanvasCheckerboard(navigator: model.canvasNavigator)"),
+                "the checkerboard stays the slide's size, at the canvas's zoom")
 
         let canvas = try source("EditorInteractionView.swift")
         #expect(canvas.contains("drawPasteboardVeil(in: context)\n        drawGuides("), "the veil draws under all chrome")
-        #expect(canvas.contains("canvas: model.canvasSize, in: bounds.size, inset: EditorGeometry.pasteboardInset)"))
-        #expect(try source("GutterDropDelegate.swift").contains(
-            "fromView: location, viewSize: viewSize(), canvas: canvasSize, inset: EditorGeometry.pasteboardInset)"),
-            "drops map through the same letterbox")
-        #expect(editor.contains("SceneCanvas(render: render, transparentBackground: true, inset: EditorGeometry.pasteboardInset)"),
-                "the scene keeps the same band clear")
-        #expect(editor.components(separatedBy: ".padding(EditorGeometry.pasteboardInset)").count == 4,
-                "the checkerboard, Animate overlay and drop outline sit in the same letterbox")
+        #expect(canvas.contains("model.canvasNavigator.viewport(in: bounds.size)"))
+        #expect(editor.contains("navigator.canvasPoint(fromView: location, in: canvasViewSize)"),
+                "drops map through the same viewport")
+        #expect(editor.components(separatedBy: "CanvasPlaced(navigator: model.canvasNavigator)").count == 3,
+                "the Animate overlay and the drop outline sit on the same slide rectangle")
+        #expect(!editor.contains(".padding(EditorGeometry.pasteboardInset)"),
+                "nothing letterboxes itself apart from the canvas's zoom")
+    }
+
+    /// Every slide editor (slides, themes, overlays, stage layouts) is this
+    /// one canvas, so zoom, pan and the zoom keys behave the same in each.
+    @Test func everyEditorSharesOneNavigableCanvas() throws {
+        let editor = try source("SlideEditorView.swift")
+        #expect(try source("AppShell.swift").contains("SlideEditorView("))
+        #expect(try source("PlanShell.swift").contains("SlideEditorView("))
+        #expect(editor.contains("CanvasZoomControl(model: model, viewSize: canvasViewSize)"))
+        #expect(editor.contains(".keyboardShortcut(\"0\", modifiers: .command)"))
+        #expect(editor.contains(".keyboardShortcut(\"0\", modifiers: [.command, .option])"))
+
+        let navigator = try source("CanvasNavigator.swift")
+        #expect(navigator.contains("NSWorkspace.shared.accessibilityDisplayShouldReduceMotion"), "Reduce Motion jumps")
+        #expect(try source("EditorInteractionView.swift").contains("return self.window?.firstResponder === self"),
+                "Space and the zoom keys only with the canvas focused")
+        #expect(navigator.contains("guard mods.contains(.command), !mods.contains(.control)"),
+                "⌃⌘0 stays Reset Sermon Timer")
     }
 
     @Test func aPressKeepsTheSelectedObjectUnderAnother() throws {

@@ -81,9 +81,12 @@ final class EditorInteractionNSView: NSView {
             _ = model.pathEditing
             _ = model.showsChords
             _ = model.selectedSlideID
+            _ = model.canvasNavigator.navigation
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                // A new slide size moves the slide even at Fit.
+                self.model.canvasNavigator.refreshScene()
                 self.syncTextOverlay()
                 self.syncChordState()
                 self.needsDisplay = true
@@ -213,18 +216,56 @@ final class EditorInteractionNSView: NSView {
 
     override func layout() {
         super.layout()
+        model.canvasNavigator.noteViewSize(bounds.size)
         syncTextOverlay()
     }
 
-    private var sceneScale: CGFloat {
-        EditorGeometry.letterbox(
-            canvas: model.canvasSize, in: bounds.size, inset: EditorGeometry.pasteboardInset).scale
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            gestures.install()
+        } else {
+            gestures.remove()
+        }
     }
 
-    private var sceneOrigin: CGPoint {
-        EditorGeometry.letterbox(
-            canvas: model.canvasSize, in: bounds.size, inset: EditorGeometry.pasteboardInset).origin
+    /// Pinch, scroll, Space-drag and the zoom keys. Space and the keys only
+    /// while the canvas itself has focus, so typing in a text box (whose
+    /// overlay then has focus) or a field is untouched.
+    private lazy var gestures: CanvasGestureMonitor = {
+        let monitor = CanvasGestureMonitor(navigator: model.canvasNavigator, view: self)
+        monitor.canvasFocused = { [weak self] in
+            guard let self else { return false }
+            return self.window?.firstResponder === self
+        }
+        monitor.enabled = { [weak self] in self?.model.currentSlide != nil }
+        monitor.selectionBounds = { [weak self] in self?.model.canvasSelectionBounds }
+        monitor.spaceTapped = { [weak self] in
+            guard let model = self?.model, model.editorMode == .animate else { return }
+            if model.animationPreviewPlaying {
+                model.stopAnimationPreview()
+            } else {
+                model.playPreviewScope()
+            }
+        }
+        monitor.changed = { [weak self] in
+            guard let self else { return }
+            self.syncTextOverlay()
+            self.needsDisplay = true
+            self.margin?.needsDisplay = true
+        }
+        return monitor
+    }()
+
+    /// Where the slide sits in this view at the canvas's zoom and pan; the
+    /// scene and the SwiftUI layers resolve the same one for the same size.
+    private var viewport: CanvasViewport {
+        model.canvasNavigator.viewport(in: bounds.size)
     }
+
+    private var sceneScale: CGFloat { viewport.scale }
+
+    private var sceneOrigin: CGPoint { viewport.offset }
 
     private func scenePoint(fromView point: CGPoint) -> CGPoint {
         let origin = sceneOrigin
@@ -1668,7 +1709,8 @@ final class OverlayTextView: NSTextView {
         let selection = selectedRange()
         if let editLayout, selection.length == 0, window?.firstResponder === self {
             let rect = viewRect(editLayout.caretRect(at: selection.location))
-            let width = max(2, (rect.height / 24).rounded())
+            // Capped so a zoomed-in canvas doesn't grow a slab of a caret.
+            let width = max(2, min(3, (rect.height / 24).rounded()))
             caret.frame = CGRect(x: rect.minX - width / 2, y: rect.minY, width: width, height: max(rect.height, 1))
             caret.displayMode = .automatic
         } else {
