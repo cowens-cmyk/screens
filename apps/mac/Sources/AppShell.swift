@@ -1636,7 +1636,7 @@ struct ShellView: View {
 
             SchedulerView(model: model, controls: controls)
         case .media:
-            MediaLibraryView(model: model)
+            MediaLibraryView(model: model, embedded: true)
         }
     }
 

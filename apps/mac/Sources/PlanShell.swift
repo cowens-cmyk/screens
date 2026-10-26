@@ -210,16 +210,16 @@ struct PlanShell: View {
         // content that reports its own changing minimum size makes the split
         // view re-run constraints forever, and AppKit then ends the app.
         NavigationSplitView(columnVisibility: $columns) {
-            // Narrow like ProPresenter's: the library's tab row folds extra
-            // tabs into its ··· menu, so 180 is enough. Only Edit uses this
-            // column; Present and Schedule have the plan panel instead, so
-            // nothing is built here for them.
+            // Close to the plan panel's width, so item names read in Edit as
+            // they do in Present; at 180 they were cut mid-word. Only Edit
+            // uses this column; Present and Schedule have the plan panel
+            // instead, so nothing is built here for them.
             Group {
                 if mode == .edit { sidebar } else { Color.clear }
             }
-            .frame(minWidth: 180, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+            .frame(minWidth: 220, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
             .clipped()
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 360)
+            .navigationSplitViewColumnWidth(min: 220, ideal: ShellMetrics.planWidth, max: 360)
             .toolbar(removing: mode == .edit ? nil : .sidebarToggle)
         } detail: {
             // The docked panels sit beside the slides at fixed widths in a
@@ -850,7 +850,7 @@ struct PlanShell: View {
         case .scheduler:
             SchedulerView(model: model, controls: controls)
         case .media:
-            MediaLibraryView(model: model)
+            MediaLibraryView(model: model, embedded: true)
         }
     }
 

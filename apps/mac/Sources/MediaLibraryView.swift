@@ -66,6 +66,10 @@ struct WhenItEndsMenu: View {
 struct MediaLibraryView: View {
     let model: AppModel
     var picking: MediaLibraryPicking? = nil
+    /// The Media tab of the main window: the categories sit beside the grid
+    /// in the page itself. A split view there would reach up under the
+    /// window's toolbar and fold its sidebar away.
+    var embedded = false
 
     @Environment(\.runOnly) private var runOnly
     @Environment(\.openWindow) private var openWindow
@@ -124,13 +128,28 @@ struct MediaLibraryView: View {
     var body: some View {
         let media = model.entries(in: .media)
         let audio = model.entries(in: .audio)
-        NavigationSplitView {
-            sidebar(media: media, audio: audio)
-                .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 280)
-        } detail: {
-            detail(entries: searched(members(of: shown, media: media, audio: audio)))
+        let entries = searched(members(of: shown, media: media, audio: audio))
+        Group {
+            if embedded {
+                HStack(spacing: 0) {
+                    sidebar(media: media, audio: audio)
+                        .scrollContentBackground(.hidden)
+                        .frame(width: 244)
+                    Divider()
+                    detail(entries: entries)
+                }
+            } else {
+                NavigationSplitView {
+                    sidebar(media: media, audio: audio)
+                        .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 280)
+                } detail: {
+                    detail(entries: entries)
+                        .navigationTitle("Media Library")
+                        .navigationSubtitle(shown.title)
+                }
+                .frame(minWidth: 720, minHeight: 440)
+            }
         }
-        .frame(minWidth: 720, minHeight: 440)
         .frame(width: picking == nil ? nil : 880, height: picking == nil ? nil : 580)
         .task(id: hoveredID) {
             // A preview starts only once the pointer rests on a tile, so
@@ -303,8 +322,6 @@ struct MediaLibraryView: View {
                     .padding(.vertical, 6)
             }
         }
-        .navigationTitle("Media Library")
-        .navigationSubtitle(shown.title)
     }
 
     private func pickBar(_ picking: MediaLibraryPicking) -> some View {

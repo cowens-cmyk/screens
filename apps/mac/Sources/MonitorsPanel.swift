@@ -559,6 +559,7 @@ struct SermonTimerControl: View {
                     .font(.system(size: 9, weight: .semibold))
                     .tracking(1)
                     .foregroundStyle(.secondary)
+                    .fixedSize()
                 Button {
                     minutesText = "\(Int(((timer?.durationSeconds ?? SermonTimer.defaultSeconds) / 60).rounded()))"
                     settingLength = true
