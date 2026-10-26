@@ -312,10 +312,18 @@ private func song(
     @Test func anotherPlanArrangementIsAdded() throws {
         let imported = try #require(ShepherdSongImport.presentation(song: song(), arrangement: nil))
         let short = ShepherdClient.SongArrangement(id: "short", name: "Short", sequence: ["V1", "C"])
-        let extra = try #require(ShepherdSongImport.extraArrangement(short, of: song(), for: imported))
+        let outcome = ShepherdArrangementSync.reconcile(imported, song: song(), arrangement: short)
+        let extra = try #require(outcome.arrangements?.first { $0.id == outcome.arrangementId })
         let names = Dictionary(uniqueKeysWithValues: (imported.sections ?? []).map { ($0.id, $0.name) })
-        #expect(extra.id == "shepherd-short" && extra.name == "Short")
+        #expect(extra.id == "shepherd-short" && extra.name == "Short" && extra.shepherdArrangementId == "short")
         #expect(extra.sectionIds.compactMap { names[$0] } == ["Intro", "Verse 1", "Chorus 1"])
+        // The import's own arrangement is tagged and left to the chart refresh.
+        #expect(imported.arrangements?.first?.shepherdArrangementId == "song")
+        let planned = song(sequence: ["V1", "C"])
+        let tracked = try #require(ShepherdSongImport.presentation(song: planned, arrangement: planned.arrangements[0]))
+        #expect(tracked.arrangements?.first?.shepherdArrangementId == "53ad")
+        let own = ShepherdArrangementSync.reconcile(tracked, song: planned, arrangement: planned.arrangements[0])
+        #expect(own.arrangements == nil && own.arrangementId == "shepherd-53ad")
     }
 
     @Test func decodesTheSongShepherdSends() throws {

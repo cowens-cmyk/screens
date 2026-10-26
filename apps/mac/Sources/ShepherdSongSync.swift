@@ -37,50 +37,126 @@ extension ShepherdSync {
     }
 
     /// The song pass over these plans. Song details are fetched once per
-    /// song per pass. Returns how many songs were imported and updated.
-    func refreshSongs(inServices serviceIDs: [String], model: AppModel) async -> (imported: Int, updated: Int) {
+    /// song per pass. With `importing`, planned songs with no slides get
+    /// one from Shepherd and Shepherd's songs follow chart changes; either
+    /// way, every linked song plays the arrangement the plan chose in
+    /// Shepherd (ShepherdArrangementSync). Returns how many songs were
+    /// imported and updated, and how many got a Shepherd arrangement made
+    /// or changed.
+    func refreshSongs(
+        inServices serviceIDs: [String], importing: Bool, model: AppModel
+    ) async -> (imported: Int, updated: Int, arranged: Int) {
         var details: [String: ShepherdClient.SongDetail] = [:]
-        var checked = Set<String>()
-        var imported = 0, updated = 0
+        var missing = Set<String>()
+        var presentations: [String: Presentation] = [:]
+        var refreshed = Set<String>()
+        var imported = 0, updated = 0, arranged = 0
         let client = client
+
+        func detail(_ songID: String) async -> ShepherdClient.SongDetail? {
+            if let cached = details[songID] { return cached }
+            guard !missing.contains(songID), let fetched = try? await client.song(id: songID) else {
+                missing.insert(songID)
+                return nil
+            }
+            details[songID] = fetched
+            return fetched
+        }
+
         for serviceID in serviceIDs {
             guard let service = try? model.service(serviceID), service.mxuSyncPaused != true else { continue }
+            var picks: [ArrangementPick] = []
             for item in service.items where item.mxuSongTitle != nil {
                 guard let songID = item.mxuSourceSongId, !songID.isEmpty else { continue }
-                // Only presentations made from Shepherd are refreshed; a
-                // song linked from elsewhere in the library is left alone.
-                var linked: Presentation?
-                if !item.refId.isEmpty {
-                    guard item.itemKind == .presentation, !checked.contains(item.refId),
-                          let presentation = try? await model.client.loadValue(Presentation.self, id: item.refId),
-                          presentation.shepherdSongId == songID else { continue }
-                    checked.insert(item.refId)
-                    linked = presentation
-                } else if item.itemKind != .info {
-                    continue
-                }
-                let detail: ShepherdClient.SongDetail
-                if let cached = details[songID] {
-                    detail = cached
-                } else {
-                    guard let fetched = try? await client.song(id: songID) else { continue }
-                    details[songID] = fetched
-                    detail = fetched
-                }
-                let planned = ShepherdSongMatch.arrangement(
-                    in: detail, id: item.mxuSourceArrangementId, name: item.mxuArrangementName)
-
-                guard let linked else {
+                if item.refId.isEmpty {
+                    guard importing, item.itemKind == .info, let detail = await detail(songID) else { continue }
+                    let planned = ShepherdSongMatch.arrangement(
+                        in: detail, id: item.mxuSourceArrangementId, name: item.mxuArrangementName)
                     if importSong(detail, arrangement: planned, for: item, serviceID: serviceID, model: model) {
                         imported += 1
                     }
                     continue
                 }
-                if refresh(linked, from: detail, model: model) { updated += 1 }
-                addPlanArrangement(planned, of: detail, to: linked, item: item, serviceID: serviceID, model: model)
+                guard item.itemKind == .presentation else { continue }
+                var presentation: Presentation
+                if let cached = presentations[item.refId] {
+                    presentation = cached
+                } else {
+                    guard let loaded = try? await model.client.loadValue(Presentation.self, id: item.refId) else { continue }
+                    presentation = loaded
+                }
+                guard let detail = await detail(songID) else { continue }
+                let planned = ShepherdSongMatch.arrangement(
+                    in: detail, id: item.mxuSourceArrangementId, name: item.mxuArrangementName)
+
+                // Only presentations made from Shepherd follow its chart; a
+                // song linked from elsewhere in the library keeps its words.
+                if importing, presentation.shepherdSongId == songID, refreshed.insert(presentation.id).inserted,
+                   refresh(presentation, from: detail, model: model) {
+                    updated += 1
+                }
+
+                let outcome = ShepherdArrangementSync.reconcile(presentation, song: detail, arrangement: planned)
+                if let arrangements = outcome.arrangements {
+                    // Worked out again as the write lands, on the song as it
+                    // is then: an edit or a refresh made meanwhile counts.
+                    model.updatePresentation(presentation.id) { current in
+                        if let again = ShepherdArrangementSync.reconcile(current, song: detail, arrangement: planned)
+                            .arrangements {
+                            current.arrangements = again
+                        }
+                    }
+                    presentation.arrangements = arrangements
+                    arranged += 1
+                }
+                presentations[presentation.id] = presentation
+
+                let pick = ShepherdArrangementSync.pick(
+                    current: item.arrangementId, lastSynced: item.mxuSyncedArrangementId,
+                    target: outcome.arrangementId, defaultId: presentation.defaultArrangementId,
+                    available: Set((presentation.arrangements ?? []).map(\.id)),
+                    anthemLeads: Self.anthemLeads(serviceID: serviceID, itemID: item.id, model: model))
+                let warnings = outcome.warnings.isEmpty ? nil : outcome.warnings
+                if pick != nil || warnings != item.mxuArrangementWarnings {
+                    picks.append(ArrangementPick(
+                        itemID: item.id, refID: item.refId, was: item.arrangementId, pick: pick, warnings: warnings))
+                }
+            }
+            guard !picks.isEmpty else { continue }
+            let changes = picks
+            model.updateService(serviceID) { service in
+                for change in changes {
+                    guard let index = service.items.firstIndex(where: { $0.id == change.itemID }),
+                          service.items[index].refId == change.refID else { continue }
+                    service.items[index].mxuArrangementWarnings = change.warnings
+                    // Someone picked another while Shepherd answered: theirs stays.
+                    guard let pick = change.pick, service.items[index].arrangementId == change.was else { continue }
+                    service.items[index].arrangementId = pick.arrangementId
+                    service.items[index].mxuSyncedArrangementId = pick.syncedArrangementId
+                }
             }
         }
-        return (imported, updated)
+        return (imported, updated, arranged)
+    }
+
+    private struct ArrangementPick: Sendable {
+        var itemID: String
+        var refID: String
+        var was: String?
+        var pick: ShepherdArrangementSync.Pick?
+        var warnings: [String]?
+    }
+
+    /// Anthem decides this plan item's order: its setlist is this plan's,
+    /// the song is in it, and Match Anthem runs automatically. Shepherd's
+    /// arrangement is still made, but Anthem's rule picks (AnthemFeed).
+    /// With automatic matching off, Shepherd's pick stands and Anthem only
+    /// marks a song the band plays differently.
+    static func anthemLeads(serviceID: String, itemID: String, model: AppModel) -> Bool {
+        let feed = AnthemFeed.shared
+        guard feed.autoMatch, let result = feed.report(for: serviceID, model: model)?.result(forItem: itemID)
+        else { return false }
+        return result.entryID != nil && (result.status == .match || result.status == .mismatch)
     }
 
     /// A new library song for a planned song with no slides, linked to it.
@@ -126,31 +202,6 @@ extension ShepherdSync {
                 songID: detail.id, arrangementID: arrangement?.id,
                 summary: fresh.flatMap { ShepherdSongImport.changeSummary(from: presentation, to: $0) })
             return false
-        }
-    }
-
-    /// A plan that plays the song in another Shepherd arrangement gets that
-    /// order as its own arrangement, picked for its item when nothing is.
-    private func addPlanArrangement(
-        _ planned: ShepherdClient.SongArrangement?, of detail: ShepherdClient.SongDetail,
-        to presentation: Presentation, item: ServiceItem, serviceID: String, model: AppModel
-    ) {
-        guard let planned, planned.id != presentation.shepherdArrangementId,
-              let extra = ShepherdSongImport.extraArrangement(planned, of: detail, for: presentation)
-        else { return }
-        if presentation.arrangements?.contains(where: { $0.id == extra.id }) != true {
-            model.updatePresentation(presentation.id) { current in
-                guard current.arrangements?.contains(where: { $0.id == extra.id }) != true else { return }
-                current.arrangements = (current.arrangements ?? []) + [extra]
-            }
-        }
-        if item.arrangementId == nil {
-            let itemID = item.id, arrangementID = extra.id
-            model.updateService(serviceID) { service in
-                guard let index = service.items.firstIndex(where: { $0.id == itemID }),
-                      service.items[index].arrangementId == nil else { return }
-                service.items[index].arrangementId = arrangementID
-            }
         }
     }
 

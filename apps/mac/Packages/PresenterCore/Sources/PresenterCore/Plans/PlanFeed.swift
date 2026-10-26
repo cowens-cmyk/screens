@@ -139,6 +139,12 @@ public enum PlanItemSync {
                 if item.arrangementId == nil, let old, old.refId == item.refId {
                     item.arrangementId = old.arrangementId
                 }
+                // What plan sync picked and noticed belongs to the song it
+                // was worked out for.
+                if let old, old.refId == item.refId, !item.refId.isEmpty {
+                    item.mxuSyncedArrangementId = old.mxuSyncedArrangementId
+                    item.mxuArrangementWarnings = old.mxuArrangementWarnings
+                }
             default:
                 // The countdown's video changes every week and is picked
                 // in Screens: a standing rule for "COUNTDOWN" mustn't put

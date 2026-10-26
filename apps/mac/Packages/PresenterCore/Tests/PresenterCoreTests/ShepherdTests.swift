@@ -365,6 +365,24 @@ struct ShepherdTests {
         #expect(synced[1].mxuSongTitle == "Living Hope" && synced[1].mxuCcliNumber == 7106807)
     }
 
+    @Test func resyncKeepsTheItemsArrangementWhileTheSongIsTheSame() throws {
+        let plan = try shepherdDetail()
+        let rules = ServiceLinkRules(id: "rules", rules: [])
+        var original = ShepherdPlanSync.items(for: plan, rules: rules, existing: []) { _ in ("library", nil) }
+        original[1].arrangementId = "shepherd-a1"
+        original[1].mxuSyncedArrangementId = "shepherd-a1"
+        original[1].mxuArrangementWarnings = ["Shepherd's arrangement has Tag; this song has no Tag"]
+        // A plan edit in Shepherd re-reads the items: the pick and what
+        // sync noticed stay with the same library song.
+        let same = ShepherdPlanSync.items(for: plan, rules: rules, existing: original) { _ in ("library", nil) }
+        #expect(same[1].arrangementId == "shepherd-a1" && same[1].mxuSyncedArrangementId == "shepherd-a1")
+        #expect(same[1].mxuArrangementWarnings?.count == 1)
+        // Linked to another song: they go.
+        let other = ShepherdPlanSync.items(for: plan, rules: rules, existing: original) { _ in ("other", nil) }
+        #expect(other[1].refId == "other" && other[1].arrangementId == nil)
+        #expect(other[1].mxuSyncedArrangementId == nil && other[1].mxuArrangementWarnings == nil)
+    }
+
     @Test func invalidCCLIAndMissingSongStillKeepTitle() throws {
         var plan = try shepherdDetail()
         plan.items[1].song?.ccliNumber = "not-a-number"
