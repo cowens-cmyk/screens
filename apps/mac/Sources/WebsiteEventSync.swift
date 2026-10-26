@@ -478,12 +478,23 @@ enum WebsiteEventWords {
     /// "Sat, Oct 31 · until Oct 31, 5:00 PM".
     static func row(_ shown: WebsiteEvents.Shown) -> String {
         let timed = !shown.event.allDay && shown.event.startTime != nil
-        return "\(when(shown.startsAt, withTime: timed)) \u{00B7} until \(formatter("MMM d h:mm a").string(from: shown.removeAt))"
+        return "\(when(shown.startsAt, withTime: timed)) \u{00B7} until \(untilWords(shown.removeAt))"
+    }
+
+    /// "Oct 29" when it comes down at the start of a day (all-day events),
+    /// else "Oct 28 at 6:30 PM": "12:00 AM" reads like a mistake.
+    static func untilWords(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = WebsiteEvents.timeZone
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return parts.hour == 0 && parts.minute == 0
+            ? formatter("MMM d").string(from: date)
+            : formatter("MMM d h:mm a").string(from: date)
     }
 
     static func tileHelp(_ tag: WebsiteEventTag) -> String {
         let until = tag.removeAt.flatMap(WebsiteEvents.parseStamp)
-            .map { " It comes down \(formatter("MMM d h:mm a").string(from: $0))." } ?? ""
+            .map { " It comes down \(untilWords($0))." } ?? ""
         return "Added from hopejc.org for \(tag.title).\(until)"
     }
 }

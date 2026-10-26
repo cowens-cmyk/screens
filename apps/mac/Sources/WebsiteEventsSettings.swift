@@ -1,3 +1,4 @@
+import ImageIO
 import PresenterCore
 import SwiftUI
 
@@ -98,11 +99,7 @@ private struct WebsiteEventRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            AsyncImage(url: URL(string: shown.imageURL)) { image in
-                image.resizable().aspectRatio(16 / 9, contentMode: .fill)
-            } placeholder: {
-                Color.primary.opacity(0.08)
-            }
+            WebsiteEventThumbnail(address: shown.imageURL)
             .frame(width: 64, height: 36)
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             .opacity(shown.hidden ? 0.4 : 1)
@@ -119,5 +116,56 @@ private struct WebsiteEventRow: View {
             Toggle("Don't show", isOn: Binding(get: { shown.hidden }, set: hide))
                 .toggleStyle(.checkbox)
         }
+    }
+}
+
+/// The event's picture, small: downscaled once and kept for the session, so
+/// the list doesn't fetch and decode an 800 KB artwork every time it redraws.
+private struct WebsiteEventThumbnail: View {
+    let address: String
+    @State private var image: CGImage?
+
+    var body: some View {
+        ZStack {
+            Color.primary.opacity(0.08)
+            if let image {
+                Image(decorative: image, scale: 1).resizable().aspectRatio(16 / 9, contentMode: .fill)
+            }
+        }
+        .task(id: address) { image = await WebsiteEventThumbnails.shared.image(for: address) }
+    }
+}
+
+@MainActor
+private final class WebsiteEventThumbnails {
+    static let shared = WebsiteEventThumbnails()
+    private let cache = NSCache<NSString, CGImage>()
+    private var loading: [String: Task<CGImage?, Never>] = [:]
+
+    init() { cache.countLimit = 60 }
+
+    func image(for address: String) async -> CGImage? {
+        if let cached = cache.object(forKey: address as NSString) { return cached }
+        if let running = loading[address] { return await running.value }
+        let task = Task<CGImage?, Never> {
+            guard let url = URL(string: address),
+                  let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+            return await Task.detached(priority: .utility) { Self.downscaled(data) }.value
+        }
+        loading[address] = task
+        let image = await task.value
+        loading[address] = nil
+        if let image { cache.setObject(image, forKey: address as NSString) }
+        return image
+    }
+
+    nonisolated private static func downscaled(_ data: Data) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 256,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 }
