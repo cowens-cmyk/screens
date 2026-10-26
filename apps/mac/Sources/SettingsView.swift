@@ -370,7 +370,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 /// The four groups inside Integrations, one at a time so each reads as a
 /// short page.
 enum IntegrationTab: String, CaseIterable, Identifiable {
-    case anthem, lightkey, shepherd, remote
+    case anthem, lightkey, shepherd, website, remote
 
     static let defaultsKey = "settings.integrationsTab"
 
@@ -381,6 +381,7 @@ enum IntegrationTab: String, CaseIterable, Identifiable {
         case .anthem: "Anthem"
         case .lightkey: "Lightkey & MIDI"
         case .shepherd: "Shepherd"
+        case .website: "Website"
         case .remote: "Remote & API"
         }
     }

@@ -110,8 +110,8 @@ struct MediaSettingsPane: View {
 
 // MARK: - Integrations
 
-/// Settings › Integrations: Anthem, Lightkey and MIDI, Shepherd, and the
-/// phone remote and Local API, one at a time.
+/// Settings › Integrations: Anthem, Lightkey and MIDI, Shepherd, the
+/// website's events, and the phone remote and Local API, one at a time.
 struct IntegrationsSettingsPane: View {
     let model: AppModel?
     let api: LocalAPIController?
@@ -165,6 +165,8 @@ struct IntegrationsSettingsPane: View {
         case .shepherd:
             Form { ShepherdSettingsForm() }
                 .settingsForm()
+        case .website:
+            WebsiteEventsSettingsForm(model: model)
         case .remote:
             if let api {
                 LocalAPISettingsForm(api: api)

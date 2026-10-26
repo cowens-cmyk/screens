@@ -1201,6 +1201,9 @@
         },
         "stageLayoutId": {
           "type": "string"
+        },
+        "sourceEvent": {
+          "$ref": "#/components/schemas/WebsiteEventTag"
         }
       },
       "required": [
@@ -1516,6 +1519,9 @@
         },
         "loopOverride": {
           "type": "boolean"
+        },
+        "sourceUrl": {
+          "type": "string"
         }
       },
       "required": [
@@ -4038,10 +4044,66 @@
           "items": {
             "$ref": "#/components/schemas/PresentationTypeScreens"
           }
+        },
+        "websiteEvents": {
+          "$ref": "#/components/schemas/WebsiteEventSettings"
         }
       },
       "required": [
         "id"
+      ]
+    },
+    "WebsiteEventSettings": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "windowDays": {
+          "type": "integer"
+        },
+        "removeAtEnd": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "WebsiteEventTag": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "startDate": {
+          "type": "string"
+        },
+        "startTime": {
+          "type": "string"
+        },
+        "removeAt": {
+          "type": "string"
+        },
+        "imageUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "slug",
+        "title",
+        "startDate",
+        "imageUrl"
       ]
     },
     "LightingCue": {

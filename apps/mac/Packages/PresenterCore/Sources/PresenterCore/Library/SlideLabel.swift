@@ -29,6 +29,8 @@ public enum SlideLabels {
     public static func label(
         for slide: Slide, at index: Int, in presentation: Presentation, mediaName: String? = nil
     ) -> SlideLabel {
+        // A slide the website sync made is its event: the name and the day.
+        if let event = slide.sourceEvent { return SlideLabel(title: WebsiteEvents.label(event)) }
         if let scripture = scriptureLabel(slide, in: presentation) { return scripture }
         if let message = messageLabel(slide, in: presentation) { return message }
 

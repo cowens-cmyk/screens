@@ -227,6 +227,9 @@ extension Slide {
     public func freshIDCopy() -> Slide {
         var copy = self
         copy.id = UUID().uuidString
+        // A copy is the copier's own slide: the website events sync looks
+        // after only the slide it made, and would take a second one out.
+        copy.sourceEvent = nil
         copy.objects = copy.objects.map { object in
             var object = object
             object.id = UUID().uuidString

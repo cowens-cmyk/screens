@@ -230,6 +230,7 @@ struct MediaLibraryView: View {
         case .countdowns: "timer"
         case .videos: "film"
         case .sermonSlides: "text.below.photo"
+        case .announcements: "megaphone"
         case .images: "photo"
         case .audio: "music.note"
         }
@@ -401,6 +402,7 @@ struct MediaLibraryView: View {
         case .category(.countdowns): "Drop countdown videos here. The plan's countdown is chosen from these."
         case .category(.videos): "Drop videos here. They play once."
         case .category(.sermonSlides): "Drop sermon slide images here. A PDF or Keynote file becomes a presentation."
+        case .category(.announcements): "Drop announcement images here. Event artwork from hopejc.org is added here too."
         case .category(.images): "Drop images here."
         case .category(.audio): "Drop music here."
         }

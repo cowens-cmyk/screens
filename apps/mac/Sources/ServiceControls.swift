@@ -1534,8 +1534,23 @@ final class ServiceControls {
         }
     }
 
+    /// A deck changed by something other than its grid (the website
+    /// events sync), with the deck as written.
+    func presentationReplaced(_ fresh: Presentation) {
+        presentationEdited(fresh.id, fresh: fresh)
+    }
+
     private func presentationEdited(_ id: String, fresh: Presentation?) {
         if let fresh {
+            // The loop counts on from the live slide's place, so that place
+            // follows the slide when others are added or taken out ahead of
+            // it; otherwise the next advance would skip one or repeat one.
+            if let live = state.liveSlide, live.presentation?.id == id, let occurrence = liveOccurrence {
+                let ids = SlideSceneBuilder.arrangedSlides(for: fresh, arrangementId: live.arrangementId).map(\.id)
+                if let followed = LiveOccurrence.follow(slideID: live.slide.id, from: occurrence, in: ids) {
+                    liveOccurrence = followed
+                }
+            }
             state.presentationEdited(fresh)
         }
         refreshNextSlide()

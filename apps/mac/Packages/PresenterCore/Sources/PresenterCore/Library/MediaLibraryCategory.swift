@@ -4,12 +4,14 @@ import UniformTypeIdentifiers
 /// The Media Library's categories. Each is a folder in Media (Audio is the
 /// Audio library), so filing something under one is an ordinary move and
 /// syncs like any other: nothing new is stored to say what's in a category.
-/// Countdowns is the folder the plan's countdown already looks in.
+/// Countdowns is the folder the plan's countdown already looks in;
+/// Announcements is where the hopejc.org event artwork is brought in.
 public enum MediaLibraryCategory: String, CaseIterable, Identifiable, Sendable {
     case worshipBackgrounds
     case countdowns
     case videos
     case sermonSlides
+    case announcements
     case images
     case audio
 
@@ -21,6 +23,7 @@ public enum MediaLibraryCategory: String, CaseIterable, Identifiable, Sendable {
         case .countdowns: "Countdowns"
         case .videos: "Videos"
         case .sermonSlides: "Sermon Slides"
+        case .announcements: "Announcements"
         case .images: "Images"
         case .audio: "Audio"
         }

@@ -1505,6 +1505,11 @@
           "name": "stageLayoutId",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "sourceEvent",
+          "type": "WebsiteEventTag",
+          "optional": true
         }
       ]
     },
@@ -1886,6 +1891,11 @@
         {
           "name": "loopOverride",
           "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "sourceUrl",
+          "type": "string",
           "optional": true
         }
       ]
@@ -4749,6 +4759,71 @@
           "name": "typeScreens",
           "type": "list:PresentationTypeScreens",
           "optional": true
+        },
+        {
+          "name": "websiteEvents",
+          "type": "WebsiteEventSettings",
+          "optional": true
+        }
+      ]
+    },
+    "WebsiteEventSettings": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "enabled",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "windowDays",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "removeAtEnd",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "hidden",
+          "type": "list:string",
+          "optional": true
+        }
+      ]
+    },
+    "WebsiteEventTag": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "slug",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "startDate",
+          "type": "string"
+        },
+        {
+          "name": "startTime",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "removeAt",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "imageUrl",
+          "type": "string"
         }
       ]
     },

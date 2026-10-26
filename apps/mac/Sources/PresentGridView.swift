@@ -1783,7 +1783,7 @@ struct SlideTile: View {
     }
 
     private var hasBadges: Bool {
-        stepCount > 0 || hasAnySteps || slide.autoAdvance != nil || !actionBadges.isEmpty
+        stepCount > 0 || hasAnySteps || slide.autoAdvance != nil || !actionBadges.isEmpty || slide.sourceEvent != nil
     }
 
     private var label: some View {
@@ -1794,6 +1794,16 @@ struct SlideTile: View {
 
     @ViewBuilder
     private var badges: some View {
+        if let event = slide.sourceEvent {
+            // Added from the church's events page; it comes down by itself.
+            Text("hopejc.org")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Color.secondary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Color(.sRGB, white: 0.5).opacity(0.25), in: Capsule())
+                .tileHelp(WebsiteEventWords.tileHelp(event))
+        }
         if stepCount > 0 {
             Text("\(isLive ? 1 + (liveAnimationStep ?? 0) : 0)/\(stepCount + 1)")
                 .font(.system(size: 9, weight: .semibold).monospacedDigit())

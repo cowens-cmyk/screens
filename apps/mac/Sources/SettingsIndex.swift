@@ -304,6 +304,30 @@ enum SettingsIndex {
             caption: "Upcoming Sunday plans from Shepherd become services. Songs link to presentations already in the library.",
             keywords: "shepherd hope plan sunday service sync song flag api key"),
         SettingsEntry(
+            id: "website.events", category: .integrations, tab: .website,
+            title: "Add events from hopejc.org to the pre-service announcements",
+            caption: "Each church event's picture goes in the pre-service slideshow, full screen, and comes out when the event starts. Only the Mac with Run on this Mac on adds and removes them.",
+            keywords: "website hopejc events calendar announcements pre-service preservice slideshow loop promo automatic cms"),
+        SettingsEntry(
+            id: "website.window", category: .integrations, tab: .website,
+            title: "Show events starting within",
+            keywords: "website events days month window ahead before"),
+        SettingsEntry(
+            id: "website.removeAt", category: .integrations, tab: .website,
+            title: "Take down",
+            caption: "When it ends keeps an event that runs several days up until its last day is over.",
+            keywords: "website events remove take down start end multi-day"),
+        SettingsEntry(
+            id: "website.sync", category: .integrations, tab: .website,
+            title: "Sync",
+            caption: "hopejc.org is read every 30 minutes and slides come and go on time.",
+            keywords: "website events sync now refresh update"),
+        SettingsEntry(
+            id: "website.list", category: .integrations, tab: .website,
+            title: "Events",
+            caption: "The events in the slideshow now. Don't show leaves an event out, and every later one with the same name.",
+            keywords: "website events list hide don't show included"),
+        SettingsEntry(
             id: "api.enabled", category: .integrations, tab: .remote,
             title: "Local API",
             caption: "Serves the REST and WebSocket API on this Mac and announces it on the local network.",

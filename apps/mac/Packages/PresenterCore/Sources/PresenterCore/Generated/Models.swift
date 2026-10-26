@@ -774,8 +774,9 @@ public struct Slide: Codable, Sendable, Equatable, Identifiable {
     public var lookPresetId: String?
     public var streamDesign: StreamDesign?
     public var stageLayoutId: String?
+    public var sourceEvent: WebsiteEventTag?
 
-    public init(id: String, name: String, objects: [SlideObject], background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sectionId: String? = nil, folder: String? = nil, themeSlideName: String? = nil, themeId: String? = nil, unthemed: Bool? = nil, overrideDesigns: [OverrideDesign]? = nil, actions: [SlideAction]? = nil, notes: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, animationOrder: [String]? = nil, buildOrder: [String]? = nil, keepWords: Bool? = nil, history: [SlideVersion]? = nil, lookPresetId: String? = nil, streamDesign: StreamDesign? = nil, stageLayoutId: String? = nil) {
+    public init(id: String, name: String, objects: [SlideObject], background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sectionId: String? = nil, folder: String? = nil, themeSlideName: String? = nil, themeId: String? = nil, unthemed: Bool? = nil, overrideDesigns: [OverrideDesign]? = nil, actions: [SlideAction]? = nil, notes: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, animationOrder: [String]? = nil, buildOrder: [String]? = nil, keepWords: Bool? = nil, history: [SlideVersion]? = nil, lookPresetId: String? = nil, streamDesign: StreamDesign? = nil, stageLayoutId: String? = nil, sourceEvent: WebsiteEventTag? = nil) {
         self.id = id
         self.name = name
         self.objects = objects
@@ -798,6 +799,7 @@ public struct Slide: Codable, Sendable, Equatable, Identifiable {
         self.lookPresetId = lookPresetId
         self.streamDesign = streamDesign
         self.stageLayoutId = stageLayoutId
+        self.sourceEvent = sourceEvent
     }
 }
 
@@ -963,8 +965,9 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
     public var scaleMode: MediaScaleMode?
     public var endAction: MediaEndAction?
     public var loopOverride: Bool?
+    public var sourceUrl: String?
 
-    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil, scaleMode: MediaScaleMode? = nil, endAction: MediaEndAction? = nil, loopOverride: Bool? = nil) {
+    public init(id: String, name: String, mediaKind: MediaKind, classification: MediaClassification, fileHash: String, fileName: String, fileStatus: MediaFileStatus, statusDetail: String, tags: [String], favorite: Bool, collections: [String], loops: Bool, inPoint: Double? = nil, outPoint: Double? = nil, playRate: Double? = nil, effects: [Effect]? = nil, transition: Transition? = nil, durationSeconds: Double? = nil, pixelWidth: Int? = nil, pixelHeight: Int? = nil, folder: String? = nil, folderId: String? = nil, recordedAt: Double? = nil, recordedByPresetId: String? = nil, actions: [SlideAction]? = nil, autoAdvance: AutoAdvance? = nil, scaleMode: MediaScaleMode? = nil, endAction: MediaEndAction? = nil, loopOverride: Bool? = nil, sourceUrl: String? = nil) {
         self.id = id
         self.name = name
         self.mediaKind = mediaKind
@@ -994,6 +997,7 @@ public struct MediaItem: Codable, Sendable, Equatable, Identifiable {
         self.scaleMode = scaleMode
         self.endAction = endAction
         self.loopOverride = loopOverride
+        self.sourceUrl = sourceUrl
     }
 }
 
@@ -2658,8 +2662,9 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
     public var serviceDay: ServiceDaySettings?
     public var lightingCues: [LightingCue]?
     public var typeScreens: [PresentationTypeScreens]?
+    public var websiteEvents: WebsiteEventSettings?
 
-    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil, serviceDay: ServiceDaySettings? = nil, lightingCues: [LightingCue]? = nil, typeScreens: [PresentationTypeScreens]? = nil) {
+    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil, serviceDay: ServiceDaySettings? = nil, lightingCues: [LightingCue]? = nil, typeScreens: [PresentationTypeScreens]? = nil, websiteEvents: WebsiteEventSettings? = nil) {
         self.id = id
         self.designMap = designMap
         self.messageNotesThemeId = messageNotesThemeId
@@ -2671,6 +2676,41 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
         self.serviceDay = serviceDay
         self.lightingCues = lightingCues
         self.typeScreens = typeScreens
+        self.websiteEvents = websiteEvents
+    }
+}
+
+public struct WebsiteEventSettings: Codable, Sendable, Equatable {
+    public var enabled: Bool?
+    public var windowDays: Int?
+    public var removeAtEnd: Bool?
+    public var hidden: [String]?
+
+    public init(enabled: Bool? = nil, windowDays: Int? = nil, removeAtEnd: Bool? = nil, hidden: [String]? = nil) {
+        self.enabled = enabled
+        self.windowDays = windowDays
+        self.removeAtEnd = removeAtEnd
+        self.hidden = hidden
+    }
+}
+
+public struct WebsiteEventTag: Codable, Sendable, Equatable {
+    public var key: String
+    public var slug: String
+    public var title: String
+    public var startDate: String
+    public var startTime: String?
+    public var removeAt: String?
+    public var imageUrl: String
+
+    public init(key: String, slug: String, title: String, startDate: String, startTime: String? = nil, removeAt: String? = nil, imageUrl: String) {
+        self.key = key
+        self.slug = slug
+        self.title = title
+        self.startDate = startDate
+        self.startTime = startTime
+        self.removeAt = removeAt
+        self.imageUrl = imageUrl
     }
 }
 
