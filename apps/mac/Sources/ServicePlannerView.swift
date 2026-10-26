@@ -1189,41 +1189,6 @@ struct LibrarySearchSheet: View {
     }
 }
 
-/// Right-click › When Video Ends: go to the next item (a video's default),
-/// hold the last frame, fade to black, or stop. Choosing one stops the video
-/// looping. On every video's right-click: plan rows, the fire view and the
-/// media library.
-struct VideoEndMenu: View {
-    let model: AppModel
-    let mediaID: String
-
-    var body: some View {
-        let current = model.media(mediaID)?.resolvedEndAction
-        Menu("When Video Ends") {
-            ForEach([(MediaEndAction.next, "Next Item (Default)"), (.hold, "Hold Last Frame"),
-                     (.fadeToBlack, "Fade to Black"), (.stop, "Stop")], id: \.0) { action, title in
-                Toggle(title, isOn: Binding(
-                    get: { current == action },
-                    set: { _ in
-                        model.updateMedia(mediaID) { media in
-                            media.endAction = action
-                            media.loops = false
-                        }
-                    }))
-            }
-            Divider()
-            Toggle("Loop Instead", isOn: Binding(
-                get: { model.media(mediaID)?.loops == true && current == nil },
-                set: { _ in
-                    model.updateMedia(mediaID) { media in
-                        media.endAction = nil
-                        media.loops = true
-                    }
-                }))
-        }
-    }
-}
-
 /// Right-click › Slideshow: how long each slide stays up, and what happens
 /// after the last one (loop, or move on to the next item in the plan).
 struct SlideshowMenu: View {
