@@ -20,8 +20,10 @@ struct PlanShell: View {
     @AppStorage("appMode") private var modeRaw = AppMode.present.rawValue
     @AppStorage(ShellPanel.Side.plans.defaultsKey) private var planPinnedStored = ShellPanel.Side.plans.pinnedByDefault
     @AppStorage(ShellPanel.Side.screens.defaultsKey) private var screensPinnedStored = ShellPanel.Side.screens.pinnedByDefault
-    @State private var planPanel = ShellPanel(pinned: ShellPanel.Side.plans.storedPinned(in: .standard))
-    @State private var screensPanel = ShellPanel(pinned: ShellPanel.Side.screens.storedPinned(in: .standard))
+    /// The panels' states. The window reads only whether each is pinned;
+    /// the pointer coming and going redraws the panel alone.
+    @State private var planBox = ShellPanelBox(.plans)
+    @State private var screensBox = ShellPanelBox(.screens)
     /// The screens hidden from the column (its eye menu); the strip leaves them out too.
     @AppStorage("monitors.hidden") private var hiddenScreens = ""
     @AppStorage("shell.topPane") private var topPane = TopPane.plans
@@ -57,9 +59,6 @@ struct PlanShell: View {
     @State private var addAnchor: AddAnchor?
     @State private var newSongShown = false
     @State private var libraryPick: LibraryPick?
-    /// The plan bubble, its peeking card and the docked column share one
-    /// shape, and so do the strip and the screens column: matched in here.
-    @Namespace private var shellSpace
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -231,44 +230,50 @@ struct PlanShell: View {
             //
             // Docked, each is a card inset from the window's edge by the
             // same gap the floating pieces keep, below the title bar, so its
-            // header never crowds the traffic lights. Its shape is matched
-            // with the bubble's (see MorphingPanel): a pin grows the one into
-            // the other, so it comes in without a slide of its own.
+            // header never crowds the traffic lights. Each panel is one view
+            // over the whole area (see MorphingPanel): the bubble, the peek
+            // and the docked card are its one shape, so a pin grows the
+            // bubble into the column, and the HStack only keeps the column's
+            // room clear.
             HStack(spacing: 0) {
-                if panelsShown && planPanel.isPinned {
-                    DockedPanel(id: Self.planShapeID, namespace: shellSpace) {
-                        planPanelContent(pinned: true)
-                    }
-                    .frame(width: ShellMetrics.planWidth)
-                    .frame(maxHeight: .infinity)
-                    .padding([.leading, .top, .bottom], ShellMetrics.inset)
-                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
+                if planDocked {
+                    Color.clear.frame(width: ShellMetrics.planWidth + ShellMetrics.inset)
                 }
                 slidesArea
-                if panelsShown && screensPanel.isPinned, let render {
-                    DockedPanel(id: Self.screensShapeID, namespace: shellSpace) {
-                        screensColumn(render, pinned: true)
-                    }
-                    .frame(width: ShellMetrics.screensWidth)
-                    .frame(maxHeight: .infinity)
-                    .padding([.trailing, .top, .bottom], ShellMetrics.inset)
-                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
+                if screensDocked {
+                    Color.clear.frame(width: ShellMetrics.screensWidth + ShellMetrics.inset)
                 }
+            }
+            // The slides make room for a docked panel at once, in a single
+            // layout, while the panel's shape grows over the change. Letting
+            // the page reflow on every frame of the spring (its grid, its
+            // cards' frames, its scroll anchoring) is what made pinning
+            // stutter.
+            .transaction(value: [planDocked, screensDocked]) { $0.animation = nil }
+            .overlay(alignment: .topLeading) {
+                if panelsShown { planPanelView }
+            }
+            .overlay(alignment: .topTrailing) {
+                if screensMenuShown, let render { screensPanelView(render) }
             }
             .background { ShellBackdrop() }
             // Edit folds the left column away so the slide canvas gets the
             // room; Present and Schedule bring it back.
             .onChange(of: modeRaw, initial: true) {
                 syncSidebar()
-                planPanel.dismissPeek()
-                screensPanel.dismissPeek()
+                planBox.update { $0.dismissPeek() }
+                screensBox.update { $0.dismissPeek() }
             }
             .onChange(of: itemID) { syncSidebar() }
             .onChange(of: model.selectedEntryID) { syncSidebar() }
-            .onChange(of: planPanel.isPinned) { _, pinned in planPinnedStored = pinned }
-            .onChange(of: screensPanel.isPinned) { _, pinned in screensPinnedStored = pinned }
-            .onChange(of: planPinnedStored) { _, pinned in planPanel.setPinned(pinned) }
-            .onChange(of: screensPinnedStored) { _, pinned in screensPanel.setPinned(pinned) }
+            .onChange(of: planBox.isPinned) { _, pinned in planPinnedStored = pinned }
+            .onChange(of: screensBox.isPinned) { _, pinned in screensPinnedStored = pinned }
+            .onChange(of: planPinnedStored) { _, pinned in
+                planBox.run(planBox.update { $0.setPinned(pinned) }, reduceMotion: reduceMotion)
+            }
+            .onChange(of: screensPinnedStored) { _, pinned in
+                screensBox.run(screensBox.update { $0.setPinned(pinned) }, reduceMotion: reduceMotion)
+            }
             .navigationTitle(model.currentServiceID.flatMap { model.resident.services.value($0)?.name } ?? "Screens")
         }
         .toolbar { toolbar }
@@ -282,32 +287,46 @@ struct PlanShell: View {
     /// Edit gives the editor the room; Present and Schedule have the panels.
     private var panelsShown: Bool { mode != .edit }
     private var screensMenuShown: Bool { panelsShown && render != nil }
-    private var planFloats: Bool { panelsShown && !planPanel.isPinned }
-    private var screensFloat: Bool { screensMenuShown && !screensPanel.isPinned }
+    private var planFloats: Bool { panelsShown && !planBox.isPinned }
+    private var screensFloat: Bool { screensMenuShown && !screensBox.isPinned }
+    private var planDocked: Bool { panelsShown && planBox.isPinned }
+    private var screensDocked: Bool { screensMenuShown && screensBox.isPinned }
 
-    /// The View menu, its shortcut, or a toolbar button.
+    private func panelBox(_ side: ShellPanel.Side) -> ShellPanelBox {
+        side == .plans ? planBox : screensBox
+    }
+
+    /// The View menu, its shortcut, or a toolbar button. The pointer isn't
+    /// on the bubble, so nothing has been built for the open panel yet:
+    /// it's built first and the shape grows a moment later, so building and
+    /// the first frames of motion don't land together.
     private func togglePanel(_ side: ShellPanel.Side) {
-        withAnimation(HopeMotion.bubble(reduced: reduceMotion)) {
-            switch side {
-            case .plans: planPanel.toggle()
-            case .screens: screensPanel.toggle()
-            }
+        let box = panelBox(side)
+        let reduced = reduceMotion
+        let toggle = {
+            let wait = withAnimation(HopeMotion.bubble(reduced: reduced)) { box.update { $0.toggle() } }
+            box.run(wait, reduceMotion: reduced)
+        }
+        guard box.panel.needsContentBeforePin else { return toggle() }
+        box.update { $0.buildContent() }
+        Task { @MainActor in
+            // Long enough for the window to draw the built content once.
+            try? await Task.sleep(for: .milliseconds(20))
+            toggle()
         }
     }
 
-    /// The bubble, the strip, or a panel's pin.
+    /// The bubble, the strip, or a panel's pin. The pointer is on the
+    /// panel, so its content was built when the pointer arrived.
     private func clickPanel(_ side: ShellPanel.Side) {
+        let box = panelBox(side)
         let now = ProcessInfo.processInfo.systemUptime
-        withAnimation(HopeMotion.bubble(reduced: reduceMotion)) {
-            switch side {
-            case .plans: planPanel.click(at: now)
-            case .screens: screensPanel.click(at: now)
-            }
-        }
+        let wait = withAnimation(HopeMotion.bubble(reduced: reduceMotion)) { box.update { $0.click(at: now) } }
+        box.run(wait, reduceMotion: reduceMotion)
     }
 
-    /// The slides, with the floating pieces over them: the bubble, the
-    /// strip and their peeking cards, and the control bar.
+    /// The slides, with the control bar over them. The bubble, the strip
+    /// and their peeking cards float over this from the window's overlays.
     private var slidesArea: some View {
         center
             .frame(minWidth: 320, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
@@ -327,18 +346,17 @@ struct PlanShell: View {
                     .allowsHitTesting(false)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
-            .overlay(alignment: .topLeading) {
-                if planFloats { planFloat }
-            }
-            .overlay(alignment: .topTrailing) {
-                if screensFloat, let render { screensFloatView(render) }
-            }
             // Listening is never a secret: a red bar across the top
-            // of the slides for as long as a microphone is open.
-            .safeAreaInset(edge: .top, spacing: 0) { LiveListeningBar() }
+            // of the slides for as long as a microphone is open. The
+            // floating panels sit below it.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                LiveListeningBar()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        planBox.floatingTop = height
+                        screensBox.floatingTop = height
+                    }
+            }
             .animation(HopeMotion.ui(reduced: reduceMotion), value: LiveAssist.shared.listening)
-            .animation(HopeMotion.bubble(reduced: reduceMotion), value: planPanel.mode)
-            .animation(HopeMotion.bubble(reduced: reduceMotion), value: screensPanel.mode)
     }
 
     /// The control bar centred under the slides, and in Present the slide
@@ -393,14 +411,11 @@ struct PlanShell: View {
             kind: item.map { HopeStyle.kind(of: $0, presentation: $0.itemKind == .presentation ? model.presentation($0.refId) : nil) })
     }
 
-    static let planShapeID = "shell.plan"
-    static let screensShapeID = "shell.screens"
-
-    /// The bubble when folded, the whole panel when peeking: one shape that
-    /// grows from the one into the other.
-    private var planFloat: some View {
+    /// The bubble when folded, the whole panel when peeking or docked: one
+    /// shape that grows from the one into the other.
+    private var planPanelView: some View {
         MorphingPanel(
-            panel: $planPanel, id: Self.planShapeID, namespace: shellSpace,
+            box: planBox, name: "plan",
             foldedWidth: ShellMetrics.bubbleWidth, foldedHeight: ShellMetrics.bubbleHeight,
             foldedRadius: ShellMetrics.bubbleHeight / 2, openWidth: ShellMetrics.planWidth
         ) {
@@ -414,7 +429,7 @@ struct PlanShell: View {
             .help("The plan. Point at it to look, click to keep it open (⌃⌘S).")
             .popover(isPresented: addShown(.bubble), arrowEdge: .bottom) { addPopover }
         } open: {
-            planPanelContent(pinned: false)
+            planPanelContent(pinned: planBox.isPinned)
         }
     }
 
@@ -463,14 +478,14 @@ struct PlanShell: View {
             onEditStage: { editStageDisplay() })
     }
 
-    /// The strip when folded, the whole column when peeking, as one shape.
-    private func screensFloatView(_ render: RenderContext) -> some View {
+    /// The strip when folded, the whole column when peeking or docked, as
+    /// one shape. Only the face that shows draws its previews.
+    private func screensPanelView(_ render: RenderContext) -> some View {
         MorphingPanel(
-            panel: $screensPanel, id: Self.screensShapeID, namespace: shellSpace, alignment: .topTrailing,
+            box: screensBox, name: "screens", trailing: true,
             foldedWidth: nil, foldedHeight: ShellMetrics.stripHeight,
             foldedRadius: ShellMetrics.stripRadius, openWidth: ShellMetrics.screensWidth
         ) {
-            // Built only while folded: the full previews aren't drawn at all then.
             Button { clickPanel(.screens) } label: {
                 ScreensStrip(
                     render: render, controls: controls,
@@ -480,7 +495,7 @@ struct PlanShell: View {
             .focusEffectDisabled()
             .help("The screens. Point at them to look, click to keep them open (⌃⌘R).")
         } open: {
-            screensColumn(render, pinned: false)
+            screensColumn(render, pinned: screensBox.isPinned)
         }
     }
 
@@ -495,7 +510,7 @@ struct PlanShell: View {
     /// Where the popover goes when it's asked for from the menu or ⌥⌘N.
     private var addAnchorNow: AddAnchor {
         if mode == .edit { return .sidebar }
-        return planPanel.mode == .collapsed ? .bubble : .header
+        return planBox.panel.mode == .collapsed ? .bubble : .header
     }
 
     private var addToPlanAction: MenuAction? {
@@ -904,9 +919,9 @@ struct PlanShell: View {
         ToolbarItem(placement: .navigation) {
             if panelsShown {
                 Button { togglePanel(.plans) } label: {
-                    Label(planPanel.isPinned ? "Fold Plan" : "Pin Plan", systemImage: "sidebar.left")
+                    Label(planBox.isPinned ? "Fold Plan" : "Pin Plan", systemImage: "sidebar.left")
                 }
-                .help(planPanel.isPinned ? "Fold the plan to a bubble (⌃⌘S)" : "Keep the plan open beside the slides (⌃⌘S)")
+                .help(planBox.isPinned ? "Fold the plan to a bubble (⌃⌘S)" : "Keep the plan open beside the slides (⌃⌘S)")
             }
         }
         ToolbarItem(placement: .principal) {
@@ -960,9 +975,9 @@ struct PlanShell: View {
             .help("Message & Series, Pre-Service Slides, Themes, Simple Mode, Timers & Macros, Screen Setup")
             if screensMenuShown {
                 Button { togglePanel(.screens) } label: {
-                    Label(screensPanel.isPinned ? "Fold Screens" : "Pin Screens", systemImage: "sidebar.right")
+                    Label(screensBox.isPinned ? "Fold Screens" : "Pin Screens", systemImage: "sidebar.right")
                 }
-                .help(screensPanel.isPinned ? "Fold the screens to the strip (⌃⌘R)" : "Keep the screens open beside the slides (⌃⌘R)")
+                .help(screensBox.isPinned ? "Fold the screens to the strip (⌃⌘R)" : "Keep the screens open beside the slides (⌃⌘R)")
             }
         }
     }

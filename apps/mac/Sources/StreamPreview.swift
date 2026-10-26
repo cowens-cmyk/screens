@@ -60,11 +60,13 @@ struct TransparentScenePreview: NSViewRepresentable {
     func makeNSView(context: Context) -> TransparentScenePreviewNSView {
         let view = TransparentScenePreviewNSView(compositor: compositor, provider: provider)
         view.maximumFramesPerSecond = maximumFramesPerSecond
+        view.isPaused = context.environment.livePreviewsPaused
         return view
     }
 
     func updateNSView(_ view: TransparentScenePreviewNSView, context: Context) {
         view.provider = provider
+        view.isPaused = context.environment.livePreviewsPaused
     }
 }
 
@@ -72,6 +74,11 @@ struct TransparentScenePreview: NSViewRepresentable {
 final class TransparentScenePreviewNSView: NSView {
     var provider: @Sendable () -> RenderScene
     var maximumFramesPerSecond: Float = 30
+    /// Out of sight in a folded panel: no drawing, which here is main
+    /// thread work that would compete with the panel's motion.
+    var isPaused = false {
+        didSet { displayLink?.isPaused = isPaused }
+    }
     private let compositor: Compositor
     private let metalLayer = CAMetalLayer()
     private var displayLink: CAMetalDisplayLink?
@@ -106,6 +113,7 @@ final class TransparentScenePreviewNSView: NSView {
         link.delegate = self
         let most = max(1, maximumFramesPerSecond)
         link.preferredFrameRateRange = CAFrameRateRange(minimum: min(10, most), maximum: most, preferred: most)
+        link.isPaused = isPaused
         link.add(to: .main, forMode: .common)
         displayLink = link
     }

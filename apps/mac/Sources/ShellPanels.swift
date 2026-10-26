@@ -8,49 +8,89 @@ import SwiftUI
 // backdrop behind it all. When the decisions are made is in PresenterCore's
 // ShellPanel; this is the drawing and the AppKit plumbing.
 
+/// A panel's state, kept apart from the window's: the window reads only
+/// whether the panel is pinned, so the pointer coming and going redraws the
+/// panel and not the slides beside it.
+@MainActor @Observable
+final class ShellPanelBox {
+    private(set) var panel: ShellPanel
+    private(set) var isPinned: Bool
+    /// Room kept above the floating pieces: the listening bar, while it shows.
+    var floatingTop: CGFloat = 0
+    /// The open content's place in the window, for giving the keyboard back
+    /// when the panel folds over something that had it.
+    @ObservationIgnored weak var contentAnchor: NSView?
+
+    init(_ side: ShellPanel.Side) {
+        let pinned = side.storedPinned(in: .standard)
+        panel = ShellPanel(pinned: pinned)
+        isPinned = pinned
+    }
+
+    /// Every change goes through here, so `isPinned` only changes, and only
+    /// tells the window, when the pin does.
+    @discardableResult
+    func update<Result>(_ change: (inout ShellPanel) -> Result) -> Result {
+        var next = panel
+        let result = change(&next)
+        if next != panel { panel = next }
+        if next.isPinned != isPinned { isPinned = next.isPinned }
+        return result
+    }
+
+    /// Sleeps the wait the panel asked for and hands it back. Opening and
+    /// folding move with the panel's spring; letting the content go moves
+    /// nothing, and it's hidden by then.
+    func run(_ wait: ShellPanel.Wait?, reduceMotion: Bool) {
+        guard let wait else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: wait.duration)
+            guard let self else { return }
+            // Add to Plan open from the bubble: growing the bubble into the
+            // panel would take the popover down with it.
+            if case .open = wait, PanelHold.popoverOpen { return }
+            let next: ShellPanel.Wait?
+            if case .release = wait {
+                next = update { $0.waited(wait) }
+            } else {
+                next = withAnimation(HopeMotion.bubble(reduced: reduceMotion)) {
+                    update { $0.waited(wait, holding: PanelHold.isHolding) }
+                }
+            }
+            run(next, reduceMotion: reduceMotion)
+        }
+    }
+}
+
 /// Feeds a panel the pointer and runs the waits it asks for. On the one view
 /// that is the bubble when collapsed and the card when peeking, so the
 /// pointer is never "outside" while one becomes the other. Hover only ever
 /// changes what shows: it never takes the keyboard and never fires anything.
 struct ShellPanelHover: ViewModifier {
-    @Binding var panel: ShellPanel
+    let box: ShellPanelBox
+    /// "plan" or "screens", for the motion meter.
+    let name: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
             .onHover { inside in
-                let wait = inside
-                    ? panel.pointerEntered(at: ProcessInfo.processInfo.systemUptime)
-                    : panel.pointerLeft()
-                run(wait)
+                let wait = box.update { panel in
+                    inside
+                        ? panel.pointerEntered(at: ProcessInfo.processInfo.systemUptime)
+                        : panel.pointerLeft()
+                }
+                box.run(wait, reduceMotion: reduceMotion)
             }
-            .onChange(of: panel.mode) { old, new in
+            .onChange(of: box.panel.mode) { old, new in
+                PanelMotionMeter.shared.begin("\(name) \(old.rawValue) to \(new.rawValue)")
                 if new == .peek { PanelFocus.remember() }
-                if old == .peek { PanelFocus.restoreIfOrphaned() }
+                if new == .collapsed { PanelFocus.giveBack(from: box.contentAnchor, restoring: old == .peek) }
             }
             .onAppear { PanelHold.watchMenus() }
     }
-
-    private func run(_ wait: ShellPanel.Wait?) {
-        guard let wait else { return }
-        let binding = $panel
-        let animation = HopeMotion.bubble(reduced: reduceMotion)
-        Task { @MainActor in
-            try? await Task.sleep(for: wait.duration)
-            // Add to Plan open from the bubble: growing the bubble into the
-            // panel would take the popover down with it.
-            if case .open = wait, PanelHold.popoverOpen { return }
-            let next = withAnimation(animation) {
-                binding.wrappedValue.waited(wait, holding: PanelHold.isHolding)
-            }
-            run(next)
-        }
-    }
 }
 
-/// Whether something opened from a peeking panel still needs it: folding
-/// the panel would take the menu, popover, sheet or drag down with it, or
-/// cut off someone typing in its field.
 @MainActor
 enum PanelHold {
     private static var menusOpen = 0
@@ -90,6 +130,14 @@ enum PanelHold {
 /// would stop moving the slides. So the window's responder from before the
 /// peek is put back, but only when the panel left nothing in charge: a peek
 /// that was only looked at changes nothing.
+
+/// A click in a peeking panel's list gives that list the keyboard; when the
+/// panel folds away the keyboard would go with it, and the arrows and Space
+/// would stop moving the slides. The folded panel's content stays in the
+/// window, hidden, until its shape has settled, so the keyboard is taken
+/// back from it at once: to the window's responder from before the peek,
+/// or, after a pinned panel folds, to the window. A peek that was only
+/// looked at changes nothing.
 @MainActor
 enum PanelFocus {
     private static weak var saved: NSResponder?
@@ -98,16 +146,51 @@ enum PanelFocus {
         saved = NSApp.mainWindow?.firstResponder
     }
 
-    static func restoreIfOrphaned() {
-        // After SwiftUI has taken the panel's views out of the window.
+    static func giveBack(from anchor: NSView?, restoring: Bool) {
+        // After SwiftUI has applied the fold.
         Task { @MainActor in
-            guard let window = NSApp.mainWindow, let saved, saved !== window,
-                  (saved as? NSView)?.window === window else { return }
-            let current = window.firstResponder
-            let orphaned = current == nil || current === window || (current as? NSView)?.window == nil
-            if orphaned { window.makeFirstResponder(saved) }
+            guard let window = NSApp.mainWindow, let anchor, anchor.window === window,
+                  let current = window.firstResponder as? NSView, current.window === window
+            else { return }
+            // Only what sits wholly inside the panel: the slides page, also
+            // a responder, is larger and is left alone.
+            let area = anchor.convert(anchor.bounds, to: nil).insetBy(dx: -2, dy: -2)
+            guard area.contains(current.convert(current.visibleRect, to: nil)) else { return }
+            if restoring, let saved, saved !== window, (saved as? NSView)?.window === window {
+                window.makeFirstResponder(saved)
+            } else {
+                window.makeFirstResponder(nil)
+            }
         }
     }
+}
+
+/// Marks where a panel's open content is in the window. Draws nothing and
+/// takes no clicks.
+struct PanelContentAnchor: NSViewRepresentable {
+    let box: ShellPanelBox
+
+    final class Anchor: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    func makeNSView(context: Context) -> Anchor {
+        let view = Anchor()
+        box.contentAnchor = view
+        return view
+    }
+
+    func updateNSView(_ nsView: Anchor, context: Context) {
+        if box.contentAnchor !== nsView { box.contentAnchor = nsView }
+    }
+}
+
+extension EnvironmentValues {
+    /// Live previews out of sight (the hidden face of a panel) stop drawing.
+    @Entry var livePreviewsPaused = false
+    /// The panel a view is shown in, if any, so what reads clicks for itself
+    /// (the plan's marquee) can tell when its panel is folded away.
+    @Entry var shellPanel: ShellPanelBox? = nil
 }
 
 // MARK: Motion
@@ -116,19 +199,61 @@ extension HopeMotion {
     /// The panels opening and folding, and the plan's highlight moving from
     /// row to row: quick, with a little overshoot, like the iPhone's Dynamic
     /// Island. Reduce Motion gets a plain fade instead.
-    static let bubble = Animation.spring(response: 0.42, dampingFraction: 0.72)
+    static let bubble = Animation.spring(response: ShellPanel.springResponse, dampingFraction: ShellPanel.springDamping)
 
     static func bubble(reduced: Bool) -> Animation { reduced ? fade : bubble }
-}
 
-extension AnyTransition {
     /// What's inside a panel while its shape grows or shrinks: it fades in
     /// once the shape has mostly opened, and out before it closes, so the
     /// shape leads and nothing spills past its edge.
-    static func panelContent(reduced: Bool) -> AnyTransition {
-        reduced ? .opacity : .asymmetric(
-            insertion: .opacity.animation(.easeOut(duration: 0.2).delay(0.12)),
-            removal: .opacity.animation(.easeOut(duration: 0.08)))
+    static func panelContent(showing: Bool, reduced: Bool) -> Animation {
+        if reduced { return fade }
+        return showing ? .easeOut(duration: 0.2).delay(0.12) : .easeOut(duration: 0.08)
+    }
+}
+
+/// Counts late frames while a panel opens or folds, for checking on a real
+/// Mac that the motion is smooth: Settings › Advanced › Measure panel
+/// motion. Each transition writes one line to the diagnostics log, like
+/// "shell.motion — plan collapsed to peek: 59 frames at 120 Hz, none late,
+/// longest 8.4 ms". Off, it costs one defaults read per transition.
+@MainActor
+final class PanelMotionMeter: NSObject {
+    static let shared = PanelMotionMeter()
+    static let enabledKey = "diagnostics.panelMotion"
+
+    private var link: CADisplayLink?
+    private var count = FrameHitchCount()
+    private var label = ""
+    private var until: CFTimeInterval = 0
+
+    func begin(_ label: String) {
+        guard UserDefaults.standard.bool(forKey: Self.enabledKey) else { return }
+        finish()
+        guard let view = NSApp.mainWindow?.contentView else { return }
+        self.label = label
+        count = FrameHitchCount()
+        // From now, so the work done for the change itself, before its first
+        // frame, counts too.
+        let now = CACurrentMediaTime()
+        count.record(timestamp: now, interval: 0)
+        until = now + ShellPanel.settleTime + 0.15
+        let link = view.displayLink(target: self, selector: #selector(tick(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    @objc private func tick(_ link: CADisplayLink) {
+        count.record(timestamp: link.targetTimestamp, interval: link.targetTimestamp - link.timestamp)
+        if link.targetTimestamp >= until { finish() }
+    }
+
+    private func finish() {
+        guard let link else { return }
+        link.invalidate()
+        self.link = nil
+        DiagnosticsStore.shared.note("shell.motion", detail: "\(label): \(count.summary)")
     }
 }
 
@@ -190,16 +315,29 @@ struct PanelSurface: View {
     }
 }
 
-/// A floating panel: the bubble (or strip) when folded and the whole panel
-/// when peeking, as one shape that grows from the one into the other and
-/// shrinks back. The shape is matched with the docked panel's, so a pin
-/// grows it into the column too. One view throughout, so the pointer is
-/// never "outside" while the bubble becomes the card.
+/// A panel: the bubble (or strip) when folded, the card over the slides
+/// when peeking and the column beside them when pinned, as one shape that
+/// grows from the one into the other and shrinks back. One view throughout,
+/// so the pointer is never "outside" while the bubble becomes the card, and
+/// a peek that's pinned is the same card, landing where it already is.
+///
+/// Smooth motion comes from what doesn't happen while the shape moves:
+/// - The open content is built before the shape starts (see ShellPanel) and
+///   kept, hidden, until it has folded and settled, so no frame of the
+///   motion builds or tears down a list or a Metal preview.
+/// - Both faces are laid out once at their final size. Only the shape's
+///   frame animates, with the faces clipped to it, so nothing inside
+///   relayouts on every frame, and rows that report their frames don't
+///   report a new one each frame.
+/// - The window reads only whether the panel is pinned (ShellPanelBox), so
+///   the pointer coming and going doesn't redraw the slides.
+/// The hidden face is out of reach: no clicks, no accessibility, its live
+/// previews paused.
 struct MorphingPanel<Folded: View, Open: View>: View {
-    @Binding var panel: ShellPanel
-    let id: String
-    let namespace: Namespace.ID
-    var alignment: Alignment = .topLeading
+    let box: ShellPanelBox
+    /// "plan" or "screens", for the motion meter.
+    let name: String
+    var trailing = false
     /// The folded width; nil takes the folded content's own.
     var foldedWidth: CGFloat?
     var foldedHeight: CGFloat
@@ -207,60 +345,130 @@ struct MorphingPanel<Folded: View, Open: View>: View {
     var openWidth: CGFloat
     @ViewBuilder var folded: () -> Folded
     @ViewBuilder var open: () -> Open
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The room the panel has: the window's content beside the toolbar.
+    @State private var roomHeight: CGFloat = 0
+    @State private var measuredFoldedWidth: CGFloat = 0
 
     var body: some View {
-        let peeking = panel.isPeeking
-        let radius = peeking ? ShellMetrics.floatingRadius : foldedRadius
+        // This body reads nothing that the pointer changes; the modifiers
+        // below do, so a hover reruns them and never rebuilds `open()`.
+        let alignment: Alignment = trailing ? .topTrailing : .topLeading
+        let shape = PanelShape(
+            trailing: trailing, foldedWidth: foldedWidth ?? measuredFoldedWidth, foldedHeight: foldedHeight,
+            foldedRadius: foldedRadius, openWidth: openWidth, roomHeight: roomHeight)
         ZStack(alignment: alignment) {
-            if peeking {
-                open()
-                    .frame(width: openWidth)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .transition(.panelContent(reduced: reduceMotion))
-            } else {
-                folded()
-                    .transition(.panelContent(reduced: reduceMotion))
-            }
+            folded()
+                .fixedSize()
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                    if foldedWidth == nil, width != measuredFoldedWidth { measuredFoldedWidth = width }
+                }
+                .modifier(PanelFace(box: box, isOpen: false, shape: shape))
+            open()
+                .modifier(PanelFace(box: box, isOpen: true, shape: shape))
         }
-        .frame(width: peeking ? openWidth : foldedWidth, height: peeking ? nil : foldedHeight, alignment: alignment)
-        .frame(maxHeight: peeking ? .infinity : nil, alignment: .top)
-        // The content is laid out at its final size at once; the clip is
-        // what grows, so the panel opens like a shape, not a list squeezing.
-        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .background {
-            PanelSurface(radius: radius, folded: !peeking)
-                .matchedGeometryEffect(id: id, in: namespace)
+        .modifier(PanelMorph(box: box, name: name, shape: shape))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            if height != roomHeight { roomHeight = height }
         }
-        .modifier(ShellPanelHover(panel: $panel))
-        .padding(ShellMetrics.inset)
     }
 }
 
-/// A docked panel: a card beside the slides, its shape matched with the
-/// floating one's so a pin grows the bubble into the column and a fold
-/// shrinks it back. Its content fades in once the shape has opened.
-struct DockedPanel<Content: View>: View {
-    let id: String
-    let namespace: Namespace.ID
-    @ViewBuilder var content: () -> Content
-    @State private var shown = false
+/// Where a panel's shape is in each state, in the room it has: inset from
+/// the window's edges, below the listening bar while floating.
+struct PanelShape: Equatable {
+    var trailing: Bool
+    var foldedWidth: CGFloat
+    var foldedHeight: CGFloat
+    var foldedRadius: CGFloat
+    var openWidth: CGFloat
+    var roomHeight: CGFloat
+
+    struct Frame: Equatable {
+        var top: CGFloat
+        var width: CGFloat
+        var height: CGFloat
+        var radius: CGFloat
+    }
+
+    func frame(_ mode: ShellPanel.Mode, floatingTop: CGFloat) -> Frame {
+        let inset = ShellMetrics.inset
+        switch mode {
+        case .collapsed:
+            return Frame(top: floatingTop + inset, width: foldedWidth, height: foldedHeight, radius: foldedRadius)
+        case .peek:
+            return Frame(
+                top: floatingTop + inset, width: openWidth,
+                height: max(roomHeight - floatingTop - inset * 2, foldedHeight), radius: ShellMetrics.floatingRadius)
+        case .pinned:
+            return Frame(
+                top: inset, width: openWidth,
+                height: max(roomHeight - inset * 2, foldedHeight), radius: ShellMetrics.dockedRadius)
+        }
+    }
+
+    /// Where the open content sits: the docked column when pinned, the
+    /// peeking card otherwise, so it's ready where a peek will show it.
+    func openFrame(_ mode: ShellPanel.Mode, floatingTop: CGFloat) -> Frame {
+        frame(mode == .pinned ? .pinned : .peek, floatingTop: floatingTop)
+    }
+}
+
+/// The shape itself: its frame (the one thing that animates), the faces
+/// clipped to it, the surface behind, and the pointer.
+private struct PanelMorph: ViewModifier {
+    let box: ShellPanelBox
+    let name: String
+    let shape: PanelShape
+
+    func body(content: Content) -> some View {
+        let mode = box.panel.mode
+        let frame = shape.frame(mode, floatingTop: box.floatingTop)
+        content
+            // The faces are laid out at their own sizes inside this; only
+            // the frame and the clip change from one frame to the next.
+            .frame(width: frame.width, height: frame.height, alignment: shape.trailing ? .topTrailing : .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: frame.radius, style: .continuous))
+            .background {
+                PanelSurface(radius: frame.radius, folded: mode == .collapsed, floating: mode != .pinned)
+            }
+            .modifier(ShellPanelHover(box: box, name: name))
+            .padding(.top, frame.top)
+            .padding(shape.trailing ? .trailing : .leading, ShellMetrics.inset)
+    }
+}
+
+/// One face of a panel: shown or hidden by an opacity of its own, faded
+/// on its own clock so the shape leads, and out of reach while hidden.
+private struct PanelFace: ViewModifier {
+    let box: ShellPanelBox
+    let isOpen: Bool
+    let shape: PanelShape
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
-        content()
-            .clipShape(RoundedRectangle(cornerRadius: ShellMetrics.dockedRadius, style: .continuous))
-            .opacity(shown ? 1 : 0)
-            .background {
-                PanelSurface(radius: ShellMetrics.dockedRadius, floating: false)
-                    .matchedGeometryEffect(id: id, in: namespace)
-            }
-            .onAppear {
-                if reduceMotion {
-                    shown = true
-                } else {
-                    withAnimation(.easeOut(duration: 0.2).delay(0.12)) { shown = true }
-                }
+    func body(content: Content) -> some View {
+        let panel = box.panel
+        let shown = panel.showsOpenFace == isOpen
+        if !isOpen {
+            face(content, shown: shown)
+        } else if panel.contentBuilt {
+            let open = shape.openFrame(panel.mode, floatingTop: box.floatingTop)
+            face(
+                content
+                    .frame(width: shape.openWidth, height: open.height)
+                    .background(PanelContentAnchor(box: box))
+                    .environment(\.shellPanel, box),
+                shown: shown)
+        }
+    }
+
+    private func face(_ content: some View, shown: Bool) -> some View {
+        content
+            .environment(\.livePreviewsPaused, !shown)
+            .allowsHitTesting(shown)
+            .accessibilityHidden(!shown)
+            .animation(HopeMotion.panelContent(showing: shown, reduced: reduceMotion)) {
+                $0.opacity(shown ? 1 : 0)
             }
     }
 }

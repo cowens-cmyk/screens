@@ -455,7 +455,7 @@ Open with ⌘,. The sidebar lists the sections; Settings opens on the last one u
 - **Media & Video**: video inputs and audio inputs.
 - **Integrations**, in five tabs: **Anthem**, **Lightkey & MIDI** (Lightkey, song sections, lighting cues, MIDI devices, MIDI input map), **Shepherd**, **Website** (hopejc.org events in the pre-service slideshow), **Remote & API** (the Local API, the phone remote's QR code, access keys, API reference).
 - **Assistant**: the **Anthropic API key**, the **Model** (Claude Opus 5.5, or Claude Sonnet 5.5 for faster answers), and **Sermon import** (current series theme, New Sermon Series…).
-- **Advanced**: **Check for updates automatically**, **Check Now**, and **Diagnostics** (Show in Finder).
+- **Advanced**: **Check for updates automatically**, **Check Now**, **Diagnostics** (Show in Finder), and **Measure panel motion** (off by default: each time the plan or the screens panel opens, folds, pins or unpins, the diagnostics log gets a "shell.motion" line with the frames drawn, how many came late and the longest gap).
 - **Keyboard**: open with ⌥K.
 
 ## The Assistant window

@@ -214,6 +214,7 @@ private struct LocalAPISettingsForm: View {
 /// Settings › Advanced: updates and the diagnostics log.
 struct AdvancedSettingsPane: View {
     @Bindable private var updater = AppUpdater.shared
+    @AppStorage(PanelMotionMeter.enabledKey) private var measurePanelMotion = false
 
     var body: some View {
         Form {
@@ -246,6 +247,7 @@ struct AdvancedSettingsPane: View {
                         NSWorkspace.shared.activateFileViewerSelecting([DiagnosticsStore.folder])
                     }
                 }
+                SettingsToggle("advanced.panelMotion", isOn: $measurePanelMotion)
             } header: {
                 Text("Diagnostics")
             }

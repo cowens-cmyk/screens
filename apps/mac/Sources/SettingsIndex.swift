@@ -411,5 +411,10 @@ enum SettingsIndex {
             title: "Diagnostics",
             caption: "The app's log of what it did, for tracking down a problem.",
             keywords: "diagnostics log logs debug support problem folder finder"),
+        SettingsEntry(
+            id: "advanced.panelMotion", category: .advanced,
+            title: "Measure panel motion",
+            caption: "Each time the plan or the screens open or fold, the log notes how many frames came late.",
+            keywords: "diagnostics animation smooth laggy stutter frames hitch panel bubble strip performance"),
     ]
 }
