@@ -95,6 +95,25 @@ struct PlanShell: View {
     private var runOnly: Bool { layout?.runOnly ?? false }
 
     var body: some View {
+        withSheets
+            .animation(HopeMotion.ui(reduced: reduceMotion), value: model.currentServiceID)
+            .onChange(of: model.currentServiceID) { _, _ in
+                itemID = nil
+                presentFocusScroll.reset()
+                ensurePlanOpeners()
+            }
+            // Coming back to Present (or to the whole plan) lands on the
+            // selected item again.
+            .onChange(of: modeRaw) { _, _ in presentFocusScroll.reset() }
+            .onChange(of: showWholePlan) { _, _ in presentFocusScroll.reset() }
+            .onChange(of: planOpenersKey) { ensurePlanOpeners() }
+            .onChange(of: itemID) { _, _ in songSlideEditor = false }
+            .task { await appeared() }
+    }
+
+    /// The workspace with its sheets; split from `body` so each half
+    /// type-checks in reasonable time.
+    private var withSheets: some View {
         face
             .sheet(item: Binding(get: { messagePlanID.map(IdentifiedID.init) }, set: { messagePlanID = $0?.id })) { plan in
                 PlanMessageSheet(model: model, planID: plan.id)
@@ -132,26 +151,18 @@ struct PlanShell: View {
                 guard case .success(let urls) = result else { return }
                 Task { await addMedia(urls) }
             }
-            .animation(HopeMotion.ui(reduced: reduceMotion), value: model.currentServiceID)
-            .onChange(of: model.currentServiceID) { _, _ in
-                itemID = nil
-                presentFocusScroll.reset()
-                ensureCountdowns()
-            }
-            // Coming back to Present (or to the whole plan) lands on the
-            // selected item again.
-            .onChange(of: modeRaw) { _, _ in presentFocusScroll.reset() }
-            .onChange(of: showWholePlan) { _, _ in presentFocusScroll.reset() }
-            .onChange(of: plans.upcoming.map(\.id)) { ensureCountdowns() }
-            .onChange(of: itemID) { _, _ in songSlideEditor = false }
-            .task {
-                await model.resident.ready([.service])
-                ensureCountdowns()
-                // A plan remembered from a library that's since been wiped.
-                if let id = model.currentServiceID, model.resident.services.value(id) == nil {
-                    model.currentServiceID = nil
-                }
-            }
+    }
+
+    private func appeared() async {
+        await model.resident.ready([.service])
+        ensurePlanOpeners()
+        // Again once the whole library is in, so the slideshow is found
+        // (or, on the Mac that runs the service, made).
+        model.whenLibraryReady { ensurePlanOpeners() }
+        // A plan remembered from a library that's since been wiped.
+        if let id = model.currentServiceID, model.resident.services.value(id) == nil {
+            model.currentServiceID = nil
+        }
     }
 
     /// Simple Mode (the run-only lock) swaps the whole workspace for the
@@ -681,24 +692,26 @@ struct PlanShell: View {
         plan.name = template.name.replacingOccurrences(of: " Template", with: "")
         plan.serviceDate = Self.dayFormatter.string(from: NewServiceSheet.nextSunday())
         plan.messagePresentationId = nil
-        plan.items = template.items.map { item in
-            var copy = item
-            copy.id = UUID().uuidString
-            if item.refId == template.messagePresentationId
-                || (item.itemKind == .presentation && model.presentation(item.refId)
-                    .map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true) {
-                var message = Presentation(
-                    id: UUID().uuidString, name: "Message", presentationKind: .deck,
-                    themeId: template.sermonThemeId ?? model.slideBuilding.sermonThemeId ?? BasicTemplates.pointsThemeID,
-                    slides: [])
-                message.category = PresentationTypes.sermon
-                message.sermonTimerSeconds = TemplateSermonLength.seconds(in: template, model: model)
-                model.createInDrive(message)
-                copy.refId = message.id
-                plan.messagePresentationId = message.id
-            }
-            return copy
+        // The pre-service slideshow is never copied: the new plan links to
+        // the same one every plan shows.
+        let copied = PlanTemplate.planItems(from: template) { item in
+            item.itemKind == .presentation && model.presentation(item.refId)
+                .map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
         }
+        plan.items = copied.items
+        for itemID in copied.messageItemIDs {
+            guard let index = plan.items.firstIndex(where: { $0.id == itemID }) else { continue }
+            var message = Presentation(
+                id: UUID().uuidString, name: "Message", presentationKind: .deck,
+                themeId: template.sermonThemeId ?? model.slideBuilding.sermonThemeId ?? BasicTemplates.pointsThemeID,
+                slides: [])
+            message.category = PresentationTypes.sermon
+            message.sermonTimerSeconds = TemplateSermonLength.seconds(in: template, model: model)
+            model.createInDrive(message)
+            plan.items[index].refId = message.id
+            plan.messagePresentationId = message.id
+        }
+        if let ensured = PreServiceSlides.ensuring(plan, sharedID: model.preServiceSlideshowID()) { plan = ensured }
         model.createInDrive(plan)
         model.currentServiceID = plan.id
     }
@@ -925,6 +938,9 @@ struct PlanShell: View {
                 if let planID = model.currentServiceID, !runOnly {
                     Button("Message & Series…", systemImage: "text.book.closed") { messagePlanID = planID }
                 }
+                if !runOnly {
+                    Button("Edit Pre-Service Slides…", systemImage: "rectangle.stack") { editPreServiceSlides() }
+                }
                 if !runOnly { themesMenu }
                 if !runOnly, layout != nil {
                     Button("Simple Mode…", systemImage: "lock") { requestSimpleMode() }
@@ -938,7 +954,7 @@ struct PlanShell: View {
             } label: {
                 Label("More", systemImage: "ellipsis")
             }
-            .help("Message & Series, Themes, Simple Mode, Timers & Macros, Screen Setup")
+            .help("Message & Series, Pre-Service Slides, Themes, Simple Mode, Timers & Macros, Screen Setup")
             if screensMenuShown {
                 Button { togglePanel(.screens) } label: {
                     Label(screensPanel.isPinned ? "Fold Screens" : "Pin Screens", systemImage: "sidebar.right")
@@ -948,20 +964,44 @@ struct PlanShell: View {
         }
     }
 
-    // MARK: Countdown
+    // MARK: Pre-service and countdown
 
-    /// Every upcoming service (not a template, not a past plan) opens with
-    /// a countdown. An item the plan already has that is one (Shepherd's
-    /// "COUNTDOWN", or one linked to a countdown video or presentation) is
-    /// marked as it; otherwise the plan gets an empty Countdown item first,
-    /// to be given this week's video, unless its countdown was taken out.
-    private func ensureCountdowns() {
+    /// What the pass below depends on: the upcoming plans, the templates
+    /// and the Service Day setup's slideshow.
+    private var planOpenersKey: [String] {
+        let current = plans
+        return current.upcoming.map(\.id) + ["|"] + current.templates.map(\.id)
+            + ["|", model.slideBuilding.serviceDay?.preServicePresentationId ?? ""]
+    }
+
+    /// Every upcoming plan and template opens with the shared pre-service
+    /// slideshow (see PreServiceSlides), and every upcoming service (not a
+    /// template, not a past plan) with a countdown after it. An item the
+    /// plan already has that is one (Shepherd's "Pre-Service" or
+    /// "COUNTDOWN", or one linked to the slideshow or a countdown video) is
+    /// marked as it; otherwise the plan gets the item, unless it was taken
+    /// out of that plan. With no slideshow yet, the Mac that runs the
+    /// service makes one.
+    private func ensurePlanOpeners() {
         guard !runOnly else { return }
-        for plan in plans.upcoming {
-            guard let change = ServiceCountdown.change(for: plan, isCountdownLink: isCountdownLink) else { continue }
-            model.updateService(plan.id) { service in
-                ServiceCountdown.apply(change, to: &service)
-            }
+        let current = plans
+        model.ensurePlanOpeners(upcoming: current.upcoming, templates: current.templates, isCountdownLink: isCountdownLink)
+        guard model.preServiceSlideshowID() == nil, ServiceStation.runsService else { return }
+        Task {
+            guard await model.makePreServiceSlideshowIfNeeded(byHand: false) != nil else { return }
+            ensurePlanOpeners()
+        }
+    }
+
+    /// Edit Pre-Service Slides in the More menu: the shared slideshow in
+    /// the editor, made first when the library has none.
+    private func editPreServiceSlides() {
+        Task {
+            guard let id = await model.makePreServiceSlideshowIfNeeded(byHand: true) else { return }
+            ensurePlanOpeners()
+            itemID = nil
+            model.openInEditor(entryID: id)
+            modeRaw = AppMode.edit.rawValue
         }
     }
 

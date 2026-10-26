@@ -345,7 +345,12 @@ struct ServiceDaySheet: View {
         let settings = ServiceDaySettings(
             services: ServiceDay.sorted(services), days: days,
             preServicePresentationId: slideshowID.isEmpty ? nil : slideshowID, clearFirst: clearFirst)
+        // A different slideshow chosen here becomes the one every plan shows.
+        let previous = model.preServiceSlideshowID()
         model.updateSlideBuilding { $0.serviceDay = settings }
+        if !slideshowID.isEmpty, slideshowID != previous {
+            model.relinkPreServiceItems(to: slideshowID)
+        }
         ServiceStation.runsService = runsHere
         apply(ServiceDay.changes(from: model.residentScheduleTriggers, to: settings))
         if makeLoop, let fix = loopFix {

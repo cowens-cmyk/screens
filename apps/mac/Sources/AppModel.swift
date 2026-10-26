@@ -1238,9 +1238,10 @@ final class AppModel {
         updateService(serviceID) { $0.items.append(header) }
     }
 
-    /// Taking out a plan's countdown is remembered, so it isn't put back.
+    /// Taking out a plan's countdown or pre-service slideshow is
+    /// remembered, so it isn't put back.
     func removeServiceItem(_ serviceID: String, itemID: String) {
-        updateService(serviceID) { ServiceCountdown.remove(itemID: itemID, from: &$0) }
+        updateService(serviceID) { PreServiceSlides.remove(itemID: itemID, from: &$0) }
     }
 
     func runOfShow(_ service: Service) -> [ServiceItem] {

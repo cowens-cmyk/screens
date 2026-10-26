@@ -118,8 +118,20 @@ extension AssistantToolbox {
         fields["message"] = .object(message)
 
         // Pre-service slideshow.
+        // One slideshow shared by every plan: its slides are edited once,
+        // never copied into a plan.
         if let id = preServicePresentationID(), let entry = model.libraryEntry(id) {
-            fields["pre_service"] = ["presentation_id": .string(id), "name": .string(entry.name)]
+            var preService: [String: AssistantJSON] = [
+                "presentation_id": .string(id), "name": .string(entry.name), "shared_by_every_plan": true,
+            ]
+            if let item = PreServiceSlides.item(in: plan) {
+                preService["item_id"] = .string(item.id)
+            } else if plan.preServiceRemoved == true {
+                preService["note"] = "The pre-service slideshow was taken out of this plan; it stays out."
+            } else {
+                preService["note"] = "Not in this plan yet; Screens puts it first by itself. Don't add it."
+            }
+            fields["pre_service"] = .object(preService)
         } else {
             fields["pre_service"] = .null
         }
@@ -729,10 +741,6 @@ extension AssistantToolbox {
 
     /// The Service Day setup's slideshow, else one named Pre-Service.
     func preServicePresentationID() -> String? {
-        if let id = model.slideBuilding.serviceDay?.preServicePresentationId, !id.isEmpty, model.libraryEntry(id) != nil {
-            return id
-        }
-        return model.entries(of: .presentation)
-            .first { ServiceDay.looksLikePreService($0.name) || ServiceDay.looksLikePreService($0.subkind) }?.id
+        model.preServiceSlideshowID()
     }
 }

@@ -42,8 +42,8 @@ public enum AssistantJob: Equatable, Sendable, Identifiable {
         switch self {
         case .updatePreService:
             """
-            Update the pre-service slides. Find the pre-service slideshow: a presentation whose name, folder or \
-            type contains "Pre-Service" or "Pre Service" (it auto-advances). If there is more than one, ask me which. \
+            Update the pre-service slides. Find the pre-service slideshow: check_service_readiness names it. It is \
+            one presentation every plan shares, so edit it there and never copy it into a plan. \
             Match its slides against the church's events on hopejc.org and remove the promo slides for events \
             that have already ended. Ask me about any slide you are not sure of instead of deleting it. Then tell \
             me what you removed, what is still current, and which upcoming events have no slide yet.
@@ -77,7 +77,8 @@ public enum AssistantJob: Equatable, Sendable, Identifiable {
     it; if not, ask me to attach it with the paperclip and wait. If I say the notes aren't ready, carry on and mark \
     the message as still to do.
     4. Pre-service: run match_slides_to_events on the pre-service slideshow that check_service_readiness names, and \
-    note the promos for events that have ended. Don't delete them yet.
+    note the promos for events that have ended. Don't delete them yet. Every plan shares that one slideshow and \
+    Screens puts it first in each plan by itself, so don't add it to the plan.
     5. Countdown: if the countdown has no video, use the suggested one (the newest in Media › Countdowns that \
     wasn't used last week).
     6. Scheduling: if no countdowns are scheduled for the plan, use the proposed service times.

@@ -1801,6 +1801,9 @@
         "isCountdown": {
           "type": "boolean"
         },
+        "isPreService": {
+          "type": "boolean"
+        },
         "lightingCue": {
           "type": "string"
         },
@@ -2074,6 +2077,9 @@
           "type": "boolean"
         },
         "countdownRemoved": {
+          "type": "boolean"
+        },
+        "preServiceRemoved": {
           "type": "boolean"
         }
       },

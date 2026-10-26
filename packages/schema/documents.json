@@ -2241,6 +2241,11 @@
           "optional": true
         },
         {
+          "name": "isPreService",
+          "type": "bool",
+          "optional": true
+        },
+        {
           "name": "lightingCue",
           "type": "string",
           "optional": true
@@ -2522,6 +2527,11 @@
         },
         {
           "name": "countdownRemoved",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "preServiceRemoved",
           "type": "bool",
           "optional": true
         }

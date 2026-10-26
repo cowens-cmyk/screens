@@ -240,7 +240,8 @@ public enum AssistantToolCatalog {
         AssistantToolSpec(
             name: "add_item_to_plan",
             description: "Adds a library item (presentation, media, audio or playlist, by id) or a header to a plan, after a "
-                + "given item or at the end. Give ref_id or header, not both.",
+                + "given item or at the end. Give ref_id or header, not both. The pre-service slideshow is already "
+                + "first in every plan and shared by all of them; don't add it again.",
             schema: object([
                 "plan_id": string("The plan id.", nonEmpty: true),
                 "ref_id": string("Library id of the presentation or media to add."),
@@ -304,7 +305,8 @@ public enum AssistantToolCatalog {
             description: "One look at what a plan still needs for Sunday. Without plan_id it picks the next upcoming plan "
                 + "(a Shepherd plan when there is one). Returns the plan; its songs and which have no slides; the countdown "
                 + "item, its video and a suggested video (newest in Media › Countdowns not used last week); the message, "
-                + "its slide count and the plan's sermon series; the pre-service slideshow; and the countdowns already "
+                + "its slide count and the plan's sermon series; the pre-service slideshow (one presentation every plan "
+                + "shares, so editing its slides changes every plan); and the countdowns already "
                 + "scheduled with proposed service times from the Service Day setup or Shepherd. Changes nothing.",
             schema: object(["plan_id": string("The plan id; leave out for the next upcoming plan.")])),
         AssistantToolSpec(
