@@ -301,7 +301,9 @@ public enum TextRasterizer {
         return insets
     }
 
-    static let chordSizeFactor: Double = 0.7
+    /// Chords are read at a glance from across the stage, so they sit close
+    /// to the lyric's size and in bold.
+    static let chordSizeFactor: Double = 0.9
 
     static let defaultChordColor = SceneColor(red: 1.0, green: 0.72, blue: 0.15)
 
@@ -508,7 +510,7 @@ public enum TextRasterizer {
         }
 
         let chordFontSize = text.fontSize * chordSizeFactor * fontScale * pixelScale
-        let font = makeFont(name: text.fontName, size: chordFontSize, tabularFigures: false)
+        let font = boldChordFont(name: text.fontName, size: chordFontSize)
         let color = colorSpace.flatMap { cgColor(text.chordColor ?? defaultChordColor, in: $0) }
         let gap = chordFontSize * chordGapEms
 
@@ -610,6 +612,16 @@ public enum TextRasterizer {
         add(.tailIndent, tailIndent)
         add(.paragraphSpacing, paragraphSpacing)
         return CTParagraphStyleCreate(&settings, settings.count)
+    }
+
+    /// The lyric's font in bold, or the system's bold when that font has no
+    /// bold face.
+    private static func boldChordFont(name: String, size: CGFloat) -> CTFont {
+        let base = CTFontCreateWithName(name as CFString, size, nil)
+        if let bold = CTFontCreateCopyWithSymbolicTraits(base, size, nil, .traitBold, .traitBold) {
+            return bold
+        }
+        return CTFontCreateUIFontForLanguage(.emphasizedSystem, size, nil) ?? base
     }
 
     private static func makeFont(name: String, size: CGFloat, tabularFigures: Bool) -> CTFont {
