@@ -41,8 +41,15 @@ public enum SlideLabels {
         if presentation.presentationKind == .song, let group {
             return SlideLabel(title: group, detail: text)
         }
-        if let ownName { return SlideLabel(title: ownName) }
-        if let group { return SlideLabel(title: group, detail: text) }
+        // A name that is only the background's file name ("Motion 15.mp4")
+        // says less than the group the slide sits in.
+        if let ownName, !(group != nil && isFileName(ownName, mediaName: mediaName)) {
+            return SlideLabel(title: ownName)
+        }
+        if let group {
+            let detail = text.isEmpty ? (trimmed(mediaName) ?? "") : text
+            return SlideLabel(title: group, detail: detail)
+        }
         if !text.isEmpty { return SlideLabel(title: text) }
         if slide.background != nil, let mediaName = trimmed(mediaName) { return SlideLabel(title: mediaName) }
         if !slide.name.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -218,6 +225,13 @@ public enum SlideLabels {
         guard let name = trimmed(slide.name) else { return nil }
         if hasText, let mediaName = trimmed(mediaName), sameFile(name, mediaName) { return nil }
         return name
+    }
+
+    /// The background's file name, or anything named like a media file.
+    private static func isFileName(_ name: String, mediaName: String?) -> Bool {
+        if let mediaName = trimmed(mediaName), sameFile(name, mediaName) { return true }
+        let ext = (name as NSString).pathExtension.lowercased()
+        return ["mp4", "mov", "m4v", "jpg", "jpeg", "png", "heic", "gif", "webm"].contains(ext)
     }
 
     private static func sameFile(_ name: String, _ mediaName: String) -> Bool {

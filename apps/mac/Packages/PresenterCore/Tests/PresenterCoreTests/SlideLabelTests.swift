@@ -170,4 +170,12 @@ struct SlideLabelTests {
         #expect(SlideLabels.label(for: named, at: 0, in: presentation).title == "Coffee")
         #expect(SlideLabels.label(for: unnamed, at: 1, in: presentation) == SlideLabel(title: "Welcome", detail: "Kids check-in"))
     }
+
+    @Test func aGroupedSlideNamedOnlyForItsVideoShowsTheGroup() {
+        let sections = [PresentationSection(id: "i", name: "Intro")]
+        let slide = Slide(id: "a", name: "The Great Color Motion 15.mp4", objects: [], sectionId: "i")
+        let label = SlideLabels.label(for: slide, at: 0, in: deck(sections: sections, slides: [slide]),
+                                      mediaName: "The Great Color Motion 15.mp4")
+        #expect(label == SlideLabel(title: "Intro", detail: "The Great Color Motion 15.mp4"))
+    }
 }
