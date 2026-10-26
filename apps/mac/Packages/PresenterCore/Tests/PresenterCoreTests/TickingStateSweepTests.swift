@@ -31,6 +31,8 @@ import Testing
         ],
         "MonitorsPanel.swift": [.quiet("the 4 Hz stream badge writes coverage only when it changes")],
         "StageDisplay.swift": [.quiet("the 4 Hz stage video badge writes its flag only when it changes")],
+        // A ⌘0 or ⌘+ zoom eases over 0.18 s.
+        "CanvasNavigator.swift": [.moves(["canvasNavigation"])],
     ]
 
     private let readers: [String: (hint: String, pattern: Regex<Substring>, views: Set<String>)] = [
@@ -42,6 +44,10 @@ import Testing
         "animationPreviewTime": ("animationPreviewTime", /\banimationPreviewTime\b/, ["AnimationPreviewStrip"]),
         "elapsed": (".elapsed", /\w\.elapsed\b(?!\s*\()/, ["AudioScrubBar", "AudioTimecode", "TransportPill"]),
         "alertVisible": ("alertVisible", /\balertVisible\b/, []),
+        "canvasNavigation": (
+            "avigator", /\b(?:navigator|canvasNavigator)\.(?:navigation|resolved|isFit|viewport\(|zoomPercent\()/,
+            ["CanvasPlaced", "CanvasCheckerboard", "CanvasZoomControl"]
+        ),
     ]
 
     private let actionOpeners: [Regex<Substring>] = [

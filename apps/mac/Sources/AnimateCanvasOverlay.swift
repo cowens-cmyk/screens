@@ -6,6 +6,11 @@ import SwiftUI
 struct AnimateCanvasOverlay: View {
     let model: SlideEditorModel
 
+    /// The part of the slide in view when the canvas is zoomed; badges and
+    /// the chip outside it are left out, since a clipped button still takes
+    /// clicks where it isn't drawn.
+    var visibleRect: CGRect? = nil
+
     @State private var galleryObjectID: GalleryAnchor?
 
     private struct GalleryAnchor: Identifiable, Equatable {
@@ -16,10 +21,12 @@ struct AnimateCanvasOverlay: View {
         GeometryReader { proxy in
             let scale = model.canvasSize.width > 0 ? proxy.size.width / model.canvasSize.width : 1
             ZStack(alignment: .topLeading) {
-                ForEach(badges, id: \.objectID) { badge in
+                ForEach(badges.filter { shown(CGPoint(x: $0.frame.minX * scale, y: $0.frame.minY * scale)) },
+                        id: \.objectID) { badge in
                     badgeView(badge, scale: scale)
                 }
-                if let chipID = chipObjectID, let frame = viewFrame(chipID, scale: scale) {
+                if let chipID = chipObjectID, let frame = viewFrame(chipID, scale: scale),
+                   shown(CGPoint(x: frame.maxX, y: frame.minY)) {
                     chip(for: chipID, frame: frame)
                 }
             }
@@ -63,6 +70,10 @@ struct AnimateCanvasOverlay: View {
             y: badge.frame.minY * scale + 9
         )
         .help("Arrives on Click \(badge.click + 1) — click to focus that column")
+    }
+
+    private func shown(_ point: CGPoint) -> Bool {
+        visibleRect.map { $0.contains(point) } ?? true
     }
 
     private var chipObjectID: String? {

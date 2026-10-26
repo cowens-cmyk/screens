@@ -66,6 +66,48 @@ public final class MetalSceneView: NSView {
         }
     }
 
+    /// Where an editor canvas puts the scene when it is zoomed or panned,
+    /// in the view's points, and the pixels per scene unit to draw it at.
+    public struct Viewport: Equatable, Sendable {
+        public var scale: CGFloat
+        public var offset: CGPoint
+        /// Pixels per scene unit. Below `scale × backing` the scene is drawn
+        /// smaller and magnified; see Compositor.render(…viewScale:).
+        public var rasterScale: CGFloat
+
+        public init(scale: CGFloat, offset: CGPoint, rasterScale: CGFloat) {
+            self.scale = scale
+            self.offset = offset
+            self.rasterScale = rasterScale
+        }
+    }
+
+    /// Asked, with the view's size and backing scale, where the scene goes;
+    /// nil letterboxes it inside `sceneInset` as before. Called on the main
+    /// thread whenever the view resizes or `refreshViewport()` is called.
+    public var viewportResolver: (@MainActor (CGSize, CGFloat) -> Viewport?)? {
+        didSet { refreshViewport() }
+    }
+
+    /// Picks up a new zoom or pan from `viewportResolver` for the next frame.
+    public func refreshViewport() {
+        let backing = window?.backingScaleFactor ?? 2
+        guard let viewport = viewportResolver?(bounds.size, backing) else {
+            viewportBox.value = nil
+            return
+        }
+        viewportBox.value = PixelViewport(
+            scale: viewport.scale * backing,
+            offset: CGPoint(x: viewport.offset.x * backing, y: viewport.offset.y * backing),
+            rasterScale: viewport.rasterScale)
+    }
+
+    private struct PixelViewport {
+        var scale: CGFloat
+        var offset: CGPoint
+        var rasterScale: CGFloat
+    }
+
     public var tickCount: Int { tickState.value.tickCount }
     public var missedTickCount: Int { tickState.value.missedTickCount }
 
@@ -97,6 +139,7 @@ public final class MetalSceneView: NSView {
     private let delayBox = Locked(0)
 
     private let insetPixelsBox = Locked<CGFloat>(0)
+    private let viewportBox = Locked<PixelViewport?>(nil)
 
     private final class DelayRing {
         var textures: [MTLTexture] = []
@@ -178,6 +221,7 @@ public final class MetalSceneView: NSView {
             metalLayer.drawableSize = size
         }
         insetPixelsBox.value = sceneInset * scale
+        refreshViewport()
         updateFrameRatePacing()
     }
 
@@ -249,6 +293,16 @@ extension MetalSceneView: CAMetalDisplayLinkDelegate {
         }
         guard let provider = providerBox.value else { return }
         let delay = delayBox.value
+        if delay == 0, let viewport = viewportBox.value {
+            delayRingBox.value = nil
+            compositor.render(
+                scene: provider(), into: update.drawable, at: targetTimestamp,
+                transparentBackground: transparentBackground,
+                viewScale: viewport.scale, viewOffset: viewport.offset,
+                rasterScale: viewport.rasterScale
+            )
+            return
+        }
         guard delay > 0 else {
             delayRingBox.value = nil
             compositor.render(
