@@ -48,7 +48,8 @@ extension AppModel {
     @discardableResult
     func importChordChart(source: String, fallbackTitle: String) -> String {
         var presentation = LyricTextImporter.makePresentation(
-            LyricCleanup.clean(source), fallbackTitle: fallbackTitle, themeId: slideBuilding.lyricsImportThemeId ?? "")
+            LyricCleanup.clean(source, removePunctuation: LyricImportSettings.removePunctuation),
+            fallbackTitle: fallbackTitle, themeId: slideBuilding.lyricsImportThemeId ?? "")
         presentation.presentationKind = .song
         presentation.category = PresentationTypes.worship
         presentation.folder = newPlacement.folder(for: .presentation)
@@ -69,7 +70,8 @@ extension AppModel {
             }
         }
         guard let source else { return false }
-        let chart = LyricTextImporter.makePresentation(LyricCleanup.clean(source), fallbackTitle: nil)
+        let chart = LyricTextImporter.makePresentation(
+            LyricCleanup.clean(source, removePunctuation: LyricImportSettings.removePunctuation), fallbackTitle: nil)
         updatePresentation(presentationID) { presentation in
             presentation.slides = chart.slides
             presentation.sections = chart.sections

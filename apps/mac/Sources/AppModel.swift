@@ -2926,7 +2926,7 @@ final class AppModel {
     @discardableResult
     func importLyrics(text: String, fallbackTitle: String? = nil, linesPerSlide: Int = 2, themeId: String = "") -> String? {
         let presentation = LyricTextImporter.makePresentation(
-            LyricCleanup.clean(text),
+            LyricCleanup.clean(text, removePunctuation: LyricImportSettings.removePunctuation),
             fallbackTitle: fallbackTitle,
             themeId: themeId,
             linesPerSlide: linesPerSlide

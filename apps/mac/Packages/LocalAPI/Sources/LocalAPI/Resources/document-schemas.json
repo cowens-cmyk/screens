@@ -1382,6 +1382,18 @@
         },
         "sermonTimerSeconds": {
           "type": "number"
+        },
+        "shepherdSongId": {
+          "type": "string"
+        },
+        "shepherdArrangementId": {
+          "type": "string"
+        },
+        "shepherdChartHash": {
+          "type": "string"
+        },
+        "shepherdImportHash": {
+          "type": "string"
         }
       },
       "required": [

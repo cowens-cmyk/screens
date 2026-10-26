@@ -78,16 +78,20 @@ final class LyricsFetcher {
         guard sync.isConfigured else { return .notConfigured }
         let client = sync.client
         do {
-            guard let match = try await ShepherdSongMatch.find(
-                ccli: item.mxuCcliNumber.map(String.init), title: title, search: { try await client.searchSongs($0) })
-            else { return .notFound }
-            let detail = try await client.song(id: match.id)
-            let arrangement = detail.arrangements.first { $0.name == item.mxuArrangementName }
-                ?? detail.arrangements.first
-            guard SongImport.hasText(song: detail, arrangement: arrangement),
-                  var presentation = SongImport.presentation(
-                      song: detail, arrangement: arrangement, playingKey: item.mxuSongKey,
-                      themeId: model.slideBuilding.lyricsImportThemeId ?? "")
+            // The plan's own Shepherd song when it has one, else a search.
+            var detail: ShepherdClient.SongDetail?
+            if let id = item.mxuSourceSongId, !id.isEmpty { detail = try? await client.song(id: id) }
+            if detail == nil {
+                guard let match = try await ShepherdSongMatch.find(
+                    ccli: item.mxuCcliNumber.map(String.init), title: title, search: { try await client.searchSongs($0) })
+                else { return .notFound }
+                detail = try await client.song(id: match.id)
+            }
+            guard let detail else { return .notFound }
+            let arrangement = ShepherdSongMatch.arrangement(
+                in: detail, id: item.mxuSourceArrangementId, name: item.mxuArrangementName)
+            guard var presentation = SongImport.presentation(
+                song: detail, arrangement: arrangement, playingKey: item.mxuSongKey, model: model)
             else { return .noWords }
             if let now = linkedPresentation(item.id, planID: planID, model: model) { return .alreadyLinked(now) }
             presentation.folder = model.newPlacement.folder(for: .presentation)
@@ -183,7 +187,7 @@ final class LyricsFetcher {
     /// SongSelect and ChordPro text, read as a song (sections, CCLI number).
     func importText(_ text: String, title: String, model: AppModel) -> Presentation {
         var presentation = LyricTextImporter.makePresentation(
-            LyricCleanup.clean(text), fallbackTitle: title,
+            LyricCleanup.clean(text, removePunctuation: LyricImportSettings.removePunctuation), fallbackTitle: title,
             folder: model.newPlacement.folder(for: .presentation),
             themeId: model.slideBuilding.lyricsImportThemeId ?? "")
         presentation.presentationKind = .song

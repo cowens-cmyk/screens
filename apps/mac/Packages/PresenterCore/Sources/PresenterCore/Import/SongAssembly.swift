@@ -7,15 +7,17 @@ import Foundation
 public enum SongAssembly {
 
     public static func presentation(
-        lyrics: String?, chordChart: String?, title: String, themeId: String, linesPerSlide: Int = 2
+        lyrics: String?, chordChart: String?, title: String, themeId: String, linesPerSlide: Int = 2,
+        removePunctuation: Bool = true
     ) -> Presentation? {
         let chartChordPro = chordChart.flatMap { chart -> String? in
             let trimmed = chart.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
             let pro = LyricTextImporter.detectFormat(trimmed) == .chordPro ? trimmed : ChordChartImport.chordPro(fromChart: trimmed)
-            return LyricCleanup.clean(pro)
+            return LyricCleanup.clean(pro, removePunctuation: removePunctuation)
         }
-        let words = lyrics.map { LyricCleanup.clean($0) }?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = lyrics.map { LyricCleanup.clean($0, removePunctuation: removePunctuation) }?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard let source = (words?.isEmpty == false ? words : nil) ?? chartChordPro else { return nil }
         var presentation = LyricTextImporter.makePresentation(

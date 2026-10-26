@@ -51,6 +51,7 @@ struct SongEditorView: View {
                     .onSubmit(save)
                     .help("The key it's charted in, for the stage display")
             }
+            ShepherdSongRow(model: model, presentationID: presentationID, reload: load)
             Text("Put each section's name on its own line (Verse 1, Chorus, Bridge), then its lyrics.")
                 .font(.caption).foregroundStyle(.secondary)
             TextEditor(text: $lyrics)
@@ -191,7 +192,8 @@ struct SongEditorView: View {
         guard let current = presentation,
               let built = SongAssembly.presentation(
                   lyrics: lyrics, chordChart: nil, title: title.isEmpty ? current.name : title,
-                  themeId: current.themeId, linesPerSlide: linesPerSlide)
+                  themeId: current.themeId, linesPerSlide: linesPerSlide,
+                  removePunctuation: LyricImportSettings.removePunctuation)
         else { return }
         let newNames = (built.sections ?? []).map(\.name)
         // Keep the order the operator set where those sections still exist.

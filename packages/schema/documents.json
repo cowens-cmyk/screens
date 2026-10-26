@@ -1726,6 +1726,26 @@
           "name": "sermonTimerSeconds",
           "type": "double",
           "optional": true
+        },
+        {
+          "name": "shepherdSongId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "shepherdArrangementId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "shepherdChartHash",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "shepherdImportHash",
+          "type": "string",
+          "optional": true
         }
       ]
     },
