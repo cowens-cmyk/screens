@@ -5,12 +5,15 @@ enum AppMode: String, CaseIterable {
     case present
     case edit
     case scheduler
+    /// The Media Library in the main window, beside the other modes.
+    case media
 
     var title: String {
         switch self {
         case .present: "Present"
         case .edit: "Edit"
         case .scheduler: "Scheduler"
+        case .media: "Media"
         }
     }
 }
@@ -1632,6 +1635,8 @@ struct ShellView: View {
         case .scheduler:
 
             SchedulerView(model: model, controls: controls)
+        case .media:
+            MediaLibraryView(model: model)
         }
     }
 

@@ -820,6 +820,8 @@ struct PlanShell: View {
             editor
         case .scheduler:
             SchedulerView(model: model, controls: controls)
+        case .media:
+            MediaLibraryView(model: model)
         }
     }
 
@@ -900,6 +902,7 @@ struct PlanShell: View {
                     Text("Present").tag(AppMode.present.rawValue)
                     Text("Edit").tag(AppMode.edit.rawValue)
                     Text("Schedule").tag(AppMode.scheduler.rawValue)
+                    Text("Media").tag(AppMode.media.rawValue)
                 }
                 .pickerStyle(.segmented)
                 .fixedSize()
