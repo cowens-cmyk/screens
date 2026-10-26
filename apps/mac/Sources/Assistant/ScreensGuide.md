@@ -41,6 +41,16 @@ The window title is the current plan's name. The slides fill the middle, over a 
 - **More** (…): **Message & Series…**, **Themes** (this plan's series first, then every theme by name: pick one to open it in the theme editor; also **New Theme from Image…** and **Show Themes in Library**), **Timers & Macros…**, **Lower Thirds…** (the livestream lower third for each type, see Livestream), **Screen Setup…** (opens Settings › Screens), **Edit Stage Display…**.
 - **Plan** (left sidebar button) and **Screens** (right sidebar button): pin or fold each panel, in Present and Schedule.
 
+## Simple Mode
+
+Simple Mode is the volunteer view behind a passcode (the run-only lock). It replaces the whole window: no plan panel, no screens panel, no library, editor, settings or scheduler.
+
+- **Slides**: the whole plan on one page, top to bottom, the same page as Present's whole plan: each item's header row, then its slides as tiles with their labels (see the slide grid below). Click a slide to put it up. Arrows, Space and Return step through the plan, from the last slide of one item to the first of the next. Nothing on the page edits: no **+**, no drops, no right-click menus, no arrangement picker.
+- **Screens**, pinned at the top in the middle while the slides scroll under them: a live preview of each screen that is set up (Audience, Livestream, Stage, then any others), its name under it, and a red edge and dot while something is up on it. Screens hidden in the screens panel stay hidden here.
+- Beside the previews: **Back** and **Next**, a large red **Clear All** (⇧Esc), the sermon timer (click the time to set the minutes; −1, +1, start or pause, reset) and **Message to Stage**.
+- The toolbar has the plan menu (this week's plans and later) and **Exit Simple Mode**, which asks for the passcode. Simple Mode stays on after a relaunch.
+- Enter it from **View › Simple Mode…**, the **More** (…) menu, or Settings › General › **Simple Mode**. The first time sets the passcode.
+
 ## Menu bar and shortcuts
 
 **Screens menu**: Settings… (⌘,), **Check for Updates…**.
@@ -152,7 +162,7 @@ When Anthem triggers a song that is in the plan twice, the slide lands on the li
 
 ## Present mode: the slide grid
 
-Click a slide to fire it. Each tile shows the slide with a thin bar in its group's color along the bottom edge, and the slide number and group name under it. The live slide has a red ring and a **LIVE** tag; the slide the next arrow key fires has a light ring. ⌘-click and Shift-click select slides; drag a box to select several. The header shows the presentation name, the arrangement, the key chip, and a **Slide Show: 10s · Loop** chip when the presentation auto-advances (click it to change). To add a slide, hover the last slide and click its **+** (**Slide from Theme…**, **From Media Library…** or **Blank Slide**), right-click a slide › **New Slide After…**, or right-click the item header › **Add Slide…**. Delete deletes selected slides, all of them if you like; ⌘C and ⌘V copy and paste them.
+Click a slide to fire it. Each tile shows the slide with a thin bar in its group's color along the bottom edge, and under it the slide number and a label in bold saying what the slide is, with smaller detail on a second line. Scripture slides are labelled by their own verses ("Genesis 32:3", "Genesis 32:3–5", "Genesis 31:55–32:2") with the translation as the detail; song slides by their group ("Verse 1", "Chorus") with the first lyric line; message slides by their point or title with "Point 2" or "Title" as the detail (a Point + Scripture slide adds its reference); media slides by the picture or video's name. Any other slide shows its own name, else its first line of text, else "Slide 7". A long label wraps to a second line when there's no detail; a long reference is shortened in the middle so the book and the last verse stay. Videos in the plan are labelled by name and length, and the countdown as "Countdown 5:00". The live slide has a red ring and a **LIVE** tag; the slide the next arrow key fires has a light ring. ⌘-click and Shift-click select slides; drag a box to select several. The header shows the presentation name, the arrangement, the key chip, and a **Slide Show: 10s · Loop** chip when the presentation auto-advances (click it to change). To add a slide, hover the last slide and click its **+** (**Slide from Theme…**, **From Media Library…** or **Blank Slide**), right-click a slide › **New Slide After…**, or right-click the item header › **Add Slide…**. Delete deletes selected slides, all of them if you like; ⌘C and ⌘V copy and paste them.
 
 **Right-click a slide:**
 - **Screens…**: what this slide puts on the Audience (Theme Default or a specific design), Livestream (see Livestream), and Stage (Keep current, or a stage layout).

@@ -4,58 +4,53 @@ import SlideScene
 import SwiftUI
 
 /// Simple Mode: the main window for a volunteer running a service. The
-/// plan's items down the left, the chosen item's slides as big tiles in the
-/// middle, the audience screen, a message to the stage and the sermon timer
-/// on the right, and Back, Next and Clear All across the bottom. Nothing
-/// here edits: no library, no editor, no settings, no scheduler, no context
-/// menus, no drags. It is the run-only lock (PresentLayoutController.runOnly)
-/// with its own face, so it survives a relaunch and leaving asks for the
-/// passcode.
+/// whole plan's slides on one page, top to bottom, each labelled with what
+/// it is, and pinned above them in the middle what every screen is showing,
+/// with Back, Next, Clear All and the sermon timer beside it. Clicking a
+/// slide puts it up; the arrows, Space and Return step through the plan.
+///
+/// The page is Present's whole-plan page itself, under the run-only lock:
+/// nothing on it edits (no Add Slide, no drops, no context menus). Nothing
+/// here edits either: no library, no editor, no settings, no scheduler, no
+/// plan or screens panels. It is the run-only lock
+/// (PresentLayoutController.runOnly) with its own face, so it survives a
+/// relaunch and leaving asks for the passcode.
 struct SimpleModeView: View {
     @Bindable var model: AppModel
     let render: RenderContext?
     let controls: ServiceControls?
     let layout: PresentLayoutController?
 
-    /// The item whose slides fill the middle. It follows the show: when
-    /// Next moves into another item, that item opens.
+    /// The item the page is on, as the plan list's selection is in Present:
+    /// the page moves it as it follows the show.
     @State private var itemID: String?
+    @State private var focusScroll = PresentFocusScroll()
     @State private var exiting = false
     @FocusState private var keysHere: Bool
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
 
-    private static let sideWidth: CGFloat = 340
-
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                planColumn
-                    .frame(width: 290)
-                    .frame(maxHeight: .infinity)
-                Divider()
-                slidesColumn
-                    .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(nsColor: .underPageBackgroundColor))
-                Divider()
-                sideColumn
-                    .frame(width: Self.sideWidth)
-                    .frame(maxHeight: .infinity)
+            if let render {
+                SimpleScreensBand(render: render, controls: controls, step: step) { keysHere = true }
             }
-            Divider()
-            transportBar
+            page
         }
-        // The arrows, Space and Return run the show from anywhere in the
-        // window, except while someone types a stage message.
+        .background { ShellBackdrop() }
+        // The page takes the keys while it has focus; this is for when it
+        // doesn't (after a button here, or a message sent to the stage).
         .focusable()
         .focusEffectDisabled()
         .focused($keysHere)
         .onPresentFireKeys { step($0) }
-        .onAppear { keysHere = true; followLive() }
-        .onChange(of: controls?.liveContextID) { followLive() }
-        .onChange(of: model.currentServiceID) { itemID = nil; followLive() }
+        .onChange(of: model.currentServiceID) {
+            itemID = nil
+            focusScroll.reset()
+        }
         .navigationTitle(plan?.name ?? "Simple Mode")
         .toolbar {
+            ToolbarItem(placement: .navigation) { planMenu }
             ToolbarItem(placement: .primaryAction) {
                 Button { exiting = true } label: {
                     Label("Exit Simple Mode", systemImage: "lock.open")
@@ -97,300 +92,41 @@ struct SimpleModeView: View {
         return formatter
     }()
 
-    private var planColumn: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Menu {
-                ForEach(upcomingPlans, id: \.id) { candidate in
-                    Button(candidate.name) { model.currentServiceID = candidate.id }
-                }
-            } label: {
-                Text(plan?.name ?? "Choose a Plan")
-                    .font(.headline)
-                    .lineLimit(1)
+    private var planMenu: some View {
+        Menu {
+            ForEach(upcomingPlans, id: \.id) { candidate in
+                Button(candidate.name) { model.currentServiceID = candidate.id }
             }
-            .menuStyle(.borderlessButton)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .help("Which plan to run")
-            Divider()
-            if let plan {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 6) {
-                            ForEach(model.runOfShow(plan), id: \.id) { item in
-                                itemRow(item).id(item.id)
-                            }
-                        }
-                        .padding(10)
-                    }
-                    .onChange(of: controls?.liveContextID) { _, id in
-                        if let id { withAnimation { proxy.scrollTo(id, anchor: .center) } }
-                    }
-                }
-            } else {
-                Text("Choose this week's plan above.")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding()
-            }
+        } label: {
+            Label(plan?.name ?? "Choose a Plan", systemImage: "list.bullet.rectangle.portrait")
+                .labelStyle(.titleAndIcon)
         }
+        .help("Which plan to run")
     }
+
+    // MARK: The slides
 
     @ViewBuilder
-    private func itemRow(_ item: ServiceItem) -> some View {
-        if item.itemKind == .header {
-            Text(item.name.uppercased())
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 10)
-                .padding(.horizontal, 6)
+    private var page: some View {
+        if let planID = model.currentServiceID {
+            ServiceContinuousView(
+                model: model, render: render, controls: controls,
+                serviceID: planID, focusItemID: itemID,
+                focusScroll: $focusScroll,
+                onShowItem: { id in
+                    focusScroll.follow(id)
+                    itemID = id
+                })
+                // The page's run-only face, whatever brought Simple Mode up.
+                .environment(\.runOnly, true)
+                // A new plan starts at its top.
+                .id(planID)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            let live = isLive(item)
-            let chosen = item.id == itemID
-            Button {
-                itemID = item.id
-                keysHere = true
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: symbol(for: item))
-                        .font(.system(size: 16))
-                        .frame(width: 22)
-                        .foregroundStyle(live ? Color.green : .secondary)
-                    Text(item.name)
-                        .font(.system(size: 17, weight: live ? .bold : .medium))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    Spacer(minLength: 4)
-                    if live {
-                        Text("LIVE")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.black)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.green, in: Capsule())
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .background(
-                    chosen ? HopeStyle.blue.opacity(0.35) : Color.primary.opacity(0.05),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(live ? Color.green : .clear, lineWidth: 2))
-            }
-            .buttonStyle(.plain)
+            HopeEmptyState(title: "No Plan", symbol: "list.bullet.rectangle.portrait",
+                           message: "Choose this week's plan from the menu at the top left.")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-    }
-
-    private func symbol(for item: ServiceItem) -> String {
-        switch item.itemKind {
-        case .presentation: "rectangle.on.rectangle"
-        case .media: "film"
-        case .audio, .playlist: "music.note"
-        case .header, .info: "info.circle"
-        }
-    }
-
-    private func isLive(_ item: ServiceItem) -> Bool {
-        guard let controls else { return false }
-        if controls.liveContextID == item.id { return true }
-        return item.itemKind == .media && !item.refId.isEmpty && controls.isMediaLive(item.refId)
-    }
-
-    /// The live item opens by itself, so the middle always shows what Next
-    /// is about to do; a volunteer's own pick stays until the show moves.
-    private func followLive() {
-        guard let plan else { return }
-        let items = model.runOfShow(plan)
-        if let live = items.first(where: isLive) {
-            itemID = live.id
-        } else if itemID == nil || !items.contains(where: { $0.id == itemID }) {
-            itemID = items.first { $0.itemKind != .header }?.id
-        }
-    }
-
-    // MARK: Slides
-
-    private var chosenItem: ServiceItem? {
-        guard let plan, let itemID else { return nil }
-        return plan.items.first { $0.id == itemID }
-    }
-
-    @ViewBuilder
-    private var slidesColumn: some View {
-        if let item = chosenItem {
-            switch item.itemKind {
-            case .presentation:
-                if let presentation = model.presentation(item.refId) {
-                    slideGrid(item: item, presentation: presentation)
-                } else if item.refId.isEmpty {
-                    nothingToShow("“\(item.name)” has nothing linked to it yet.")
-                } else {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            case .media:
-                mediaTile(item)
-            default:
-                nothingToShow("“\(item.name)” has no slides.")
-            }
-        } else {
-            nothingToShow(plan == nil ? "Choose a plan to start." : "Pick an item on the left.")
-        }
-    }
-
-    private func nothingToShow(_ message: String) -> some View {
-        Text(message)
-            .font(.title3)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(30)
-    }
-
-    private func slideGrid(item: ServiceItem, presentation: Presentation) -> some View {
-        let slides = SlideSceneBuilder.arrangedSlides(for: presentation, arrangementId: item.arrangementId)
-        let canvas = SlideSceneBuilder.canvasSize(for: presentation)
-        let aspect = canvas.width / max(canvas.height, 1)
-        let liveIndex = controls?.liveContextID == item.id ? controls?.liveOccurrence : nil
-        return ScrollViewReader { proxy in
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 16)], spacing: 16) {
-                    ForEach(Array(slides.enumerated()), id: \.offset) { index, slide in
-                        Button {
-                            controls?.fire(
-                                slide: slide, in: presentation, arrangementId: item.arrangementId,
-                                contextID: item.id, occurrence: index)
-                            keysHere = true
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                SlideThumbnailView(
-                                    model: model, render: render, slide: slide, presentation: presentation,
-                                    theme: model.theme(for: slide, in: presentation),
-                                    arrangementId: item.arrangementId,
-                                    hideScopedBackgrounds: false, legibleText: false)
-                                    .aspectRatio(aspect, contentMode: .fit)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                Text(slide.name.isEmpty ? "\(index + 1)" : "\(index + 1)  \(slide.name)")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(index == liveIndex ? Color.green : .secondary)
-                                    .lineLimit(1)
-                            }
-                            .padding(6)
-                            .contentShape(Rectangle())
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(index == liveIndex ? Color.green : .clear, lineWidth: 4))
-                        }
-                        .buttonStyle(.plain)
-                        .id(index)
-                    }
-                }
-                .padding(18)
-            }
-            .onChange(of: liveIndex) { _, index in
-                if let index { withAnimation { proxy.scrollTo(index, anchor: .center) } }
-            }
-        }
-    }
-
-    private func mediaTile(_ item: ServiceItem) -> some View {
-        let live = isLive(item)
-        return VStack(spacing: 18) {
-            PosterImage(model: model, mediaId: item.refId)
-                .aspectRatio(16 / 9, contentMode: .fit)
-                .frame(maxWidth: 560)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(live ? Color.green : .clear, lineWidth: 4))
-            Button {
-                controls?.fireServiceItem(item)
-                keysHere = true
-            } label: {
-                Label(live ? "Playing" : "Play \(item.name)", systemImage: "play.fill")
-                    .font(.title2.weight(.semibold))
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(live ? .green : HopeStyle.blue)
-        }
-        .padding(30)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: Audience, stage, sermon
-
-    private var sideColumn: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                if let render {
-                    section("Audience") {
-                        LiveSceneView(
-                            render: render,
-                            screenTargetID: ShowTargets(setup: ShowSetup.shared, render: render).audience)
-                            .frame(width: Self.sideWidth - 32, height: ((Self.sideWidth - 32) * 9 / 16).rounded())
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.1)))
-                    }
-                }
-                if let controls {
-                    // Typing there takes the keys; sending gives them back.
-                    section("Message to Stage") { StageMessageField(controls: controls) { keysHere = true } }
-                    section("Sermon Timer") { SermonTimerControl(controls: controls) { keysHere = true } }
-                }
-            }
-            .padding(16)
-        }
-    }
-
-    private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.caption.weight(.semibold))
-                .tracking(0.8)
-                .foregroundStyle(.secondary)
-            content()
-        }
-    }
-
-    // MARK: Back, Next, Clear All
-
-    private var transportBar: some View {
-        HStack(spacing: 16) {
-            Button { step(-1) } label: {
-                Label("Back", systemImage: "chevron.left")
-                    .font(.system(size: 26, weight: .bold))
-                    .frame(maxWidth: .infinity, minHeight: 64)
-            }
-            .buttonStyle(.bordered)
-            .help("Previous slide (←)")
-            Button { step(1) } label: {
-                Label("Next", systemImage: "chevron.right")
-                    .labelStyle(TrailingIconLabelStyle())
-                    .font(.system(size: 30, weight: .heavy))
-                    .frame(maxWidth: .infinity, minHeight: 64)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(HopeStyle.blue)
-            .help("Next slide (→ or Space)")
-            .layoutPriority(1)
-            Button { controls?.clearAll() } label: {
-                Label("Clear All", systemImage: "xmark.circle.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(minWidth: 160, minHeight: 64)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
-            .help("Clear every screen")
-        }
-        .controlSize(.extraLarge)
-        .padding(16)
-        .background(.bar)
     }
 
     /// Through the whole plan, as the arrow keys go: past an item's last
@@ -401,11 +137,193 @@ struct SimpleModeView: View {
     }
 }
 
-private struct TrailingIconLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 10) {
-            configuration.title
-            configuration.icon
+// MARK: The screens
+
+/// Pinned over the page, in the middle: a live preview of each screen with
+/// its name under it and a red edge while it shows something, then Back
+/// and Next, Clear All, the sermon timer and a message to the stage. Its
+/// own view, so a slide going live redraws the edges here and not the page.
+private struct SimpleScreensBand: View {
+    let render: RenderContext
+    let controls: ServiceControls?
+    let step: (Int) -> Void
+    /// After typing (the stage message, the timer's minutes): the keys go
+    /// back to running the show.
+    let keysBack: () -> Void
+
+    @AppStorage("monitors.hidden") private var hiddenScreens = ""
+    @State private var width: CGFloat = 0
+
+    private static let controlsWidth: CGFloat = 230
+    private static let spacing: CGFloat = 12
+    private static let previewWidths: ClosedRange<CGFloat> = 150 ... 250
+
+    var body: some View {
+        let screens = MonitorsPanel.shownScreens(render: render, setup: ShowSetup.shared, hiddenList: hiddenScreens)
+            .filter { $0.target != nil }
+        let previewWidth = previewWidth(count: screens.count)
+        HStack(alignment: .top, spacing: Self.spacing) {
+            ForEach(screens) { screen in
+                SimpleScreenPreview(render: render, controls: controls, screen: screen, width: previewWidth)
+            }
+            if screens.isEmpty {
+                Text("No screens are set up. Settings › Screens.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 240, height: 120)
+            }
+            if let controls {
+                showControls(controls)
+                    .frame(width: Self.controlsWidth)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+        }
+        .environment(\.colorScheme, .dark)
+    }
+
+    /// As wide as the window allows, between a size you can still read and
+    /// one that leaves the slides most of the window.
+    private func previewWidth(count: Int) -> CGFloat {
+        guard count > 0, width > 0 else { return Self.previewWidths.upperBound }
+        let room = width - 32 - Self.controlsWidth - Self.spacing * CGFloat(count)
+        let each = (room / CGFloat(count)).rounded(.down)
+        return min(max(each, Self.previewWidths.lowerBound), Self.previewWidths.upperBound)
+    }
+
+    private func showControls(_ controls: ServiceControls) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Button { step(-1) } label: {
+                    Label("Back", systemImage: "chevron.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                }
+                .buttonStyle(.bordered)
+                .help("Previous slide (←)")
+                Button { step(1) } label: {
+                    HStack(spacing: 6) {
+                        Text("Next")
+                        Image(systemName: "chevron.right")
+                    }
+                    .font(.system(size: 15, weight: .bold))
+                    .frame(maxWidth: .infinity, minHeight: 30)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(HopeStyle.blue)
+                .help("Next slide (→ or Space)")
+            }
+            Button { controls.clearAll() } label: {
+                Label("Clear All", systemImage: "xmark.circle.fill")
+                    .font(.system(size: 17, weight: .bold))
+                    .frame(maxWidth: .infinity, minHeight: 36)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .keyboardShortcut(.escape, modifiers: [.shift])
+            .help("Clear every screen (⇧Esc)")
+            SermonTimerControl(controls: controls, onDone: keysBack)
+            StageMessageButton(controls: controls, onDone: keysBack)
+        }
+        .controlSize(.large)
+    }
+}
+
+/// One screen: what it shows now, about 15 times a second, its name under
+/// it, and a red edge while anything is up on it.
+private struct SimpleScreenPreview: View {
+    let render: RenderContext
+    let controls: ServiceControls?
+    let screen: MonitorsPanel.Entry
+    let width: CGFloat
+
+    private static let framesPerSecond: Float = 15
+
+    var body: some View {
+        let live = isShowing
+        VStack(spacing: 5) {
+            preview
+                .frame(width: width, height: (width * 9 / 16).rounded())
+                .background(Color.black)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(live ? HopeStyle.live : Color.white.opacity(0.14), lineWidth: live ? 3 : 1))
+            HStack(spacing: 6) {
+                if live {
+                    Circle().fill(HopeStyle.live).frame(width: 7, height: 7)
+                }
+                Text(screen.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(live ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+            }
+            .frame(width: width)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(live ? "\(screen.title), showing" : screen.title)
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        if let target = screen.target {
+            Group {
+                if screen.role == .stream {
+                    ZStack {
+                        Checkerboard()
+                        TransparentScenePreview(
+                            compositor: render.compositor,
+                            provider: render.outputs.previewProvider(for: target),
+                            maximumFramesPerSecond: Self.framesPerSecond)
+                    }
+                } else if screen.role == .stage {
+                    LiveSceneView(render: render, screenTargetID: target, maximumFramesPerSecond: Self.framesPerSecond)
+                        .modifier(PreviewedLayoutKeeper(target: target))
+                } else {
+                    LiveSceneView(render: render, screenTargetID: target, maximumFramesPerSecond: Self.framesPerSecond)
+                }
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// As the screens strip says it: anything up that Clear All would take
+    /// down, and for the livestream only while it's on.
+    private var isShowing: Bool {
+        guard let controls, controls.hasAnyClearableContent else { return false }
+        return screen.role != .stream || ShowSetup.shared.streamMode != .off
+    }
+}
+
+/// A message to the stage, typed in a popover so the field never sits in
+/// the way of the show's keys.
+private struct StageMessageButton: View {
+    let controls: ServiceControls
+    let onDone: () -> Void
+    @State private var shown = false
+
+    var body: some View {
+        Button { shown = true } label: {
+            Label("Message to Stage", systemImage: "text.bubble")
+                .font(.system(size: 12, weight: .medium))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .help("Show a message on the stage screen")
+        .popover(isPresented: $shown, arrowEdge: .bottom) {
+            StageMessageField(controls: controls) {
+                shown = false
+                onDone()
+            }
+            .padding(12)
+            .frame(width: 300)
         }
     }
 }
