@@ -93,12 +93,24 @@ public struct TextShadow: Hashable, Sendable {
 }
 
 public struct TextOutline: Hashable, Sendable {
+    /// Where the stroke sits on the glyph's edge.
+    public enum Position: Hashable, Sendable {
+        /// Half inside the letter, half out, drawn over the fill: thick
+        /// strokes eat into thin letters. What older documents had.
+        case center
+        /// Wholly outside the letter, drawn under the fill, so the letter
+        /// keeps its full shape and the stroke is `width` wide around it.
+        case outside
+    }
+
     public var color: SceneColor
     public var width: Double
+    public var position: Position
 
-    public init(color: SceneColor, width: Double) {
+    public init(color: SceneColor, width: Double, position: Position = .center) {
         self.color = color
         self.width = width
+        self.position = position
     }
 }
 
@@ -200,6 +212,8 @@ public struct StyleRun: Hashable, Sendable {
 
     public var highlightColor: SceneColor?
     public var tracking: Double?
+    /// This stretch's own stroke, over the text's; width 0 takes it off.
+    public var outline: TextOutline?
 
     public var hidden: Bool?
 
@@ -218,6 +232,7 @@ public struct StyleRun: Hashable, Sendable {
         color: SceneColor? = nil,
         highlightColor: SceneColor? = nil,
         tracking: Double? = nil,
+        outline: TextOutline? = nil,
         hidden: Bool? = nil,
         placeholderUnderline: Bool? = nil,
         caret: Bool? = nil
@@ -232,6 +247,7 @@ public struct StyleRun: Hashable, Sendable {
         self.color = color
         self.highlightColor = highlightColor
         self.tracking = tracking
+        self.outline = outline
         self.hidden = hidden
         self.placeholderUnderline = placeholderUnderline
         self.caret = caret

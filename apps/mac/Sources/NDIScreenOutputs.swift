@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OutputEngine
 
 @MainActor
 @Observable
@@ -53,6 +54,10 @@ final class NDIScreenOutputs {
         let label = info.name.map { "\(screen.name) — \($0)" } ?? screen.name
 
         let placement = render.outputs.placement(forSlice: screenID)
+        // The livestream goes over NDI with its transparency, so the
+        // receiver lays it over the camera as drawn rather than luma keying
+        // a picture on black (which loses black bars and thins colors).
+        let livestream = [screenID.uuidString, info.screenID.uuidString].contains(ShowSetup.shared.streamTarget)
         controller.start(
             targetID: screenID.uuidString,
             targetName: label,
@@ -62,7 +67,8 @@ final class NDIScreenOutputs {
             frameRate: screen.framesPerSecond,
             sourceRect: info.sourceRect == CGRect(x: 0, y: 0, width: 1, height: 1)
                 ? nil : info.sourceRect,
-            placement: placement?.unitRect
+            placement: placement?.unitRect,
+            keying: .ndi(livestream: livestream)
         )
         controllers[screenID] = controller
         persist()

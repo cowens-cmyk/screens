@@ -71,8 +71,7 @@ enum PathTextStrip {
         else { return nil }
 
         let attributed = TextRasterizer.attributedString(
-            for: text, fontScale: 1, pixelScale: scale, colorSpace: colorSpace,
-            includeOutline: text.fill == nil
+            for: text, fontScale: 1, pixelScale: scale, colorSpace: colorSpace
         )
         let line = CTLineCreateWithAttributedString(attributed)
         var ascent: CGFloat = 0
@@ -81,7 +80,8 @@ enum PathTextStrip {
         let advance = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, &leading))
         guard advance > 0, ascent + descent > 0 else { return nil }
 
-        let outlineWidth = text.outline?.width ?? 0
+        let outlineWidth = ([text.outline] + text.styleRuns.map(\.outline))
+            .compactMap { $0?.width }.max() ?? 0
         let shadowSpread: Double = text.shadow.map { shadow in
             shadow.blurRadius + max(abs(shadow.offsetX), abs(shadow.offsetY))
         } ?? 0
@@ -105,36 +105,30 @@ enum PathTextStrip {
         }
 
         let baselineFromBottom = pad + descent
-        context.textPosition = CGPoint(x: pad, y: baselineFromBottom)
+        let origin = CGPoint(x: pad, y: baselineFromBottom)
 
+        // Stroked as a box of text is (TextRasterizer.makeTexture): an
+        // outside stroke under the letters, a centred one over them, and
+        // one shadow for the lot.
+        let placed = [(line: line, origin: origin)]
+        let outlined = TextRasterizer.hasOutlines(attributed)
+        let layered = text.shadow != nil && (text.fill != nil || outlined)
+        if layered { context.beginTransparencyLayer(auxiliaryInfo: nil) }
+        if outlined { TextRasterizer.drawOutlines(placed, position: .outside, context: context) }
+
+        context.textPosition = origin
         if let fill = text.fill {
             let stripRect = CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
-
-            let shadowed = text.shadow != nil
-            if shadowed { context.beginTransparencyLayer(auxiliaryInfo: nil) }
-
             context.saveGState()
             context.setTextDrawingMode(.clip)
             CTLineDraw(line, context)
             TextRasterizer.drawInkFill(fill, over: stripRect, context: context)
             context.restoreGState()
-
-            if let outline = text.outline, outline.width > 0 {
-                context.saveGState()
-                context.setTextDrawingMode(.stroke)
-                if let strokeColor = LinearRaster.cgColor(outline.color) {
-                    context.setStrokeColor(strokeColor)
-                }
-                context.setLineWidth(outline.width * scale)
-                context.textPosition = CGPoint(x: pad, y: baselineFromBottom)
-                CTLineDraw(line, context)
-                context.restoreGState()
-            }
-
-            if shadowed { context.endTransparencyLayer() }
         } else {
             CTLineDraw(line, context)
         }
+        if outlined { TextRasterizer.drawOutlines(placed, position: .center, context: context) }
+        if layered { context.endTransparencyLayer() }
 
         guard let texture = LinearRaster.makeTexture(from: context, device: device),
               var run = PathTextLayout.run(

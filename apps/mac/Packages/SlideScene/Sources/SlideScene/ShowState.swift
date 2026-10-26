@@ -594,13 +594,6 @@ public struct ShowState: Sendable, Equatable {
             )
         }
         if let live = liveSlide {
-
-            if let fill = live.slide.backgroundFill ?? live.presentation?.backgroundFill,
-               let item = SlideSceneBuilder.backdropItem(
-                   fill, canvasSize: canvasSize, baseID: "\(live.slide.id)-backdrop"
-               ) {
-                scene.addItem(item, to: .slide)
-            }
             let theme = slideThemeOverride ?? live.theme
 
             let renderedSlide = slideThemeOverride.map { live.slide.rendered(throughOverride: $0) } ?? live.slide
@@ -616,6 +609,20 @@ public struct ShowState: Sendable, Equatable {
                 )
             }
             let template = SlideSceneBuilder.themeSlide(for: renderedSlide, theme: theme)
+
+            // Through another theme's design (the livestream's lower third)
+            // the backdrop is that design's, as the theme editor shows it: a
+            // song's own background fill would cover the camera, and a
+            // design with none leaves it clear.
+            let backdrop = slideThemeOverride == nil
+                ? live.slide.backgroundFill ?? live.presentation?.backgroundFill
+                : template?.backgroundFill
+            if let fill = backdrop,
+               let item = SlideSceneBuilder.backdropItem(
+                   fill, canvasSize: canvasSize, baseID: "\(live.slide.id)-backdrop"
+               ) {
+                scene.addItem(item, to: .slide)
+            }
 
             let donated = PlaceholderAnimations.composition(
                 objects: slideObjects, template: template, slideOrder: live.slide.animationOrder

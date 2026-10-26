@@ -278,10 +278,16 @@ struct ScreenOutput {
     }
 
     var alphaCaption: String {
+        // Without a key the switcher can only luma key the picture, which
+        // takes out black and leaves colors part see-through: worth saying
+        // where the setting lives, since the editor shows the bar solid.
         guard deckLinkDevice != nil else {
-            return "Needs a DeckLink output. NDI carries transparency on its own."
+            if ndiOn { return "NDI carries the livestream's transparency to the receiver." }
+            return "A display carries no transparency: a switcher can only luma key it, which drops black and thins colors. Use NDI, or a DeckLink port with Alpha key on."
         }
-        guard Self.alphaKeyOn else { return "Off: the switcher gets the full picture." }
+        guard Self.alphaKeyOn else {
+            return "Off: the switcher gets the full picture and can only luma key it, which drops black and thins colors."
+        }
         switch deckLinkBacking?.keying {
         case .externalKey?: return "External: fill and key on separate connectors for the switcher's keyer."
         case .internalKey?: return "Internal: the card keys over the video at its SDI input."

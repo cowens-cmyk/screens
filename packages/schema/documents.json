@@ -196,6 +196,13 @@
         "dotted"
       ]
     },
+    "StrokePosition": {
+      "kind": "enum",
+      "cases": [
+        "center",
+        "outside"
+      ]
+    },
     "ObjectStroke": {
       "kind": "record",
       "fields": [
@@ -210,6 +217,11 @@
         {
           "name": "dashKind",
           "type": "StrokeDashKind",
+          "optional": true
+        },
+        {
+          "name": "position",
+          "type": "StrokePosition",
           "optional": true
         }
       ]
@@ -687,6 +699,11 @@
         {
           "name": "tracking",
           "type": "double",
+          "optional": true
+        },
+        {
+          "name": "outline",
+          "type": "ObjectStroke",
           "optional": true
         }
       ]

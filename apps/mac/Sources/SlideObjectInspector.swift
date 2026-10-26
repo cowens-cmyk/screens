@@ -29,6 +29,9 @@ struct SlideObjectInspector: View {
 
     private static let defaultShadow = ObjectShadow(colorHex: "#00000080", blurRadius: 8, offsetX: 0, offsetY: 4)
     private static let defaultStroke = ObjectStroke(colorHex: "#000000FF", width: 2)
+    /// Wide enough to see at slide size, around the letters rather than on
+    /// them.
+    private static let defaultTextStroke = ObjectStroke(colorHex: "#000000FF", width: 4, position: .outside)
 
     private static let defaultLineFill = TextLineFill(
         fill: ObjectFill(fillKind: .solid, colorHex: "#000000FF"), widthMode: .lineWidth
@@ -536,6 +539,7 @@ struct SlideObjectInspector: View {
                         selectionSection(object)
                     }
                     typographySection(object, forShape: true)
+                    textOutlineSection(object, forShape: true)
                     if !multi {
                         chordsSection(object)
                         textPathSection(object, forShape: true)
@@ -1279,6 +1283,7 @@ struct SlideObjectInspector: View {
                     get: { run?.tracking ?? base?.tracking ?? 0 },
                     set: { tracking in model.applyStyleToSelection { $0.tracking = tracking } }
                 ), range: -50...200)
+                selectionStrokeRows(run: run, base: base)
                 LabeledContent("Style") {
                     decorationStrip([
                         (.underline, Binding(
@@ -1300,6 +1305,7 @@ struct SlideObjectInspector: View {
                         run.colorHex = nil
                         run.highlightColorHex = nil
                         run.tracking = nil
+                        run.outline = nil
                     }
                 }
             }
@@ -1307,6 +1313,49 @@ struct SlideObjectInspector: View {
     }
 
     private static let defaultHighlightHex = "#FFF176FF"
+
+    /// The selected letters' stroke: their own, else the box's. Turning it
+    /// off where the box has one gives the letters a stroke of width 0,
+    /// which takes the box's off them.
+    @ViewBuilder
+    private func selectionStrokeRows(run: TextStyleRun?, base: TextStyle?) -> some View {
+        let own = run?.outline
+        let shown = own ?? base?.outline
+        let stroked = (shown?.width ?? 0) > 0
+        Toggle("Stroke", isOn: Binding(
+            get: { stroked },
+            set: { on in
+                model.applyStyleToSelection { selected in
+                    if on {
+                        selected.outline = base?.outline.flatMap { $0.width > 0 ? $0 : nil } ?? Self.defaultTextStroke
+                    } else {
+                        selected.outline = base?.outline == nil ? nil : ObjectStroke(colorHex: "#00000000", width: 0)
+                    }
+                }
+            }
+        ))
+        if stroked, let shown {
+            let edit = { (change: @escaping (inout ObjectStroke) -> Void) in
+                model.applyStyleToSelection { selected in
+                    var stroke = selected.outline ?? shown
+                    change(&stroke)
+                    selected.outline = stroke
+                }
+            }
+            HexColorField(label: "Stroke Color", hex: Binding(
+                get: { shown.colorHex },
+                set: { hex in edit { $0.colorHex = hex } }
+            ))
+            numberField("Stroke Width", Binding(
+                get: { shown.width },
+                set: { width in edit { $0.width = width } }
+            ), range: 0...50)
+            strokePositionPicker(Binding(
+                get: { shown.position },
+                set: { position in edit { $0.position = position } }
+            ))
+        }
+    }
 
     @ViewBuilder
     private func chordsSection(_ object: SlideObject) -> some View {
@@ -1964,14 +2013,16 @@ struct SlideObjectInspector: View {
         )
     }
 
-    private func textOutlineSection(_ object: SlideObject) -> some View {
+    /// A stroke around the letters of the whole box. A shape's own Stroke
+    /// is its border, so on a shape this one is the text's.
+    private func textOutlineSection(_ object: SlideObject, forShape: Bool = false) -> some View {
         InspectorSection {
-            toggleRow("Outline", isOn: Binding(
+            toggleRow(forShape ? "Text Stroke" : "Stroke", isOn: Binding(
                 get: { current(object).textStyle?.outline != nil },
                 set: { on in
                     commit(object) { obj in
                         var style = obj.textStyle ?? TextStyle()
-                        style.outline = on ? Self.defaultStroke : nil
+                        style.outline = on ? Self.defaultTextStroke : nil
                         obj.textStyle = style
                     }
                 }
@@ -1980,8 +2031,22 @@ struct SlideObjectInspector: View {
             if current(object).textStyle?.outline != nil {
                 HexColorField(label: "Color", hex: textOutlineWrite(object, \.colorHex))
                 numberField("Width", textOutlineWrite(object, \.width), range: 0...50)
+                strokePositionPicker(textOutlineWrite(object, \.position))
             }
         }
+    }
+
+    /// Outside keeps thin letters whole; Center is how strokes were drawn
+    /// before there was a choice, so older text reads as Center.
+    private func strokePositionPicker(_ position: Binding<StrokePosition?>) -> some View {
+        InspectorPicker("Position", selection: Binding(
+            get: { position.wrappedValue ?? .center },
+            set: { position.wrappedValue = $0 }
+        )) {
+            Text("Outside").tag(StrokePosition.outside)
+            Text("Center").tag(StrokePosition.center)
+        }
+        .help("Outside draws the stroke around the letters, leaving them their full shape. Center straddles the edge, half over the letters.")
     }
 
     private func allCapsBinding(_ object: SlideObject) -> Binding<Bool> {
@@ -2048,6 +2113,20 @@ struct SlideObjectInspector: View {
             switch current(object).fill?.fillKind ?? .solid {
             case .solid:
                 HexColorField(label: "Color", hex: fillWrite(object, \.colorHex, default: "#FFFFFFFF"))
+                // The color's own opacity, apart from the object's: the
+                // stock lower-third bars are 72% black, and a color picked
+                // over one keeps that, so it reads as see-through on the
+                // camera while the Opacity slider says 100%.
+                LabeledContent("Fill Opacity") {
+                    HStack(spacing: 8) {
+                        CommittingSlider(value: fillAlphaBinding(object), range: 0...1)
+                        Text(fillAlphaBinding(object).wrappedValue, format: .percent.precision(.fractionLength(0)))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 40, alignment: .trailing)
+                    }
+                }
+                .mixedValue(mixed { HexColor($0.fill?.colorHex ?? "")?.alpha })
             case .linearGradient:
                 numberField("Angle", fillWrite(object, \.gradientAngleDegrees, default: 0), range: 0...360)
                 HexColorField(label: "Start", hex: gradientStopHex(object, index: 0))
@@ -2575,11 +2654,11 @@ struct SlideObjectInspector: View {
         _ object: SlideObject, _ keyPath: WritableKeyPath<ObjectStroke, T>
     ) -> Binding<T> {
         Binding(
-            get: { (current(object).textStyle?.outline ?? Self.defaultStroke)[keyPath: keyPath] },
+            get: { (current(object).textStyle?.outline ?? Self.defaultTextStroke)[keyPath: keyPath] },
             set: { value in
                 commit(object) { obj in
                     var style = obj.textStyle ?? TextStyle()
-                    var outline = style.outline ?? Self.defaultStroke
+                    var outline = style.outline ?? Self.defaultTextStroke
                     outline[keyPath: keyPath] = value
                     style.outline = outline
                     obj.textStyle = style
@@ -2614,6 +2693,18 @@ struct SlideObjectInspector: View {
                     fill[keyPath: keyPath] = value
                     obj.fill = fill
                 }
+            }
+        )
+    }
+
+    private func fillAlphaBinding(_ object: SlideObject) -> Binding<Double> {
+        let hex = fillWrite(object, \.colorHex, default: "#FFFFFFFF")
+        return Binding(
+            get: { HexColor(hex.wrappedValue)?.alpha ?? 1 },
+            set: { alpha in
+                var color = HexColor(hex.wrappedValue) ?? HexColor(red: 1, green: 1, blue: 1)
+                color.alpha = min(max(alpha, 0), 1)
+                hex.wrappedValue = color.stored
             }
         )
     }
