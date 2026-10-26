@@ -6,6 +6,9 @@ import SwiftUI
 struct SongSearchSheet: View {
     let model: AppModel
     let render: RenderContext?
+    /// The song editor's Import from Shepherd…: the picked song goes into
+    /// this presentation instead of a new one.
+    var replacing: String? = nil
     let onCreated: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -44,24 +47,40 @@ struct SongSearchSheet: View {
             }
             .frame(height: 340)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
-            AddToCurrentServiceToggle(model: model, isOn: $addToService)
-            HStack {
-                LyricsThemeChooser(appModel: model, render: render, themeId: model.slideBuildingBinding(\.lyricsImportThemeId))
-                Spacer()
-                Button("Cancel") { dismiss() }
-                if let existingID {
-                    Button("Open Library Copy") { dismiss(); onCreated(existingID) }
-                    Button("Replace Library Copy") { replace(existingID) }
-                        .help("Re-import this song into the copy you already have — services using it keep it")
+            if let replacing {
+                HStack {
+                    Text("Replaces this song's words, chords and order, and links it to the Shepherd song.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Cancel") { dismiss() }
+                    Button("Import into This Song") { importInto(replacing) }
+                        .keyboardShortcut(.defaultAction)
                         .disabled(!canImport)
                 }
-                Button(existingID == nil ? "Import Song" : "Import Again", action: importSong)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canImport)
+            } else {
+                AddToCurrentServiceToggle(model: model, isOn: $addToService)
+                actions
             }
         }
         .padding(16)
         .frame(width: 760)
+    }
+
+    private var actions: some View {
+        HStack {
+            LyricsThemeChooser(appModel: model, render: render, themeId: model.slideBuildingBinding(\.lyricsImportThemeId))
+            Spacer()
+            Button("Cancel") { dismiss() }
+            if let existingID {
+                Button("Open Library Copy") { dismiss(); onCreated(existingID) }
+                Button("Replace Library Copy") { replace(existingID) }
+                    .help("Re-import this song into the copy you already have — services using it keep it")
+                    .disabled(!canImport)
+            }
+            Button(existingID == nil ? "Import Song" : "Import Again", action: importSong)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canImport)
+        }
     }
 
     private var songList: some View {
@@ -196,26 +215,25 @@ struct SongSearchSheet: View {
         guard let detail else { return nil }
         return SongImport.presentation(
             song: detail, arrangement: arrangement,
-            playingKey: playingKey.isEmpty ? nil : playingKey,
-            themeId: model.slideBuilding.lyricsImportThemeId ?? "")
+            playingKey: playingKey.isEmpty ? nil : playingKey, model: model)
     }
 
+    /// The library copy (or the song being edited) takes the Shepherd
+    /// song's words, chords and order, keeping its theme and backgrounds,
+    /// and stays linked so later chart changes reach it.
     private func replace(_ id: String) {
-        guard let fresh = built() else { return }
-        model.updatePresentation(id) { presentation in
-            presentation.slides = fresh.slides
-            presentation.sections = fresh.sections
-            presentation.arrangements = fresh.arrangements
-            presentation.defaultArrangementId = fresh.defaultArrangementId
-            presentation.reflowSource = fresh.reflowSource
-            presentation.chordProSource = fresh.chordProSource
-            presentation.musicKey = fresh.musicKey
-            presentation.displayKey = fresh.displayKey
-            presentation.ccli = fresh.ccli
-            presentation.presentationKind = .song
+        importInto(id)
+    }
+
+    private func importInto(_ id: String) {
+        guard let detail else { return }
+        let arrangement = arrangement
+        let key = playingKey.isEmpty ? nil : playingKey
+        Task {
+            await sync.importInto(id, song: detail, arrangement: arrangement, playingKey: key, model: model)
+            dismiss()
+            onCreated(id)
         }
-        dismiss()
-        onCreated(id)
     }
 
     private func importSong() {

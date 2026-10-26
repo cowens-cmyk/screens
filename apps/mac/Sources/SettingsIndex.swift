@@ -304,6 +304,16 @@ enum SettingsIndex {
             caption: "Upcoming Sunday plans from Shepherd become services. Songs link to presentations already in the library.",
             keywords: "shepherd hope plan sunday service sync song flag api key"),
         SettingsEntry(
+            id: "shepherd.songs", category: .integrations, tab: .shepherd,
+            title: "Import lyrics and chords from Shepherd",
+            caption: "Planned songs with no slides get them from Shepherd's chord chart; imported songs follow chart changes unless edited in Screens.",
+            keywords: "shepherd song lyrics chords chord chart import automatic update newer arrangement key"),
+        SettingsEntry(
+            id: "lyrics.punctuation", category: .integrations, tab: .shepherd,
+            title: "Remove punctuation from imported lyrics",
+            caption: "Commas, periods, quotes and dashes come out of every lyrics import. Songs already in the library don't change.",
+            keywords: "punctuation comma period lyrics import songselect paste chord chart clean"),
+        SettingsEntry(
             id: "website.events", category: .integrations, tab: .website,
             title: "Add events from hopejc.org to the pre-service announcements",
             caption: "Each church event's picture goes in the pre-service slideshow, full screen, and comes out when the event starts. Only the Mac with Run on this Mac on adds and removes them.",

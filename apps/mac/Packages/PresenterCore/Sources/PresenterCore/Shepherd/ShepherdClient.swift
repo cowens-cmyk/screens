@@ -138,6 +138,82 @@ public struct ShepherdClient: Sendable {
         public var lyrics: String?
         public var chordChart: String?
         public var files: [File]
+        public var originalKey: String?
+        public var defaultArrangementId: String?
+        /// What Shepherd says about the chart: its format and the key it is
+        /// written in.
+        public var chart: ChartInfo?
+
+        public init(
+            id: String, title: String, author: String? = nil, ccliNumber: String? = nil, copyright: String? = nil,
+            themes: [String] = [], defaultKey: String? = nil, tempo: Double? = nil, timeSignature: String? = nil,
+            sequence: [String] = [], archived: Bool = false, keys: [SongKey] = [],
+            arrangements: [SongArrangement] = [], mediaLinks: [MediaLink] = [], updatedAt: Date = .distantPast,
+            lyrics: String? = nil, chordChart: String? = nil, files: [File] = [], originalKey: String? = nil,
+            defaultArrangementId: String? = nil, chart: ChartInfo? = nil
+        ) {
+            self.id = id
+            self.title = title
+            self.author = author
+            self.ccliNumber = ccliNumber
+            self.copyright = copyright
+            self.themes = themes
+            self.defaultKey = defaultKey
+            self.tempo = tempo
+            self.timeSignature = timeSignature
+            self.sequence = sequence
+            self.archived = archived
+            self.keys = keys
+            self.arrangements = arrangements
+            self.mediaLinks = mediaLinks
+            self.updatedAt = updatedAt
+            self.lyrics = lyrics
+            self.chordChart = chordChart
+            self.files = files
+            self.originalKey = originalKey
+            self.defaultArrangementId = defaultArrangementId
+            self.chart = chart
+        }
+
+        // Lists Shepherd leaves out (an older server, a narrower scope) read
+        // as empty rather than failing the whole song.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                id: try c.decode(String.self, forKey: .id),
+                title: try c.decode(String.self, forKey: .title),
+                author: try c.decodeIfPresent(String.self, forKey: .author),
+                ccliNumber: try c.decodeIfPresent(String.self, forKey: .ccliNumber),
+                copyright: try c.decodeIfPresent(String.self, forKey: .copyright),
+                themes: try c.decodeIfPresent([String].self, forKey: .themes) ?? [],
+                defaultKey: try c.decodeIfPresent(String.self, forKey: .defaultKey),
+                tempo: try c.decodeIfPresent(Double.self, forKey: .tempo),
+                timeSignature: try c.decodeIfPresent(String.self, forKey: .timeSignature),
+                sequence: try c.decodeIfPresent([String].self, forKey: .sequence) ?? [],
+                archived: try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false,
+                keys: try c.decodeIfPresent([SongKey].self, forKey: .keys) ?? [],
+                arrangements: try c.decodeIfPresent([SongArrangement].self, forKey: .arrangements) ?? [],
+                mediaLinks: try c.decodeIfPresent([MediaLink].self, forKey: .mediaLinks) ?? [],
+                updatedAt: try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? .distantPast,
+                lyrics: try c.decodeIfPresent(String.self, forKey: .lyrics),
+                chordChart: try c.decodeIfPresent(String.self, forKey: .chordChart),
+                files: try c.decodeIfPresent([File].self, forKey: .files) ?? [],
+                originalKey: try c.decodeIfPresent(String.self, forKey: .originalKey),
+                defaultArrangementId: try c.decodeIfPresent(String.self, forKey: .defaultArrangementId),
+                chart: try? c.decodeIfPresent(ChartInfo.self, forKey: .chart))
+        }
+    }
+
+    public struct ChartInfo: Codable, Hashable, Sendable {
+        public var format: String?
+        public var hasChart: Bool?
+        public var writtenKey: String?
+
+        public init(format: String? = nil, hasChart: Bool? = nil, writtenKey: String? = nil) {
+            self.format = format
+            self.hasChart = hasChart
+            self.writtenKey = writtenKey
+        }
     }
 
     /// A song as `GET /services/songs` lists it: no lyrics or files.
@@ -169,6 +245,33 @@ public struct ShepherdClient: Sendable {
         public var sequence: [String]
         public var chordChart: String?
         public var mediaLinks: [MediaLink]
+
+        public init(
+            id: String, name: String, tempo: Double? = nil, timeSignature: String? = nil, lengthSeconds: Int? = nil,
+            sequence: [String] = [], chordChart: String? = nil, mediaLinks: [MediaLink] = []
+        ) {
+            self.id = id
+            self.name = name
+            self.tempo = tempo
+            self.timeSignature = timeSignature
+            self.lengthSeconds = lengthSeconds
+            self.sequence = sequence
+            self.chordChart = chordChart
+            self.mediaLinks = mediaLinks
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                id: try c.decode(String.self, forKey: .id),
+                name: try c.decodeIfPresent(String.self, forKey: .name) ?? "",
+                tempo: try c.decodeIfPresent(Double.self, forKey: .tempo),
+                timeSignature: try c.decodeIfPresent(String.self, forKey: .timeSignature),
+                lengthSeconds: try c.decodeIfPresent(Int.self, forKey: .lengthSeconds),
+                sequence: try c.decodeIfPresent([String].self, forKey: .sequence) ?? [],
+                chordChart: try c.decodeIfPresent(String.self, forKey: .chordChart),
+                mediaLinks: try c.decodeIfPresent([MediaLink].self, forKey: .mediaLinks) ?? [])
+        }
     }
 
     // MARK: Requests

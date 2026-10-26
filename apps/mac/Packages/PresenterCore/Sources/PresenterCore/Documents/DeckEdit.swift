@@ -239,6 +239,10 @@ struct DeckField {
             optional(\.streamThemeId, "streamThemeId"),
             optional(\.stageLayoutId, "stageLayoutId"),
             optional(\.sermonTimerSeconds, "sermonTimerSeconds"),
+            optional(\.shepherdSongId, "shepherdSongId"),
+            optional(\.shepherdArrangementId, "shepherdArrangementId"),
+            optional(\.shepherdChartHash, "shepherdChartHash"),
+            optional(\.shepherdImportHash, "shepherdImportHash"),
         ]
     }
 }

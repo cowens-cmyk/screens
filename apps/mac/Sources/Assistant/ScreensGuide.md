@@ -122,7 +122,7 @@ New items go after the selected item, or at the end.
 
 Select several items to Hide or Remove them together. Dragging a slide from the grid onto another presentation item in the plan copies the slide into it.
 
-**Items that aren't linked.** A Shepherd item with no presentation shows "Not Linked" on the page. A planned song with no slides in the library shows an orange **Get Lyrics** button: it looks in Shepherd first; if the song isn't there it opens SongSelect in the browser and imports the lyrics file once it lands in Downloads.
+**Items that aren't linked.** A Shepherd item with no presentation shows "Not Linked" on the page. A planned song with no slides in the library shows an orange **Get Lyrics** button (sync usually fills these in from Shepherd by itself): it looks in Shepherd first, building the song from its chord chart; if the song isn't there it opens SongSelect in the browser and imports the lyrics file once it lands in Downloads.
 
 **Countdown.** Every upcoming plan gets a **Countdown** item first, automatically. A plan that already has one (Shepherd's "COUNTDOWN" item, or an item linked to a video in the Countdowns folder or a presentation named Countdown) has that item marked as its countdown instead. Its **Choose Video** / **Change** button picks this week's video from the **Countdowns** folder in Media (newest first) or **Other Videos**. The countdown always plays once and goes on to the next item when it ends; the video's own settings are not changed. Removing the countdown item from a plan keeps it removed.
 
@@ -131,9 +131,18 @@ Select several items to Hide or Remove them together. Dragging a slide from the 
 Settings › Integrations › Shepherd:
 - **Shepherd API key (shp_…)**. A Shepherd admin makes it under Connected apps with the services:read scope. Song Search also needs the songs:lyrics scope.
 - **Service type** (blank for all), **Sundays only** (on by default), **Load N weeks ahead** (3 by default), **Check for changes every 10 minutes** (on by default).
+- **Songs**: **Import lyrics and chords from Shepherd automatically** (on by default) and **Remove punctuation from imported lyrics** (on by default).
 - **Load Plans Now** and **Test Key**.
 
-Upcoming Shepherd plans become Screens plans. Headers stay headers. Songs link to presentations already in the library (matched by CCLI number or title); a song with none is flagged and gets the Get Lyrics button. Sync never creates songs on its own. Re-syncing keeps items added in Screens and anything linked by hand. The next service's song keys become each song's display key, so stage chords match what the band plays.
+Upcoming Shepherd plans become Screens plans. Headers stay headers. Songs link to presentations already in the library (matched by CCLI number or title). Re-syncing keeps items added in Screens and anything linked by hand. The next service's song keys become each song's display key, so stage chords match what the band plays.
+
+**Lyrics and chords from Shepherd.** With **Import lyrics and chords from Shepherd automatically** on, each sync also reads the Shepherd song of every planned song (Shepherd's Chord Charts; it never writes to Shepherd):
+- A planned song with no slides gets a new song built from its chord chart (the arrangement's own chart when it has one, else the song's; Shepherd's lyrics when there is no chart), in the lyrics theme, two lines a slide. Section headings become sections; performance notes on a heading ("(2x)", "(Girl lead)") are left off the name. A heading with nothing under it ("Chorus", "Intro (1x)") repeats that section in the order. Words the chart splits for a chord ("vaga - bond") are joined back with the chord on the right letter. Sections with only chords (intros, turnarounds) are one blank slide. Chords go to the stage display; the order follows the plan's arrangement (its sequence, else the chart's own order) and the key follows the plan. If Shepherd has no lyrics or chart for it, it stays flagged with **Get Lyrics**.
+- A song imported from Shepherd is updated when its chart or order changes in Shepherd, keeping its theme, backgrounds, display key and other arrangements (Anthem's included). If someone changed its words, chords or song order in Screens, it is not updated: it shows **Newer chart** in its header on the Present page (click for what changed and **Update**) and "Shepherd has a newer chart" in the song editor. Update replaces the Screens edits with Shepherd's chart.
+- A plan that uses another Shepherd arrangement of the same song gets that order as its own arrangement.
+- An unchanged chart changes nothing, so several Macs can sync the same plans. Songs linked from elsewhere in the library are never touched.
+
+**Punctuation.** With **Remove punctuation from imported lyrics** on, every lyrics import (Shepherd, Get Lyrics, SongSelect files, Import Lyrics, chord charts, New Song) drops . , ; : ! ? … quotes and dashes used as punctuation, keeps apostrophes (can't, 'til) and hyphens inside words (twenty-two), and keeps the words inside parentheses without the parentheses. Section names and chords are untouched. Songs already in the library don't change.
 
 ## Anthem
 
@@ -154,7 +163,7 @@ When Anthem triggers a song that is in the plan twice, the slide lands on the li
 - **Import Lyrics…**: paste lyrics or **Load File…**; SongSelect and ChordPro text are detected.
 - **Import Chord Chart…** (File) or **Attach Chord Chart…** (editor inspector): PDF, ChordPro or text; rebuilds lyrics, sections, chords and key.
 
-**Song editor** (opens when you edit a song): song title and **Key** at the top; the lyrics with each section name on its own line (Verse 1, Chorus, Bridge); a lines-per-slide stepper (1 to 6); **Update Slides** (⌘Return) rebuilds the slides; **Slide Editor…** opens the full editor. **Song Order**: drag sections to reorder, click a section chip to add it again. **Screens**: Audience theme, Livestream (left on "Worship default: …" it follows Lower Thirds; pick a theme to use that theme's lower thirds for this song only), Stage (Worship layout or another layout).
+**Song editor** (opens when you edit a song): song title and **Key** at the top; under them, when Shepherd is set up, **Import from Shepherd…** (search Shepherd's songs, pick one; this song takes its words, chords and order and stays linked to it) and, for a song linked to Shepherd, **Update from Shepherd** (or "Shepherd has a newer chart" with **Update** and what changed); the lyrics with each section name on its own line (Verse 1, Chorus, Bridge); a lines-per-slide stepper (1 to 6); **Update Slides** (⌘Return) rebuilds the slides; **Slide Editor…** opens the full editor. **Song Order**: drag sections to reorder, click a section chip to add it again. **Screens**: Audience theme, Livestream (left on "Worship default: …" it follows Lower Thirds; pick a theme to use that theme's lower thirds for this song only), Stage (Worship layout or another layout).
 
 **Arrangements.** In the slide editor, group slides into sections first (right-click a slide › **Start New Section Here…**). Then the **Arrangement** button: **New Arrangement**, **Add Block**, remove blocks; repeat a chorus without duplicating slides. Pick the arrangement per plan with the item's **Arrangement** submenu, or with the arrangement strip above the slide grid.
 

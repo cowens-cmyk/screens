@@ -889,8 +889,12 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
     public var streamThemeId: String?
     public var stageLayoutId: String?
     public var sermonTimerSeconds: Double?
+    public var shepherdSongId: String?
+    public var shepherdArrangementId: String?
+    public var shepherdChartHash: String?
+    public var shepherdImportHash: String?
 
-    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil, category: String? = nil, streamThemeId: String? = nil, stageLayoutId: String? = nil, sermonTimerSeconds: Double? = nil) {
+    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil, category: String? = nil, streamThemeId: String? = nil, stageLayoutId: String? = nil, sermonTimerSeconds: Double? = nil, shepherdSongId: String? = nil, shepherdArrangementId: String? = nil, shepherdChartHash: String? = nil, shepherdImportHash: String? = nil) {
         self.id = id
         self.name = name
         self.presentationKind = presentationKind
@@ -915,6 +919,10 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
         self.streamThemeId = streamThemeId
         self.stageLayoutId = stageLayoutId
         self.sermonTimerSeconds = sermonTimerSeconds
+        self.shepherdSongId = shepherdSongId
+        self.shepherdArrangementId = shepherdArrangementId
+        self.shepherdChartHash = shepherdChartHash
+        self.shepherdImportHash = shepherdImportHash
     }
 }
 

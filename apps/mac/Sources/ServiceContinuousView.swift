@@ -613,6 +613,7 @@ struct ServiceContinuousView: View {
                     }
                 }
                 AnthemMismatchBadge(model: model, serviceID: serviceID, itemID: item.id, labeled: true)
+                ShepherdNewerChartBadge(model: model, presentationID: presentation.id)
                 SongKeyChip(model: model, controls: controls, presentation: presentation)
                 SlideShowChip(model: model, controls: controls, presentation: presentation)
                 LyricFollowChip(controls: controls, presentation: presentation)

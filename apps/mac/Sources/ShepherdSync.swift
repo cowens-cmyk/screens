@@ -4,9 +4,10 @@ import PresenterCore
 import SwiftUI
 
 /// Loads upcoming Sunday plans from Shepherd as Screens services and checks
-/// again every few minutes. Songs link only
-/// to presentations already in the library; a song with none stays in the
-/// service flagged "No slides" until one is imported.
+/// again every few minutes. Songs link to presentations already in the
+/// library; a song with none gets one built from its Shepherd chord chart
+/// (see ShepherdSongSync), or stays flagged "No slides" when Shepherd has
+/// no words for it or song import is off.
 @MainActor
 @Observable
 final class ShepherdSync {
@@ -33,6 +34,14 @@ final class ShepherdSync {
         }
     }
 
+    /// Build and refresh planned songs from Shepherd's chord charts.
+    var importSongs: Bool {
+        didSet { UserDefaults.standard.set(importSongs, forKey: Self.importSongsKey) }
+    }
+    /// Songs edited here whose Shepherd chart has changed since, by
+    /// presentation id. Each sync works it out again.
+    var newerCharts: [String: ShepherdNewerChart] = [:]
+
     private(set) var isSyncing = false
     private(set) var lastSync: Date?
     private(set) var lastSummary: String?
@@ -52,6 +61,7 @@ final class ShepherdSync {
         weeksAhead = defaults.object(forKey: Self.weeksKey) as? Int ?? 3
         sundaysOnly = defaults.object(forKey: Self.sundaysKey) as? Bool ?? true
         autoSync = defaults.object(forKey: Self.autoKey) as? Bool ?? true
+        importSongs = defaults.object(forKey: Self.importSongsKey) as? Bool ?? true
     }
 
     func attach(_ model: AppModel) {
@@ -141,6 +151,16 @@ final class ShepherdSync {
                 if index == 0 { await applyKeys(items, model: model) }
             }
 
+            var songs = (imported: 0, updated: 0)
+            if importSongs {
+                let ids = plans.compactMap { plan in
+                    model.resident.services.values.first {
+                        $0.origin == ShepherdPlanSync.origin && $0.mxuPlanHexId == plan.id
+                    }?.id
+                }
+                songs = await refreshSongs(inServices: ids, model: model)
+            }
+
             let flagged = model.resident.services.values
                 .filter { $0.origin == ShepherdPlanSync.origin }
                 .reduce(0) { $0 + Self.flaggedSongs(in: $1.items) }
@@ -149,7 +169,12 @@ final class ShepherdSync {
             var parts: [String] = []
             if created > 0 { parts.append("\(created) new") }
             if updated > 0 { parts.append("\(updated) updated") }
+            if songs.imported > 0 { parts.append("\(songs.imported) song\(songs.imported == 1 ? "" : "s") imported") }
+            if songs.updated > 0 { parts.append("\(songs.updated) song\(songs.updated == 1 ? "" : "s") updated") }
             if parts.isEmpty { parts.append(plans.isEmpty ? "No upcoming plans" : "Up to date") }
+            if !newerCharts.isEmpty {
+                parts.append("\(newerCharts.count) edited song\(newerCharts.count == 1 ? " has" : "s have") a newer chart")
+            }
             if flagged > 0 { parts.append("\(flagged) song\(flagged == 1 ? "" : "s") need slides") }
             lastSummary = parts.joined(separator: ", ")
         } catch {
@@ -247,6 +272,7 @@ final class ShepherdSync {
 /// Settings › Integrations › Shepherd.
 struct ShepherdSettingsForm: View {
     @Bindable private var sync = ShepherdSync.shared
+    @AppStorage(LyricImportSettings.removePunctuationKey) private var removePunctuation = true
 
     var body: some View {
         Section {
@@ -269,6 +295,18 @@ struct ShepherdSettingsForm: View {
                 .toggleStyle(.switch)
         } header: {
             Text("Plans")
+        }
+        Section {
+            Toggle("Import lyrics and chords from Shepherd automatically", isOn: $sync.importSongs)
+                .toggleStyle(.switch)
+                .settingsAnchor("shepherd.songs")
+            Toggle("Remove punctuation from imported lyrics", isOn: $removePunctuation)
+                .toggleStyle(.switch)
+                .settingsAnchor("lyrics.punctuation")
+        } header: {
+            Text("Songs")
+        } footer: {
+            Text("Planned songs with no slides get them from Shepherd's chord chart, and imported songs follow chart changes. A song edited in Screens isn't replaced; it shows that Shepherd has a newer chart. Punctuation removal applies to every lyrics import. Songs already in the library don't change.")
         }
         Section {
             LabeledContent {
