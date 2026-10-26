@@ -199,10 +199,22 @@ public final class MetalSceneView: NSView {
         )
     }
 
+    /// Stops drawing while the preview is out of sight (a folded panel keeps
+    /// its previews built but hidden). The last frame stays in the layer.
+    public var isPaused = false {
+        didSet {
+            guard isPaused != oldValue, let link = displayLink else { return }
+            let paused = isPaused
+            nonisolated(unsafe) let movingLink = link
+            RenderThread.shared.perform { movingLink.isPaused = paused }
+        }
+    }
+
     private func startDisplayLink() {
         guard displayLink == nil else { return }
         let link = CAMetalDisplayLink(metalLayer: metalLayer)
         link.delegate = self
+        link.isPaused = isPaused
         displayLink = link
         updateFrameRatePacing()
 

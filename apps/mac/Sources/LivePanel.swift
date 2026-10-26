@@ -186,12 +186,14 @@ struct LiveSceneView: NSViewRepresentable {
     func makeNSView(context: Context) -> MetalSceneView {
         let view = MetalSceneView(compositor: render.compositor)
         view.maximumFramesPerSecond = maximumFramesPerSecond
+        view.isPaused = context.environment.livePreviewsPaused
         apply(to: view)
         return view
     }
 
     func updateNSView(_ nsView: MetalSceneView, context: Context) {
         nsView.maximumFramesPerSecond = maximumFramesPerSecond
+        nsView.isPaused = context.environment.livePreviewsPaused
         apply(to: nsView)
     }
 
