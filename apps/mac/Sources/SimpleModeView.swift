@@ -154,7 +154,7 @@ private struct SimpleScreensBand: View {
     @AppStorage("monitors.hidden") private var hiddenScreens = ""
     @State private var width: CGFloat = 0
 
-    private static let controlsWidth: CGFloat = 230
+    private static let controlsWidth: CGFloat = 280
     private static let spacing: CGFloat = 12
     private static let previewWidths: ClosedRange<CGFloat> = 150 ... 250
 

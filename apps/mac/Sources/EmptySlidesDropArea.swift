@@ -24,7 +24,7 @@ struct AddSlideMenuItems: View {
 /// Where a presentation's slides would be when it has none: a slide-sized
 /// dashed space that takes slides dragged from another presentation, Media
 /// library items and files from the Finder, with a "+" for the three ways to
-/// add one. Locked, it only says there are no slides.
+/// add one. Locked (Run Only, Simple Mode), it takes no room.
 struct EmptySlidesDropArea: View {
     let aspect: CGFloat
     let locked: Bool
@@ -43,8 +43,18 @@ struct EmptySlidesDropArea: View {
     @State private var targeted = false
 
     var body: some View {
+        if locked {
+            // Nothing to add or drop when locked, and the item's header
+            // already says it has no slides, so it takes no room.
+            Color.clear.frame(height: 2)
+        } else {
+            dropArea
+        }
+    }
+
+    private var dropArea: some View {
         let shape = RoundedRectangle.standard(roundedCorners ? CornerStandard.element : 0)
-        shape
+        return shape
             .fill(Color.primary.opacity(targeted ? 0.08 : 0.03))
             .overlay {
                 shape.strokeBorder(

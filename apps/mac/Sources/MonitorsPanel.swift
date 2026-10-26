@@ -557,7 +557,8 @@ struct SermonTimerControl: View {
                     minutesText = "\(Int(((timer?.durationSeconds ?? SermonTimer.defaultSeconds) / 60).rounded()))"
                     settingLength = true
                 } label: {
-                    SermonTimeReadout(timer: timer)
+                    // The time never wraps; the buttons beside it give way.
+                    SermonTimeReadout(timer: timer).fixedSize()
                 }
                 .buttonStyle(.plain)
                 .help("Set the time left")
