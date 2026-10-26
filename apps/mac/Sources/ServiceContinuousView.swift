@@ -18,6 +18,7 @@ struct ServiceContinuousView: View {
     var onShowItem: ((String) -> Void)? = nil
 
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
+    @AppStorage("appMode") private var appModeRaw = AppMode.present.rawValue
     @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
     @AppStorage("slideGrid.legibleText") private var legibleText = false
     @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
@@ -612,6 +613,9 @@ struct ServiceContinuousView: View {
                         )
                     }
                 }
+                if PreServiceSlides.isShared(item) {
+                    SharedPreServiceBadge()
+                }
                 AnthemMismatchBadge(model: model, serviceID: serviceID, itemID: item.id, labeled: true)
                 ShepherdNewerChartBadge(model: model, presentationID: presentation.id)
                 SongKeyChip(model: model, controls: controls, presentation: presentation)
@@ -639,7 +643,16 @@ struct ServiceContinuousView: View {
             }
 
             .contextMenu {
-                if !runOnly { presentationMenu(item, presentation) }
+                if !runOnly {
+                    if PreServiceSlides.isShared(item) {
+                        Button("Edit Pre-Service Slides\u{2026}") {
+                            model.openInEditor(entryID: presentation.id)
+                            appModeRaw = AppMode.edit.rawValue
+                        }
+                        Divider()
+                    }
+                    presentationMenu(item, presentation)
+                }
             }
         } else {
 
@@ -1828,5 +1841,21 @@ private struct PresentationIssuesBadge: View {
         }
         .padding(12)
         .frame(width: 320, alignment: .leading)
+    }
+}
+
+/// On the pre-service item's header: its slides are the one slideshow every
+/// plan shows, so adding, removing or moving one here changes every plan.
+struct SharedPreServiceBadge: View {
+    var body: some View {
+        Text("Shared \u{00B7} every plan")
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Color.secondary.opacity(0.12), in: Capsule())
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize()
+            .help("Every plan shows these same slides. Changes here change every plan.")
     }
 }

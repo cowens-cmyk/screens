@@ -241,15 +241,10 @@ final class WebsiteEventSync {
 
     // MARK: Writing the slides
 
-    /// The pre-service slideshow: the Service Day setup's, else one named
-    /// Pre-Service (as the Assistant finds it).
+    /// The pre-service slideshow every plan shows: the Service Day setup's,
+    /// else the one named Pre-Service (found the same way everywhere).
     func slideshowID() -> String? {
-        guard let model else { return nil }
-        if let id = model.slideBuilding.serviceDay?.preServicePresentationId, !id.isEmpty, model.libraryEntry(id) != nil {
-            return id
-        }
-        return model.entries(of: .presentation)
-            .first { ServiceDay.looksLikePreService($0.name) || ServiceDay.looksLikePreService($0.subkind) }?.id
+        model?.preServiceSlideshowID()
     }
 
     /// Brings the slideshow's event slides up to date; turned off, takes

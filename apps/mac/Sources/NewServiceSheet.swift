@@ -56,12 +56,15 @@ struct NewServiceSheet: View {
                 var copy = ServiceItem(id: UUID().uuidString, itemKind: item.itemKind, name: item.name, refId: item.refId)
                 copy.arrangementId = item.arrangementId
                 copy.colorHex = item.colorHex
+                // Still the one shared slideshow, not a copy of it.
+                copy.isPreService = item.isPreService
                 return copy
             }
         }
-        let service = Service(
+        var service = Service(
             id: UUID().uuidString, name: name.trimmingCharacters(in: .whitespaces),
             serviceDate: AppModel.isoDate(date), items: items)
+        if let ensured = PreServiceSlides.ensuring(service, sharedID: model.preServiceSlideshowID()) { service = ensured }
         model.createInDrive(service)
         dismiss()
         onCreated(service.id)

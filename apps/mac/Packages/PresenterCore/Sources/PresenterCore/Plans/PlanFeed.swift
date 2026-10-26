@@ -100,6 +100,7 @@ public enum PlanItemSync {
             item.outputPresetId = old?.outputPresetId
             item.hiddenInPresenter = old?.hiddenInPresenter
             item.isCountdown = old?.isCountdown
+            item.isPreService = old?.isPreService
             // Chosen in Screens, not in the plan: a re-sync keeps them.
             item.lightingCue = old?.lightingCue
             item.actions = old?.actions
@@ -141,8 +142,9 @@ public enum PlanItemSync {
             default:
                 // The countdown's video changes every week and is picked
                 // in Screens: a standing rule for "COUNTDOWN" mustn't put
-                // last week's back.
-                if let old, old.isCountdown == true, !old.refId.isEmpty {
+                // last week's back. The pre-service item stays on the one
+                // slideshow every plan shares, whatever a rule says.
+                if let old, old.isCountdown == true || old.isPreService == true, !old.refId.isEmpty {
                     item.itemKind = old.itemKind
                     item.refId = old.refId
                 } else if let rule = ServiceLinkLogic.matchingRule(

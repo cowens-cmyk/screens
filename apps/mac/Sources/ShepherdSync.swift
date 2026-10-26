@@ -109,6 +109,7 @@ final class ShepherdSync {
             if sundaysOnly { plans = plans.filter(Self.isSunday) }
 
             var created = 0, updated = 0
+            let preService = model.preServiceSlideshowID()
             for (index, plan) in plans.enumerated() {
                 let existing = model.resident.services.values.first {
                     $0.origin == ShepherdPlanSync.origin && $0.mxuPlanHexId == plan.id
@@ -120,9 +121,15 @@ final class ShepherdSync {
                 if let existing, existing.mxuPlanVersion == version, !Self.hasFlaggedSongs(existing) { continue }
 
                 let detail = try await client.plan(id: plan.id)
-                let items = ShepherdPlanSync.items(
+                let synced = ShepherdPlanSync.items(
                     for: detail, rules: model.serviceLinkRules, existing: existing?.items ?? []
                 ) { song in Self.librarySong(for: song, candidates: candidates) }
+                // Every plan opens with the shared pre-service slideshow:
+                // Shepherd's "Pre-Service" item is linked to it, or one is
+                // put first (unless it was taken out of this plan).
+                var probe = existing ?? Service(id: "", name: "", serviceDate: "", items: [])
+                probe.items = synced
+                let items = PreServiceSlides.ensuring(probe, sharedID: preService)?.items ?? synced
                 let name = ShepherdPlanSync.serviceName(for: detail)
                 let date = ShepherdPlanSync.serviceDate(for: detail)
                 if let existing {
