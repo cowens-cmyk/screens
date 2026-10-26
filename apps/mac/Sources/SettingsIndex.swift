@@ -93,7 +93,7 @@ enum SettingsIndex {
             id: "screens.alphaKey", category: .screens,
             title: "Alpha key (transparent)",
             caption: "Fill and key for the switcher's keyer, from a DeckLink port.",
-            keywords: "alpha key transparent fill external internal switcher keyer decklink sdi"),
+            keywords: "alpha key transparent fill external internal switcher keyer decklink sdi ndi luma black see-through"),
         SettingsEntry(
             id: "screens.stage", category: .screens,
             title: "Stage",

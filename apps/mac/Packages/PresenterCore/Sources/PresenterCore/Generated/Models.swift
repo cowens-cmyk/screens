@@ -127,15 +127,22 @@ public enum StrokeDashKind: String, Codable, Sendable, CaseIterable, Equatable {
     case dotted
 }
 
+public enum StrokePosition: String, Codable, Sendable, CaseIterable, Equatable {
+    case center
+    case outside
+}
+
 public struct ObjectStroke: Codable, Sendable, Equatable {
     public var colorHex: String
     public var width: Double
     public var dashKind: StrokeDashKind?
+    public var position: StrokePosition?
 
-    public init(colorHex: String, width: Double, dashKind: StrokeDashKind? = nil) {
+    public init(colorHex: String, width: Double, dashKind: StrokeDashKind? = nil, position: StrokePosition? = nil) {
         self.colorHex = colorHex
         self.width = width
         self.dashKind = dashKind
+        self.position = position
     }
 }
 
@@ -369,8 +376,9 @@ public struct TextStyleRun: Codable, Sendable, Equatable {
     public var colorHex: String?
     public var highlightColorHex: String?
     public var tracking: Double?
+    public var outline: ObjectStroke?
 
-    public init(line: Int, column: Int, length: Int, underline: Bool? = nil, strikethrough: Bool? = nil, fontName: String? = nil, fontSize: Double? = nil, colorHex: String? = nil, highlightColorHex: String? = nil, tracking: Double? = nil) {
+    public init(line: Int, column: Int, length: Int, underline: Bool? = nil, strikethrough: Bool? = nil, fontName: String? = nil, fontSize: Double? = nil, colorHex: String? = nil, highlightColorHex: String? = nil, tracking: Double? = nil, outline: ObjectStroke? = nil) {
         self.line = line
         self.column = column
         self.length = length
@@ -381,6 +389,7 @@ public struct TextStyleRun: Codable, Sendable, Equatable {
         self.colorHex = colorHex
         self.highlightColorHex = highlightColorHex
         self.tracking = tracking
+        self.outline = outline
     }
 }
 

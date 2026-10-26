@@ -27,6 +27,7 @@ public enum TextStyleRuns {
         var colorHex: String?
         var highlightColorHex: String?
         var tracking: Double?
+        var outline: ObjectStroke?
 
         init() {}
 
@@ -38,6 +39,7 @@ public enum TextStyleRuns {
             colorHex = run.colorHex
             highlightColorHex = run.highlightColorHex
             tracking = run.tracking
+            outline = run.outline
         }
 
         var isEmpty: Bool { self == RunStyle() }
@@ -50,6 +52,7 @@ public enum TextStyleRuns {
             if let value = other.colorHex { colorHex = value }
             if let value = other.highlightColorHex { highlightColorHex = value }
             if let value = other.tracking { tracking = value }
+            if let value = other.outline { outline = value }
         }
 
         func run(line: Int, column: Int, length: Int) -> TextStyleRun {
@@ -57,7 +60,7 @@ public enum TextStyleRuns {
                 line: line, column: column, length: length,
                 underline: underline, strikethrough: strikethrough,
                 fontName: fontName, fontSize: fontSize, colorHex: colorHex,
-                highlightColorHex: highlightColorHex, tracking: tracking
+                highlightColorHex: highlightColorHex, tracking: tracking, outline: outline
             )
         }
     }

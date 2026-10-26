@@ -46,7 +46,8 @@ final class NDIOutputController {
         targetID: String, targetName: String, sourceName: String,
         width: Int, height: Int, frameRate: Int,
         sourceRect: CGRect? = nil,
-        placement: CGRect? = nil
+        placement: CGRect? = nil,
+        keying: OutputKeying = .fullPicture
     ) {
         stop()
         self.targetID = targetID
@@ -124,6 +125,8 @@ final class NDIOutputController {
         mirror = OutputMirror(
             compositor: render.compositor,
             width: width, height: height, framesPerSecond: frameRate,
+            transparentBackground: keying.transparentBackground,
+            straightAlpha: keying.straightAlpha,
             provider: provider,
             delayFrames: render.outputs.videoDelayProvider(for: targetID),
 

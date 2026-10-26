@@ -183,6 +183,13 @@
         "dotted"
       ]
     },
+    "StrokePosition": {
+      "type": "string",
+      "enum": [
+        "center",
+        "outside"
+      ]
+    },
     "ObjectStroke": {
       "type": "object",
       "properties": {
@@ -194,6 +201,9 @@
         },
         "dashKind": {
           "$ref": "#/components/schemas/StrokeDashKind"
+        },
+        "position": {
+          "$ref": "#/components/schemas/StrokePosition"
         }
       },
       "required": [
@@ -551,6 +561,9 @@
         },
         "tracking": {
           "type": "number"
+        },
+        "outline": {
+          "$ref": "#/components/schemas/ObjectStroke"
         }
       },
       "required": [

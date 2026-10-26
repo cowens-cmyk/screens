@@ -294,4 +294,69 @@ final class OutputMirrorTests: XCTestCase {
         XCTAssertEqual(mirror.framesDelivered, 0)
         XCTAssertEqual(mirror.framesDropped, 0)
     }
+
+    /// The livestream over NDI, as a receiver lays it over the camera. The
+    /// report: a lower third's solid black bar went completely transparent
+    /// on the stream and colored bars were see-through at 100% opacity,
+    /// because NDI got a frame drawn on black with alpha 255 everywhere and
+    /// only a luma key could take the black out.
+    func testLivestreamOverNDIKeepsBarsSolidAndTheRestClear() throws {
+        let compositor = try makeCompositor()
+        let canvas = CGSize(width: 320, height: 180)
+        var scene = RenderScene(canvasSize: canvas)
+        for item in [
+            RenderItem(id: "black-bar", frame: CGRect(x: 0, y: 120, width: 100, height: 60), content: .solid(.black)),
+            RenderItem(
+                id: "blue-bar", frame: CGRect(x: 110, y: 120, width: 100, height: 60),
+                content: .solid(SceneColor(red: 0.1, green: 0.2, blue: 0.8))),
+            RenderItem(
+                id: "half-white", frame: CGRect(x: 220, y: 120, width: 100, height: 60),
+                content: .solid(SceneColor(red: 1, green: 1, blue: 1, alpha: 0.5))),
+        ] {
+            scene.addItem(item, to: .slide)
+        }
+        let shown = scene
+
+        let keying = OutputKeying.ndi(livestream: true)
+        let frame = expectation(description: "one frame")
+        let delivered = Locked<CVPixelBuffer?>(nil)
+        let mirror = try XCTUnwrap(OutputMirror(
+            compositor: compositor, width: 320, height: 180, framesPerSecond: 30,
+            transparentBackground: keying.transparentBackground,
+            straightAlpha: keying.straightAlpha,
+            provider: { shown },
+            sink: { buffer, _ in
+                delivered.value = buffer
+                frame.fulfill()
+            }
+        ))
+        mirror.startWithoutTimerForTesting()
+        defer { mirror.stop() }
+        mirror.tick(at: 0)
+        wait(for: [frame], timeout: 5)
+
+        let buffer = try XCTUnwrap(delivered.value)
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        let base = try XCTUnwrap(CVPixelBufferGetBaseAddress(buffer))
+        let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
+        func bgra(_ x: Int, _ y: Int) -> [UInt8] {
+            let pixel = base.advanced(by: y * rowBytes + x * 4).assumingMemoryBound(to: UInt8.self)
+            return [pixel[0], pixel[1], pixel[2], pixel[3]]
+        }
+
+        XCTAssertEqual(bgra(160, 40)[3], 0, "nothing drawn: the camera shows through")
+        XCTAssertEqual(bgra(50, 150), [0, 0, 0, 255], "a black bar at 100% is solid black")
+        let blue = bgra(160, 150)
+        XCTAssertEqual(blue[3], 255, "a colored bar at 100% is solid")
+        XCTAssertGreaterThan(Int(blue[0]), 180, "and keeps its color: blue")
+        XCTAssertLessThan(Int(blue[2]), 80, "with little red")
+        let half = bgra(270, 150)
+        XCTAssertEqual(Double(half[3]), 128, accuracy: 2, "a half-clear fill stays half clear")
+        XCTAssertGreaterThan(half[2], 245, "and white at full strength, as NDI reads it, not grey")
+    }
+
+    func testOtherScreensOverNDIStayWholePictures() {
+        XCTAssertEqual(OutputKeying.ndi(livestream: false), .fullPicture)
+    }
 }

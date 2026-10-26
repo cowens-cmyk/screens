@@ -43,6 +43,18 @@ struct TextStyleRunsTests {
         #expect(runs == [TextStyleRun(line: 0, column: 0, length: 7, underline: true)])
     }
 
+    @Test func aStrokeOnSelectedLettersIsItsOwnRunAndReadsBack() {
+        let stroke = ObjectStroke(colorHex: "#000000FF", width: 4, position: .outside)
+        let runs = TextStyleRuns.applying(
+            { $0.outline = stroke }, to: [], in: "Amazing grace", selection: 8..<13
+        )
+        #expect(runs == [TextStyleRun(line: 0, column: 8, length: 5, outline: stroke)])
+        #expect(TextStyleRuns.effectiveRun(at: 9, runs: runs, in: "Amazing grace")?.outline == stroke)
+
+        let cleared = TextStyleRuns.applying({ $0.outline = nil }, to: runs, in: "Amazing grace", selection: 8..<13)
+        #expect(cleared.isEmpty, "taking the stroke off leaves no run behind")
+    }
+
     @Test func identicalNeighborsCoalesce() {
         let existing = [TextStyleRun(line: 0, column: 0, length: 7, underline: true)]
         let runs = TextStyleRuns.applying(

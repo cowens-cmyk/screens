@@ -99,6 +99,7 @@ public final class OutputMirror: @unchecked Sendable {
         framesPerSecond: Int = 30,
         color: PixelBufferConverter.Color = .sdr,
         transparentBackground: Bool = false,
+        straightAlpha: Bool = false,
         provider: @escaping @Sendable () -> RenderScene,
         delayFrames: (@Sendable () -> Int)? = nil,
         adjustments: (@Sendable () -> OutputAdjustments?)? = nil,
@@ -115,7 +116,7 @@ public final class OutputMirror: @unchecked Sendable {
 
                   poolCeiling: (delayFrames == nil ? 8 : 8 + Self.maxDelayFrames)
                       + max(0, consumerHeldFrames),
-                  color: color)
+                  color: color, straightAlpha: straightAlpha)
         else { return nil }
         self.compositor = compositor
         self.width = width
@@ -400,7 +401,11 @@ public final class PixelBufferConverter: @unchecked Sendable {
     private var hlgFloatScratch: Data
     private var hlgWideScratch: Data
 
-    init?(width: Int, height: Int, poolCeiling: Int = 8, color: Color = .sdr) {
+    /// `straightAlpha` keeps each color at full strength instead of
+    /// multiplied by its alpha (SDR frames only), for receivers such as NDI
+    /// that read BGRA that way; a DeckLink key takes the premultiplied
+    /// frame the compositor draws.
+    init?(width: Int, height: Int, poolCeiling: Int = 8, color: Color = .sdr, straightAlpha: Bool = false) {
         self.width = width
         self.height = height
         self.color = color
@@ -439,7 +444,7 @@ public final class PixelBufferConverter: @unchecked Sendable {
                     bitsPerPixel: 32,
                     colorSpace: $0,
                     bitmapInfo: CGBitmapInfo(rawValue:
-                        CGImageAlphaInfo.premultipliedFirst.rawValue
+                        (straightAlpha ? CGImageAlphaInfo.first : CGImageAlphaInfo.premultipliedFirst).rawValue
                             | CGBitmapInfo.byteOrder32Little.rawValue))
             }
         case .hlg2020:

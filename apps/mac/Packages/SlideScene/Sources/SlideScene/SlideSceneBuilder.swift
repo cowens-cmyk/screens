@@ -955,7 +955,7 @@ public enum SlideSceneBuilder {
             keepLinesWhole: resolve(\.keepLinesWhole) ?? false,
             balancedWrap: resolve(\.balancedWrap) ?? false,
             outline: resolve(\.outline).flatMap { outline in
-                ColorHex.color(outline.colorHex).map { TextOutline(color: $0, width: outline.width) }
+                ColorHex.color(outline.colorHex).map { textOutline(outline, color: $0) }
             },
 
             lineOverrides: (own?.lineStyles ?? []).map { line in
@@ -1008,13 +1008,22 @@ public enum SlideSceneBuilder {
                     fontName: run.fontName, fontSize: run.fontSize,
                     color: run.colorHex.flatMap(ColorHex.color),
                     highlightColor: run.highlightColorHex.flatMap(ColorHex.color),
-                    tracking: run.tracking
+                    tracking: run.tracking,
+                    // A stretch with no stroke of its own (width 0, or no
+                    // color) takes the text's off.
+                    outline: run.outline.map { textOutline($0, color: ColorHex.color($0.colorHex) ?? .clear) }
                 )
             },
 
             tickerRamp: sceneRamp(resolve(\.tickerRamp)),
             scroll: resolve(\.scroll).flatMap(blockScroll)
         )
+    }
+
+    /// A stroke with no position is centred on the glyph edge, as it was
+    /// drawn before strokes could sit outside.
+    static func textOutline(_ stroke: ObjectStroke, color: SceneColor) -> TextOutline {
+        TextOutline(color: color, width: stroke.width, position: stroke.position == .outside ? .outside : .center)
     }
 
     static func sceneRamp(_ ramp: AnimationRamp?) -> SceneAnimationRamp {

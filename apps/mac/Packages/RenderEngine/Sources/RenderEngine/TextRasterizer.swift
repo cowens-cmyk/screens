@@ -647,8 +647,7 @@ public enum TextRasterizer {
         for text: StyledText,
         fontScale: Double,
         pixelScale: CGFloat,
-        colorSpace: CGColorSpace? = nil,
-        includeOutline: Bool = true
+        colorSpace: CGColorSpace? = nil
     ) -> CFAttributedString {
         let displayString: String = switch text.transform {
         case .none: text.string
@@ -717,13 +716,12 @@ public enum TextRasterizer {
                 if let fill = cgColor(color, in: space) {
                     attributes[NSAttributedString.Key(kCTForegroundColorAttributeName as String)] = fill
                 }
-                if includeOutline, let outline = text.outline, fontSize > 0,
-                   let strokeColor = cgColor(outline.color, in: space) {
-
-                    let percent = outline.width * fontScale * pixelScale / fontSize * 100
-                    attributes[NSAttributedString.Key(kCTStrokeWidthAttributeName as String)] =
-                        -percent as CFNumber
-                    attributes[NSAttributedString.Key(kCTStrokeColorAttributeName as String)] = strokeColor
+                // Marked, not set as Core Text's stroke: Core Text can only
+                // stroke on the glyph's edge, over the fill, so the outline
+                // passes draw it from the glyph shapes instead (see
+                // drawOutlines).
+                if let outline = text.outline.flatMap({ pixelOutline($0, scale: fontScale * pixelScale) }) {
+                    attributes[outlineMarkKey] = outline
                 }
             }
             let content = index == lines.count - 1 ? line : line + "\n"
@@ -758,15 +756,6 @@ public enum TextRasterizer {
                             NSAttributedString.Key(kCTFontAttributeName as String),
                             value: runFont, range: range
                         )
-
-                        if let space = colorSpace, includeOutline, let outline = text.outline,
-                           runSize > 0, cgColor(outline.color, in: space) != nil {
-                            let percent = outline.width * fontScale * pixelScale / runSize * 100
-                            result.addAttribute(
-                                NSAttributedString.Key(kCTStrokeWidthAttributeName as String),
-                                value: -percent as CFNumber, range: range
-                            )
-                        }
                     }
                     if let runTracking = run.tracking {
                         result.addAttribute(
@@ -781,6 +770,15 @@ public enum TextRasterizer {
                             NSAttributedString.Key(kCTForegroundColorAttributeName as String),
                             value: fill, range: range
                         )
+                    }
+                    if colorSpace != nil, let runOutline = run.outline {
+                        // A stretch's own stroke, or none: width 0 takes the
+                        // text's stroke off these letters.
+                        if let outline = pixelOutline(runOutline, scale: fontScale * pixelScale) {
+                            result.addAttribute(outlineMarkKey, value: outline, range: range)
+                        } else {
+                            result.removeAttribute(outlineMarkKey, range: range)
+                        }
                     }
                     if let highlight = run.highlightColor {
 
@@ -824,6 +822,98 @@ public enum TextRasterizer {
             }
         }
         return result
+    }
+
+    /// A stretch's stroke, its width in pixels: a TextOutline.
+    static let outlineMarkKey = NSAttributedString.Key("MxUOutline")
+
+    /// The stroke at drawing size; nil for one too thin to see or with no
+    /// color.
+    private static func pixelOutline(_ outline: TextOutline, scale: Double) -> TextOutline? {
+        let width = outline.width * scale
+        guard width > 0.01, outline.color.alpha > 0 else { return nil }
+        return TextOutline(color: outline.color, width: width, position: outline.position)
+    }
+
+    static func hasOutlines(_ attributed: CFAttributedString) -> Bool {
+        let string = attributed as NSAttributedString
+        var found = false
+        string.enumerateAttribute(outlineMarkKey, in: NSRange(location: 0, length: string.length)) { value, _, stop in
+            if value != nil {
+                found = true
+                stop.pointee = true
+            }
+        }
+        return found
+    }
+
+    /// Strokes the glyphs of each marked run whose stroke sits at
+    /// `position`, from the glyph shapes themselves. An outside stroke is
+    /// drawn before the letters, twice as wide and filled, so the letters
+    /// drawn over it cover its inner half and keep their full shape (a
+    /// thick stroke can't eat a thin letter); the fill under them also
+    /// gives their soft edges the stroke color to blend into, not a gap. A
+    /// centred stroke is drawn after the letters, as Core Text drew it.
+    static func drawOutlines(
+        _ lines: [(line: CTLine, origin: CGPoint)],
+        position: TextOutline.Position,
+        context: CGContext
+    ) {
+        for (line, origin) in lines {
+            guard let runs = CTLineGetGlyphRuns(line) as? [CTRun] else { continue }
+            for run in runs {
+                let attributes = CTRunGetAttributes(run) as NSDictionary
+                guard attributes[hiddenMarkKey] as? Bool != true,
+                      let outline = attributes[outlineMarkKey] as? TextOutline,
+                      outline.position == position,
+                      let color = LinearRaster.cgColor(outline.color),
+                      let fontValue = attributes[kCTFontAttributeName as String],
+                      CFGetTypeID(fontValue as CFTypeRef) == CTFontGetTypeID()
+                else { continue }
+                let font = fontValue as! CTFont
+                let count = CTRunGetGlyphCount(run)
+                guard count > 0 else { continue }
+                var glyphs = [CGGlyph](repeating: 0, count: count)
+                var positions = [CGPoint](repeating: .zero, count: count)
+                CTRunGetGlyphs(run, CFRange(location: 0, length: count), &glyphs)
+                CTRunGetPositions(run, CFRange(location: 0, length: count), &positions)
+                let matrix = CTRunGetTextMatrix(run)
+                let path = CGMutablePath()
+                for (glyph, point) in zip(glyphs, positions) {
+                    var place = matrix.concatenating(CGAffineTransform(
+                        translationX: origin.x + point.x, y: origin.y + point.y))
+                    if let shape = CTFontCreatePathForGlyph(font, glyph, &place) {
+                        path.addPath(shape)
+                    }
+                }
+                guard !path.isEmpty else { continue }
+                context.saveGState()
+                context.addPath(path)
+                context.setStrokeColor(color)
+                switch position {
+                case .outside:
+                    context.setFillColor(color)
+                    context.setLineWidth(outline.width * 2)
+                    context.setLineJoin(.round)
+                    context.drawPath(using: .fillStroke)
+                case .center:
+                    context.setLineWidth(outline.width)
+                    context.setLineJoin(.miter)
+                    context.drawPath(using: .stroke)
+                }
+                context.restoreGState()
+            }
+        }
+    }
+
+    /// A frame's lines with their origins in the context.
+    static func placedLines(_ frame: CTFrame, frameRect: CGRect) -> [(line: CTLine, origin: CGPoint)] {
+        guard let lines = CTFrameGetLines(frame) as? [CTLine], !lines.isEmpty else { return [] }
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
+        return zip(lines, origins).map { line, origin in
+            (line, CGPoint(x: frameRect.minX + origin.x, y: frameRect.minY + origin.y))
+        }
     }
 
     static let underlineMarkKey = NSAttributedString.Key("MxUUnderline")
@@ -1021,10 +1111,8 @@ public enum TextRasterizer {
         )
         let layoutText = chorded?.text ?? text
 
-        let hasInkFill = text.fill != nil
         let attributed = attributedString(
-            for: layoutText, fontScale: fontScale, pixelScale: scale, colorSpace: colorSpace,
-            includeOutline: !hasInkFill
+            for: layoutText, fontScale: fontScale, pixelScale: scale, colorSpace: colorSpace
         )
 
         let framesetter = CTFramesetterCreateWithAttributedString(attributed)
@@ -1095,34 +1183,26 @@ public enum TextRasterizer {
             )
         }
 
+        let placed = placedLines(frame, frameRect: frameRect)
+        let outlined = hasOutlines(layout.attributed)
+        // One shadow for the stroked letters as a whole: drawn piece by
+        // piece, the letters' shadow would fall across their own stroke.
+        let layered = text.shadow != nil && (text.fill != nil || outlined)
+        if layered { context.beginTransparencyLayer(auxiliaryInfo: nil) }
+        if outlined { drawOutlines(placed, position: .outside, context: context) }
+
         if let fill = text.fill {
-
-            let shadowed = text.shadow != nil
-            if shadowed { context.beginTransparencyLayer(auxiliaryInfo: nil) }
-
             context.saveGState()
             context.setTextDrawingMode(.clip)
             drawFrameGlyphs(frame, frameRect: frameRect, skippingHidden: hasHiddenRuns, context: context)
             drawInkFill(fill, over: frameRect, context: context)
             context.restoreGState()
-
-            if let outline = text.outline, outline.width > 0 {
-                context.saveGState()
-                context.setTextDrawingMode(.stroke)
-                if let strokeColor = LinearRaster.cgColor(outline.color) {
-                    context.setStrokeColor(strokeColor)
-                }
-                context.setLineWidth(outline.width * fontScale * scale)
-                drawFrameGlyphs(frame, frameRect: frameRect, skippingHidden: hasHiddenRuns, context: context)
-                context.restoreGState()
-            }
-
-            drawDecorations(frame: frame, frameRect: frameRect, fill: fill, context: context)
-            if shadowed { context.endTransparencyLayer() }
         } else {
             drawFrameGlyphs(frame, frameRect: frameRect, skippingHidden: hasHiddenRuns, context: context)
-            drawDecorations(frame: frame, frameRect: frameRect, fill: nil, context: context)
         }
+        if outlined { drawOutlines(placed, position: .center, context: context) }
+        drawDecorations(frame: frame, frameRect: frameRect, fill: text.fill, context: context)
+        if layered { context.endTransparencyLayer() }
 
         if let chorded {
             drawChords(
