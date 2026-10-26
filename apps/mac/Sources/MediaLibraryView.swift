@@ -126,7 +126,7 @@ struct MediaLibraryView: View {
         let audio = model.entries(in: .audio)
         NavigationSplitView {
             sidebar(media: media, audio: audio)
-                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+                .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 280)
         } detail: {
             detail(entries: searched(members(of: shown, media: media, audio: audio)))
         }
