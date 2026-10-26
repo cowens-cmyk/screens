@@ -1287,6 +1287,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "shepherdArrangementId": {
+          "type": "string"
         }
       },
       "required": [
@@ -1808,6 +1811,15 @@
           "type": "array",
           "items": {
             "$ref": "#/components/schemas/SlideAction"
+          }
+        },
+        "mxuSyncedArrangementId": {
+          "type": "string"
+        },
+        "mxuArrangementWarnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
           }
         }
       },

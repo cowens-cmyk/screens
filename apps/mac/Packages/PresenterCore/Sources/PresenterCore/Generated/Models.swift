@@ -851,11 +851,13 @@ public struct Arrangement: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
     public var sectionIds: [String]
+    public var shepherdArrangementId: String?
 
-    public init(id: String, name: String, sectionIds: [String]) {
+    public init(id: String, name: String, sectionIds: [String], shepherdArrangementId: String? = nil) {
         self.id = id
         self.name = name
         self.sectionIds = sectionIds
+        self.shepherdArrangementId = shepherdArrangementId
     }
 }
 
@@ -1150,8 +1152,10 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
     public var isCountdown: Bool?
     public var lightingCue: String?
     public var actions: [SlideAction]?
+    public var mxuSyncedArrangementId: String?
+    public var mxuArrangementWarnings: [String]?
 
-    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuSourceItemId: String? = nil, mxuSourceSongId: String? = nil, mxuSourceArrangementId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil, isCountdown: Bool? = nil, lightingCue: String? = nil, actions: [SlideAction]? = nil) {
+    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuSourceItemId: String? = nil, mxuSourceSongId: String? = nil, mxuSourceArrangementId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil, isCountdown: Bool? = nil, lightingCue: String? = nil, actions: [SlideAction]? = nil, mxuSyncedArrangementId: String? = nil, mxuArrangementWarnings: [String]? = nil) {
         self.id = id
         self.itemKind = itemKind
         self.name = name
@@ -1186,10 +1190,12 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         self.isCountdown = isCountdown
         self.lightingCue = lightingCue
         self.actions = actions
+        self.mxuSyncedArrangementId = mxuSyncedArrangementId
+        self.mxuArrangementWarnings = mxuArrangementWarnings
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, itemKind, name, refId, arrangementId, colorHex, outputPresetId, mxuItemHexId, duration, mxuKind, excludedTimeHexIds, hiddenInPresenter, mxuSongTitle, mxuCcliNumber, mxuArrangementName, mxuSongAuthor, mxuMultiTracksUrl, mxuNotes, mxuMessageNotesDocumentHexId, mxuMessageNotesSubmittedAt, mxuMessageNotesOnReady, mxuMessageNotesDeckDocId, mxuSourceItemId, mxuSourceSongId, mxuSourceArrangementId, mxuSongKey, mxuDescription, mxuServicePosition, mxuBpm, mxuTimeSignature, mxuSongKeyApplied, isCountdown, lightingCue, actions
+        case id, itemKind, name, refId, arrangementId, colorHex, outputPresetId, mxuItemHexId, duration, mxuKind, excludedTimeHexIds, hiddenInPresenter, mxuSongTitle, mxuCcliNumber, mxuArrangementName, mxuSongAuthor, mxuMultiTracksUrl, mxuNotes, mxuMessageNotesDocumentHexId, mxuMessageNotesSubmittedAt, mxuMessageNotesOnReady, mxuMessageNotesDeckDocId, mxuSourceItemId, mxuSourceSongId, mxuSourceArrangementId, mxuSongKey, mxuDescription, mxuServicePosition, mxuBpm, mxuTimeSignature, mxuSongKeyApplied, isCountdown, lightingCue, actions, mxuSyncedArrangementId, mxuArrangementWarnings
     }
 
     private enum LegacyCodingKeys: String, CodingKey {
@@ -1236,6 +1242,8 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         isCountdown = try container.decodeIfPresent(Bool.self, forKey: .isCountdown)
         lightingCue = try container.decodeIfPresent(String.self, forKey: .lightingCue)
         actions = try container.decodeIfPresent([SlideAction].self, forKey: .actions)
+        mxuSyncedArrangementId = try container.decodeIfPresent(String.self, forKey: .mxuSyncedArrangementId)
+        mxuArrangementWarnings = try container.decodeIfPresent([String].self, forKey: .mxuArrangementWarnings)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1274,6 +1282,8 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         try container.encodeIfPresent(isCountdown, forKey: .isCountdown)
         try container.encodeIfPresent(lightingCue, forKey: .lightingCue)
         try container.encodeIfPresent(actions, forKey: .actions)
+        try container.encodeIfPresent(mxuSyncedArrangementId, forKey: .mxuSyncedArrangementId)
+        try container.encodeIfPresent(mxuArrangementWarnings, forKey: .mxuArrangementWarnings)
     }
 }
 

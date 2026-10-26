@@ -587,7 +587,8 @@ struct ServiceContinuousView: View {
                 // One count for the whole item instead of a triangle on every tile.
                 PresentationIssuesBadge(
                     model: model, presentation: presentation,
-                    arrangementId: item.arrangementId, slides: slides)
+                    arrangementId: item.arrangementId, slides: slides,
+                    orderNotes: item.mxuArrangementWarnings ?? [])
                 CardSlidePosition(controls: controls, itemID: item.id, slideCount: slides.count)
             } leading: {
 
@@ -1717,13 +1718,17 @@ private struct PresentationIssuesBadge: View {
     let presentation: Presentation
     let arrangementId: String?
     let slides: [Slide]
+    /// What plan sync noticed about the item's order: Shepherd's
+    /// arrangement names a section this song doesn't have.
+    var orderNotes: [String] = []
 
     @State private var clippedSlideIDs: Set<String> = []
     @State private var listing = false
 
     private struct Issue: Identifiable {
         let id: String
-        let number: Int
+        /// "Slide 3", or "Order" for the item's arrangement.
+        let place: String
         let text: String
     }
 
@@ -1747,20 +1752,21 @@ private struct PresentationIssuesBadge: View {
     }
 
     private var issues: [Issue] {
-        firstPlays.flatMap { number, slide -> [Issue] in
+        orderNotes.map { Issue(id: "order|" + $0, place: "Order", text: $0) }
+        + firstPlays.flatMap { number, slide -> [Issue] in
             var found: [Issue] = []
             let missing = MediaReferences.ids(in: slide).sorted().filter(model.isMediaMissing(mediaID:))
             if !missing.isEmpty {
                 let names = missing.compactMap { model.media($0)?.name }
                 found.append(Issue(
-                    id: slide.id + "|media", number: number,
+                    id: slide.id + "|media", place: "Slide \(number)",
                     text: names.isEmpty
                         ? "A media file isn't on this Mac"
                         : "\u{201C}\(names.joined(separator: "\u{201D}, \u{201C}"))\u{201D} isn't on this Mac"))
             }
             if clippedSlideIDs.contains(slide.id) {
                 found.append(Issue(
-                    id: slide.id + "|text", number: number,
+                    id: slide.id + "|text", place: "Slide \(number)",
                     text: "Text doesn't fit its box; the overflow is cut off"))
             }
             return found
@@ -1808,7 +1814,7 @@ private struct PresentationIssuesBadge: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(issues.prefix(12)) { issue in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("Slide \(issue.number)")
+                    Text(issue.place)
                         .font(.caption.weight(.semibold).monospacedDigit())
                         .frame(width: 58, alignment: .leading)
                     Text(issue.text)
@@ -1822,7 +1828,9 @@ private struct PresentationIssuesBadge: View {
                     .foregroundStyle(.secondary)
             }
             Divider()
-            Text("Fix text in Edit. Locate missing media from the Library.")
+            Text(orderNotes.isEmpty
+                ? "Fix text in Edit. Locate missing media from the Library."
+                : "Fix text or add the missing section in Edit. Locate missing media from the Library.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

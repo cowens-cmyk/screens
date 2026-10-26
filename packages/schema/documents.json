@@ -1604,6 +1604,11 @@
         {
           "name": "sectionIds",
           "type": "list:string"
+        },
+        {
+          "name": "shepherdArrangementId",
+          "type": "string",
+          "optional": true
         }
       ]
     },
@@ -2248,6 +2253,16 @@
         {
           "name": "actions",
           "type": "list:SlideAction",
+          "optional": true
+        },
+        {
+          "name": "mxuSyncedArrangementId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuArrangementWarnings",
+          "type": "list:string",
           "optional": true
         }
       ]
