@@ -69,10 +69,12 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         current.textStyle?.balancedWrap = true
         current.textStyle?.chordNotation = .numbers
         current.textStyle?.chordColorHex = worshipAccent
+        // The next lines are a glance ahead; chords there were too small to
+        // read and crowded the words.
         var next = linked("Next Slide", .nextSlide,
                           x: 80, y: 740, width: 1760, height: 180,
                           size: 64, color: nextGray, shrink: true, minSize: 40,
-                          chords: true, maxLines: 2)
+                          maxLines: 2)
         next.textStyle?.fontName = "HelveticaNeue-Medium"
         next.textStyle?.verticalAlignment = .top
         next.textStyle?.keepLinesWhole = true
