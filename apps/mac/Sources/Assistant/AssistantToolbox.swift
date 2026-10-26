@@ -181,6 +181,7 @@ final class AssistantToolbox {
                 fields["countdown"] = true
                 if item.refId.isEmpty { fields["countdown_video"] = "not chosen" }
             }
+            if item.isPreService == true { fields["pre_service_shared"] = true }
             if item.mxuItemHexId != nil { fields["from_shepherd"] = true }
             if item.mxuItemHexId != nil, item.refId.isEmpty, item.itemKind == .presentation { fields["no_slides"] = true }
             if let song = item.mxuSongTitle {
@@ -218,6 +219,14 @@ final class AssistantToolbox {
             item = ServiceItem(id: UUID().uuidString, itemKind: .header, name: header, refId: "")
         default:
             throw Failure("Give either ref_id or header.")
+        }
+        // The shared pre-service slideshow is in every plan once; a second
+        // item would only show the same slides again.
+        if let ref, ref == model.preServiceSlideshowID(),
+           let existing = plan.items.first(where: { $0.refId == ref || $0.isPreService == true }) {
+            return (["already_in_plan": .string(existing.id), "plan": .string(plan.name),
+                     "note": "The pre-service slideshow is shared by every plan and is already in this one."],
+                    "\(plan.name) already has the pre-service slideshow")
         }
         model.updateService(plan.id) { plan in
             let at = after.flatMap { id in plan.items.firstIndex { $0.id == id } }.map { $0 + 1 } ?? plan.items.count

@@ -633,6 +633,49 @@ public final class Compositor: @unchecked Sendable {
         }
     }
 
+    /// An editor canvas zoomed and panned: the scene at `viewScale` pixels
+    /// per scene unit with its origin at `viewOffset` (pixels), instead of
+    /// letterboxed. When `rasterScale` is lower, the scene is drawn at that
+    /// scale into the top-left of an intermediate the drawable's size and
+    /// magnified to fill it, so text and shapes keep the bitmaps they were
+    /// already cached at (or stay within a size the GPU can hold) rather than
+    /// being rasterised again for every frame of a pinch.
+    public func render(
+        scene: RenderScene,
+        into drawable: CAMetalDrawable,
+        at hostTime: CFTimeInterval,
+        transparentBackground: Bool,
+        viewScale: CGFloat,
+        viewOffset: CGPoint,
+        rasterScale: CGFloat
+    ) {
+        encodeLock.lock()
+        defer { encodeLock.unlock() }
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        let target = drawable.texture
+        let fraction = viewScale > 0 ? min(max(rasterScale / viewScale, 0.05), 1) : 1
+        if fraction < 0.999,
+           let intermediate = outputIntermediate(width: target.width, height: target.height) {
+            encode(
+                scene: scene, into: intermediate, commandBuffer: commandBuffer,
+                hostTime: hostTime, transparentBackground: transparentBackground,
+                transform: SceneTransform(
+                    scale: viewScale * fraction,
+                    offset: CGPoint(x: viewOffset.x * fraction, y: viewOffset.y * fraction)))
+            encodePresent(
+                texture: intermediate, into: target,
+                sourceRect: CGRect(x: 0, y: 0, width: fraction, height: fraction),
+                transparent: transparentBackground, commandBuffer: commandBuffer)
+        } else {
+            encode(
+                scene: scene, into: target, commandBuffer: commandBuffer,
+                hostTime: hostTime, transparentBackground: transparentBackground,
+                transform: SceneTransform(scale: viewScale, offset: viewOffset))
+        }
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
+    }
+
     public func present(
         texture: MTLTexture, into drawable: CAMetalDrawable, sourceRect: CGRect? = nil
     ) {
@@ -654,6 +697,7 @@ public final class Compositor: @unchecked Sendable {
         texture: MTLTexture,
         into target: MTLTexture,
         sourceRect: CGRect? = nil,
+        transparent: Bool = false,
         commandBuffer: MTLCommandBuffer
     ) {
         let passDescriptor = MTLRenderPassDescriptor()
@@ -661,7 +705,7 @@ public final class Compositor: @unchecked Sendable {
         attachment.texture = target
         attachment.loadAction = .clear
         attachment.storeAction = .store
-        attachment.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        attachment.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: transparent ? 0 : 1)
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDescriptor) else {
             return
         }
@@ -751,11 +795,13 @@ public final class Compositor: @unchecked Sendable {
         commandBuffer: MTLCommandBuffer,
         hostTime: CFTimeInterval,
         transparentBackground: Bool = false,
-        inset: CGFloat = 0
+        inset: CGFloat = 0,
+        transform placed: SceneTransform? = nil
     ) {
         cacheClock = cacheClockOverride?() ?? CACurrentMediaTime()
         let targetSize = CGSize(width: texture.width, height: texture.height)
-        let transform = SceneTransform(canvasSize: scene.canvasSize, targetSize: targetSize, inset: inset)
+        let transform = placed
+            ?? SceneTransform(canvasSize: scene.canvasSize, targetSize: targetSize, inset: inset)
 
         let resolved = AnimationEvaluator.resolve(scene, hostTime: hostTime)
         let scene = resolved.scene

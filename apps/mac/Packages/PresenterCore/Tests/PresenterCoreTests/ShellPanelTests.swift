@@ -31,7 +31,7 @@ private func unwrap(_ wait: ShellPanel.Wait?, sourceLocation: SourceLocation = #
         let close = try unwrap(panel.pointerLeft())
         #expect(close == .close(generation: panel.generation))
         #expect(panel.mode == .peek, "the grace delay runs first")
-        #expect(panel.waited(close) == nil)
+        #expect(panel.waited(close) == .release(generation: panel.generation), "then its content waits for the shape to settle")
         #expect(panel.mode == .collapsed)
     }
 
@@ -144,5 +144,137 @@ private func unwrap(_ wait: ShellPanel.Wait?, sourceLocation: SourceLocation = #
         #expect(ShellPanel.graceDelay == .milliseconds(350))
         #expect(ShellPanel.openDelay < ShellPanel.graceDelay)
         #expect(ShellPanel.Wait.close(generation: 0).duration == ShellPanel.graceDelay)
+    }
+
+    // MARK: Motion: what's built and drawn while the shape moves
+
+    @Test func theContentIsBuiltWhileThePointerWaitsToOpen() throws {
+        var panel = ShellPanel(pinned: false)
+        #expect(!panel.contentBuilt, "a folded panel builds nothing")
+        let open = try unwrap(panel.pointerEntered(at: 10))
+        #expect(panel.contentBuilt, "built during the open delay, before the shape moves")
+        #expect(panel.mode == .collapsed)
+        _ = panel.waited(open)
+        #expect(panel.mode == .peek)
+        #expect(panel.contentBuilt, "the frame the shape starts to grow in has nothing to build")
+    }
+
+    @Test func theContentGoesOnlyOnceTheFoldedShapeHasSettled() throws {
+        var panel = ShellPanel(pinned: false)
+        _ = panel.waited(try unwrap(panel.pointerEntered(at: 10)))
+        let close = try unwrap(panel.pointerLeft())
+        let release = try unwrap(panel.waited(close))
+        #expect(panel.mode == .collapsed)
+        #expect(panel.contentBuilt, "kept while the shape shrinks over it")
+        #expect(release == .release(generation: panel.generation))
+        #expect(release.duration >= .milliseconds(Int(ShellPanel.settleTime * 1000)))
+        #expect(panel.waited(release) == nil)
+        #expect(!panel.contentBuilt, "let go once nothing is moving")
+    }
+
+    @Test func comingBackBeforeTheReleaseKeepsTheContent() throws {
+        var panel = ShellPanel(pinned: false)
+        _ = panel.waited(try unwrap(panel.pointerEntered(at: 10)))
+        let release = try unwrap(panel.waited(try unwrap(panel.pointerLeft())))
+        _ = panel.pointerEntered(at: 11)
+        #expect(panel.waited(release) == nil)
+        #expect(panel.contentBuilt, "the pointer is back: reopening needs it")
+    }
+
+    @Test func aPointerThatOnlyCrossesTheBubbleLetsTheContentGoLater() throws {
+        var panel = ShellPanel(pinned: false)
+        _ = panel.pointerEntered(at: 10)
+        let release = try unwrap(panel.pointerLeft())
+        #expect(panel.contentBuilt)
+        _ = panel.waited(release)
+        #expect(!panel.contentBuilt)
+    }
+
+    @Test func unpinningKeepsTheContentUntilTheShapeSettles() throws {
+        var panel = ShellPanel(pinned: true)
+        #expect(panel.contentBuilt, "a pinned panel starts with its content")
+        let release = try unwrap(panel.click(at: 20))
+        #expect(panel.contentBuilt)
+        _ = panel.pointerLeft()
+        #expect(panel.waited(release) == nil)
+        #expect(panel.contentBuilt, "the pointer moved after the click; its own release wait follows")
+
+        var menu = ShellPanel(pinned: true)
+        let fromMenu = try unwrap(menu.toggle())
+        _ = menu.waited(fromMenu)
+        #expect(!menu.contentBuilt)
+    }
+
+    @Test func aPinFromTheMenuBuildsTheContentBeforeTheShapeGrows() {
+        var panel = ShellPanel(pinned: false)
+        #expect(panel.needsContentBeforePin)
+        panel.buildContent()
+        #expect(!panel.needsContentBeforePin)
+        #expect(panel.mode == .collapsed, "building moves nothing")
+        #expect(panel.toggle() == nil)
+        #expect(panel.isPinned && panel.contentBuilt)
+    }
+
+    @Test func aPinnedPanelNeverLetsItsContentGo() throws {
+        var panel = ShellPanel(pinned: false)
+        let open = try unwrap(panel.pointerEntered(at: 10))
+        panel.click(at: 10.3)
+        _ = panel.waited(open)
+        #expect(panel.pointerLeft() == nil)
+        #expect(panel.contentBuilt)
+    }
+
+    @Test func previewsDrawOnlyOnTheFaceThatShows() throws {
+        var panel = ShellPanel(pinned: false)
+        #expect(!panel.showsOpenFace, "folded: the strip's previews draw, the column's are paused")
+        _ = panel.waited(try unwrap(panel.pointerEntered(at: 10)))
+        #expect(panel.showsOpenFace, "peeking: the column's previews draw from the start, so they're fresh when its content fades in")
+        panel.click(at: 11)
+        #expect(panel.showsOpenFace)
+    }
+
+    @Test func leavingEditDropsAPeeksContentAtOnce() throws {
+        var panel = ShellPanel(pinned: false)
+        _ = panel.waited(try unwrap(panel.pointerEntered(at: 1)))
+        panel.dismissPeek()
+        #expect(!panel.contentBuilt, "its views went with Edit; nothing waits to be released")
+    }
+
+    @Test func theShapeSettlesInAboutHalfASecond() {
+        // The release waits this long, and the hitch meter watches this long.
+        #expect(ShellPanel.settleTime > 0.4 && ShellPanel.settleTime < 0.6)
+        #expect(ShellPanel.springResponse == 0.42 && ShellPanel.springDamping == 0.72)
+        #expect(ShellPanel.Wait.release(generation: 0).duration > ShellPanel.graceDelay)
+    }
+}
+
+@Suite struct FrameHitchCountTests {
+    private static let hz120 = 1.0 / 120
+
+    @Test func steadyFramesAreNeverLate() {
+        var count = FrameHitchCount()
+        for frame in 0...60 { count.record(timestamp: Double(frame) * Self.hz120, interval: Self.hz120) }
+        #expect(count.frames == 60)
+        #expect(count.late == 0 && count.missed == 0)
+        #expect(count.summary == "60 frames at 120 Hz, none late, longest 8.3 ms")
+    }
+
+    @Test func aGapOfMoreThanOneAndAHalfIntervalsIsLate() {
+        var count = FrameHitchCount()
+        let times = [0.0, 1, 2, 5, 6, 7.4].map { $0 * Self.hz120 }
+        for time in times { count.record(timestamp: time, interval: Self.hz120) }
+        #expect(count.frames == 5)
+        #expect(count.late == 1, "1.4 intervals is jitter, 3 is a hitch")
+        #expect(count.missed == 2)
+        #expect(abs(count.longest - 3 * Self.hz120) < 1e-9)
+        #expect(count.summary.contains("1 late (2 missed)"))
+    }
+
+    @Test func theFirstTickOnlyStartsTheClock() {
+        var count = FrameHitchCount()
+        count.record(timestamp: 5, interval: Self.hz120)
+        #expect(count.frames == 0)
+        count.record(timestamp: 5 + 1.0 / 60, interval: 1.0 / 60)
+        #expect(count.frames == 1 && count.late == 0, "the display dropped to 60 Hz; judged by its own interval")
     }
 }

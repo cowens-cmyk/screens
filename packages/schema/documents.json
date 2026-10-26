@@ -1621,6 +1621,11 @@
         {
           "name": "sectionIds",
           "type": "list:string"
+        },
+        {
+          "name": "shepherdArrangementId",
+          "type": "string",
+          "optional": true
         }
       ]
     },
@@ -2258,6 +2263,11 @@
           "optional": true
         },
         {
+          "name": "isPreService",
+          "type": "bool",
+          "optional": true
+        },
+        {
           "name": "lightingCue",
           "type": "string",
           "optional": true
@@ -2265,6 +2275,16 @@
         {
           "name": "actions",
           "type": "list:SlideAction",
+          "optional": true
+        },
+        {
+          "name": "mxuSyncedArrangementId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mxuArrangementWarnings",
+          "type": "list:string",
           "optional": true
         }
       ]
@@ -2539,6 +2559,11 @@
         },
         {
           "name": "countdownRemoved",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "preServiceRemoved",
           "type": "bool",
           "optional": true
         }

@@ -145,12 +145,15 @@ public enum ShepherdSongMatch {
     }
 
     /// The arrangement the plan uses: by id, then by name, else the song's
-    /// first.
+    /// default, else its first.
     public static func arrangement(
         in song: ShepherdClient.SongDetail, id: String?, name: String?
     ) -> ShepherdClient.SongArrangement? {
         if let id, let match = song.arrangements.first(where: { $0.id == id }) { return match }
         if let name, let match = song.arrangements.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+            return match
+        }
+        if let id = song.defaultArrangementId, let match = song.arrangements.first(where: { $0.id == id }) {
             return match
         }
         return song.arrangements.first

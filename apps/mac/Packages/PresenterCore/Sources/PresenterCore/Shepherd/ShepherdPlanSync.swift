@@ -70,9 +70,19 @@ public enum ShepherdPlanSync {
         for song in mapped where song.itemType == "song" {
             guard let index = result.firstIndex(where: { $0.mxuSourceItemId == song.id }) else { continue }
             let link = songRef(song)
+            let sameSong = link != nil && link?.refId == result[index].refId
             result[index].itemKind = link == nil ? .info : .presentation
             result[index].refId = link?.refId ?? ""
-            result[index].arrangementId = link?.arrangementId
+            // Still the same library song: the item keeps its arrangement
+            // (the operator's, or the one Shepherd's arrangement sync set),
+            // so a plan edit in Shepherd doesn't undo a pick made here.
+            if !sameSong || link?.arrangementId != nil {
+                result[index].arrangementId = link?.arrangementId
+            }
+            if !sameSong {
+                result[index].mxuSyncedArrangementId = nil
+                result[index].mxuArrangementWarnings = nil
+            }
         }
         return result
     }

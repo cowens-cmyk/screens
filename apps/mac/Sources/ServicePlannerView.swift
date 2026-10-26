@@ -19,6 +19,9 @@ struct RunOrderList: View {
     var planAdds: PlanAddActions? = nil
 
     @Environment(\.runOnly) private var runOnly
+    /// The plan panel this list is in, if any. Read only when a click
+    /// comes, so the panel opening and folding doesn't redraw the list.
+    @Environment(\.shellPanel) private var shellPanel
 
     @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
 
@@ -259,7 +262,8 @@ struct RunOrderList: View {
         .listMarquee(
             active: !runOnly, rowFrames: Array(rowFrames.values),
             began: marqueeBegan, changed: marqueeChanged, ended: marqueeEnded,
-            pressedRow: { rowPressed($0, $1, visible: visible) })
+            pressedRow: { rowPressed($0, $1, visible: visible) },
+            listening: { [shellPanel] in shellPanel?.panel.showsOpenFace ?? true })
         .inputRegion("run order")
         .overlay { ListMarqueeBand(rect: marqueeRect) }
     }

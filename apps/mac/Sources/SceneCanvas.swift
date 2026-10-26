@@ -8,6 +8,10 @@ struct SceneCanvas: NSViewRepresentable {
 
     var inset: CGFloat = 0
 
+    /// An editor canvas's zoom and pan; without one the scene is letterboxed
+    /// inside `inset`.
+    var navigator: CanvasNavigator? = nil
+
     func makeNSView(context: Context) -> MetalSceneView {
         let view = MetalSceneView(
             compositor: render.compositor, transparentBackground: transparentBackground
@@ -16,6 +20,7 @@ struct SceneCanvas: NSViewRepresentable {
             sceneBox.value
         }
         view.sceneInset = inset
+        navigator?.attach(view)
         render.canvasView = view
         return view
     }

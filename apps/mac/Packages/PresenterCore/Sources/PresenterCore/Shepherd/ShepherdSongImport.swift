@@ -126,7 +126,8 @@ public enum ShepherdSongImport {
         let built = Reflow.build(parsed)
         let shepherdOrder = Arrangement(
             id: arrangementID(arrangement?.id), name: arrangement?.name.isEmpty == false ? arrangement!.name : "Shepherd",
-            sectionIds: order.map { built.sections[$0].id })
+            sectionIds: order.map { built.sections[$0].id },
+            shepherdArrangementId: ShepherdArrangementSync.tag(arrangement))
 
         var presentation = Presentation(
             id: UUID().uuidString, name: song.title, presentationKind: .song, themeId: options.themeId,
@@ -150,25 +151,6 @@ public enum ShepherdSongImport {
         presentation.shepherdChartHash = chartHash(song: song, arrangement: arrangement)
         presentation.shepherdImportHash = fingerprint(presentation)
         return presentation
-    }
-
-    /// Another Shepherd arrangement's order for a song already imported, for
-    /// a plan that plays it differently. Nil when the order can't be matched
-    /// to the song's sections.
-    public static func extraArrangement(
-        _ arrangement: ShepherdClient.SongArrangement, of song: ShepherdClient.SongDetail, for presentation: Presentation
-    ) -> Arrangement? {
-        let sections = presentation.sections ?? []
-        guard !arrangement.sequence.isEmpty, !sections.isEmpty else { return nil }
-        var chart = ShepherdChart()
-        chart.sections = sections.map { ShepherdChart.Section(name: $0.name, repeatCount: nil, notes: [], stanzas: []) }
-        guard var order = chart.order(for: arrangement.sequence) else { return nil }
-        if let opener = sections.first, Reflow.isIntro(opener.name) || opener.name == "Blank", order.first != 0 {
-            order.insert(0, at: 0)
-        }
-        return Arrangement(
-            id: arrangementID(arrangement.id), name: arrangement.name.isEmpty ? "Shepherd" : arrangement.name,
-            sectionIds: order.map { sections[$0].id })
     }
 
     // MARK: Edits and updates

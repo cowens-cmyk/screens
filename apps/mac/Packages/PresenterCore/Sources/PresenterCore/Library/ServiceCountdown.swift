@@ -33,7 +33,8 @@ public enum ServiceCountdown {
         /// An item the plan already has is its countdown: Shepherd's
         /// "COUNTDOWN", or one linked to a countdown video or presentation.
         case mark(itemID: String)
-        /// An empty Countdown first, to be given this week's video.
+        /// An empty Countdown first (after the pre-service slideshow), to be
+        /// given this week's video.
         case insert(ServiceItem)
     }
 
@@ -70,7 +71,10 @@ public enum ServiceCountdown {
             service.items[index].isCountdown = true
         case .insert(let countdown):
             guard service.countdownRemoved != true else { return false }
-            service.items.insert(countdown, at: 0)
+            // After the pre-service slideshow, which plays until the
+            // countdown takes over.
+            let after = service.items.prefix { $0.isPreService == true }.count
+            service.items.insert(countdown, at: after)
         }
         return true
     }

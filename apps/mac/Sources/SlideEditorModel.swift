@@ -483,6 +483,12 @@ final class SlideEditorModel {
 
     var canvasSize: CGSize { SlideSceneBuilder.canvasSize(for: presentation) }
 
+    /// The canvas's zoom and pan, for this editor only: a new editor starts
+    /// at Fit.
+    @ObservationIgnored lazy var canvasNavigator = CanvasNavigator { [weak self] in
+        self?.canvasSize ?? .zero
+    }
+
     private(set) var isDraggingObjects = false
 
     func documentFrame(for object: SlideObject) -> CGRect {

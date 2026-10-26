@@ -109,6 +109,7 @@ final class ShepherdSync {
             if sundaysOnly { plans = plans.filter(Self.isSunday) }
 
             var created = 0, updated = 0
+            let preService = model.preServiceSlideshowID()
             for (index, plan) in plans.enumerated() {
                 let existing = model.resident.services.values.first {
                     $0.origin == ShepherdPlanSync.origin && $0.mxuPlanHexId == plan.id
@@ -120,9 +121,15 @@ final class ShepherdSync {
                 if let existing, existing.mxuPlanVersion == version, !Self.hasFlaggedSongs(existing) { continue }
 
                 let detail = try await client.plan(id: plan.id)
-                let items = ShepherdPlanSync.items(
+                let synced = ShepherdPlanSync.items(
                     for: detail, rules: model.serviceLinkRules, existing: existing?.items ?? []
                 ) { song in Self.librarySong(for: song, candidates: candidates) }
+                // Every plan opens with the shared pre-service slideshow:
+                // Shepherd's "Pre-Service" item is linked to it, or one is
+                // put first (unless it was taken out of this plan).
+                var probe = existing ?? Service(id: "", name: "", serviceDate: "", items: [])
+                probe.items = synced
+                let items = PreServiceSlides.ensuring(probe, sharedID: preService)?.items ?? synced
                 let name = ShepherdPlanSync.serviceName(for: detail)
                 let date = ShepherdPlanSync.serviceDate(for: detail)
                 if let existing {
@@ -151,15 +158,12 @@ final class ShepherdSync {
                 if index == 0 { await applyKeys(items, model: model) }
             }
 
-            var songs = (imported: 0, updated: 0)
-            if importSongs {
-                let ids = plans.compactMap { plan in
-                    model.resident.services.values.first {
-                        $0.origin == ShepherdPlanSync.origin && $0.mxuPlanHexId == plan.id
-                    }?.id
-                }
-                songs = await refreshSongs(inServices: ids, model: model)
+            let ids = plans.compactMap { plan in
+                model.resident.services.values.first {
+                    $0.origin == ShepherdPlanSync.origin && $0.mxuPlanHexId == plan.id
+                }?.id
             }
+            let songs = await refreshSongs(inServices: ids, importing: importSongs, model: model)
 
             let flagged = model.resident.services.values
                 .filter { $0.origin == ShepherdPlanSync.origin }
@@ -171,6 +175,9 @@ final class ShepherdSync {
             if updated > 0 { parts.append("\(updated) updated") }
             if songs.imported > 0 { parts.append("\(songs.imported) song\(songs.imported == 1 ? "" : "s") imported") }
             if songs.updated > 0 { parts.append("\(songs.updated) song\(songs.updated == 1 ? "" : "s") updated") }
+            if songs.arranged > 0 {
+                parts.append("\(songs.arranged) arrangement\(songs.arranged == 1 ? "" : "s") from Shepherd")
+            }
             if parts.isEmpty { parts.append(plans.isEmpty ? "No upcoming plans" : "Up to date") }
             if !newerCharts.isEmpty {
                 parts.append("\(newerCharts.count) edited song\(newerCharts.count == 1 ? " has" : "s have") a newer chart")
@@ -306,7 +313,7 @@ struct ShepherdSettingsForm: View {
         } header: {
             Text("Songs")
         } footer: {
-            Text("Planned songs with no slides get them from Shepherd's chord chart, and imported songs follow chart changes. A song edited in Screens isn't replaced; it shows that Shepherd has a newer chart. Punctuation removal applies to every lyrics import. Songs already in the library don't change.")
+            Text("Planned songs with no slides get them from Shepherd's chord chart, and imported songs follow chart changes. Every linked song plays the arrangement the plan chose in Shepherd, whether or not this is on. A song edited in Screens isn't replaced; it shows that Shepherd has a newer chart. Punctuation removal applies to every lyrics import. Songs already in the library don't change.")
         }
         Section {
             LabeledContent {

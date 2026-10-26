@@ -8,14 +8,16 @@ extension View {
         began: @escaping (NSEvent.ModifierFlags) -> Void,
         changed: @escaping (CGRect) -> Void,
         ended: @escaping () -> Void,
-        pressedRow: @escaping (CGPoint, NSEvent.ModifierFlags) -> (() -> Void)? = { _, _ in nil }
+        pressedRow: @escaping (CGPoint, NSEvent.ModifierFlags) -> (() -> Void)? = { _, _ in nil },
+        listening: @escaping () -> Bool = { true }
     ) -> some View {
         background {
             GeometryReader { proxy in
                 ListMarqueeMonitor(
                     active: active, origin: proxy.frame(in: .global).origin,
                     rowFrames: rowFrames,
-                    began: began, changed: changed, ended: ended, pressedRow: pressedRow)
+                    began: began, changed: changed, ended: ended, pressedRow: pressedRow,
+                    listening: listening)
             }
         }
     }
@@ -66,6 +68,9 @@ private struct ListMarqueeMonitor: NSViewRepresentable {
     let ended: () -> Void
 
     let pressedRow: (CGPoint, NSEvent.ModifierFlags) -> (() -> Void)?
+    /// Asked at each press: false while the list is in a folded panel,
+    /// built but hidden, where the press belongs to whatever is under it.
+    let listening: () -> Bool
 
     static let clickSlop: CGFloat = 4
 
@@ -84,6 +89,7 @@ private struct ListMarqueeMonitor: NSViewRepresentable {
         var changed: (CGRect) -> Void = { _ in }
         var ended: () -> Void = {}
         var pressedRow: (CGPoint, NSEvent.ModifierFlags) -> (() -> Void)? = { _, _ in nil }
+        var listening: () -> Bool = { true }
         weak var view: FlippedView?
 
         private var start: CGPoint?
@@ -111,7 +117,7 @@ private struct ListMarqueeMonitor: NSViewRepresentable {
             switch event.type {
             case .leftMouseDown:
 
-                guard let view, let window = view.window, event.window === window,
+                guard listening(), let view, let window = view.window, event.window === window,
                       !ResizeGripView.covers(event.locationInWindow, in: window)
                 else { return event }
                 let local = view.convert(event.locationInWindow, from: nil)
@@ -206,6 +212,7 @@ private struct ListMarqueeMonitor: NSViewRepresentable {
         coordinator.changed = changed
         coordinator.ended = ended
         coordinator.pressedRow = pressedRow
+        coordinator.listening = listening
 
         coordinator.install()
     }
