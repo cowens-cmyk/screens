@@ -33,9 +33,14 @@ public enum LinkedText {
 
             guard let video = info.videoCountdown(forLayer: link.videoLayer),
                   video.duration > 0 else { return nil }
-
+            // Whole seconds round up, as a countdown should: 0:00 shows only
+            // once the video has ended (the stage's Video layout switches
+            // away then). A pattern with fractions shows them as they are.
+            let remaining = video.remaining(at: date)
+            let shown = link.timerPattern.map(TimerPattern.hasFraction) == true
+                ? remaining : remaining.rounded(.up)
             let timecode = TimerSnapshot.text(
-                video.remaining(at: date), format: link.timerFormat, pattern: link.timerPattern
+                shown, format: link.timerFormat, pattern: link.timerPattern
             )
             return link.showsVideoName == false ? timecode : "\(video.name)  \(timecode)"
         case .slidePosition:

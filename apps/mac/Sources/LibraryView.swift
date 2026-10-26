@@ -1210,7 +1210,7 @@ struct LibrarySidebar: View {
                 } else if model.selectedSection == .confidence {
 
                     Menu {
-                        ForEach([ConfidenceLayoutTemplate.blank, .worship, .sermon], id: \.rawValue) { template in
+                        ForEach([ConfidenceLayoutTemplate.blank, .worship, .sermon, .video], id: \.rawValue) { template in
                             Button(template.title) {
                                 fileNewEntry(model.createConfidenceLayout(from: template))
                             }

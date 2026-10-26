@@ -15,16 +15,21 @@ struct StagePlan: Sendable {
     /// Stage screens a slide's Show on Stage Display put on the audience
     /// screen, over the mode.
     var mirroredScreens: Set<UUID> = []
+    /// The Video layout a playing video brings up; nil when the stage is set
+    /// to keep its layout through videos.
+    var video: StageVideoPlan?
 
     static let initial = StagePlan(source: .layout(ConfidenceSceneBuilder.builtInLayout), audience: nil)
 }
 
-/// The two stage layouts the modes use. They are library documents with
-/// fixed ids so staff can restyle them; until one exists (or loads) its
-/// template stands in.
+/// The stage layouts the modes use, and the one a playing video brings up.
+/// They are library documents with fixed ids so staff can restyle them;
+/// until one exists (or loads) its template stands in.
 enum StageLayouts {
-    static let worshipID = "screens.stage.worship"
-    static let messageID = "screens.stage.message"
+    static let worshipID = BasicTemplates.worshipStageID
+    static let messageID = BasicTemplates.messageStageID
+    /// What the stage shows while a video plays.
+    static let videoID = BasicTemplates.videoStageID
     /// Not a layout: a slide's stage choice that shows the audience screen
     /// (right-click › Show on Stage Display).
     static let audienceID = "screens.stage.audience"
@@ -36,11 +41,19 @@ enum StageLayouts {
     }
 
     static func template(for id: String) -> ConfidenceLayoutTemplate {
-        id == messageID ? .sermon : .worship
+        switch id {
+        case messageID: .sermon
+        case videoID: .video
+        default: .worship
+        }
     }
 
     static func name(for id: String) -> String {
-        id == messageID ? "Stage — Message" : "Stage — Worship"
+        switch id {
+        case messageID: "Stage — Message"
+        case videoID: "Stage — Video"
+        default: "Stage — Worship"
+        }
     }
 
     /// A fresh layout with the fixed id, for creating the document.
@@ -53,9 +66,14 @@ enum StageLayouts {
     /// Built once so the stand-in's object ids stay put between refreshes.
     static let worshipFallback = make(worshipID)
     static let messageFallback = make(messageID)
+    static let videoFallback = make(videoID)
 
     static func fallback(for id: String) -> ConfidenceLayout {
-        id == messageID ? messageFallback : worshipFallback
+        switch id {
+        case messageID: messageFallback
+        case videoID: videoFallback
+        default: worshipFallback
+        }
     }
 }
 
@@ -128,8 +146,10 @@ struct StageVideoBadge: View {
         }
         .task {
             let box = render.confidenceBox
+            let plan = render.stageBox
             while !Task.isCancelled {
-                let next = StageScenes.activeVideo(in: box.value, at: Date()) != nil
+                let next = plan.value.video != nil
+                    && StageScenes.activeVideo(in: box.value, at: Date()) != nil
                 if next != active { active = next }
                 try? await Task.sleep(for: .milliseconds(250))
             }

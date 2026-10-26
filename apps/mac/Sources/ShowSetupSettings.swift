@@ -63,6 +63,7 @@ struct StageSettingsPane: View {
                     .fixedSize()
                 }
                 SettingsToggle("stage.follows", isOn: $setup.stageFollowsItems)
+                SettingsToggle("stage.videos", isOn: $setup.stageShowsVideos)
                 SettingsToggle("present.nextSkipsBlanks", isOn: Binding(
                     get: { nextSkipsBlanks },
                     set: {

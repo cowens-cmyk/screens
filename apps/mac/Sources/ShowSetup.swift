@@ -29,8 +29,9 @@ final class ShowSetup {
         }
     }
 
-    /// What the stage display shows. A playing video takes it over (preview
-    /// and time left) until the video ends, whatever the mode.
+    /// What the stage display shows. A playing video takes it over (the Video
+    /// layout: time left and the video) until it ends, whatever the mode,
+    /// unless `stageShowsVideos` is off.
     enum StageMode: String, CaseIterable, Identifiable {
         case worship, message, mirror
         var id: String { rawValue }
@@ -79,6 +80,14 @@ final class ShowSetup {
         didSet { UserDefaults.standard.set(stageFollowsItems, forKey: "show.stageFollowsItems") }
     }
 
+    /// While a video plays the stage switches to the Video layout (the time
+    /// left above the video), then back. Off, the stage keeps its layout.
+    /// Not a mode change, so the screens keep their picked layouts; the stage
+    /// controller watches it.
+    var stageShowsVideos: Bool {
+        didSet { UserDefaults.standard.set(stageShowsVideos, forKey: "show.stageShowsVideos") }
+    }
+
     /// How long a message sent to the stage stays up before the stage goes
     /// back to what it showed. Messages that also reach the audience screen
     /// are not timed.
@@ -111,6 +120,7 @@ final class ShowSetup {
         streamMode = defaults.string(forKey: "show.streamMode").flatMap(StreamMode.init(rawValue:)) ?? .auto
         stageMode = defaults.string(forKey: "show.stageMode").flatMap(StageMode.init(rawValue:)) ?? .worship
         stageFollowsItems = defaults.object(forKey: "show.stageFollowsItems") as? Bool ?? true
+        stageShowsVideos = defaults.object(forKey: "show.stageShowsVideos") as? Bool ?? true
         stageMessageDuration = StageMessageDuration(
             stored: defaults.object(forKey: "show.stageMessageSeconds") as? Int)
     }

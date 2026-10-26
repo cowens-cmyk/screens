@@ -182,6 +182,7 @@ final class RenderContext {
             return StageScenes.scene(
                 override: mirrored ? nil : confidenceLayoutsBox.value[screenID],
                 source: mirrored ? .mirror : plan.source,
+                video: plan.video,
                 info: info, at: now
             ) {
                 if let audience = plan.audience { return audience() }

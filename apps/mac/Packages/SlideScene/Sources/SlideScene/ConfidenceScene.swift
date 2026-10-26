@@ -473,6 +473,19 @@ public enum ConfidenceSceneBuilder {
         info: ConfidenceInfo,
         at date: Date
     ) -> RenderScene {
+        scene(layout: layout, info: info, at: date, messageStyle: nil, layer: { _ in .slide })
+    }
+
+    /// `messageStyle` decides where a stage message goes instead of the
+    /// layout's own shape; `layer` puts each object on a scene layer (the
+    /// Video layout draws what is under its video box below the picture).
+    static func scene(
+        layout: ConfidenceLayout,
+        info: ConfidenceInfo,
+        at date: Date,
+        messageStyle: StageMessageStyle?,
+        layer: (SlideObject) -> LayerKind
+    ) -> RenderScene {
         let canvasSize = CGSize(
             width: layout.canvasWidth.map(Double.init) ?? SlideSceneBuilder.canvasSize.width,
             height: layout.canvasHeight.map(Double.init) ?? SlideSceneBuilder.canvasSize.height
@@ -484,7 +497,7 @@ public enum ConfidenceSceneBuilder {
             VisibilityRules.isShown($0, among: resolved, info: info, at: date)
         }
         let alert = info.stageAlert(at: date)
-        let style = alert.map { _ in StageMessagePlacement.style(for: layout) }
+        let style = alert.map { _ in messageStyle ?? StageMessagePlacement.style(for: layout) }
 
         // What the layout itself shows: faded out under the Message stage's
         // takeover, and without the clock and key the Worship band replaces.
@@ -511,7 +524,7 @@ public enum ConfidenceSceneBuilder {
                     matteGroup: wiring.mattes.contains(object.id) ? object.id : nil
                 ) {
                     item.opacity *= layoutOpacity
-                    scene.addItem(item, to: .slide)
+                    scene.addItem(item, to: layer(object))
                 }
             }
         }

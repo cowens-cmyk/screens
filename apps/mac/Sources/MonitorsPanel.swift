@@ -21,6 +21,8 @@ struct MonitorsPanel: View {
     var controls: ServiceControls? = nil
     /// Opens the stage layout in the editor.
     var onEditStage: (() -> Void)? = nil
+    /// Opens the Video stage layout (what the stage shows while a video plays).
+    var onEditVideoStage: (() -> Void)? = nil
     @State private var tally = false
     @Bindable private var setup = ShowSetup.shared
     @Environment(\.openSettings) private var openSettings
@@ -257,9 +259,13 @@ struct MonitorsPanel: View {
                     .pickerStyle(.inline)
                     Divider()
                     Toggle("Show Audience Screen", isOn: $setup.showsAudienceOnStage)
+                    Toggle("Show Videos on Stage", isOn: $setup.stageShowsVideos)
                     if let onEditStage {
                         Divider()
                         Button("Edit Stage Display…", action: onEditStage)
+                    }
+                    if let onEditVideoStage {
+                        Button("Edit Video Stage…", action: onEditVideoStage)
                     }
                 } label: {
                     Text(setup.stageMode.title)

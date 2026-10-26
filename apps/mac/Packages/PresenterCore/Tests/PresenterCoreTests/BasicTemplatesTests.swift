@@ -15,5 +15,7 @@ import Testing
         // The bar first and the text after it: the last object is drawn on top.
         #expect(lower?.objects.first?.name == "Bar" && lower?.objects.last?.objectKind == .text)
     }
-    #expect(BasicTemplates.stageLayouts().map(\.id) == [BasicTemplates.worshipStageID, BasicTemplates.messageStageID])
+    #expect(BasicTemplates.stageLayouts().map(\.id) == [
+        BasicTemplates.worshipStageID, BasicTemplates.messageStageID, BasicTemplates.videoStageID,
+    ])
 }
