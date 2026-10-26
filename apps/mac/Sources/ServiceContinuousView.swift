@@ -920,6 +920,7 @@ struct ServiceContinuousView: View {
         let row = SlidesAcross.rows(count: 1, across: across)[0]
         let radius = roundedCorners ? CornerStandard.element : 0
         return HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
+            VStack(alignment: .leading, spacing: SlideGridMetrics.labelGap) {
             PosterImage(model: model, mediaId: item.refId)
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .background(Color.black.opacity(0.35))
@@ -965,7 +966,11 @@ struct ServiceContinuousView: View {
                 .contextMenu { mediaQuickMenu(item) }
 
                 .id("mediaTileMenu|\(item.id)|\(media == nil)")
-                .frame(maxWidth: .infinity)
+                // Named like a slide tile: the countdown with its length,
+                // anything else by its name.
+                TileCaption(label: mediaLabel(item, media))
+            }
+            .frame(maxWidth: .infinity)
             ForEach(0 ..< row.fillers, id: \.self) { _ in
                 Color.clear.frame(height: 0).frame(maxWidth: .infinity)
             }
@@ -1004,9 +1009,20 @@ struct ServiceContinuousView: View {
         }
     }
 
-    private func durationLabel(_ media: MediaItem) -> String? {
+    private func mediaLabel(_ item: ServiceItem, _ media: MediaItem?) -> SlideLabel {
+        SlideLabels.mediaItem(
+            name: media?.name ?? item.name, isCountdown: item.isCountdown == true,
+            durationSeconds: media.flatMap(playedSeconds))
+    }
+
+    /// A video's length as it plays: trimmed to its in and out points.
+    private func playedSeconds(_ media: MediaItem) -> Double? {
         guard media.mediaKind == .video, let total = media.durationSeconds else { return nil }
-        let effective = max(0, (media.outPoint ?? total) - (media.inPoint ?? 0))
+        return max(0, (media.outPoint ?? total) - (media.inPoint ?? 0))
+    }
+
+    private func durationLabel(_ media: MediaItem) -> String? {
+        guard let effective = playedSeconds(media) else { return nil }
         let seconds = Int(effective.rounded())
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }

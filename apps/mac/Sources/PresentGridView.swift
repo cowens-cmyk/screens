@@ -188,7 +188,9 @@ enum SlideGridMetrics {
     }
     static let continuousWidthKey = "slideGrid.continuousWidth"
 
-    static let labelHeight: CGFloat = 16
+    /// Two lines under every slide: what the slide is (two lines of it
+    /// when there's nothing else to say), then the smaller detail.
+    static let labelHeight: CGFloat = 34
 
     /// The space between a slide and its number and name.
     static let labelGap: CGFloat = 4
@@ -1338,7 +1340,6 @@ struct SlideGridBody: View {
             presentation: presentation,
             theme: slide.themeId != nil || slide.unthemed == true ? model.theme(for: slide, in: presentation) : theme,
             arrangementId: arrangementId,
-            showsSectionLabel: index == 0 || slides[index - 1].sectionId != slide.sectionId,
 
             controls: controls,
             isSelected: selectedOccurrences.contains(index),
@@ -1663,8 +1664,6 @@ struct SlideTile: View {
     let theme: Theme?
     let arrangementId: String?
 
-    let showsSectionLabel: Bool
-
     let controls: ServiceControls?
 
     var isSelected = false
@@ -1701,23 +1700,6 @@ struct SlideTile: View {
         section?.resolvedColorHex(paletteColors: model.groupColors).flatMap(GroupColor.color)
     }
 
-    /// The group's name on its first slide (as ProPresenter shows it), else
-    /// the slide's own name when it has one worth showing.
-    private var barName: String? {
-        if showsSectionLabel, let section { return section.name }
-        return labelName
-    }
-
-    private var labelName: String? {
-        guard !slide.name.isEmpty else { return nil }
-        let mediaName = slide.background.flatMap { background in
-            (background.layer ?? .loopingVideos) == .videos
-                ? nil : model.media(background.mediaId)?.name
-        }
-        return SlidePreview.rowText(for: slide, backgroundMediaName: mediaName)
-            == .name ? slide.name : nil
-    }
-
     /// The slide an arrow key fires next, from wherever the live slide is.
     private var isNext: Bool {
         guard let contextID, let next = controls?.nextPlace else { return false }
@@ -1728,7 +1710,7 @@ struct SlideTile: View {
 
     var body: some View {
         // The slide gets the weight: its group is a thin colored edge, and
-        // the number and name sit under it as plain text, not a filled strip.
+        // what it is sits under it as plain text, not a filled strip.
         VStack(alignment: .leading, spacing: SlideGridMetrics.labelGap) {
             SlideThumbnailView(
                 model: model, render: render,
@@ -1793,70 +1775,72 @@ struct SlideTile: View {
         }
     }
 
+    /// What the slide is, large enough to read from the booth: the
+    /// passage, the song's group, the message's point (SlideLabels).
+    private var slideLabel: SlideLabel {
+        let mediaName = slide.background.flatMap { model.media($0.mediaId)?.name }
+        return SlideLabels.label(for: slide, at: index, in: presentation, mediaName: mediaName)
+    }
+
+    private var hasBadges: Bool {
+        stepCount > 0 || hasAnySteps || slide.autoAdvance != nil || !actionBadges.isEmpty
+    }
+
     private var label: some View {
-        HStack(spacing: 5) {
-            Text("\(index + 1)")
-                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+        TileCaption(label: slideLabel, number: index + 1, isLive: isLive, hasBadges: hasBadges) {
+            badges
+        }
+    }
+
+    @ViewBuilder
+    private var badges: some View {
+        if stepCount > 0 {
+            Text("\(isLive ? 1 + (liveAnimationStep ?? 0) : 0)/\(stepCount + 1)")
+                .font(.system(size: 9, weight: .semibold).monospacedDigit())
+                .foregroundStyle(isLive ? Color.white : Color.secondary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(
+                    (isLive ? HopeStyle.live : Color(.sRGB, white: 0.5).opacity(0.25)),
+                    in: Capsule()
+                )
+                .tileHelp(isLive
+                      ? "Click \(1 + (liveAnimationStep ?? 0)) of \(stepCount + 1): the fire was click 1. Advance (or click this tile) is the next; after the last, Advance moves on."
+                      : "\(stepCount + 1) clicks on this slide: the fire, then \(stepCount) more step\(stepCount == 1 ? "" : "s").")
+        } else if hasAnySteps {
+
+            Image(systemName: "sparkles")
+                .font(.system(size: 9))
                 .foregroundStyle(isLive ? HopeStyle.live : Color.secondary)
-            if let name = barName {
-                Text(String(name.prefix(30)))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.primary.opacity(0.85))
-                    .lineLimit(1)
-            }
+                .tileHelp("Animation plays on this slide when it fires, with no extra clicks. This includes steps an output's routed theme adds.")
+        }
 
-            if stepCount > 0 {
-                Text("\(isLive ? 1 + (liveAnimationStep ?? 0) : 0)/\(stepCount + 1)")
-                    .font(.system(size: 8, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(isLive ? Color.white : Color.secondary)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(
-                        (isLive ? HopeStyle.live : Color(.sRGB, white: 0.5).opacity(0.25)),
-                        in: Capsule()
-                    )
-                    .tileHelp(isLive
-                          ? "Click \(1 + (liveAnimationStep ?? 0)) of \(stepCount + 1): the fire was click 1. Advance (or click this tile) is the next; after the last, Advance moves on."
-                          : "\(stepCount + 1) clicks on this slide: the fire, then \(stepCount) more step\(stepCount == 1 ? "" : "s").")
-            } else if hasAnySteps {
+        if let advance = slide.autoAdvance {
+            Glyph(kind: .timers, size: 10)
+                .foregroundStyle(.secondary)
+                .tileHelp(autoAdvanceSummary(advance))
+        }
 
-                Image(systemName: "sparkles")
-                    .font(.system(size: 8))
-                    .foregroundStyle(isLive ? HopeStyle.live : Color.secondary)
-                    .tileHelp("Animation plays on this slide when it fires, with no extra clicks. This includes steps an output's routed theme adds.")
-            }
-            Spacer(minLength: 4)
+        if !actionBadges.isEmpty {
+            let actions = slide.actions ?? []
+            HStack(spacing: 3) {
 
-            if let advance = slide.autoAdvance {
-                Glyph(kind: .timers, size: 9)
-                    .foregroundStyle(.secondary)
-                    .tileHelp(autoAdvanceSummary(advance))
-            }
-
-            if !actionBadges.isEmpty {
-                let actions = slide.actions ?? []
-                HStack(spacing: 3) {
-
-                    ForEach(Array(actions.prefix(4)), id: \.id) { action in
-                        Glyph(kind: badgeGlyph(action.kind), size: 9)
-                            .foregroundStyle(.secondary)
-                            .tileHelp(slideActionLabel(
-                                action, model: model,
-                                timers: actionRouter?.timerChoices ?? [],
-                                confidenceScreens: actionRouter?.confidenceScreenChoices ?? []))
-                    }
-                    if actionBadges.count > 4 {
-                        Text("+\(actionBadges.count - 4)")
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .tileHelp(actionSummary)
-                    }
+                ForEach(Array(actions.prefix(4)), id: \.id) { action in
+                    Glyph(kind: badgeGlyph(action.kind), size: 10)
+                        .foregroundStyle(.secondary)
+                        .tileHelp(slideActionLabel(
+                            action, model: model,
+                            timers: actionRouter?.timerChoices ?? [],
+                            confidenceScreens: actionRouter?.confidenceScreenChoices ?? []))
+                }
+                if actionBadges.count > 4 {
+                    Text("+\(actionBadges.count - 4)")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .tileHelp(actionSummary)
                 }
             }
         }
-        .padding(.horizontal, 2)
-        .frame(height: SlideGridMetrics.labelHeight)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var predictedThemes: [Theme?] { [theme] }
@@ -1935,6 +1919,58 @@ struct SlideTile: View {
                 $0, model: model, timers: actionRouter?.timerChoices ?? [],
                 confidenceScreens: actionRouter?.confidenceScreenChoices ?? [])
         }.joined(separator: "\n")
+    }
+}
+
+/// The label under a tile: the slide's number small, what the slide is in
+/// 13 pt semibold, and the detail (translation, which point, the lyric's
+/// first line) smaller under it, with the slide's badges at the end of that
+/// row. A long title gets a second line when there's no detail or badge to
+/// make room for; a scripture reference loses its middle, not its end.
+struct TileCaption<Badges: View>: View {
+    let label: SlideLabel
+    var number: Int?
+    var isLive = false
+    var hasBadges = false
+    @ViewBuilder var badges: () -> Badges
+
+    var body: some View {
+        let secondRow = label.detail != nil || hasBadges
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                if let number {
+                    Text("\(number)")
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(isLive ? HopeStyle.live : Color.secondary)
+                }
+                Text(label.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(secondRow ? 1 : 2)
+                    .truncationMode(label.isReference ? .middle : .tail)
+            }
+            if secondRow {
+                HStack(spacing: 4) {
+                    if let detail = label.detail {
+                        Text(detail)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    badges()
+                }
+            }
+        }
+        .padding(.horizontal, 2)
+        .frame(height: SlideGridMetrics.labelHeight, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+extension TileCaption where Badges == EmptyView {
+    init(label: SlideLabel, number: Int? = nil, isLive: Bool = false) {
+        self.init(label: label, number: number, isLive: isLive, hasBadges: false) { EmptyView() }
     }
 }
 
