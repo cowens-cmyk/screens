@@ -222,6 +222,11 @@ final class DeckLinkOutputController {
             placement: placement,
             mask: render.outputs.maskProvider(for: targetID),
             composite: composite,
+            // The card repeats the last frame on its own cadence, so a still
+            // frame only goes over XPC twice a second, enough for the
+            // delivery watchdog below.
+            stillResendInterval: 0.5,
+            activityLabel: "DeckLink \(deviceName)",
             sink: { pixelBuffer, _ in
 
                 let probeNow = alphaProbed.withLock { done -> Bool in

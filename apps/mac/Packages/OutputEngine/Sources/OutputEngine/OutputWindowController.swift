@@ -19,6 +19,8 @@ public final class OutputWindowController {
         displayUUID = display.uuid
         sceneView = MetalSceneView(compositor: compositor)
         sceneView.sceneProvider = sceneProvider
+        sceneView.activity.kind = "output"
+        sceneView.activity.label = "Output window on \(display.name)"
 
         window = OutputWindow(
             contentRect: screen.frame,

@@ -76,6 +76,14 @@ public final class MediaEngine: @unchecked Sendable {
     private let liveSources = Locked<[String: LiveSource]>([:])
 
     private let inputDelay = LiveInputDelay()
+
+    private let generation = Locked<UInt64>(0)
+
+    /// Tells the scene views that an id now shows something else, so one
+    /// holding a still frame draws again.
+    private func contentChanged() {
+        generation.withLock { $0 &+= 1 }
+    }
     private let audioDeviceUID = Locked<String?>(nil)
     private let audioVolume = Locked<Float>(1)
 
@@ -138,6 +146,7 @@ public final class MediaEngine: @unchecked Sendable {
         player.setAudioVolume(audioVolume.value)
         replacePlayer(player, for: id)
         stills.withLock { $0[id] = nil }
+        contentChanged()
         player.play()
     }
 
@@ -153,6 +162,7 @@ public final class MediaEngine: @unchecked Sendable {
         player.setAudioVolume(audioVolume.value)
         replacePlayer(player, for: id)
         stills.withLock { $0[id] = nil }
+        contentChanged()
         return await player.preroll()
     }
 
@@ -163,6 +173,7 @@ public final class MediaEngine: @unchecked Sendable {
     public func stop(id: String) {
         replacePlayer(nil, for: id)
         stills.withLock { $0[id] = nil }
+        contentChanged()
         stopCapture(id: id)
         removeLiveSource(id: id)
     }
@@ -175,6 +186,7 @@ public final class MediaEngine: @unchecked Sendable {
         }
         for player in stopped { player.stop() }
         stills.withLock { $0.removeAll() }
+        contentChanged()
     }
 
     public func stopAll(withPrefix prefix: String) {
@@ -187,6 +199,7 @@ public final class MediaEngine: @unchecked Sendable {
         stills.withLock { table in
             for key in table.keys where key.hasPrefix(prefix) { table[key] = nil }
         }
+        contentChanged()
     }
 
     public func hasStill(id: String) -> Bool {
@@ -240,6 +253,7 @@ public final class MediaEngine: @unchecked Sendable {
             table[id] = player
             return existing
         }
+        contentChanged()
 
         if let previous {
             DispatchQueue.global(qos: .utility).async {
@@ -256,6 +270,7 @@ public final class MediaEngine: @unchecked Sendable {
         } else {
             let still = try StillImage.load(url: url, device: device)
             stills.withLock { $0[id] = still }
+            contentChanged()
             size = still.size
         }
         replacePlayer(nil, for: id)
@@ -272,6 +287,7 @@ public final class MediaEngine: @unchecked Sendable {
         } else {
             let still = try StillImage.make(image: image, url: syntheticURL, device: device)
             stills.withLock { $0[id] = still }
+            contentChanged()
             size = still.size
         }
         replacePlayer(nil, for: id)
@@ -311,6 +327,7 @@ extension MediaEngine {
         inputDelay.clear(id: id)
         players.withLock { $0[id] = nil }
         stills.withLock { $0[id] = nil }
+        contentChanged()
         capture.start()
     }
 
@@ -322,6 +339,7 @@ extension MediaEngine {
         }
         previous?.stop()
         inputDelay.clear(id: id)
+        contentChanged()
     }
 
     public func setInputDelay(id: String, frames: Int) {
@@ -350,6 +368,7 @@ extension MediaEngine {
         inputDelay.clear(id: id)
         players.withLock { $0[id] = nil }
         stills.withLock { $0[id] = nil }
+        contentChanged()
     }
 
     private func removeLiveSource(id: String) {
@@ -360,6 +379,7 @@ extension MediaEngine {
         }
         previous?.onStop()
         inputDelay.clear(id: id)
+        contentChanged()
     }
 }
 
@@ -383,4 +403,17 @@ extension MediaEngine: MediaTextureSource {
     public func liveCadence(for mediaID: String) -> LiveCadence? {
         captures.value[mediaID]?.cadence
     }
+
+    /// A camera, a live feed or a video (playing or paused, since a paused
+    /// one can be scrubbed) brings frames on its own; a still or an id with
+    /// nothing loaded does not, and loading one bumps `contentGeneration`.
+    public func motion(for mediaID: String) -> MediaMotion {
+        if captures.value[mediaID] != nil || liveSources.value[mediaID] != nil
+            || players.value[mediaID] != nil {
+            return .moving
+        }
+        return .still
+    }
+
+    public var contentGeneration: UInt64 { generation.value }
 }

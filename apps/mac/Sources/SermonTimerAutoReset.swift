@@ -29,6 +29,19 @@ final class SermonTimerAutoReset {
     private var services: [SermonTimerReset.Service] = []
     private var servicesWorkedOut: Date?
 
+    /// Every plan's times are read when the current plan has none today, so
+    /// each stamp is parsed once rather than on every pass over the library.
+    private var parsedTimes: [String: Date?] = [:]
+    private let parser = ISO8601DateFormatter()
+
+    private func parsedTime(_ stamp: String) -> Date? {
+        if let known = parsedTimes[stamp] { return known }
+        if parsedTimes.count > 5_000 { parsedTimes.removeAll() }
+        let date = parser.date(from: stamp)
+        parsedTimes[stamp] = date
+        return date
+    }
+
     func start(model: AppModel, controls: ServiceControls) {
         guard timer == nil else { return }
         self.model = model
@@ -62,12 +75,11 @@ final class SermonTimerAutoReset {
     /// plan's when it has none today), the countdowns Schedule Service set,
     /// and the Service Day setup.
     private func todaysServices(model: AppModel, now: Date, calendar: Calendar) -> [SermonTimerReset.Service] {
-        let parser = ISO8601DateFormatter()
         func times(_ plan: Service) -> [Date] {
             guard plan.isTemplate != true else { return [] }
             return (plan.mxuPlanTimes ?? [])
                 .filter { $0.isRehearsal != true }
-                .compactMap { $0.startsAt.flatMap(parser.date(from:)) }
+                .compactMap { $0.startsAt.flatMap(parsedTime) }
                 .filter { calendar.isDate($0, inSameDayAs: now) }
         }
         let current = model.currentServiceID.flatMap { model.resident.services.value($0) }

@@ -133,9 +133,7 @@ struct TimersModule: View {
                     station.setFolderCollapsed(id: folder.id, !folder.collapsed)
                 }
             } label: {
-                TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                    folderRowStrip(folder, members: members, at: context.date)
-                }
+                folderRowStrip(folder, members: members)
             }
             .buttonStyle(.plain)
             if editing, !runOnly {
@@ -216,15 +214,9 @@ struct TimersModule: View {
     }
 
     private func folderRowStrip(
-        _ folder: TimerBoard.Folder, members: [TimerSnapshot], at date: Date
+        _ folder: TimerBoard.Folder, members: [TimerSnapshot]
     ) -> some View {
-        let featured = TimerBoard.featured(in: members, at: date)
-        let tint: Color = members.contains(where: { $0.isOvertime(at: date) })
-            ? Self.overtimeColor
-            : TimerBoard.rollupWarning(of: members, at: date)
-                .map(Self.warningColor)
-                ?? (members.contains(where: \.isLive) ? .green : .secondary)
-        return HStack(spacing: 6) {
+        HStack(spacing: 6) {
             Image(systemName: "chevron.right")
                 .font(.system(size: 7, weight: .semibold))
                 .foregroundStyle(.tertiary)
@@ -241,15 +233,31 @@ struct TimersModule: View {
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.tertiary)
             Spacer(minLength: 6)
-            if let featured {
-                Text(featured.displayString(at: date))
-                    .font(.callout.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(tint)
+            // Only the readout redraws as the time passes, and only while
+            // something in the folder is counting.
+            let schedule = TimerSecondSchedule(timers: members)
+            TimelineView(schedule) { context in
+                folderReadout(members, at: context.date)
             }
+            .id(schedule.anchor)
         }
         .padding(.horizontal, 8)
         .frame(height: 30)
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func folderReadout(_ members: [TimerSnapshot], at date: Date) -> some View {
+        if let featured = TimerBoard.featured(in: members, at: date) {
+            let tint: Color = members.contains(where: { $0.isOvertime(at: date) })
+                ? Self.overtimeColor
+                : TimerBoard.rollupWarning(of: members, at: date)
+                    .map(Self.warningColor)
+                    ?? (members.contains(where: \.isLive) ? .green : .secondary)
+            Text(featured.displayString(at: date))
+                .font(.callout.monospacedDigit().weight(.semibold))
+                .foregroundStyle(tint)
+        }
     }
 
     private var timerInsertionLine: some View {
@@ -311,9 +319,7 @@ struct TimersModule: View {
             Button {
                 if !runOnly { toggleExpanded(timer.id) }
             } label: {
-                TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                    timerRowStrip(timer, at: context.date, expanded: expanded, station: station)
-                }
+                timerRowStrip(timer, expanded: expanded, station: station)
             }
             .buttonStyle(.plain)
             if expanded, !runOnly {
@@ -389,15 +395,19 @@ struct TimersModule: View {
         }
     }
 
-    private func timerRowStrip(
-        _ timer: TimerSnapshot, at date: Date, expanded: Bool, station: TimersController
-    ) -> some View {
-
-        let idle = ServiceTrackingTimers.isPermanent(timer.id) && timer.isIdle
-        let tint: Color = idle ? .secondary
+    private func timerTint(_ timer: TimerSnapshot, idle: Bool, at date: Date) -> Color {
+        idle ? .secondary
             : timer.isOvertime(at: date) ? Self.overtimeColor
             : timer.activeWarning(at: date).map(Self.warningColor)
                 ?? (timer.isLive ? .green : .secondary)
+    }
+
+    private func timerRowStrip(
+        _ timer: TimerSnapshot, expanded: Bool, station: TimersController
+    ) -> some View {
+
+        let idle = ServiceTrackingTimers.isPermanent(timer.id) && timer.isIdle
+        let schedule = TimerSecondSchedule(timer)
         return VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right")
@@ -405,9 +415,12 @@ struct TimersModule: View {
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(expanded ? 90 : 0))
                     .frame(width: 12)
-                Text(idle ? "--:--" : timer.displayString(at: date))
-                    .font(.callout.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(tint)
+                TimelineView(schedule) { context in
+                    Text(idle ? "--:--" : timer.displayString(at: context.date))
+                        .font(.callout.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(timerTint(timer, idle: idle, at: context.date))
+                }
+                .id(schedule.anchor)
                 Text(timer.name)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -435,15 +448,20 @@ struct TimersModule: View {
             .padding(.horizontal, 8)
             .frame(height: 30)
             .contentShape(Rectangle())
-            if let progress = timer.progress(at: date) {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.08))
-                        Capsule()
-                            .fill(tint.opacity(timer.isLive ? 0.9 : 0.45))
-                            .frame(width: max(3, geo.size.width * progress))
+            if timer.progress(at: Date()) != nil {
+                TimelineView(schedule) { context in
+                    let progress = timer.progress(at: context.date) ?? 0
+                    let tint = timerTint(timer, idle: idle, at: context.date)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.08))
+                            Capsule()
+                                .fill(tint.opacity(timer.isLive ? 0.9 : 0.45))
+                                .frame(width: max(3, geo.size.width * progress))
+                        }
                     }
                 }
+                .id(schedule.anchor)
                 .frame(height: 3)
                 .padding(.horizontal, 8)
                 .padding(.bottom, 6)

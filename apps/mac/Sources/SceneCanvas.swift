@@ -20,6 +20,8 @@ struct SceneCanvas: NSViewRepresentable {
             sceneBox.value
         }
         view.sceneInset = inset
+        view.activity.kind = "preview"
+        view.activity.label = "Editor canvas"
         navigator?.attach(view)
         render.canvasView = view
         return view

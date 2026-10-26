@@ -30,6 +30,10 @@ final class RenderContext {
 
     let previewLayoutsBox: Locked<[String: ConfidenceLayout]>
 
+    /// One build of each stage layout, shared by the stage window, its
+    /// virtual screen, its feeds and the layout previews.
+    let stageCache = StageSceneCache()
+
 
     @ObservationIgnored weak var canvasView: MetalSceneView?
 
@@ -127,9 +131,10 @@ final class RenderContext {
 
     func previewProvider(for target: String) -> @Sendable () -> RenderScene {
         if let layoutID = PreviewTargetLogic.layoutID(for: target) {
-            return { [confidenceBox, previewLayoutsBox] in
+            return { [confidenceBox, previewLayoutsBox, stageCache] in
                 previewLayoutsBox.value[layoutID].map {
-                    ConfidenceSceneBuilder.scene(layout: $0, info: confidenceBox.value, at: Date())
+                    stageCache.scene(
+                        slot: "preview-\(layoutID)", layout: $0, info: confidenceBox.value, at: Date())
                 } ?? .empty
             }
         } else {
@@ -174,7 +179,7 @@ final class RenderContext {
         // Every stage screen: a playing video first, then a layout picked for
         // the screen, then the stage mode (see StageScenes for the order).
         outputs.confidenceSceneProvider = {
-            [confidenceBox, confidenceLayoutsBox, stageBox, transitions] screenID in
+            [confidenceBox, confidenceLayoutsBox, stageBox, transitions, stageCache] screenID in
             let info = confidenceBox.value
             let now = Date()
             let plan = stageBox.value
@@ -183,7 +188,8 @@ final class RenderContext {
                 override: mirrored ? nil : confidenceLayoutsBox.value[screenID],
                 source: mirrored ? .mirror : plan.source,
                 video: plan.video,
-                info: info, at: now
+                info: info, at: now,
+                cache: stageCache, slot: "screen-\(screenID)"
             ) {
                 if let audience = plan.audience { return audience() }
                 return VisibilityRules.filteredScene(transitions.scene(at: now), info: info, at: now)

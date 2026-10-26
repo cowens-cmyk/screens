@@ -77,11 +77,28 @@ public final class OutputMirror: @unchecked Sendable {
 
     private let steeredDeadline = Locked<DispatchTime?>(nil)
 
-    private let lastConverted = Locked<
-        (
-            scene: RenderScene, adjustments: OutputAdjustments?,
-            maskID: ObjectIdentifier?, buffer: CVPixelBuffer
-        )?>(nil)
+    /// Everything besides time that sets the feed's picture.
+    struct FrameKey: Equatable {
+        var scenes: [RenderScene]
+        var adjustments: [OutputAdjustments?]
+        var masks: [ObjectIdentifier?]
+        var mediaGeneration: UInt64
+    }
+
+    private let lastConverted = Locked<(key: FrameKey, buffer: CVPixelBuffer)?>(nil)
+
+    /// The converted buffer is kept, so a still frame never needs drawing
+    /// again to be sent again: no safety redraw.
+    private let gate = Locked(FrameGate<FrameKey>(refreshInterval: .infinity))
+
+    /// For a sink that keeps showing the last frame by itself (DeckLink
+    /// repeats it on the device's cadence), how often a still frame is sent
+    /// again anyway, to keep its watchdog fed. Nil sends every tick.
+    private let stillResendInterval: CFTimeInterval?
+    private let lastSentAt = Locked<CFTimeInterval>(-.infinity)
+
+    /// This feed's line in the performance report.
+    public let activity: FrameActivity.Handle
 
     private let transparentBackground: Bool
 
@@ -108,6 +125,8 @@ public final class OutputMirror: @unchecked Sendable {
         mask: (@Sendable () -> MTLTexture?)? = nil,
         composite: [CompositeLayer] = [],
         consumerHeldFrames: Int = 0,
+        stillResendInterval: CFTimeInterval? = nil,
+        activityLabel: String = "Feed",
         sink: @escaping @Sendable (CVPixelBuffer, Double) -> Void
     ) {
         guard width > 0, height > 0, framesPerSecond > 0,
@@ -116,8 +135,12 @@ public final class OutputMirror: @unchecked Sendable {
 
                   poolCeiling: (delayFrames == nil ? 8 : 8 + Self.maxDelayFrames)
                       + max(0, consumerHeldFrames),
-                  color: color, straightAlpha: straightAlpha)
+                  color: color, straightAlpha: straightAlpha,
+                  device: compositor.device)
         else { return nil }
+        self.stillResendInterval = stillResendInterval
+        activity = FrameActivity.shared.register(
+            kind: "feed", label: "\(activityLabel) \(width)×\(height)@\(framesPerSecond)")
         self.compositor = compositor
         self.width = width
         self.height = height
@@ -143,6 +166,9 @@ public final class OutputMirror: @unchecked Sendable {
             )
             descriptor.usage = [.renderTarget, .shaderRead]
             descriptor.storageMode = .shared
+            // Read back on the CPU (the HLG path), a compressed texture is
+            // decompressed by the driver on the CPU for every frame.
+            if converter.readsBackOnCPU { descriptor.allowGPUOptimizedContents = false }
             guard let texture = compositor.device.makeTexture(descriptor: descriptor) else {
                 return nil
             }
@@ -223,20 +249,33 @@ public final class OutputMirror: @unchecked Sendable {
                 "mirror \(identity): first tick (running: \(running.value))")
         }
         guard running.value else { return }
-        if !composite.isEmpty {
-            tickComposite(at: hostTime)
-            return
+        let scenes = composite.isEmpty ? [provider()] : composite.map { $0.provider() }
+        noteLiveCadence(in: scenes)
+        let currentAdjustments = composite.isEmpty
+            ? [adjustments?()] : composite.map { $0.adjustments?() }
+        let currentMasks = composite.isEmpty ? [mask?()] : composite.map { $0.mask?() }
+        let media = compositor.mediaSource
+        let key = FrameKey(
+            scenes: scenes, adjustments: currentAdjustments,
+            masks: currentMasks.map { $0.map(ObjectIdentifier.init) },
+            mediaGeneration: media?.contentGeneration ?? 0)
+        let motion = SceneMotion.of(scenes, at: hostTime, media: media)
+        let last = lastConverted.value
+        let decision = gate.withLock { gate in
+            // Until the last drawn frame is converted there is nothing to
+            // send again, so it is drawn again instead.
+            if last?.key != key { gate.invalidate() }
+            return gate.decide(key: key, motion: motion, now: hostTime)
         }
-        let scene = provider()
-        noteLiveCadence(in: [scene])
-        let currentAdjustments = adjustments?()
-        let currentMask = mask?()
-        let currentMaskID = currentMask.map(ObjectIdentifier.init)
+        activity.record(rendered: decision.renders, at: CACurrentMediaTime())
 
-        if !scene.isTimeVarying,
-           let last = lastConverted.value, last.scene == scene,
-           last.adjustments == currentAdjustments,
-           last.maskID == currentMaskID {
+        if !decision.renders, let last {
+            let delay = delayFrames?() ?? 0
+            if let interval = stillResendInterval, delay == 0,
+               hostTime - lastSentAt.value < interval {
+                return
+            }
+            lastSentAt.value = hostTime
             convertQueue.async { [weak self] in
                 guard let self, self.running.value else { return }
                 self.counters.withLock { $0.delivered += 1 }
@@ -267,15 +306,7 @@ public final class OutputMirror: @unchecked Sendable {
             return
         }
 
-        compositor.render(
-            scene: scene, into: slot.texture, at: hostTime,
-            transparentBackground: transparentBackground,
-            adjustments: currentAdjustments,
-            sourceRect: sourceRect,
-            placement: placement,
-            mask: currentMask
-        ) {
-            [weak self] in
+        let converted: @Sendable () -> Void = { [weak self] in
             guard let self else {
                 slot.busy.value = false
                 return
@@ -289,64 +320,34 @@ public final class OutputMirror: @unchecked Sendable {
                     RenderPulse.shared.mirrorDrop()
                     return
                 }
-                self.lastConverted.value = (
-                    scene, currentAdjustments, currentMaskID, pixelBuffer
-                )
+                self.lastConverted.value = (key, pixelBuffer)
+                self.lastSentAt.value = hostTime
                 self.counters.withLock { $0.delivered += 1 }
                 self.deliver(pixelBuffer, at: hostTime)
             }
         }
-    }
-
-    private func tickComposite(at hostTime: CFTimeInterval) {
-        let claimed: RingSlot? = {
-            let start = nextSlot.value
-            for offset in 0..<slots.count {
-                let slot = slots[(start + offset) % slots.count]
-                let wasBusy = slot.busy.withLock { busy -> Bool in
-                    defer { busy = true }
-                    return busy
-                }
-                if !wasBusy {
-                    nextSlot.value = (start + offset + 1) % slots.count
-                    return slot
-                }
-            }
-            return nil
-        }()
-        guard let slot = claimed else {
-            counters.withLock { $0.dropped += 1 }
-            RenderPulse.shared.mirrorDrop()
-            return
-        }
-        noteLiveCadence(in: composite.map { $0.provider() })
-        let layers = composite.map { layer in
-            Compositor.OutputCompositeLayer(
-                scene: layer.provider(),
-                sourceRect: layer.sourceRect,
-                placement: layer.placement,
-                adjustments: layer.adjustments?(),
-                mask: layer.mask?()
+        if composite.isEmpty {
+            compositor.render(
+                scene: scenes[0], into: slot.texture, at: hostTime,
+                transparentBackground: transparentBackground,
+                adjustments: currentAdjustments[0],
+                sourceRect: sourceRect,
+                placement: placement,
+                mask: currentMasks[0],
+                completion: converted
             )
-        }
-        compositor.render(composite: layers, into: slot.texture, at: hostTime) {
-            [weak self] in
-            guard let self else {
-                slot.busy.value = false
-                return
-            }
-            self.convertQueue.async {
-                defer { slot.busy.value = false }
-                guard self.running.value,
-                      let pixelBuffer = self.converter.convert(texture: slot.texture)
-                else {
-                    self.counters.withLock { $0.dropped += 1 }
-                    RenderPulse.shared.mirrorDrop()
-                    return
+        } else {
+            let layers = zip(composite, zip(scenes, zip(currentAdjustments, currentMasks)))
+                .map { layer, values in
+                    Compositor.OutputCompositeLayer(
+                        scene: values.0,
+                        sourceRect: layer.sourceRect,
+                        placement: layer.placement,
+                        adjustments: values.1.0,
+                        mask: values.1.1
+                    )
                 }
-                self.counters.withLock { $0.delivered += 1 }
-                self.deliver(pixelBuffer, at: hostTime)
-            }
+            compositor.render(composite: layers, into: slot.texture, at: hostTime, completion: converted)
         }
     }
 
@@ -401,11 +402,24 @@ public final class PixelBufferConverter: @unchecked Sendable {
     private var hlgFloatScratch: Data
     private var hlgWideScratch: Data
 
+    /// The SDR conversion on the GPU, when a device was given; HLG and any
+    /// failure fall back to the vImage path below.
+    private let gpu: GPUFrameConverter?
+
+    /// Whether frames are read back to the CPU, so the feed's render
+    /// targets are made readable without the driver decompressing them.
+    var readsBackOnCPU: Bool { gpu == nil }
+
     /// `straightAlpha` keeps each color at full strength instead of
     /// multiplied by its alpha (SDR frames only), for receivers such as NDI
     /// that read BGRA that way; a DeckLink key takes the premultiplied
     /// frame the compositor draws.
-    init?(width: Int, height: Int, poolCeiling: Int = 8, color: Color = .sdr, straightAlpha: Bool = false) {
+    init?(
+        width: Int, height: Int, poolCeiling: Int = 8, color: Color = .sdr,
+        straightAlpha: Bool = false, device: MTLDevice? = nil
+    ) {
+        self.gpu = color == .sdr
+            ? device.flatMap { GPUFrameConverter(device: $0, straightAlpha: straightAlpha) } : nil
         self.width = width
         self.height = height
         self.color = color
@@ -494,6 +508,11 @@ public final class PixelBufferConverter: @unchecked Sendable {
 
         var readbackMS = 0.0
         var convertMS = 0.0
+        if let gpu, let gpuMS = gpu.convert(texture: texture, into: pixelBuffer) {
+            RenderPulse.shared.mirrorFrame(readbackMS: 0, convertMS: gpuMS)
+            tag(pixelBuffer)
+            return pixelBuffer
+        }
         let converted: Bool = scratch.withUnsafeMutableBytes { source in
             guard let sourceBase = source.baseAddress else { return false }
             let readbackStart = CACurrentMediaTime()
@@ -536,7 +555,11 @@ public final class PixelBufferConverter: @unchecked Sendable {
         }
         guard converted else { return nil }
         RenderPulse.shared.mirrorFrame(readbackMS: readbackMS, convertMS: convertMS)
+        tag(pixelBuffer)
+        return pixelBuffer
+    }
 
+    private func tag(_ pixelBuffer: CVPixelBuffer) {
         switch color {
         case .sdr:
             CVBufferSetAttachment(
@@ -556,7 +579,6 @@ public final class PixelBufferConverter: @unchecked Sendable {
                 pixelBuffer, kCVImageBufferYCbCrMatrixKey,
                 kCVImageBufferYCbCrMatrix_ITU_R_2020, .shouldPropagate)
         }
-        return pixelBuffer
     }
 
     private func convertHLG(

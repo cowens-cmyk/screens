@@ -134,6 +134,7 @@ final class NDIOutputController {
             sourceRect: sourceRect,
             placement: placement,
             mask: render.outputs.maskProvider(for: targetID),
+            activityLabel: "NDI \(targetName)",
             sink: { pixelBuffer, _ in
                 guard let surfaceRef = CVPixelBufferGetIOSurface(pixelBuffer)?
                     .takeUnretainedValue()

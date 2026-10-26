@@ -97,6 +97,8 @@ struct HelpCommands: Commands {
                 .disabled(model == nil || runOnly)
             Divider()
             Button("Report a Problem…") { showFeedback = true }
+            Button("Save Performance Report…") { PerformanceReportWriter.save() }
+                .help("Samples the app for two seconds and saves what it is doing to the Desktop")
         }
     }
 }

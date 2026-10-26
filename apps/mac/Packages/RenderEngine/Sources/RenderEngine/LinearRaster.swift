@@ -56,6 +56,10 @@ enum LinearRaster {
         )
         descriptor.usage = .shaderRead
         descriptor.storageMode = .shared
+        // Uploaded from the CPU with replace(region:): left free to be
+        // compressed, the driver compresses every upload on the CPU, which
+        // showed in samples of the show Mac each time a clock ticked.
+        descriptor.allowGPUOptimizedContents = false
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
         half.withUnsafeBytes { buffer in
             texture.replace(

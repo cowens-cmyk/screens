@@ -102,7 +102,7 @@ public final class MetalSceneView: NSView {
             rasterScale: viewport.rasterScale)
     }
 
-    private struct PixelViewport {
+    struct PixelViewport: Equatable {
         var scale: CGFloat
         var offset: CGPoint
         var rasterScale: CGFloat
@@ -150,6 +150,17 @@ public final class MetalSceneView: NSView {
 
     private let compositor: Compositor
 
+    private let gateBox = Locked(FrameGate<SceneViewFrameKey>())
+
+    /// This view's line in the performance report: frames drawn and skipped.
+    public let activity = FrameActivity.shared.register(kind: "view", label: "Scene view")
+
+    /// Draws the next refresh whatever it shows, for when the layer may have
+    /// lost its last frame (a new window or screen).
+    public func invalidateFrame() {
+        gateBox.withLock { $0.invalidate() }
+    }
+
     private let transparentBackground: Bool
     private let metalLayer = CAMetalLayer()
     private var displayLink: CAMetalDisplayLink?
@@ -191,6 +202,7 @@ public final class MetalSceneView: NSView {
             object: window
         )
         updateDrawableGeometry()
+        invalidateFrame()
         startDisplayLink()
     }
 
@@ -202,11 +214,13 @@ public final class MetalSceneView: NSView {
     public override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         updateDrawableGeometry()
+        invalidateFrame()
     }
 
     @objc private func windowDidChangeScreen(_ notification: Notification) {
 
         updateDrawableGeometry()
+        invalidateFrame()
     }
 
     private func updateDrawableGeometry() {
@@ -279,6 +293,24 @@ public final class MetalSceneView: NSView {
     }
 }
 
+/// Everything besides time that sets what a scene view draws. Two equal
+/// keys draw the same picture, so the second can be skipped.
+struct SceneViewFrameKey: Equatable {
+    var scenes: [RenderScene]
+    var sourceRects: [CGRect?]
+    var placements: [CGRect?]
+    var adjustments: [OutputAdjustments?]
+    var masks: [ObjectIdentifier?]
+    var inset: CGFloat
+    var delay: Int
+    var width: Int
+    var height: Int
+    var mediaGeneration: UInt64
+    /// An editor canvas's zoom and pan: a pinch redraws though the scene
+    /// stays the same.
+    var viewport: MetalSceneView.PixelViewport? = nil
+}
+
 extension MetalSceneView: CAMetalDisplayLinkDelegate {
     public nonisolated func metalDisplayLink(
         _ link: CAMetalDisplayLink,
@@ -287,12 +319,27 @@ extension MetalSceneView: CAMetalDisplayLinkDelegate {
 
         let targetTimestamp = update.targetTimestamp
         tickState.withLock { $0.record(targetTimestamp: targetTimestamp) }
-        if let sources = compositeBox.value, !sources.isEmpty {
+        let target = update.drawable.texture
+        let media = compositor.mediaSource
+        let generation = media?.contentGeneration ?? 0
 
+        // The scenes are read once per refresh, whether or not the frame is
+        // drawn: comparing them with the last drawn ones is how a change is
+        // seen on the very refresh it happens.
+        if let sources = compositeBox.value, !sources.isEmpty {
+            let scenes = sources.map { $0.provider() }
+            let key = SceneViewFrameKey(
+                scenes: scenes, sourceRects: sources.map(\.sourceRect),
+                placements: sources.map(\.placement), adjustments: sources.map(\.adjustments),
+                masks: sources.map { $0.mask.map(ObjectIdentifier.init) },
+                inset: 0, delay: 0, width: target.width, height: target.height,
+                mediaGeneration: generation)
+            guard shouldRender(key: key, scenes: scenes, delay: 0, at: targetTimestamp, media: media)
+            else { return }
             compositor.render(
-                composite: sources.map { source in
+                composite: zip(sources, scenes).map { source, scene in
                     Compositor.OutputCompositeLayer(
-                        scene: source.provider(),
+                        scene: scene,
                         sourceRect: source.sourceRect,
                         placement: source.placement,
                         adjustments: source.adjustments,
@@ -304,11 +351,25 @@ extension MetalSceneView: CAMetalDisplayLinkDelegate {
             return
         }
         guard let provider = providerBox.value else { return }
+        let scene = provider()
         let delay = delayBox.value
-        if delay == 0, let viewport = viewportBox.value {
+        let adjustments = adjustmentsBox.value
+        let sourceRect = sourceRectBox.value
+        let placement = placementBox.value
+        let mask = maskBox.value
+        let inset = insetPixelsBox.value
+        let viewport = delay == 0 ? viewportBox.value : nil
+        let key = SceneViewFrameKey(
+            scenes: [scene], sourceRects: [sourceRect], placements: [placement],
+            adjustments: [adjustments], masks: [mask.map(ObjectIdentifier.init)],
+            inset: inset, delay: delay, width: target.width, height: target.height,
+            mediaGeneration: generation, viewport: viewport)
+        guard shouldRender(key: key, scenes: [scene], delay: delay, at: targetTimestamp, media: media)
+        else { return }
+        if let viewport {
             delayRingBox.value = nil
             compositor.render(
-                scene: provider(), into: update.drawable, at: targetTimestamp,
+                scene: scene, into: update.drawable, at: targetTimestamp,
                 transparentBackground: transparentBackground,
                 viewScale: viewport.scale, viewOffset: viewport.offset,
                 rasterScale: viewport.rasterScale
@@ -318,16 +379,15 @@ extension MetalSceneView: CAMetalDisplayLinkDelegate {
         guard delay > 0 else {
             delayRingBox.value = nil
             compositor.render(
-                scene: provider(), into: update.drawable, at: targetTimestamp,
+                scene: scene, into: update.drawable, at: targetTimestamp,
                 transparentBackground: transparentBackground,
-                adjustments: adjustmentsBox.value, sourceRect: sourceRectBox.value,
-                placement: placementBox.value, mask: maskBox.value,
-                inset: insetPixelsBox.value
+                adjustments: adjustments, sourceRect: sourceRect,
+                placement: placement, mask: mask,
+                inset: inset
             )
             return
         }
 
-        let target = update.drawable.texture
         let ring: DelayRing? = delayRingBox.withLock { box in
             let wanted = delay + 1
             if let existing = box, existing.textures.count == wanted,
@@ -353,22 +413,40 @@ extension MetalSceneView: CAMetalDisplayLinkDelegate {
         }
         guard let ring else {
             compositor.render(
-                scene: provider(), into: update.drawable, at: targetTimestamp,
+                scene: scene, into: update.drawable, at: targetTimestamp,
                 transparentBackground: transparentBackground,
-                adjustments: adjustmentsBox.value, sourceRect: sourceRectBox.value,
-                placement: placementBox.value, mask: maskBox.value
+                adjustments: adjustments, sourceRect: sourceRect,
+                placement: placement, mask: mask
             )
             return
         }
         let write = ring.writeIndex
         compositor.render(
-            scene: provider(), into: ring.textures[write], at: targetTimestamp,
-            adjustments: adjustmentsBox.value, sourceRect: sourceRectBox.value,
-            placement: placementBox.value, mask: maskBox.value
+            scene: scene, into: ring.textures[write], at: targetTimestamp,
+            adjustments: adjustments, sourceRect: sourceRect,
+            placement: placement, mask: mask
         )
         ring.written += 1
         ring.writeIndex = (write + 1) % ring.textures.count
         let read = ring.written > delay ? ring.writeIndex : write
         compositor.present(texture: ring.textures[read], into: update.drawable)
+    }
+
+    /// Asks the gate whether this refresh draws, and counts the answer. A
+    /// skipped refresh leaves the drawable unpresented, so the layer keeps
+    /// showing the last frame.
+    private nonisolated func shouldRender(
+        key: SceneViewFrameKey, scenes: [RenderScene], delay: Int,
+        at now: CFTimeInterval, media: MediaTextureSource?
+    ) -> Bool {
+        let motion = SceneMotion.of(scenes, at: now, media: media)
+        let decision = gateBox.withLock { gate in
+            // A delayed output keeps drawing until the change has come out
+            // the far end of its queue.
+            gate.trailingFrames = delay
+            return gate.decide(key: key, motion: motion, now: now)
+        }
+        activity.record(rendered: decision.renders, at: now)
+        return decision.renders
     }
 }

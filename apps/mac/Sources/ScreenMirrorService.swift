@@ -24,6 +24,7 @@ final class ScreenMirrorService {
             compositor: render.compositor,
             width: width, height: height, framesPerSecond: fps,
             provider: render.outputs.previewProvider(for: target),
+            activityLabel: "Screen mirror",
             sink: { buffer, _ in latest.value = buffer }
         ) else {
             DiagnosticsStore.shared.note("screenMirror.failed", detail: target)

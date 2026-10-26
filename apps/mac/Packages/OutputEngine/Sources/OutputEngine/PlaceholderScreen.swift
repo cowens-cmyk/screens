@@ -39,9 +39,18 @@ public final class PlaceholderScreen: Identifiable {
     private let maskBox = Locked<MTLTexture?>(nil)
     private let providerBox = Locked<(@Sendable () -> RenderScene)?>(nil)
     private let frameCounter = Locked(0)
-    private let lastRenderedScene = Locked<RenderScene?>(nil)
-    private let lastRenderedAdjustments = Locked<OutputAdjustments?>(nil)
-    private let lastRenderedMask = Locked<ObjectIdentifier?>(nil)
+    private struct FrameKey: Equatable {
+        var scene: RenderScene
+        var adjustments: OutputAdjustments?
+        var mask: ObjectIdentifier?
+        var mediaGeneration: UInt64
+    }
+
+    /// The texture keeps its last frame for as long as nothing changes, so
+    /// unlike a window's layer it needs no safety redraw.
+    private let gate = Locked(FrameGate<FrameKey>(refreshInterval: .infinity))
+
+    private nonisolated let activity: FrameActivity.Handle
     @ObservationIgnored private var timer: Timer?
 
     public init?(
@@ -73,6 +82,7 @@ public final class PlaceholderScreen: Identifiable {
         self.framesPerSecond = framesPerSecond
         self.texture = texture
         self.compositor = compositor
+        activity = FrameActivity.shared.register(kind: "screen", label: "Screen \u{201C}\(name)\u{201D}")
     }
 
     public func start() {
@@ -107,18 +117,20 @@ public final class PlaceholderScreen: Identifiable {
 
         let adjustments = adjustmentsBox.value
         let mask = maskBox.value
-        if !scene.isTimeVarying, lastRenderedScene.value == scene,
-           lastRenderedAdjustments.value == adjustments,
-           lastRenderedMask.value == mask.map(ObjectIdentifier.init) {
+        let media = compositor.mediaSource
+        let key = FrameKey(
+            scene: scene, adjustments: adjustments, mask: mask.map(ObjectIdentifier.init),
+            mediaGeneration: media?.contentGeneration ?? 0)
+        let motion = SceneMotion.of(scene, at: hostTime, media: media)
+        let decision = gate.withLock { $0.decide(key: key, motion: motion, now: hostTime) }
+        activity.record(rendered: decision.renders, at: CACurrentMediaTime())
+        guard decision.renders else {
             RenderPulse.shared.placeholderSkip()
             return
         }
         let encodeStart = CACurrentMediaTime()
         compositor.render(
             scene: scene, into: texture, at: hostTime, adjustments: adjustments, mask: mask)
-        lastRenderedScene.value = scene
-        lastRenderedAdjustments.value = adjustments
-        lastRenderedMask.value = mask.map(ObjectIdentifier.init)
         RenderPulse.shared.placeholderFrame(
             encodeMS: (CACurrentMediaTime() - encodeStart) * 1000)
         frameCounter.withLock { $0 += 1 }

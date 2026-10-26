@@ -638,17 +638,20 @@ struct SermonTimerControl: View {
 }
 
 /// The sermon timer's digits: the only part that ticks, so the card around
-/// it isn't redrawn twice a second.
+/// it isn't redrawn with them. They tick as the shown second turns over,
+/// and not at all while the timer stands still.
 struct SermonTimeReadout: View {
     let timer: TimerSnapshot?
     var size: CGFloat = 22
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+        let schedule = TimerSecondSchedule(timers: timer.map { [$0] } ?? [])
+        TimelineView(schedule) { context in
             let overtime = timer?.isOvertime(at: context.date) == true
             Text(timer?.displayString(at: context.date) ?? TimerSnapshot.timecode(SermonTimer.defaultSeconds))
                 .font(.system(size: size, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(overtime ? Color.red : Color.green)
         }
+        .id(schedule.anchor)
     }
 }

@@ -49,17 +49,32 @@ public enum StageScenes {
         video plan: StageVideoPlan? = nil,
         info: ConfidenceInfo,
         at date: Date,
+        cache: StageSceneCache? = nil,
+        slot: String = "",
         audience: () -> RenderScene
     ) -> RenderScene {
+        // A layout build is shared through the cache when one is given.
+        func layoutScene(_ layout: ConfidenceLayout) -> RenderScene {
+            guard let cache else {
+                return ConfidenceSceneBuilder.scene(layout: layout, info: info, at: date)
+            }
+            return cache.scene(slot: slot, layout: layout, info: info, at: date)
+        }
         if let plan, let video = activeVideo(in: info, at: date) {
-            return videoScene(plan: plan, audience: audience(), video: video, info: info, at: date)
+            let live = audience()
+            guard let cache else {
+                return videoScene(plan: plan, audience: live, video: video, info: info, at: date)
+            }
+            return cache.videoScene(slot: slot, plan: plan, audience: live, info: info, at: date) {
+                videoScene(plan: plan, audience: live, video: video, info: info, at: date)
+            }
         }
         if let override {
-            return ConfidenceSceneBuilder.scene(layout: override, info: info, at: date)
+            return layoutScene(override)
         }
         switch source {
         case .layout(let layout):
-            return ConfidenceSceneBuilder.scene(layout: layout, info: info, at: date)
+            return layoutScene(layout)
         case .mirror:
             var scene = audience()
             addStageAlert(to: &scene, info: info, at: date)

@@ -66,6 +66,14 @@ final class DiagnosticsStore: NSObject, MXMetricManagerSubscriber, @unchecked Se
 
     let passMeter = OSAllocatedUnfairLock(initialState: MainPassMeter())
 
+    /// Every main-thread stall over 100 ms the ping below sees, with what was
+    /// on screen, for the performance report. Always on: one entry per hang.
+    let hangs = OSAllocatedUnfairLock(initialState: HangLog())
+
+    /// What was on screen while the current ping waited, read just past the
+    /// hang threshold so it names the stall rather than what came after.
+    private var pendingHangContext: String?
+
     let spin = OSAllocatedUnfairLock(initialState: SpinDetector())
 
     let bodyMeter = OSAllocatedUnfairLock(
@@ -190,6 +198,11 @@ final class DiagnosticsStore: NSObject, MXMetricManagerSubscriber, @unchecked Se
             let sent = CACurrentMediaTime()
             watchdogPingSentAt = sent
             pendingPingStack = nil
+            pendingHangContext = nil
+            pulseQueue.asyncAfter(deadline: .now() + HangLog.thresholdMS / 1000) { [weak self] in
+                guard let self, self.watchdogPingPending, self.watchdogPing == ping else { return }
+                self.pendingHangContext = Self.hangContext()
+            }
             pulseQueue.asyncAfter(deadline: .now() + Self.stackAfterSeconds) { [weak self] in
                 self?.captureStackIfStillBlocked(ping: ping, followUp: false)
             }
@@ -212,6 +225,11 @@ final class DiagnosticsStore: NSObject, MXMetricManagerSubscriber, @unchecked Se
     private func pingAnswered(blockedMS: Double) {
         watchdogPingPending = false
         pendingPingStack = nil
+        if blockedMS >= HangLog.thresholdMS {
+            let context = pendingHangContext ?? Self.hangContext()
+            hangs.withLock { _ = $0.record(milliseconds: blockedMS, at: Date(), context: context) }
+        }
+        pendingHangContext = nil
         if blockedMS > 250 {
             RenderPulse.shared.hitch(ms: blockedMS)
             NotificationCenter.default.post(name: Self.hitchNotification, object: nil)
@@ -260,6 +278,15 @@ final class DiagnosticsStore: NSObject, MXMetricManagerSubscriber, @unchecked Se
             movement: previous.map { HitchStackLine.movement(from: $0, to: stack) },
             frames: frames)
         note("perf.hitch.stack", detail: PerfLineLimiter.annotate(detail, dropped: dropped))
+    }
+
+    /// The app mode (Present, Edit, …) and the main run loop's mode, read
+    /// from off the main thread.
+    private static func hangContext() -> String {
+        let appMode = UserDefaults.standard.string(forKey: "appMode") ?? "edit"
+        let loopMode = RunLoopModeName.short(
+            CFRunLoopCopyCurrentMode(CFRunLoopGetMain()).map { $0.rawValue as String })
+        return "\(appMode) · \(loopMode)"
     }
 
     private func checkForSpin() {

@@ -198,6 +198,11 @@ struct LiveSceneView: NSViewRepresentable {
     }
 
     private func apply(to view: MetalSceneView) {
+        view.activity.kind = "preview"
+        view.activity.label = screenTargetID.map { target in
+            let name = render.outputs.placeholderScreens.first { $0.id.uuidString == target }?.name
+            return "Preview of \(name ?? PreviewLabel.short(target))"
+        } ?? "Live preview"
         if let screenTargetID {
             view.sceneProvider = render.previewProvider(for: screenTargetID)
         } else {
@@ -368,5 +373,14 @@ struct PreviewedLayoutKeeper: ViewModifier {
         if let layoutID {
             confidenceMonitor?.endPreview(layoutID: layoutID)
         }
+    }
+}
+
+/// A target id in the performance report: screen ids are UUIDs, so only
+/// their first block is kept to tell previews apart without the noise.
+enum PreviewLabel {
+    static func short(_ target: String) -> String {
+        guard UUID(uuidString: target) != nil else { return target }
+        return String(target.prefix(8))
     }
 }
