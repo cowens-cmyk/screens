@@ -47,20 +47,30 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
 
     /// Built for reading from the platform. The words being sung, large,
     /// bold and white, start at the same place on every slide so the eye
-    /// knows where to look; the section name sits small above them and the
+    /// knows where to look: left-aligned, with the section name small in a
+    /// column to their left and NEXT beside the next lines the same way. The
     /// chords (Nashville numbers) are in the accent over the words. The next
-    /// slide's first two lines are smaller and grey under a small NEXT,
-    /// which goes away on the last slide. The clock, song and key run along
-    /// the bottom, where a stage message replaces them.
-    static func worship(name: String) -> ConfidenceLayout {
-        var section = linked("Section", .currentGroup, x: 80, y: 30, width: 1760, height: 62,
-                             size: 40, color: worshipAccent, shrink: true, minSize: 24)
+    /// slide's first two lines are smaller and grey, and NEXT goes away on
+    /// the last slide. The clock, song and key run along the bottom, where a
+    /// stage message replaces them.
+    ///
+    /// `centered` is the design as 0.19.0 made it, the section name over
+    /// centred words; kept only to recognise untouched copies of it.
+    static func worship(name: String, centered: Bool = false) -> ConfidenceLayout {
+        // The words start right of a column wide enough for "PRE CHORUS 2".
+        let words: (x: Double, width: Double) = centered ? (80, 1760) : (420, 1440)
+        let align: TextHorizontalAlignment = centered ? .center : .left
+        var section = centered
+            ? linked("Section", .currentGroup, x: 80, y: 30, width: 1760, height: 62,
+                     size: 40, color: worshipAccent, shrink: true, minSize: 24)
+            : linked("Section", .currentGroup, x: 60, y: 92, width: 340, height: 62,
+                     size: 40, color: worshipAccent, alignment: .left, shrink: true, minSize: 22)
         section.textStyle?.fontName = "HelveticaNeue-Bold"
         section.textStyle?.tracking = 6
         section.textStyle?.textTransform = .uppercase
         var current = linked("Current Slide", .currentSlide,
-                             x: 80, y: 100, width: 1760, height: 570,
-                             size: 112, color: white, shrink: true, minSize: 64, chords: true)
+                             x: words.x, y: centered ? 100 : 60, width: words.width, height: centered ? 570 : 610,
+                             size: 112, color: white, alignment: align, shrink: true, minSize: 64, chords: true)
         current.textStyle?.fontName = "HelveticaNeue-Bold"
         current.textStyle?.verticalAlignment = .top
         // The lines as the song has them: a line gets smaller before it
@@ -72,8 +82,8 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         // The next lines are a glance ahead; chords there were too small to
         // read and crowded the words.
         var next = linked("Next Slide", .nextSlide,
-                          x: 80, y: 740, width: 1760, height: 180,
-                          size: 64, color: nextGray, shrink: true, minSize: 40,
+                          x: words.x, y: 740, width: words.width, height: 180,
+                          size: 64, color: nextGray, alignment: align, shrink: true, minSize: 40,
                           maxLines: 2)
         next.textStyle?.fontName = "HelveticaNeue-Medium"
         next.textStyle?.verticalAlignment = .top
@@ -81,7 +91,10 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         next.textStyle?.balancedWrap = true
         next.textStyle?.chordNotation = .numbers
         next.textStyle?.chordColorHex = captionGray
-        var nextLabel = caption("NEXT", x: 80, y: 694, width: 1760, height: 40, size: 28)
+        var nextLabel = centered
+            ? caption("NEXT", x: 80, y: 694, width: 1760, height: 40, size: 28)
+            : caption("NEXT", x: 60, y: 752, width: 340, height: 40, size: 28)
+        if !centered { nextLabel.textStyle?.horizontalAlignment = .left }
         // Only while there is a next slide to label.
         nextLabel.visibilityConditions = [
             VisibilityCondition(conditionKind: .objectText, state: .hasText, objectId: next.id),
@@ -103,10 +116,11 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         )
     }
 
-    /// A saved Worship layout still exactly as the old template made it
+    /// A saved Worship layout still exactly as an earlier template made it
     /// gets the new design's objects; one anybody has touched is left alone.
     public static func upgradedWorshipObjects(for layout: ConfidenceLayout) -> [SlideObject]? {
-        guard isUntouched(layout, comparedWith: legacyWorship(name: layout.name)) else { return nil }
+        let earlier = [legacyWorship(name: layout.name), worship(name: layout.name, centered: true)]
+        guard earlier.contains(where: { isUntouched(layout, comparedWith: $0) }) else { return nil }
         return worship(name: layout.name).objects
     }
 
@@ -279,10 +293,19 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
             && withoutIDs(layout.objects) == withoutIDs(template.objects)
     }
 
+    /// The objects with their ids blanked, and an object a visibility
+    /// condition points at named by its place in the list instead, since
+    /// every copy of a template gets fresh ids.
     private static func withoutIDs(_ objects: [SlideObject]) -> [SlideObject] {
-        objects.map { object in
+        let place = Dictionary(objects.enumerated().map { ($1.id, "\($0)") }, uniquingKeysWith: { first, _ in first })
+        return objects.map { object in
             var object = object
             object.id = ""
+            object.visibilityConditions = object.visibilityConditions?.map { condition in
+                var condition = condition
+                condition.objectId = condition.objectId.flatMap { place[$0] ?? $0 }
+                return condition
+            }
             return object
         }
     }

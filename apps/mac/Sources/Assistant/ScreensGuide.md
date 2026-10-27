@@ -310,7 +310,7 @@ Slide actions can also change the switch (Add Action › Livestream).
 ## Stage display
 
 The Stage card's menu sets the stage mode:
-- **Worship**: the words being sung, large, bold and white, starting at the same place on every slide (a line gets smaller before it breaks, and never smaller than about two thirds), with the section name ("VERSE 1", "CHORUS") small in gold above them and chords (Nashville numbers) in gold over the words. Under them a small "NEXT" and the next slide's first two lines, smaller and grey; on the last slide both go away. Along the bottom: the clock, the song's name and its key in gold.
+- **Worship**: the words being sung, large, bold, white and left-aligned, starting at the same place on every slide (a line gets smaller before it breaks, and never smaller than about two thirds), with the section name ("VERSE 1", "CHORUS") small in gold to their left and chords (Nashville numbers) in gold over the words. Under them the next slide's first two lines, smaller, grey and left-aligned, with a small "NEXT" to their left; on the last slide both go away. Along the bottom: the clock, the song's name and its key in gold.
 - **Message**: a large sermon countdown (40:00 by default) under a small "MESSAGE" caption, green while time is left and red, still counting, past 0:00; under it "TIME" and the clock in white.
 - **Show Audience Screen** (a toggle in the menu, and the one-click button on the Stage card): the stage shows exactly what the audience sees; clicking again returns to the previous mode. Right-click a slide › **Show on Stage Display** does this for that slide only.
 

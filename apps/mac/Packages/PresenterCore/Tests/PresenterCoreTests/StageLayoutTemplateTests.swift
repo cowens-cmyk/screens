@@ -24,7 +24,12 @@ private func frame(_ object: SlideObject) -> CGRect {
 
     #expect(section.textLink?.source == .currentGroup)
     #expect(section.textStyle?.textTransform == .uppercase)
-    #expect(frame(section).maxY <= frame(current).minY, "the section name sits above the words")
+    #expect(frame(section).maxX <= frame(current).minX, "the section name sits left of the words")
+    #expect(frame(section).minY < frame(current).minY + 120, "beside the first line")
+    #expect(section.textStyle?.horizontalAlignment == .left)
+    #expect(current.textStyle?.horizontalAlignment == .left, "the words are left-aligned")
+    #expect(next.textStyle?.horizontalAlignment == .left)
+    #expect(frame(next).minX == frame(current).minX, "the next lines start where the words do")
     #expect((section.textStyle?.fontSize ?? 0) < (current.textStyle?.fontSize ?? 0) / 2)
 
     #expect(current.textStyle?.colorHex == ConfidenceLayoutTemplate.white, "white words, the most contrast")
@@ -77,6 +82,21 @@ private func frame(_ object: SlideObject) -> CGRect {
     var fresh = saved
     fresh.objects = upgraded
     #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: fresh) == nil, "once only")
+}
+
+@Test func anUntouchedCenteredWorshipLayoutTakesTheLeftAlignedOne() throws {
+    var saved = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", centered: true)
+    saved.id = "screens.stage.worship"
+    let upgraded = try #require(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: saved))
+    let current = try #require(upgraded.first { $0.name == "Current Slide" })
+    #expect(current.textStyle?.horizontalAlignment == .left)
+    var fresh = saved
+    fresh.objects = upgraded
+    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: fresh) == nil, "once only")
+
+    var moved = saved
+    moved.objects[1].x = (moved.objects[1].x ?? 0) + 10
+    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: moved) == nil, "a changed one is left alone")
 }
 
 @Test func aChangedWorshipLayoutIsLeftAlone() {
