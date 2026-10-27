@@ -41,7 +41,10 @@ extension AppModel {
         defer { PreServiceMaking.inFlight = false }
         let deck = PreServiceSlides.newSlideshow()
         _ = try? await createInDrive(deck).value
-        return libraryEntry(deck.id) != nil ? deck.id : preServiceSlideshowID()
+        guard libraryEntry(deck.id) != nil else { return preServiceSlideshowID() }
+        // The hopejc.org events go straight in rather than at the next read.
+        if WebsiteEventSync.shared.writesHere { WebsiteEventSync.shared.syncNow() }
+        return deck.id
     }
 
     /// Gives every upcoming plan and template the shared slideshow first,

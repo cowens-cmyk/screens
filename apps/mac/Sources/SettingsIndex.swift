@@ -321,7 +321,7 @@ enum SettingsIndex {
         SettingsEntry(
             id: "website.events", category: .integrations, tab: .website,
             title: "Add events from hopejc.org to the pre-service announcements",
-            caption: "Each church event's picture goes in the pre-service slideshow, full screen, and comes out when the event starts. Only the Mac with Run on this Mac on adds and removes them.",
+            caption: "Each church event's picture goes in the pre-service slideshow, full screen, and comes out when the event starts. Every Mac keeps them up to date.",
             keywords: "website hopejc events calendar announcements pre-service preservice slideshow loop promo automatic cms"),
         SettingsEntry(
             id: "website.window", category: .integrations, tab: .website,

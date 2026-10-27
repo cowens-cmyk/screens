@@ -3,12 +3,11 @@ import PresenterCore
 import SwiftUI
 
 /// Settings › Integrations › Website: hopejc.org's events in the pre-service
-/// slideshow. The choices are church-wide (any Mac can change them); the
-/// Mac with Run on this Mac on does the adding and removing.
+/// slideshow. The choices are church-wide (any Mac can change them), and
+/// every Mac does the adding and removing.
 struct WebsiteEventsSettingsForm: View {
     let model: AppModel?
     @State private var sync = WebsiteEventSync.shared
-    @AppStorage(ServiceStation.runsServiceKey) private var runsService = false
 
     private var settings: WebsiteEventSettings? { model?.slideBuilding.websiteEvents }
 
@@ -80,14 +79,13 @@ struct WebsiteEventsSettingsForm: View {
     }
 
     private var lastSyncText: String {
-        guard let date = runsService ? sync.lastApplied : sync.lastFetched else { return "Not yet" }
+        guard let date = sync.lastApplied ?? sync.lastFetched else { return "Not yet" }
         let time = date.formatted(date: .omitted, time: .shortened)
         return Calendar.current.isDateInToday(date) ? "Last synced \(time)" : "Last synced \(date.formatted(date: .abbreviated, time: .shortened))"
     }
 
     private var footer: String {
         if let problem = sync.problem { return problem }
-        if !runsService { return "Run on this Mac is off here, so another Mac adds and removes these slides." }
         let name = sync.slideshowID().flatMap { model?.libraryEntry($0)?.name } ?? "the pre-service slideshow"
         return "Added to \(name) after the slides made by hand, soonest first. Pictures are kept in Media › Announcements."
     }

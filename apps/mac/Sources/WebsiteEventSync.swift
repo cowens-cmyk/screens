@@ -10,12 +10,15 @@ import UniformTypeIdentifiers
 /// feed, brings the artwork into Media › Announcements and writes the
 /// slides).
 ///
-/// Plans and presentations sync church-wide, so only the Mac with Run on
-/// this Mac on writes, like the countdowns and pre-service restarts. The
-/// show Mac runs for days at a time, so the clock is watched with one-shot
-/// timers set for the next change (an event's window opening, a slide's
-/// time to come down, midnight), looked at again after sleep, a clock or
-/// time zone change, and the feed is read every 30 minutes. With no
+/// Every Mac writes, so a Mac that doesn't run the service (or isn't
+/// syncing with the one that does) still shows the events. Each event's
+/// slide has the same id on every Mac and a second copy is dropped, so two
+/// Macs writing at once settle on one slide.
+///
+/// The show Mac runs for days at a time, so the clock is watched with
+/// one-shot timers set for the next change (an event's window opening, a
+/// slide's time to come down, midnight), looked at again after sleep, a
+/// clock or time zone change, and the feed is read every 30 minutes. With no
 /// network, what's showing stays and only the slides whose time has passed
 /// come out, worked out from the slides' own records.
 @MainActor
@@ -120,11 +123,10 @@ final class WebsiteEventSync {
         }
     }
 
-    /// Whether this Mac writes the slides: the feature is on church-wide and
-    /// this Mac runs the service.
+    /// Whether this Mac writes the slides: the feature is on church-wide.
     var writesHere: Bool {
         guard let model else { return false }
-        return ServiceStation.runsService && WebsiteEvents.isEnabled(model.slideBuilding.websiteEvents)
+        return WebsiteEvents.isEnabled(model.slideBuilding.websiteEvents)
     }
 
     var settings: WebsiteEventSettings? { model?.slideBuilding.websiteEvents }
@@ -149,10 +151,8 @@ final class WebsiteEventSync {
                 try? await Task.sleep(for: .seconds(2))
                 let sync = WebsiteEventSync.shared
                 sync.watchSettings()
-                // Turned off, the Mac that wrote the slides takes them out.
-                if ServiceStation.runsService {
-                    sync.run(fetch: sync.writesHere && sync.events == nil)
-                }
+                // Turned off, the slides come out.
+                sync.run(fetch: sync.writesHere && sync.events == nil)
             }
         }
     }
@@ -165,8 +165,7 @@ final class WebsiteEventSync {
 
     // MARK: Running
 
-    /// Sync Now, and Settings opening: reads the feed on any Mac (so the
-    /// list shows), and writes only where this Mac runs the service.
+    /// Sync Now, and Settings opening: reads the feed and writes the slides.
     func syncNow() {
         run(fetch: true)
     }
@@ -182,7 +181,7 @@ final class WebsiteEventSync {
             let activity = ProcessInfo.processInfo.beginActivity(
                 options: [.background], reason: "Updating hopejc.org events in the pre-service slides")
             if fetch { await fetchFeed() }
-            if ServiceStation.runsService, model != nil {
+            if model != nil {
                 await apply(enabled: WebsiteEvents.isEnabled(settings))
             }
             ProcessInfo.processInfo.endActivity(activity)
