@@ -91,11 +91,17 @@ final class ThumbnailStore {
         var usedPlaceholder = false
         var pendingStill = false
 
-        let built = SlideSceneBuilder.peakLook(SlideSceneBuilder.scene(
+        var built = SlideSceneBuilder.peakLook(SlideSceneBuilder.scene(
             for: rendered, theme: theme, canvasSize: canvas, animationContext: .settled
         ))
 
             .applyingMediaEffects(mediaEffects)
+        // The tile draws a background's picture itself, under this. Its black
+        // bars would cover that picture whenever the output hasn't loaded it,
+        // which is every slide but the live one.
+        for layer in built.layers.indices where built.layers[layer].kind != .slide {
+            built.layers[layer].items.removeAll { $0.id.hasSuffix("-letterbox") }
+        }
 
         let slideLayerMedia = Self.mediaIDs(onSlideLayerOf: built)
         let scene = built.remappingMediaIDs { id in
