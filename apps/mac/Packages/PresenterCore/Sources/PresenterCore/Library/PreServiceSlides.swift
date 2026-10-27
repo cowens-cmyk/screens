@@ -86,6 +86,10 @@ public enum PreServiceSlides {
         case mark(itemID: String, link: String?)
         /// A new item first in the plan, linked to the slideshow.
         case insert(ServiceItem)
+        /// The plan's item links to another pre-service slideshow (two Macs
+        /// each made one before either saw the other's): it moves to the
+        /// shared one.
+        case relink(itemID: String, to: String)
     }
 
     /// What gives a plan the slideshow; nil when it needs nothing.
@@ -95,14 +99,18 @@ public enum PreServiceSlides {
     /// second added; one of those linked to something else is left as it
     /// is. A plan whose slideshow was taken out isn't given another, and
     /// with no slideshow in the library there's nothing to add.
+    /// `isOtherSlideshow` says whether a presentation is another pre-service
+    /// slideshow, which the plan's item is moved off.
     public static func change(
-        for service: Service, sharedID: String?, makeID: () -> String = { UUID().uuidString }
+        for service: Service, sharedID: String?, isOtherSlideshow: (String) -> Bool = { _ in false },
+        makeID: () -> String = { UUID().uuidString }
     ) -> Change? {
         let shared = sharedID.flatMap { $0.isEmpty ? nil : $0 }
         if let existing = item(in: service) {
+            guard let shared, existing.refId != shared else { return nil }
             // Marked before there was a slideshow to link it to.
-            guard existing.refId.isEmpty, let shared else { return nil }
-            return .mark(itemID: existing.id, link: shared)
+            if existing.refId.isEmpty { return .mark(itemID: existing.id, link: shared) }
+            return isOtherSlideshow(existing.refId) ? .relink(itemID: existing.id, to: shared) : nil
         }
         if let shared, let linked = service.items.first(where: { $0.itemKind == .presentation && $0.refId == shared }) {
             return .mark(itemID: linked.id, link: nil)
@@ -134,6 +142,12 @@ public enum PreServiceSlides {
             }
             guard marked != service.items[index] else { return false }
             service.items[index] = marked
+        case .relink(let itemID, let shared):
+            guard let index = service.items.firstIndex(where: { $0.id == itemID && $0.isPreService == true }),
+                  service.items[index].refId != shared
+            else { return false }
+            service.items[index].itemKind = .presentation
+            service.items[index].refId = shared
         case .insert(let item):
             // Worked out again, so an item added since (here or on another
             // Mac) isn't joined by a second.
@@ -145,8 +159,10 @@ public enum PreServiceSlides {
 
     /// The plan with the slideshow (see `change(for:sharedID:)`), nil when
     /// it needs nothing.
-    public static func ensuring(_ service: Service, sharedID: String?) -> Service? {
-        guard let change = change(for: service, sharedID: sharedID) else { return nil }
+    public static func ensuring(
+        _ service: Service, sharedID: String?, isOtherSlideshow: (String) -> Bool = { _ in false }
+    ) -> Service? {
+        guard let change = change(for: service, sharedID: sharedID, isOtherSlideshow: isOtherSlideshow) else { return nil }
         var plan = service
         return apply(change, to: &plan) ? plan : nil
     }

@@ -16,15 +16,23 @@ extension AppModel {
             inLibrary: { libraryEntry($0) != nil }, candidates: candidates)
     }
 
+    /// Whether a presentation is a pre-service slideshow other than the
+    /// shared one: named or foldered like Pre-Service. Two Macs can each
+    /// make one before either sees the other's; plans on the other one are
+    /// moved to the shared one, which every Mac picks the same way.
+    func isOtherPreServiceSlideshow(_ id: String, shared: String?) -> Bool {
+        guard id != shared, let entry = libraryEntry(id), entry.kind == .presentation else { return false }
+        return ServiceDay.looksLikePreService(entry.name) || ServiceDay.looksLikePreService(entry.subkind)
+    }
+
     /// The shared slideshow, made (empty, looping) when the library has
-    /// none. Plans and presentations sync church-wide, so it's only made
-    /// by hand or on the Mac with Run on this Mac on; otherwise two Macs
-    /// could each make one. Nil while the library is still opening, or
-    /// when one is on the team drive but not on this Mac yet.
+    /// none, on any Mac: one that doesn't run the service still shows plans
+    /// that should open with it. Nil while the library is still opening,
+    /// or when one is on the team drive but not on this Mac yet.
     @discardableResult
-    func makePreServiceSlideshowIfNeeded(byHand: Bool) async -> String? {
+    func makePreServiceSlideshowIfNeeded() async -> String? {
         if let id = preServiceSlideshowID() { return id }
-        guard isLibraryReady, byHand || ServiceStation.runsService else { return nil }
+        guard isLibraryReady else { return nil }
         let onDrive = teamCloudItems.contains {
             $0.kind == .presentation && (ServiceDay.looksLikePreService($0.name) || ServiceDay.looksLikePreService($0.folder))
         }
@@ -44,7 +52,8 @@ extension AppModel {
     ) {
         let shared = preServiceSlideshowID()
         for plan in upcoming + templates {
-            let preService = PreServiceSlides.change(for: plan, sharedID: shared)
+            let preService = PreServiceSlides.change(
+                for: plan, sharedID: shared, isOtherSlideshow: { isOtherPreServiceSlideshow($0, shared: shared) })
             let countdown = ServiceCountdown.change(for: plan, isCountdownLink: isCountdownLink)
             guard preService != nil || countdown != nil else { continue }
             updateService(plan.id) { service in

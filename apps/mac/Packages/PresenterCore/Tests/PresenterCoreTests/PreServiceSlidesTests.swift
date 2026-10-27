@@ -133,6 +133,21 @@ struct PreServiceSlidesTests {
         #expect(PreServiceSlides.relinking(plan([song]), to: "pre") == nil)
     }
 
+    @Test func aMarkedItemOnAnotherPreServiceSlideshowMovesToTheSharedOne() {
+        // Two Macs each made a Pre-Service before either saw the other's.
+        var item = ServiceItem(id: "p", itemKind: .presentation, name: "Pre-Service", refId: "made-elsewhere")
+        item.isPreService = true
+        let isOther: (String) -> Bool = { $0 == "made-elsewhere" }
+        #expect(PreServiceSlides.change(for: plan([item, song]), sharedID: "pre", isOtherSlideshow: isOther)
+                == .relink(itemID: "p", to: "pre"))
+        let moved = PreServiceSlides.ensuring(plan([item, song]), sharedID: "pre", isOtherSlideshow: isOther)!
+        #expect(moved.items.map(\.refId) == ["pre", "song-deck"])
+        #expect(PreServiceSlides.change(for: moved, sharedID: "pre", isOtherSlideshow: isOther) == nil)
+        // A song or a video it was pointed at by hand stays.
+        #expect(PreServiceSlides.change(for: plan([item, song]), sharedID: "pre", isOtherSlideshow: { _ in false }) == nil)
+        #expect(PreServiceSlides.change(for: plan([item, song]), sharedID: nil, isOtherSlideshow: isOther) == nil)
+    }
+
     // MARK: Order with the countdown
 
     @Test func itComesBeforeTheCountdownWhicheverIsAddedFirst() {

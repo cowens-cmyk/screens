@@ -994,21 +994,30 @@ struct PlanShell: View {
             + ["|", model.slideBuilding.serviceDay?.preServicePresentationId ?? ""]
     }
 
-    /// Every upcoming plan and template opens with the shared pre-service
-    /// slideshow (see PreServiceSlides), and every upcoming service (not a
-    /// template, not a past plan) with a countdown after it. An item the
+    /// The upcoming plans, plus the open one when it's dated earlier: a
+    /// plan being looked at, or run again, opens with the slideshow too.
+    /// Other past plans are left as they were shown.
+    private func openerPlans(_ current: (upcoming: [Service], templates: [Service], past: [Service])) -> [Service] {
+        guard let id = model.currentServiceID, let open = model.resident.services.value(id), open.isTemplate != true,
+              !current.upcoming.contains(where: { $0.id == id })
+        else { return current.upcoming }
+        return [open] + current.upcoming
+    }
+
+    /// Every upcoming plan (and the open one) and template opens with the
+    /// shared pre-service slideshow (see PreServiceSlides), and every one of
+    /// those plans that isn't a template with a countdown after it. An item the
     /// plan already has that is one (Shepherd's "Pre-Service" or
     /// "COUNTDOWN", or one linked to the slideshow or a countdown video) is
     /// marked as it; otherwise the plan gets the item, unless it was taken
-    /// out of that plan. With no slideshow yet, the Mac that runs the
-    /// service makes one.
+    /// out of that plan. With no slideshow yet, one is made.
     private func ensurePlanOpeners() {
         guard !runOnly else { return }
         let current = plans
-        model.ensurePlanOpeners(upcoming: current.upcoming, templates: current.templates, isCountdownLink: isCountdownLink)
-        guard model.preServiceSlideshowID() == nil, ServiceStation.runsService else { return }
+        model.ensurePlanOpeners(upcoming: openerPlans(current), templates: current.templates, isCountdownLink: isCountdownLink)
+        guard model.preServiceSlideshowID() == nil else { return }
         Task {
-            guard await model.makePreServiceSlideshowIfNeeded(byHand: false) != nil else { return }
+            guard await model.makePreServiceSlideshowIfNeeded() != nil else { return }
             ensurePlanOpeners()
         }
     }
@@ -1017,7 +1026,7 @@ struct PlanShell: View {
     /// the editor, made first when the library has none.
     private func editPreServiceSlides() {
         Task {
-            guard let id = await model.makePreServiceSlideshowIfNeeded(byHand: true) else { return }
+            guard let id = await model.makePreServiceSlideshowIfNeeded() else { return }
             ensurePlanOpeners()
             itemID = nil
             model.openInEditor(entryID: id)
