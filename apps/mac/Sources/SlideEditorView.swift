@@ -575,7 +575,7 @@ struct SlideEditorView: View {
         let slideID = slide.id
         Task { @MainActor in
 
-            let imported = await appModel.importFiles(urls)
+            let imported = await appModel.importFiles(insertZone ? await MediaSlides.withLowerThirds(urls) : urls)
             guard let first = imported.first else { return }
             if insertZone {
                 // Every file dropped between slides becomes a slide.
@@ -1451,7 +1451,7 @@ extension SlideEditorView {
             dropFiles: { urls in
                 guard !runOnly else { return }
                 Task { @MainActor in
-                    addMediaSlides(model, await appModel.importFiles(urls))
+                    addMediaSlides(model, await appModel.importFiles(await MediaSlides.withLowerThirds(urls)))
                 }
             },
             breadcrumb: "editor.emptyDrop",

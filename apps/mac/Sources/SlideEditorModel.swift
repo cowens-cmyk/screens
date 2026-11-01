@@ -2147,12 +2147,12 @@ final class SlideEditorModel {
     @discardableResult
     func insertMediaSlides(mediaIDs: [String], beforeSlideID: String?) -> Bool {
         guard !isThemeEditor else { return false }
-        let added = mediaIDs.compactMap { appModel.media($0) }.map { item in
-            Slide(
-                id: UUID().uuidString, name: item.name, objects: [],
-                background: CueMedia.droppedAsNewSlide(for: item))
+        let made = MediaSlides.make(mediaIDs, model: appModel, existing: presentation.slides)
+        for (slideID, lowerThird) in made.existingLowerThirds {
+            updateSlide(slideID) { $0.streamDesign = .lowerThirdImage(lowerThird) }
         }
-        guard !added.isEmpty else { return false }
+        let added = made.slides
+        guard !added.isEmpty else { return !made.existingLowerThirds.isEmpty }
         updateDocument { presentation in
             let index = beforeSlideID.flatMap { id in
                 presentation.slides.firstIndex { $0.id == id }

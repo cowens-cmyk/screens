@@ -303,6 +303,8 @@ The livestream screen is keyed over the camera. In order, these decide what it s
 
 **"What do you want on the livestream?"** When picture or video slides are added (dropped into the slide grid or the editor's slide list), a sheet asks: **Lower-Third Image…**, **Full Screen**, **Nothing**, or **Theme Default**, with **Apply to all N new slides** and **Don't ask again for this presentation** (remembered on this Mac). Text slides and slides that already have a choice are not asked about.
 
+**Lower thirds matched by file name.** A picture named like a slide with **_LowerThird** on the end is that slide's lower-third picture, with no question: "Slide01_LowerThird.png" goes with "Slide01_Wide.png" (or plain "Slide01.png"). Drop the pictures, both sets, or the whole folder into a presentation and each slide gets its own; dropping only the _Wide pictures still finds the _LowerThird ones in the same folder. Dropping only _LowerThird pictures onto a presentation puts each on its slide with the matching name. Case, and a space or hyphen instead of the underscore, don't matter. A lower third with no matching slide becomes a slide of its own.
+
 **Videos.** While a video that plays once is on screen, the livestream shows it full screen whatever the switch says (the Livestream card shows a "Video" badge). When it ends, is held on its last frame, cleared or replaced, the stream goes clear (nothing over the camera) until the next slide goes live and its own rules apply. Picking a Livestream mode by hand ends this early. Looping background videos never do this.
 
 Slide actions can also change the switch (Add Action › Livestream).

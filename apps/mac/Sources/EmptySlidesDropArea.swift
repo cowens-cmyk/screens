@@ -142,17 +142,39 @@ struct MediaSlideTarget: Identifiable {
 }
 
 enum MediaSlides {
+    struct Made {
+        var slides: [Slide]
+        /// Lower thirds dropped for slides already in the presentation:
+        /// slide id → the picture's media id.
+        var existingLowerThirds: [String: String] = [:]
+    }
+
     /// New slides, one per picture or video, with it as the background, the
-    /// same as dropping media between slides.
+    /// same as dropping media between slides. A picture named for one of
+    /// them, or for a slide in `existing` ("Slide01_LowerThird" for
+    /// "Slide01_Wide"), is its livestream lower third rather than a slide.
     @MainActor
-    static func make(_ mediaIDs: [String], model: AppModel, sectionId: String? = nil) -> [Slide] {
-        mediaIDs.compactMap { model.media($0) }.map { item in
+    static func make(_ mediaIDs: [String], model: AppModel, sectionId: String? = nil, existing: [Slide] = []) -> Made {
+        let items = mediaIDs.compactMap { id in model.media(id).map { (id, $0) } }
+        let plan = LowerThirdPairing.plan(
+            dropped: items.map { .init(id: $0.0, name: $0.1.name, isImage: $0.1.mediaKind == .image) },
+            existing: existing.map { ($0.id, $0.name) })
+        let byID = Dictionary(items, uniquingKeysWith: { first, _ in first })
+        let slides = plan.slideMedia.compactMap { byID[$0] }.map { item in
             Slide(
                 id: UUID().uuidString,
                 name: item.name,
                 objects: [],
                 background: CueMedia.droppedAsNewSlide(for: item),
-                sectionId: sectionId)
+                sectionId: sectionId,
+                streamDesign: plan.lowerThirds[item.id].map(StreamDesign.lowerThirdImage))
         }
+        return Made(slides: slides, existingLowerThirds: plan.existingSlides)
+    }
+
+    /// Files dropped from Finder to become slides, with the lower thirds
+    /// beside them in their folders that weren't dropped.
+    static func withLowerThirds(_ urls: [URL]) async -> [URL] {
+        await Task.detached { LowerThirdPairing.addingPartners(to: urls) }.value
     }
 }

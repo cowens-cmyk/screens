@@ -725,7 +725,7 @@ struct ServiceContinuousView: View {
                     dropText: { dropOnEmptyDeck($0, presentationID: presentationID) },
                     dropFiles: { urls in
                         Task { @MainActor in
-                            let imported = await model.importFiles(urls)
+                            let imported = await model.importFiles(await MediaSlides.withLowerThirds(urls))
                             addMediaSlides(imported, to: presentationID)
                         }
                     },
@@ -774,10 +774,24 @@ struct ServiceContinuousView: View {
     @discardableResult
     private func addMediaSlides(_ mediaIDs: [String], to presentationID: String, after afterSlideID: String? = nil) -> Bool {
         guard !runOnly else { return false }
-        let added = MediaSlides.make(mediaIDs, model: model)
-        guard !added.isEmpty else { return false }
-        model.insertSlides(presentationID, slides: added, afterSlideID: afterSlideID)
+        let existing = model.presentation(presentationID)?.slides ?? []
+        let made = MediaSlides.make(mediaIDs, model: model, existing: existing)
         let actionRouter = controls?.actionRouter
+        if !made.existingLowerThirds.isEmpty {
+            model.updateSlides(presentationID: presentationID, undoLabel: "Livestream") { deck in
+                for index in deck.slides.indices {
+                    if let lowerThird = made.existingLowerThirds[deck.slides[index].id] {
+                        deck.slides[index].streamDesign = .lowerThirdImage(lowerThird)
+                    }
+                }
+            }
+            for (slideID, lowerThird) in made.existingLowerThirds {
+                actionRouter?.noteStreamDesign(.lowerThirdImage(lowerThird), forSlides: [slideID])
+            }
+        }
+        let added = made.slides
+        guard !added.isEmpty else { return !made.existingLowerThirds.isEmpty }
+        model.insertSlides(presentationID, slides: added, afterSlideID: afterSlideID)
         let asked = LivestreamPromptRequest.make(model, presentationID: presentationID, added: added) { design, ids in
             let chosen = Set(ids)
             model.updateSlides(presentationID: presentationID, undoLabel: "Livestream") { deck in

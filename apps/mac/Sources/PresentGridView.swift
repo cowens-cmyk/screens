@@ -1543,7 +1543,7 @@ struct SlideGridBody: View {
         let slideID = slide.id
         Task { @MainActor in
 
-            let imported = await model.importFiles(urls)
+            let imported = await model.importFiles(insertZone ? await MediaSlides.withLowerThirds(urls) : urls)
             guard let first = imported.first else { return }
             if insertZone {
                 // Every file dropped between slides becomes a slide, so a
@@ -1566,8 +1566,12 @@ struct SlideGridBody: View {
         let anchorSection = slides.indices.contains(index) ? slides[index].sectionId : nil
         let afterID = index > 0 && slides.indices.contains(index - 1)
             ? slides[index - 1].id : nil
-        let added = MediaSlides.make(mediaIDs, model: model, sectionId: anchorSection)
-        guard !added.isEmpty else { return false }
+        let made = MediaSlides.make(mediaIDs, model: model, sectionId: anchorSection, existing: presentation.slides)
+        for (slideID, lowerThird) in made.existingLowerThirds {
+            setStreamDesign(.lowerThirdImage(lowerThird), of: [slideID])
+        }
+        let added = made.slides
+        guard !added.isEmpty else { return !made.existingLowerThirds.isEmpty }
         model.insertSlides(presentation.id, slides: added, afterSlideID: afterID)
         askLivestream(for: added)
         return true
