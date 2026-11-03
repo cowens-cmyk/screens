@@ -4,9 +4,10 @@ import Observation
 import Security
 
 /// Updates from the GitHub repository's Releases: checks the latest release
-/// at launch and every few hours, and when it's newer, downloads its DMG,
-/// verifies the app inside is signed by the same Developer ID team as this
-/// one, swaps it in and relaunches. No more downloading DMGs by hand.
+/// at launch and every few hours, and when it's newer, says so in the
+/// Screens menu and Settings. Choosing it downloads the DMG, verifies the
+/// app inside is signed by the same Developer ID team as this one, swaps it
+/// in and relaunches. No more downloading DMGs by hand.
 @MainActor
 @Observable
 final class AppUpdater {
@@ -15,7 +16,7 @@ final class AppUpdater {
     static let repository = Bundle.main.object(forInfoDictionaryKey: "ScreensUpdateRepository") as? String
         ?? "cowens-cmyk/screens"
     /// Only apps signed by this team are installed.
-    static let teamIdentifier = "TCAQTA64TB"
+    nonisolated static let teamIdentifier = "TCAQTA64TB"
     private static let autoKey = "updates.automatic"
 
     struct Release: Equatable {
@@ -26,7 +27,12 @@ final class AppUpdater {
     }
 
     var checksAutomatically: Bool {
-        didSet { UserDefaults.standard.set(checksAutomatically, forKey: Self.autoKey) }
+        didSet {
+            UserDefaults.standard.set(checksAutomatically, forKey: Self.autoKey)
+            // Turning it off stops the timer that's already running, not
+            // just the next launch's.
+            if checksAutomatically { start() } else { timer?.invalidate(); timer = nil }
+        }
     }
     private(set) var available: Release?
     private(set) var status: String?
@@ -44,6 +50,7 @@ final class AppUpdater {
     func start() {
         guard checksAutomatically else { return }
         Task { await check(userInitiated: false) }
+        timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in
             Task { @MainActor in await AppUpdater.shared.check(userInitiated: false) }
         }
@@ -75,8 +82,10 @@ final class AppUpdater {
             }
             if Self.isNewer(version, than: currentVersion) {
                 available = Release(version: version, notes: latest.body ?? "", dmgURL: dmg.browser_download_url, page: latest.html_url)
+                // An automatic check never puts up an alert: it can come in
+                // the middle of a service, and the alert would take the
+                // next-slide keys. The Screens menu and Settings show it.
                 status = "Screens \(version) is available."
-                if !userInitiated { promptToInstall() }
             } else {
                 available = nil
                 status = "Screens is up to date (\(currentVersion))."
@@ -97,9 +106,10 @@ final class AppUpdater {
         alert.messageText = "Screens \(available.version) is available"
         alert.informativeText = (available.notes.isEmpty ? "" : String(available.notes.prefix(600)) + "\n\n")
             + "You have \(currentVersion). Screens will quit, update and reopen. Don't update during a service."
-        alert.addButton(withTitle: "Update and Relaunch")
+        // Later comes first so Return (a next-slide key) picks it.
         alert.addButton(withTitle: "Later")
-        if alert.runModal() == .alertFirstButtonReturn {
+        alert.addButton(withTitle: "Update and Relaunch")
+        if alert.runModal() == .alertSecondButtonReturn {
             Task { await install(available) }
         }
     }
@@ -114,15 +124,9 @@ final class AppUpdater {
             try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
             let dmg = work.appendingPathComponent("Screens.dmg")
             try FileManager.default.moveItem(at: downloaded, to: dmg)
-            let mount = work.appendingPathComponent("mount")
-            try Self.run("/usr/bin/hdiutil", ["attach", dmg.path, "-nobrowse", "-readonly", "-mountpoint", mount.path])
-            defer { try? Self.run("/usr/bin/hdiutil", ["detach", mount.path, "-force"]) }
-            guard let app = try FileManager.default.contentsOfDirectory(at: mount, includingPropertiesForKeys: nil)
-                .first(where: { $0.pathExtension == "app" })
-            else { throw UpdateError.noApp }
-            let staged = work.appendingPathComponent(app.lastPathComponent)
-            try Self.run("/usr/bin/ditto", [app.path, staged.path])
-            try Self.verifySignature(staged)
+            // hdiutil and ditto wait for their processes; off the main
+            // thread the window keeps drawing while they run.
+            let staged = try await Task.detached { try Self.stage(dmg, in: work) }.value
             try relaunch(replacingWith: staged)
         } catch {
             status = "Update failed: \(error.localizedDescription)"
@@ -131,6 +135,20 @@ final class AppUpdater {
             alert.informativeText = error.localizedDescription
             alert.runModal()
         }
+    }
+
+    /// Mounts the DMG, copies its app out and checks the signature.
+    nonisolated private static func stage(_ dmg: URL, in work: URL) throws -> URL {
+        let mount = work.appendingPathComponent("mount")
+        try run("/usr/bin/hdiutil", ["attach", dmg.path, "-nobrowse", "-readonly", "-mountpoint", mount.path])
+        defer { try? run("/usr/bin/hdiutil", ["detach", mount.path, "-force"]) }
+        guard let app = try FileManager.default.contentsOfDirectory(at: mount, includingPropertiesForKeys: nil)
+            .first(where: { $0.pathExtension == "app" })
+        else { throw UpdateError.noApp }
+        let staged = work.appendingPathComponent(app.lastPathComponent)
+        try run("/usr/bin/ditto", [app.path, staged.path])
+        try verifySignature(staged)
+        return staged
     }
 
     enum UpdateError: LocalizedError {
@@ -145,7 +163,7 @@ final class AppUpdater {
     }
 
     /// Valid signature from Apple's Developer ID chain with our team ID.
-    static func verifySignature(_ app: URL) throws {
+    nonisolated static func verifySignature(_ app: URL) throws {
         var code: SecStaticCode?
         guard SecStaticCodeCreateWithPath(app as CFURL, [], &code) == errSecSuccess, let code else {
             throw UpdateError.badSignature("Unreadable signature.")
@@ -181,7 +199,7 @@ final class AppUpdater {
     }
 
     @discardableResult
-    static func run(_ tool: String, _ arguments: [String]) throws -> String {
+    nonisolated static func run(_ tool: String, _ arguments: [String]) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: tool)
         process.arguments = arguments

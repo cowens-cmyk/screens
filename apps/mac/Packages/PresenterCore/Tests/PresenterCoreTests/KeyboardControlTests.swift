@@ -22,6 +22,19 @@ final class KeyboardControlTests: XCTestCase {
         XCTAssertFalse(KeyChord("c", command: true).matches(KeyChord("c")))
     }
 
+    // A Clear bound to one of these must not become a menu key equivalent,
+    // or it fires in a search field and eats the letter.
+    func testTypingKeysAreTheOnesTextFieldsUse() {
+        for key in ["c", "7", "space", "return", "enter", "tab", "esc", "delete", "right"] {
+            XCTAssertTrue(KeyChord(key).typesInTextFields, key)
+        }
+        XCTAssertTrue(KeyChord("c", shift: true).typesInTextFields)
+        XCTAssertFalse(KeyChord("f1").typesInTextFields)
+        XCTAssertFalse(KeyChord("c", command: true).typesInTextFields)
+        XCTAssertFalse(KeyChord("c", option: true).typesInTextFields)
+        XCTAssertFalse(KeyChord("0", command: true, control: true).typesInTextFields)
+    }
+
     func testChordRoundTripsThroughJSON() throws {
         let chord = KeyChord("n", command: true, shift: true)
         let decoded = try JSONDecoder().decode(

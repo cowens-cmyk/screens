@@ -18,7 +18,39 @@ final class KeyMapStore {
         }
     }
 
-    var recorder: ((KeyRecorderResult) -> Void)?
+    var recorder: ((KeyRecorderResult) -> Void)? {
+        didSet { if recorder == nil { stopWatchingRecordingWindow() } }
+    }
+
+    /// The window the recording chip is in. A key pressed in another
+    /// window is someone running the show, not a shortcut being recorded,
+    /// so it cancels the recording and goes through as usual; so does
+    /// leaving the window.
+    @ObservationIgnored private weak var recordingWindow: NSWindow?
+    @ObservationIgnored private var resignObserver: NSObjectProtocol?
+
+    func beginRecording(_ handler: @escaping (KeyRecorderResult) -> Void) {
+        recorder = handler
+        stopWatchingRecordingWindow()
+        guard let window = NSApp.keyWindow else { return }
+        recordingWindow = window
+        resignObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { KeyMapStore.shared.recorder?(.cancel) }
+        }
+    }
+
+    /// Whether a key from `window` belongs to the recording.
+    func records(from window: NSWindow?) -> Bool {
+        recordingWindow == nil || window === recordingWindow
+    }
+
+    private func stopWatchingRecordingWindow() {
+        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
+        resignObserver = nil
+        recordingWindow = nil
+    }
 
     private init() {
         if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
@@ -128,7 +160,12 @@ extension View {
     @ViewBuilder
     func keyboardShortcut(command: KeyCommand) -> some View {
         let chord = KeyMapStore.shared.map.chords(for: command).first
-        if let chord, let equivalent = chord.keyEquivalent {
+        // A Present command on a typing key (a letter, Space, an arrow…)
+        // is left to the key monitor, which fires it only in Present and
+        // never while someone types. As a menu key equivalent it would
+        // fire in a search field and swallow the letter.
+        if let chord, !(command.scope == .present && chord.typesInTextFields),
+           let equivalent = chord.keyEquivalent {
             keyboardShortcut(equivalent, modifiers: chord.eventModifiers)
         } else {
             self
@@ -166,18 +203,23 @@ final class KeyInController {
         .nextSlide, .previousSlide, .nextServiceItem, .previousServiceItem,
         .videoPlayPause, .videoGoToBeginning, .openKeyboardSettings,
         .resetSermonTimer,
+        .clearAll, .clearSlides, .clearMedia, .clearAlerts,
     ]
 
     private func handle(_ event: NSEvent) -> Bool {
         guard let chord = KeyChord.from(event) else { return false }
 
         if let recorder = KeyMapStore.shared.recorder {
-            switch KeyChord.normalizeToken(chord.key) {
-            case "escape" where chord.isBare: recorder(.cancel)
-            case "delete" where chord.isBare: recorder(.unbind)
-            default: recorder(.chord(chord))
+            if KeyMapStore.shared.records(from: event.window) {
+                switch KeyChord.normalizeToken(chord.key) {
+                case "escape" where chord.isBare: recorder(.cancel)
+                case "delete" where chord.isBare: recorder(.unbind)
+                default: recorder(.chord(chord))
+                }
+                return true
             }
-            return true
+            recorder(.cancel)
+            KeyMapStore.shared.recorder = nil
         }
 
         // The top bar's search is open: what's typed is the query, even in
@@ -276,6 +318,10 @@ final class KeyInController {
             for row in controls.media.rows { controls.media.resetToStart(row.id) }
         case .openKeyboardSettings: openKeyboardSettings()
         case .resetSermonTimer: controls.resetSermonTimer()
+        case .clearAll: controls.clearAll()
+        case .clearSlides: controls.clear(function: .slides)
+        case .clearMedia: controls.clear(function: .media)
+        case .clearAlerts: controls.clear(function: .alerts)
         default: break
         }
     }

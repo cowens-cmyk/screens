@@ -20,7 +20,13 @@ final class LightkeyLink {
         var title: String { self == .thisMac ? "This Mac" : "Another Mac on the network" }
     }
 
-    var location: Location { didSet { save(); apply() } }
+    var location: Location {
+        didSet {
+            save()
+            // Picking the same place again shouldn't drop a live connection.
+            if location != oldValue { apply() }
+        }
+    }
     var host: String { didSet { save() } }
     var port: Int { didSet { save() } }
     /// Lightkey learns whatever channel it hears; one channel keeps
@@ -94,6 +100,14 @@ final class LightkeyLink {
         } else {
             status = "Couldn't reach \(address):\(port)."
         }
+    }
+
+    /// Connects only when there's no connection yet. Opening the settings
+    /// mid-service shouldn't tear down a working network MIDI session and
+    /// lose the cues sent while it joins again.
+    func applyIfDisconnected() {
+        guard connection == nil else { return }
+        apply()
     }
 
     func send(kind: MIDIMessageKind, channel: Int, number: Int, value: Int) {
@@ -236,7 +250,7 @@ struct LightkeySettingsForm: View {
                 Text("On the Lightkey Mac: Audio MIDI Setup › Window › Show MIDI Studio › Network. Create a session, turn it on and allow anyone to connect (port 5004).")
             }
         }
-        .onAppear { link.apply() }
+        .onAppear { link.applyIfDisconnected() }
         .sheet(isPresented: $settingUp) {
             if let model { LightkeySetupSheet(model: model) }
         }

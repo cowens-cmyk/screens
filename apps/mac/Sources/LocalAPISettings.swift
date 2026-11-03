@@ -39,19 +39,26 @@ struct LocalAPIEnableToggle: View {
 struct LocalAPIPortField: View {
     let api: LocalAPIController
     @State private var text = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
         TextField("", text: $text)
             .multilineTextAlignment(.trailing)
             .frame(width: 72)
+            .focused($focused)
             .onAppear { text = "\(api.port)" }
-            .onSubmit {
-                if let value = UInt16(text), value >= 1024 {
-                    api.setPort(value)
-                } else {
-                    text = "\(api.port)"
-                }
-            }
+            .onSubmit(commit)
+            // Leaving the field or the pane keeps the port too, not only Return.
+            .onChange(of: focused) { _, now in if !now { commit() } }
+            .onDisappear(perform: commit)
+    }
+
+    private func commit() {
+        if let value = UInt16(text), value >= 1024 {
+            api.setPort(value)
+        } else {
+            text = "\(api.port)"
+        }
     }
 }
 
