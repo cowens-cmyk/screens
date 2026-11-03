@@ -182,6 +182,15 @@ final class LyricsFetcher {
         }
     }
 
+    /// For a church without SongSelect: an empty song with the plan's title,
+    /// linked to the plan item, ready to type the words into in the song
+    /// editor. Nil when the item got slides some other way meanwhile.
+    func startTypedLyrics(for item: ServiceItem, planID: String, model: AppModel) -> String? {
+        if let linked = Self.linkedPresentation(item.id, planID: planID, model: model) { return linked }
+        let presentation = importText("", title: item.mxuSongTitle ?? item.name, model: model)
+        return link(item.id, planID: planID, to: presentation.id, model: model) ? presentation.id : nil
+    }
+
     // MARK: Helpers
 
     /// SongSelect and ChordPro text, read as a song (sections, CCLI number).

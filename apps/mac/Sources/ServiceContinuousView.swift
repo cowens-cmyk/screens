@@ -675,6 +675,7 @@ struct ServiceContinuousView: View {
 
     @ViewBuilder
     private func presentationMenu(_ item: ServiceItem, _ presentation: Presentation) -> some View {
+        SongLyricsMenuItems(model: model, serviceID: serviceID, item: item)
         Button("Add Slide\u{2026}") { requestNewSlide(item) }
         arrangementMenu(item, presentation)
     }
@@ -1184,6 +1185,10 @@ extension ServiceContinuousView {
             RoundedRectangle.standard(CornerStandard.element)
                 .strokeBorder(Color.primary.opacity(0.2), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         )
+        .contentShape(Rectangle())
+        .contextMenu {
+            if !runOnly { SongLyricsMenuItems(model: model, serviceID: serviceID, item: item) }
+        }
 
         .padding(.bottom, 12)
 

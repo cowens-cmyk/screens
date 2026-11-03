@@ -54,6 +54,7 @@ struct SongEditorView: View {
             ShepherdSongRow(model: model, presentationID: presentationID, reload: load)
             Text("Put each section's name on its own line (Verse 1, Chorus, Bridge), then its lyrics.")
                 .font(.caption).foregroundStyle(.secondary)
+            sectionButtons
             TextEditor(text: $lyrics)
                 .font(.system(.body, design: .default))
                 .scrollContentBackground(.hidden)
@@ -69,6 +70,29 @@ struct SongEditorView: View {
             }
         }
         .padding(16)
+    }
+
+    /// Starts a section at the end of the lyrics, for typing a song in
+    /// from the top: Verse numbers itself (Verse 1, Verse 2).
+    private var sectionButtons: some View {
+        FlowChips(names: Self.sectionKinds, color: { _ in .secondary }, add: addSection)
+            .help("Starts this section at the end of the lyrics")
+    }
+
+    static let sectionKinds = ["Intro", "Verse", "Pre-Chorus", "Chorus", "Bridge", "Tag", "Ending"]
+
+    private func addSection(_ kind: String) {
+        var name = kind
+        if kind == "Verse" {
+            let verses = lyrics.components(separatedBy: "\n")
+                .compactMap { Reflow.labelName(of: $0) }
+                .filter { $0.hasPrefix("Verse") }
+            name = "Verse \(verses.count + 1)"
+        }
+        var text = lyrics
+        while text.hasSuffix("\n\n") { text.removeLast() }
+        if !text.isEmpty { text += text.hasSuffix("\n") ? "\n" : "\n\n" }
+        lyrics = text + name + "\n"
     }
 
     // MARK: Sequence

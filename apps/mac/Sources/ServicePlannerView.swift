@@ -548,6 +548,7 @@ struct RunOrderList: View {
             if !runOnly, batch.count > 1 {
                 bulkMenu(batch)
             } else if !runOnly {
+                SongLyricsMenuItems(model: model, serviceID: serviceID, item: item)
 
                 if let entry = model.entry(item.refId), entry.kind.opensInEditor {
                     Button("Edit…") {
@@ -1261,8 +1262,37 @@ struct GetLyricsButton: View {
             }
             .buttonStyle(.plain)
             .disabled(runOnly || fetcher.waitingItemID != nil)
-            .help("No slides for this song yet. Looks in Shepherd; if it isn't there, opens SongSelect and imports the lyrics file you download.")
+            .help("No slides for this song yet. Looks in Shepherd; if it isn't there, opens SongSelect and imports the lyrics file you download. Right-click the song to type the lyrics instead.")
         }
+    }
+}
+
+/// Typing a song's words by hand, for songs SongSelect can't give us: an
+/// unlinked song gets an empty one to type into; a linked song opens its
+/// lyrics. Both land in the song editor, where section names go on their
+/// own lines.
+struct SongLyricsMenuItems: View {
+    let model: AppModel
+    let serviceID: String
+    let item: ServiceItem
+    @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
+
+    var body: some View {
+        if item.itemKind == .info, item.refId.isEmpty, item.mxuSongTitle != nil {
+            Button("Type Lyrics\u{2026}") {
+                guard let id = LyricsFetcher.shared.startTypedLyrics(for: item, planID: serviceID, model: model)
+                else { return }
+                open(id)
+            }
+        } else if item.itemKind == .presentation,
+                  model.presentation(item.refId)?.presentationKind == .song {
+            Button("Edit Lyrics\u{2026}") { open(item.refId) }
+        }
+    }
+
+    private func open(_ id: String) {
+        model.openInEditor(entryID: id)
+        appModeRaw = AppMode.edit.rawValue
     }
 }
 
