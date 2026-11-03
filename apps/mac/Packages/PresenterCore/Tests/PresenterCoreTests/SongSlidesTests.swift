@@ -99,6 +99,78 @@ struct SongSlidesTests {
         #expect(p.arrangements![index].sectionIds == [ids[1], ids[0], ids[1]])
     }
 
+    private func order(_ p: Presentation) -> [String]? {
+        let names = Dictionary(uniqueKeysWithValues: (p.sections ?? []).map { ($0.id, $0.name) })
+        return p.arrangements?.first { $0.id == p.defaultArrangementId }?.sectionIds.compactMap { names[$0] }
+    }
+
+    @Test func aRepeatTypedAsACardIsSungAgainInASongThatHasAnOrder() {
+        var p = song()
+        SongSlides.apply([
+            card("Verse 1", [("First verse", "")]),
+            card("Chorus", [("The chorus", "")]),
+            card("Verse 2", [("Second verse", "")]),
+        ], to: &p)
+        var cards = SongSlides.cards(from: p)
+        var again = cards[1]
+        again.id = UUID().uuidString
+        cards.append(again)
+        SongSlides.apply(cards, to: &p)
+        #expect(order(p) == ["Verse 1", "Chorus", "Verse 2", "Chorus"])
+        // Saved again unchanged, the repeat stays.
+        SongSlides.apply(SongSlides.cards(from: p), to: &p)
+        #expect(order(p) == ["Verse 1", "Chorus", "Verse 2", "Chorus"])
+    }
+
+    @Test func aNewSectionGoesOnTheEndOfTheOperatorsOrder() {
+        var p = song()
+        SongSlides.apply([card("Verse 1", [("A", "")]), card("Chorus", [("B", "")])], to: &p)
+        let ids = p.sections!.map(\.id)
+        let index = p.arrangements!.firstIndex { $0.id == p.defaultArrangementId }!
+        p.arrangements![index].sectionIds = [ids[0], ids[1], ids[1]]
+        var cards = SongSlides.cards(from: p)
+        cards.append(card("Tag", [("C", "")]))
+        SongSlides.apply(cards, to: &p)
+        #expect(order(p) == ["Verse 1", "Chorus", "Chorus", "Tag"])
+    }
+
+    @Test func aRenamedSectionKeepsItsIdAndPlace() {
+        var p = song()
+        SongSlides.apply([card("Verse", [("A", "")]), card("Chorus", [("B", "")])], to: &p)
+        let ids = p.sections!.map(\.id)
+        let index = p.arrangements!.firstIndex { $0.id == p.defaultArrangementId }!
+        p.arrangements![index].sectionIds = [ids[1], ids[0], ids[1]]
+        var cards = SongSlides.cards(from: p)
+        cards[0].section = "Verse 1"
+        cards[1].section = "CHORUS"
+        SongSlides.apply(cards, to: &p)
+        #expect(p.sections?.map(\.id) == ids)
+        #expect(order(p) == ["CHORUS", "Verse 1", "CHORUS"])
+    }
+
+    @Test func pastedRepeatsBecomeCardsAndAreSung() {
+        let pasted = LyricTextImporter.makePresentation("""
+        Verse 1
+        Line one
+
+        Chorus
+        Sing it out
+
+        Verse 2
+        Line three
+
+        Chorus
+        """, linesPerSlide: 2)
+        // The editor leaves out the blank opening slide an import adds.
+        let cards = SongSlides.cardsAsSung(from: pasted).filter { $0.lines.contains { !$0.words.isEmpty } }
+        #expect(cards.map(\.section) == ["Verse 1", "Chorus", "Verse 2", "Chorus"])
+        #expect(Set(cards.map(\.id)).count == 4)
+        var p = song()
+        SongSlides.apply(cards, to: &p)
+        #expect(p.slides.count == 3)
+        #expect(order(p) == ["Verse 1", "Chorus", "Verse 2", "Chorus"])
+    }
+
     @Test func anEmptyCardIsABlankSlide() {
         var p = song()
         SongSlides.apply([card("Intro", [("", "G  C  D")]), card("Verse 1", [("Words", "")])], to: &p)

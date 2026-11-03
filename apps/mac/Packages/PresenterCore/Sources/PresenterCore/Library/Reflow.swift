@@ -259,4 +259,56 @@ public enum Reflow {
             : nil
         return Built(sections: sections, slides: slides, arrangement: arrangement)
     }
+
+    /// The song's slides and sections become the reflowed ones. A section
+    /// whose name is still there keeps its id, color and background, so the
+    /// song's orders (Shepherd's, the operator's) and the plan items that
+    /// pick one still work; a new section goes on the end of the default
+    /// order so it's sung. A song with no order takes the pasted one,
+    /// repeats included.
+    public static func apply(_ built: Built, to song: inout Presentation) {
+        let oldSections = song.sections ?? []
+        let oldIDs = Set(oldSections.map(\.id))
+        var used = Set<String>()
+        var idMap: [String: String] = [:]
+        var sections: [PresentationSection] = []
+        for section in built.sections {
+            var kept = section
+            if let old = oldSections.first(where: {
+                !used.contains($0.id) && $0.name.caseInsensitiveCompare(section.name) == .orderedSame
+            }) {
+                used.insert(old.id)
+                kept.id = old.id
+                kept.background = old.background
+                kept.colorHex = old.colorHex
+            }
+            idMap[section.id] = kept.id
+            sections.append(kept)
+        }
+        song.slides = built.slides.map { slide in
+            var slide = slide
+            slide.sectionId = slide.sectionId.flatMap { idMap[$0] }
+            return slide
+        }
+        song.sections = sections
+
+        if var arrangements = song.arrangements, !arrangements.isEmpty {
+            let ids = Set(sections.map(\.id))
+            for i in arrangements.indices {
+                arrangements[i].sectionIds = arrangements[i].sectionIds.filter(ids.contains)
+            }
+            if let i = arrangements.firstIndex(where: { $0.id == song.defaultArrangementId }) {
+                arrangements[i].sectionIds += sections.map(\.id).filter { !oldIDs.contains($0) }
+            }
+            song.arrangements = arrangements
+        } else {
+            let pasted = built.arrangement.map { arrangement in
+                var arrangement = arrangement
+                arrangement.sectionIds = arrangement.sectionIds.compactMap { idMap[$0] }
+                return arrangement
+            }
+            song.arrangements = pasted.map { [$0] }
+            song.defaultArrangementId = pasted?.id
+        }
+    }
 }

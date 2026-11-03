@@ -340,3 +340,34 @@ public enum AnimationRanges {
         return String(line[line.index(line.startIndex, offsetBy: start)..<line.index(line.startIndex, offsetBy: end)])
     }
 }
+
+extension SlideObject {
+    /// The text becomes `newText`, with the style runs, chords and
+    /// animation ranges moved with the words around the part that changed,
+    /// as typing on the canvas moves them. For editors that hand back the
+    /// whole text rather than the edit (the inspector's Text box).
+    public mutating func replaceText(with newText: String) {
+        let old = Array(text)
+        let new = Array(newText)
+        var prefix = 0
+        while prefix < old.count, prefix < new.count, old[prefix] == new[prefix] { prefix += 1 }
+        var suffix = 0
+        while suffix < old.count - prefix, suffix < new.count - prefix,
+              old[old.count - 1 - suffix] == new[new.count - 1 - suffix] { suffix += 1 }
+        let replaced = prefix..<(old.count - suffix)
+        let replacement = String(new[prefix..<(new.count - suffix)])
+        if let runs = styleRuns, !runs.isEmpty {
+            let moved = TextStyleRuns.replacing(runs, range: replaced, with: replacement, in: text)
+            styleRuns = moved.isEmpty ? nil : moved
+        }
+        if let chords, !chords.isEmpty {
+            let moved = TextStyleRuns.replacing(chords, range: replaced, with: replacement, in: text)
+            self.chords = moved.isEmpty ? nil : moved
+        }
+        if let steps = animationSteps, steps.contains(where: { !($0.ranges ?? []).isEmpty }) {
+            let moved = AnimationRanges.reanchor(steps, range: replaced, with: replacement, in: text)
+            animationSteps = moved.isEmpty ? nil : moved
+        }
+        text = newText
+    }
+}

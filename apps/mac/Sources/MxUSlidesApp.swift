@@ -58,16 +58,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Quitting by accident in a service takes every screen down, so ⌘Q
     /// asks first. A shutdown, restart or log out, and the updater, don't.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if Self.quitsWithoutAsking { return .terminateNow }
-        if let event = NSAppleEventManager.shared().currentAppleEvent,
-           event.attributeDescriptor(forKeyword: kAEQuitReason) != nil {
-            return .terminateNow
-        }
+        let asks = !Self.quitsWithoutAsking
+            && NSAppleEventManager.shared().currentAppleEvent?.attributeDescriptor(forKeyword: kAEQuitReason) == nil
         return MainActor.assumeIsolated {
-            QuitConfirmation.ask(
+            if asks, !QuitConfirmation.ask(
                 title: "Quit Screens?",
                 message: "The audience, stage and livestream screens go dark until Screens is opened again.",
-                button: "Quit") ? .terminateNow : .terminateCancel
+                button: "Quit") {
+                return .terminateCancel
+            }
+            // Song cards typed but not saved are saved, and the write
+            // waited for, before Screens goes.
+            guard let write = SongEditorPending.save() else { return .terminateNow }
+            Task {
+                _ = try? await write.value
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
         }
     }
 

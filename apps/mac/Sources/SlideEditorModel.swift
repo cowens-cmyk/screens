@@ -2001,11 +2001,8 @@ final class SlideEditorModel {
         activeGuides = []
         if isDraggingObjects { isDraggingObjects = false }
         updateDocument { presentation in
-            presentation.slides = built.slides
-            presentation.sections = built.sections
-
-            presentation.arrangements = nil
-            presentation.defaultArrangementId = nil
+            // Keeps the song's orders where the sections are still there.
+            Reflow.apply(built, to: &presentation)
             presentation.reflowSource = text
         }
         if let first = presentation.slides.first { selectSlide(first.id) }

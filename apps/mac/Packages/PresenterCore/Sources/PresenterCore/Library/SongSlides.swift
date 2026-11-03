@@ -80,15 +80,54 @@ public enum SongSlides {
         }
     }
 
+    /// A song's slides as cards in the order its default arrangement sings
+    /// them, for pasted words: a section pasted again (the chorus after
+    /// each verse) is its cards again, as new cards, so the repeat is kept
+    /// when the cards are saved.
+    public static func cardsAsSung(from presentation: Presentation) -> [Card] {
+        let all = cards(from: presentation)
+        let arrangement = presentation.arrangements?.first { $0.id == presentation.defaultArrangementId }
+        guard let order = arrangement?.sectionIds,
+              presentation.slides.allSatisfy({ $0.sectionId.map(order.contains) ?? false })
+        else { return all }
+        var bySection: [String: [Card]] = [:]
+        for (slide, card) in zip(presentation.slides, all) {
+            bySection[slide.sectionId ?? "", default: []].append(card)
+        }
+        var seen = Set<String>()
+        var result: [Card] = []
+        for id in order {
+            let cards = bySection[id] ?? []
+            if seen.insert(id).inserted {
+                result += cards
+            } else {
+                result += cards.map { card in
+                    Card(section: card.section, lines: card.lines.map { Line(words: $0.words, chords: $0.chords) })
+                }
+            }
+        }
+        return result
+    }
+
     /// Writes the cards back as the song's slides, sections and order.
     /// Slides keep their ids and everything but their words and chords.
     /// Cards in a row with the same section are one section; a section
     /// typed again later with the same words is sung again, not copied.
-    /// The operator's song order is kept while the sections stay the same.
+    /// The operator's song order is kept, with new sections added on the
+    /// end, unless the cards repeat a section more often than before: then
+    /// the order is the one the cards were typed in.
     public static func apply(_ cards: [Card], to song: inout Presentation, themeSlideName: String = "Lyrics") {
         let existing = Dictionary(song.slides.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let oldSections = song.sections ?? []
-        let oldNames = oldSections.map(\.name)
+        // How often each section is sung in the slides as stored, so a
+        // repeat the operator just typed can be told from one already there.
+        var storedRuns: [String: Int] = [:]
+        var lastStored: String?
+        for slide in song.slides {
+            guard let id = slide.sectionId, id != lastStored else { continue }
+            storedRuns[id, default: 0] += 1
+            lastStored = id
+        }
 
         // Group cards into runs of one section.
         var runs: [(name: String, cards: [Card])] = []
@@ -105,6 +144,7 @@ public enum SongSlides {
         var slides: [Slide] = []
         var order: [String] = []
         var wordsBySection: [String: [[String]]] = [:]
+        let runNames = Set(runs.map { ($0.name.isEmpty ? "Verse" : $0.name).lowercased() })
         for run in runs {
             let words = run.cards.map { $0.lines.map(\.words) }
             let named = run.name.isEmpty ? "Verse" : run.name
@@ -118,8 +158,17 @@ public enum SongSlides {
                 name = "\(named) (\(suffix))"
                 suffix += 1
             }
-            let section = oldSections.first { $0.name == name }
+            // A section keeps its id when it's renamed or recased, so the
+            // song orders and plan items that name it still find it: first
+            // the same name, then the same name in another case, then the
+            // section its slides were in, if no card still uses that name.
+            let free = oldSections.filter { old in !sections.contains { $0.id == old.id } }
+            let wasIn = run.cards.first.flatMap { existing[$0.id]?.sectionId }
+            var section = free.first { $0.name == name }
+                ?? free.first { $0.name.lowercased() == name.lowercased() }
+                ?? free.first { $0.id == wasIn && !runNames.contains($0.name.lowercased()) }
                 ?? PresentationSection(id: UUID().uuidString, name: name)
+            section.name = name
             sections.append(section)
             wordsBySection[section.id] = words
             order.append(section.id)
@@ -135,13 +184,20 @@ public enum SongSlides {
         let chorded = cards.contains { $0.lines.contains { !$0.chords.trimmingCharacters(in: .whitespaces).isEmpty } }
         song.chordProSource = chorded ? song.reflowSource : nil
 
-        // The song order: kept as the operator set it while the same
-        // sections exist, else the order the sections were typed in.
+        // The song order: kept as the operator set it, with a section new
+        // to the song added on the end so it's sung. A repeat typed in the
+        // cards is a song order too, and the newer one, so it replaces it.
         let arrangementID = song.defaultArrangementId ?? UUID().uuidString
         var arrangements = song.arrangements ?? []
-        let sameSections = Set(oldNames) == Set(sections.map(\.name))
         let index = arrangements.firstIndex { $0.id == arrangementID }
-        if !(sameSections && index != nil) {
+        let typedRuns = Dictionary(order.map { ($0, 1) }, uniquingKeysWith: +)
+        let typedRepeat = typedRuns.contains { id, count in count > max(1, storedRuns[id] ?? 0) }
+        if let index, !typedRepeat {
+            let oldIDs = Set(oldSections.map(\.id))
+            for id in order where !oldIDs.contains(id) && !arrangements[index].sectionIds.contains(id) {
+                arrangements[index].sectionIds.append(id)
+            }
+        } else {
             let arrangement = Arrangement(id: arrangementID, name: "Default", sectionIds: order)
             if let index { arrangements[index] = arrangement } else { arrangements.append(arrangement) }
         }

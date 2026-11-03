@@ -971,7 +971,12 @@ struct SlideObjectInspector: View {
             }
 
             if link == nil {
-                TextEditor(text: write(object, \.text))
+                // Chords and styled words move with the text, as they do
+                // when it's typed on the canvas.
+                TextEditor(text: Binding(
+                    get: { current(object).text },
+                    set: { value in commit(object) { $0.replaceText(with: value) } }
+                ))
                     .font(.body)
                     .frame(minHeight: 64)
                     .focused($textEditorFocused)
