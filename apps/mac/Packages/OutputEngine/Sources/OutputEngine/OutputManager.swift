@@ -640,8 +640,7 @@ public final class OutputManager {
                     display: display,
                     screen: screen,
                     compositor: compositor,
-                    sceneProvider: provider(for: uuid),
-                    onUserClose: { [weak self] uuid in self?.setLive(uuid, false) }
+                    sceneProvider: provider(for: uuid)
                 )
             }
         }
@@ -732,17 +731,7 @@ public final class OutputManager {
                     display: display,
                     screen: screen,
                     compositor: compositor,
-                    sceneProvider: provider(for: first.screenID.uuidString),
-                    onUserClose: { [weak self] uuid in
-                        guard let self else { return }
-
-                        for claimant in self.placeholderDevices
-                            .filter({ $0.value == uuid }).keys {
-                            self.assignPlaceholderDevice(
-                                placeholderID: claimant, displayUUID: nil
-                            )
-                        }
-                    }
+                    sceneProvider: provider(for: first.screenID.uuidString)
                 )
                 placeholderWindows[uuid] = controller
                 placeholderWindowSlices[uuid] = Set(targets.map(\.sliceID))

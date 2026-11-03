@@ -31,6 +31,19 @@ final class NDIOutputController {
 
     private var connectionGeneration = 0
 
+    private struct StartParameters {
+        var sourceName: String
+        var width: Int
+        var height: Int
+        var frameRate: Int
+        var keying: OutputKeying
+    }
+
+    /// What the sender was started with, so a helper restart can start it
+    /// again as it was.
+    private var startParameters: StartParameters?
+    private var restartTask: Task<Void, Never>?
+
     init(render: RenderContext) {
         self.render = render
     }
@@ -54,6 +67,9 @@ final class NDIOutputController {
         self.targetName = targetName
         self.sourceRect = sourceRect
         self.placement = placement
+        startParameters = StartParameters(
+            sourceName: sourceName, width: width, height: height,
+            frameRate: frameRate, keying: keying)
         status = .starting
 
         connectionGeneration += 1
@@ -61,14 +77,16 @@ final class NDIOutputController {
         let connection = NSXPCConnection(serviceName: NDIHelperIdentity.serviceName)
         connection.remoteObjectInterface = NSXPCInterface(with: NDIHelperProtocol.self)
 
+        // The helper crashed or restarted. The frames waiting for a reply
+        // never get one, so their in-flight slots are gone with them: the
+        // sender starts again on a new connection with a new mirror.
         connection.interruptionHandler = { @Sendable [weak self] in
             Task { @MainActor [weak self] in
-                guard let self, self.connectionGeneration == generation
+                guard let self, self.connectionGeneration == generation,
+                      self.isActive
                 else { return }
-                guard case .sending(let name) = self.status else { return }
-
-                self.status = .interrupted(sourceName: name)
-                self.restartSender(named: name, frameRate: frameRate)
+                self.status = .interrupted(sourceName: sourceName)
+                self.scheduleRestart(after: generation)
             }
         }
         connection.invalidationHandler = { @Sendable [weak self] in
@@ -88,8 +106,13 @@ final class NDIOutputController {
         self.connection = connection
 
         let remoteObject = connection.remoteObjectProxyWithErrorHandler { @Sendable [weak self] error in
+            // Calls still waiting when the helper goes down fail with
+            // "interrupted"; the interruption handler restarts for those.
+            let nsError = error as NSError
+            let interrupted = nsError.domain == NSCocoaErrorDomain
+                && nsError.code == NSXPCConnectionInterrupted
             Task { @MainActor [weak self] in
-                guard let self, self.connectionGeneration == generation
+                guard let self, self.connectionGeneration == generation, !interrupted
                 else { return }
                 DiagnosticsStore.shared.note(
                     "ndi.helper", detail: "proxy error: \(error)")
@@ -154,17 +177,24 @@ final class NDIOutputController {
         mirror?.start()
     }
 
-    private func restartSender(named sourceName: String, frameRate: Int) {
-        guard let proxy = connection?.remoteObjectProxy as? NDIHelperProtocol else { return }
-        proxy.startSender(
-            name: sourceName,
-            frameRateNumerator: Int32(frameRate * 1000),
-            frameRateDenominator: 1000
-        ) { @Sendable [weak self] error in
-            Task { @MainActor [weak self] in
-                guard let self, self.isActive else { return }
-                self.status = error.map { .failed($0) } ?? .sending(sourceName: sourceName)
-            }
+    /// A short wait before starting again, so a helper that dies on start
+    /// isn't relaunched in a tight loop.
+    private func scheduleRestart(after generation: Int) {
+        guard restartTask == nil else { return }
+        restartTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard let self, !Task.isCancelled,
+                  self.connectionGeneration == generation, self.isActive,
+                  let parameters = self.startParameters
+            else { return }
+            self.start(
+                targetID: self.targetID, targetName: self.targetName,
+                sourceName: parameters.sourceName,
+                width: parameters.width, height: parameters.height,
+                frameRate: parameters.frameRate,
+                sourceRect: self.sourceRect,
+                placement: self.placement,
+                keying: parameters.keying)
         }
     }
 
@@ -183,6 +213,8 @@ final class NDIOutputController {
     }
 
     func stop() {
+        restartTask?.cancel()
+        restartTask = nil
         stopMirror()
         if let proxy = connection?.remoteObjectProxy as? NDIHelperProtocol {
             proxy.stopSender()

@@ -249,7 +249,11 @@ public final class OutputMirror: @unchecked Sendable {
                 "mirror \(identity): first tick (running: \(running.value))")
         }
         guard running.value else { return }
-        let scenes = composite.isEmpty ? [provider()] : composite.map { $0.provider() }
+        // A keyed output lays over the camera, so a transition's plate would
+        // black out (or tint) the camera with it.
+        let scenes = composite.isEmpty
+            ? [transparentBackground ? provider().withoutTransitionPlates() : provider()]
+            : composite.map { $0.provider() }
         noteLiveCadence(in: scenes)
         let currentAdjustments = composite.isEmpty
             ? [adjustments?()] : composite.map { $0.adjustments?() }

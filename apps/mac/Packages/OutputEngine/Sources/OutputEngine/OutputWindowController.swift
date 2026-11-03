@@ -13,8 +13,7 @@ public final class OutputWindowController {
         display: DisplaySnapshot,
         screen: NSScreen,
         compositor: Compositor,
-        sceneProvider: @escaping @Sendable () -> RenderScene,
-        onUserClose: @escaping @MainActor (DisplayUUID) -> Void
+        sceneProvider: @escaping @Sendable () -> RenderScene
     ) {
         displayUUID = display.uuid
         sceneView = MetalSceneView(compositor: compositor)
@@ -29,7 +28,6 @@ public final class OutputWindowController {
             defer: false,
             screen: screen
         )
-        window.onUserClose = { [displayUUID] in onUserClose(displayUUID) }
         window.title = "Output — \(display.name)"
         window.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
         window.collectionBehavior = [
@@ -54,24 +52,10 @@ public final class OutputWindowController {
     }
 }
 
+// The audience sees this window, so it never takes the keyboard: a stray
+// click on the projector would otherwise leave the slide keys going nowhere.
+// Nothing done on it turns the screen off either; that is Settings › Screens.
 private final class OutputWindow: NSWindow {
-    var onUserClose: (@MainActor () -> Void)?
-
-    override var canBecomeKey: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { 
-            onUserClose?()
-        } else {
-            super.keyDown(with: event)
-        }
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
-            onUserClose?()
-        } else {
-            super.mouseDown(with: event)
-        }
-    }
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
 }

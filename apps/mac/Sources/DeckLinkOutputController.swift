@@ -100,17 +100,18 @@ final class DeckLinkOutputController {
         let connection = NSXPCConnection(serviceName: DeckLinkHelperIdentity.serviceName)
         connection.remoteObjectInterface = NSXPCInterface(with: DeckLinkHelperProtocol.self)
 
+        // The helper crashed or was killed. The frames waiting for a reply
+        // never get one, so their in-flight slots are gone with them: a new
+        // connection, mirror and counter, the same as any other reconnect,
+        // is the only way back to sending.
         connection.interruptionHandler = { @Sendable [weak self] in
             Task { @MainActor [weak self] in
-                guard let self, self.connectionGeneration == generation
+                guard let self, self.connectionGeneration == generation,
+                      self.isActive
                 else { return }
-                guard case .sending(let name) = self.status else { return }
-
-                self.status = .interrupted(deviceName: name)
-                self.restartOutput(
-                    devicePersistentID: devicePersistentID, deviceName: deviceName,
-                    keying: keying, width: width, height: height,
-                    frameRate: frameRate, modeID: modeID)
+                DiagnosticsStore.shared.note(
+                    "decklink.reconnect", detail: "\(deviceName): helper interrupted — reconnecting")
+                self.beginReconnect()
             }
         }
         connection.invalidationHandler = { @Sendable [weak self] in
@@ -130,8 +131,13 @@ final class DeckLinkOutputController {
         self.connection = connection
 
         let remoteObject = connection.remoteObjectProxyWithErrorHandler { @Sendable [weak self] error in
+            // Calls still waiting when the helper goes down fail with
+            // "interrupted"; the interruption handler reconnects for those.
+            let nsError = error as NSError
+            let interrupted = nsError.domain == NSCocoaErrorDomain
+                && nsError.code == NSXPCConnectionInterrupted
             Task { @MainActor [weak self] in
-                guard let self, self.connectionGeneration == generation
+                guard let self, self.connectionGeneration == generation, !interrupted
                 else { return }
                 DiagnosticsStore.shared.note(
                     "decklink.helper", detail: "proxy error: \(error)")
@@ -315,6 +321,10 @@ final class DeckLinkOutputController {
                 detail: "\(deviceName): open never answered — helper wedged; "
                     + "killing it and retrying")
             self.openAttempt = nil
+            // The open still waiting fails once the helper dies; this
+            // connection is finished, so its handlers must not mark the
+            // output failed before the reconnect below starts a new one.
+            self.connectionGeneration += 1
             self.killWedgedHelper()
             self.beginReconnect()
         }
@@ -375,7 +385,10 @@ final class DeckLinkOutputController {
             keying: parameters.keying,
             width: parameters.width, height: parameters.height,
             frameRate: parameters.frameRate,
-            modeID: parameters.modeID)
+            modeID: parameters.modeID,
+            sourceRect: sourceRect,
+            placement: placement,
+            composite: composite)
     }
 
     private func startWatchdog() {
@@ -408,37 +421,6 @@ final class DeckLinkOutputController {
                 }
                 controller.restartFromScratch()
                 return
-            }
-        }
-    }
-
-    private func restartOutput(
-        devicePersistentID: Int64, deviceName: String, keying: DeckLinkAlphaKey,
-        width: Int, height: Int, frameRate: Int, modeID: Int64
-    ) {
-        guard let proxy = connection?.remoteObjectProxy as? DeckLinkHelperProtocol
-        else { return }
-        proxy.startOutput(
-            devicePersistentID: devicePersistentID,
-            width: Int32(width), height: Int32(height),
-            frameRateNumerator: Int32(frameRate * 1000),
-            frameRateDenominator: 1000,
-            keying: keying.rawValue,
-            modeID: modeID
-        ) { @Sendable [weak self] error, wireDetail in
-            Task { @MainActor [weak self] in
-                guard let self, self.isActive else { return }
-                guard let error else {
-                    self.wireDetail = wireDetail
-                    self.status = .sending(deviceName: deviceName)
-                    return
-                }
-
-                if Self.isTransientOpenFailure(error) {
-                    self.beginReconnect()
-                } else {
-                    self.status = .failed(error)
-                }
             }
         }
     }

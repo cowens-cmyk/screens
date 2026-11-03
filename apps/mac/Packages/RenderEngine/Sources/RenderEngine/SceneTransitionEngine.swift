@@ -225,7 +225,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                 let plateOpacity = firstHalf ? progress * 2 : (1 - progress) * 2
                 var items = firstHalf ? oldItems : newItems
                 items.append(RenderItem(
-                    id: "transition-plate-\(kind.rawValue)",
+                    id: Self.fadePlateID(kind),
                     frame: CGRect(origin: .zero, size: scene.canvasSize),
                     content: .solid(SceneColor(
                         red: plate.red, green: plate.green, blue: plate.blue,
@@ -248,7 +248,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                     amount: peak, phase: progress)
                 var items = leaving + arriving
                 items.append(RenderItem(
-                    id: "transition-plate-\(kind.rawValue)",
+                    id: "\(Self.platePrefix)burn-\(kind.rawValue)",
                     frame: CGRect(origin: .zero, size: scene.canvasSize),
                     content: .solid(SceneColor(red: 1, green: 0.72, blue: 0.42, alpha: peak * 0.35))
                 ))
@@ -444,6 +444,10 @@ public final class SceneTransitionEngine: @unchecked Sendable {
         }
     }
 
+    static let platePrefix = "transition-plate-"
+
+    static func fadePlateID(_ kind: LayerKind) -> String { platePrefix + kind.rawValue }
+
     private static func blurred(_ items: [RenderItem], radius: Double) -> [RenderItem] {
         guard radius > 0.5 else { return items }
         return items.map { item in
@@ -451,5 +455,35 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             out.effects = [SceneEffect(kind: .blur(radius: radius))] + out.effects
             return out
         }
+    }
+}
+
+extension RenderScene {
+    /// The scene for an output with a transparent background, keyed over a
+    /// camera (the livestream over NDI, a keyed DeckLink port). A transition's
+    /// full-frame plate there would cover the camera with black or a color on
+    /// every slide, so a fade goes through clear instead (the layer's items
+    /// fade as the plate would have risen) and a film burn's wash is left out.
+    public func withoutTransitionPlates() -> RenderScene {
+        let prefix = SceneTransitionEngine.platePrefix
+        guard layers.contains(where: { $0.items.contains { $0.id.hasPrefix(prefix) } })
+        else { return self }
+        var scene = self
+        for index in scene.layers.indices {
+            let fadeID = SceneTransitionEngine.fadePlateID(scene.layers[index].kind)
+            var remaining = 1.0
+            scene.layers[index].items.removeAll { item in
+                guard item.id.hasPrefix(prefix) else { return false }
+                if item.id == fadeID, case .solid(let color) = item.content {
+                    remaining = 1 - color.alpha
+                }
+                return true
+            }
+            guard remaining < 1 else { continue }
+            for item in scene.layers[index].items.indices {
+                scene.layers[index].items[item].opacity *= remaining
+            }
+        }
+        return scene
     }
 }
