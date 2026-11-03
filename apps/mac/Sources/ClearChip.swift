@@ -4,6 +4,8 @@ import SwiftUI
 
 struct ClearChip: View {
     let controls: ServiceControls
+    /// Drawn as one of the top bar's cells, green while anything is up.
+    var inTopBar = false
 
     @State private var open = false
 
@@ -12,32 +14,43 @@ struct ClearChip: View {
         Button {
             open = true
         } label: {
-            HStack(spacing: 5) {
-                Glyph(kind: .clear, size: 12)
-
-                Text("Clear")
-                    .font(.system(size: 10, weight: .medium))
-                    .fixedSize()
+            if inTopBar {
+                TopBarCellLabel(title: "Clear", tint: anyContent ? Color.green : nil) {
+                    Glyph(kind: .clear, size: 14)
+                }
+                .modifier(TopBarMenuHover())
+            } else {
+                chipLabel(anyContent: anyContent)
             }
-            .foregroundStyle(anyContent ? Color.green : .secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                (anyContent ? Color.green : .primary)
-                    .opacity(anyContent ? 0.1 : 0.06),
-                in: Capsule()
-            )
-            .overlay {
-                Capsule().strokeBorder(
-                    Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-            }
-            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .help("Clear — everything at once, one function, or one layer")
         .popover(isPresented: $open, arrowEdge: .bottom) {
             popup
         }
+    }
+
+    private func chipLabel(anyContent: Bool) -> some View {
+        HStack(spacing: 5) {
+            Glyph(kind: .clear, size: 12)
+
+            Text("Clear")
+                .font(.system(size: 10, weight: .medium))
+                .fixedSize()
+        }
+        .foregroundStyle(anyContent ? Color.green : .secondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            (anyContent ? Color.green : .primary)
+                .opacity(anyContent ? 0.1 : 0.06),
+            in: Capsule()
+        )
+        .overlay {
+            Capsule().strokeBorder(
+                Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+        }
+        .contentShape(Capsule())
     }
 
     private var popup: some View {

@@ -315,6 +315,9 @@ final class CanvasGestureMonitor {
 
     /// True when the event was the canvas's and nothing else should see it.
     private func handle(_ event: NSEvent) -> Bool {
+        // The top bar's search covers the canvas; only the ends of a
+        // gesture already under way still come here.
+        if TopBarSearch.blocks(event.window), ![.keyUp, .leftMouseUp, .otherMouseUp].contains(event.type) { return false }
         switch event.type {
         case .magnify:
             if event.phase.contains(.began) { pinching = inside(event) != nil }

@@ -51,6 +51,8 @@ struct TransitionChip: View {
     var showSlider = true
     /// Names the transition beside the glyph ("Dissolve 0.2s").
     var showsName = false
+    /// Drawn as one of the top bar's cells: the glyph with the name under it.
+    var inTopBar = false
 
     var body: some View {
         HStack(spacing: 5) {
@@ -58,7 +60,13 @@ struct TransitionChip: View {
                 reload()
                 open = true
             } label: {
-                if showsName {
+                if inTopBar {
+                    TopBarCellLabel(title: kindName + (kindRaw.isEmpty ? "" : String(format: " %.2gs", duration))) {
+                        Glyph(kind: glyph, size: 14)
+                    }
+                    .monospacedDigit()
+                    .modifier(TopBarMenuHover())
+                } else if showsName {
                     // Looks like the top bar's other buttons, so it reads as
                     // one: "Dissolve 0.2s" on a rounded plate.
                     HStack(spacing: 4) {
@@ -89,7 +97,8 @@ struct TransitionChip: View {
             }
         }
         .onAppear(perform: reload)
-        .popover(isPresented: $open, arrowEdge: .top) {
+        // From the top bar it opens down into the window.
+        .popover(isPresented: $open, arrowEdge: inTopBar ? .bottom : .top) {
             VStack(alignment: .leading, spacing: 10) {
 
                 Picker("Transition", selection: storedKind) {

@@ -59,6 +59,22 @@ struct PlanShell: View {
     @State private var addAnchor: AddAnchor?
     @State private var newSongShown = false
     @State private var libraryPick: LibraryPick?
+    /// The top bar's slide builders (Songs, Points, and Sermon when no plan
+    /// is open; with one, Sermon is the plan's message notes).
+    @State private var songSearchShown = false
+    @State private var pointsShown = false
+    @State private var sermonLibraryShown = false
+    /// The top bar's search, and the space its button grows into the field in.
+    @State private var search = TopBarSearch()
+    @Namespace private var searchSpace
+    /// The window's width, measured, which decides what the top bar shows;
+    /// and the title bar's height, which the bar matches.
+    @State private var barWidth: CGFloat = 1480
+    @State private var barHeight = TopBarMetrics.height
+    /// Where the Media button goes back to.
+    @State private var modeBeforeMedia = AppMode.present.rawValue
+    /// The slide editor, when one is open: built slides go into it.
+    @FocusedValue(\.slideEditor) private var slideEditor
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -79,11 +95,10 @@ struct PlanShell: View {
         }
     }
 
+    /// Find (⌘F) opens the top bar's search, the same as its Search button,
+    /// and closes it again when it's open.
     private var findInLibraryAction: MenuAction? {
-        runOnly ? nil : MenuAction("findInLibrary") {
-            topPane = .library
-            model.libraryFindPending = true
-        }
+        runOnly ? nil : MenuAction("findInLibrary") { toggleSearch() }
     }
 
     private static let presentNewSlideAction = MenuAction("presentNewSlide") {
@@ -204,8 +219,34 @@ struct PlanShell: View {
         }
     }
 
-    /// The full app: plans and library, the slides, every screen.
+    /// The full app: the top bar, then the plans and library, the slides
+    /// and every screen. The bar is drawn by the window's content, up in
+    /// the title bar's place (the window keeps an empty toolbar so the
+    /// traffic lights sit centred on it); the search opens over all of it.
     private var workspace: some View {
+        VStack(spacing: 0) {
+            topBar
+            splitView
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { inset in
+            // The title bar's height, so the bar's centre is the traffic
+            // lights'. Anything unlikely keeps the usual toolbar height.
+            let height = (44 ... 72).contains(inset) ? inset : TopBarMetrics.height
+            if height != barHeight { barHeight = height }
+        }
+        .ignoresSafeArea(.container, edges: .top)
+        .toolbar(removing: .title)
+        .background(TopBarWindowChrome())
+        .overlay { TopBarSearchOverlay(search: search, namespace: searchSpace) }
+        .onAppear { search.perform = { result, add in searchChose(result, add: add) } }
+        // Simple Mode takes the window: a search left open would keep the keys.
+        .onDisappear { search.close() }
+        .focusedSceneValue(\.presentSongSearch, MenuAction("songs") { songSearchShown = true })
+        .focusedSceneValue(\.presentPoints, MenuAction("points") { pointsShown = true })
+        .focusedSceneValue(\.presentSermonImport, MenuAction("sermon") { importSermon() })
+    }
+
+    private var splitView: some View {
         // Every column gets a fixed minimum and is free to shrink inside it:
         // content that reports its own changing minimum size makes the split
         // view re-run constraints forever, and AppKit then ends the app.
@@ -220,7 +261,8 @@ struct PlanShell: View {
             .frame(minWidth: 220, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
             .clipped()
             .navigationSplitViewColumnWidth(min: 220, ideal: ShellMetrics.planWidth, max: 360)
-            .toolbar(removing: mode == .edit ? nil : .sidebarToggle)
+            // The top bar has its own sidebar button in Edit.
+            .toolbar(removing: .sidebarToggle)
         } detail: {
             // The docked panels sit beside the slides at fixed widths in a
             // plain HStack rather than as split-view columns or an inspector:
@@ -276,7 +318,6 @@ struct PlanShell: View {
             }
             .navigationTitle(model.currentServiceID.flatMap { model.resident.services.value($0)?.name } ?? "Screens")
         }
-        .toolbar { toolbar }
         // View › Pin Plan / Pin Screens and their shortcuts.
         .focusedSceneValue(\.planPanelToggle, panelsShown ? MenuAction("planPanel") { togglePanel(.plans) } : nil)
         .focusedSceneValue(\.screensPanelToggle, screensMenuShown ? MenuAction("screensPanel") { togglePanel(.screens) } : nil)
@@ -916,75 +957,167 @@ struct PlanShell: View {
         return model.selectedEntryID
     }
 
-    // MARK: Toolbar
+    // MARK: Top bar
 
-    @ToolbarContentBuilder
-    private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            if panelsShown {
-                Button { togglePanel(.plans) } label: {
-                    Label(planBox.isPinned ? "Fold Plan" : "Pin Plan", systemImage: "sidebar.left")
-                }
-                .help(planBox.isPinned ? "Fold the plan to a bubble (⌃⌘S)" : "Keep the plan open beside the slides (⌃⌘S)")
+    private var topBar: some View {
+        let fit = TopBarFit.at(barWidth)
+        return TopBar(
+            fit: fit, height: barHeight, modeRaw: $modeRaw, render: render, controls: controls,
+            searchOpen: search.shown, namespace: searchSpace, onSearch: { openSearch() },
+            plan: planToggle, screens: screensToggle,
+            actions: TopBarActions(
+                songs: { songSearchShown = true },
+                scripture: { scriptureShown = true },
+                points: { pointsShown = true },
+                sermon: { importSermon() },
+                media: { toggleMedia() },
+                scheduleService: model.currentServiceID.map { id in { schedulePlanID = id } },
+                assistant: { openWindow(id: "assistant") },
+                editStage: { editStageDisplay() }),
+            themes: { themesMenuItems },
+            scriptureMenu: { bibleMenuItems },
+            more: { moreMenuItems(fit: fit) })
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                let rounded = (width / 8).rounded(.down) * 8
+                if rounded != barWidth { barWidth = rounded }
             }
+    }
+
+    /// Present and Schedule: pin or fold the plan panel. Edit: show or hide
+    /// the split view's sidebar, whose own button the bar replaces.
+    private var planToggle: TopBarToggle? {
+        if mode == .edit {
+            return TopBarToggle(
+                title: "Sidebar", systemImage: "sidebar.left", on: columns != .detailOnly,
+                help: "Show or hide the plans and the library"
+            ) { NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil) }
         }
-        ToolbarItem(placement: .principal) {
-            if !runOnly {
-                Picker("Mode", selection: $modeRaw) {
-                    Text("Present").tag(AppMode.present.rawValue)
-                    Text("Edit").tag(AppMode.edit.rawValue)
-                    Text("Schedule").tag(AppMode.scheduler.rawValue)
-                    Text("Media").tag(AppMode.media.rawValue)
-                }
-                .pickerStyle(.segmented)
-                .fixedSize()
-            }
+        guard panelsShown else { return nil }
+        let pinned = planBox.isPinned
+        return TopBarToggle(
+            title: "Plan", systemImage: "sidebar.left", on: pinned,
+            help: pinned ? "Fold the plan to a bubble (⌃⌘S)" : "Keep the plan open beside the slides (⌃⌘S)"
+        ) { togglePanel(.plans) }
+    }
+
+    private var screensToggle: TopBarToggle? {
+        guard screensMenuShown else { return nil }
+        let pinned = screensBox.isPinned
+        return TopBarToggle(
+            title: "Screens", systemImage: "sidebar.right", on: pinned,
+            help: pinned ? "Fold the screens to the strip (⌃⌘R)" : "Keep the screens open beside the slides (⌃⌘R)"
+        ) { togglePanel(.screens) }
+    }
+
+    /// The media library, and back to the mode it was opened from.
+    private func toggleMedia() {
+        if mode == .media {
+            modeRaw = modeBeforeMedia
+        } else {
+            modeBeforeMedia = modeRaw
+            modeRaw = AppMode.media.rawValue
         }
-        ToolbarItemGroup(placement: .primaryAction) {
-            if !runOnly {
-                Button {
-                    schedulePlanID = model.currentServiceID
-                } label: {
-                    Label("Schedule Service", systemImage: "calendar.badge.clock")
-                }
+    }
+
+    /// With a plan open, Sermon imports its message notes (as Add to Plan ›
+    /// Message Notes does); without one, into the presentation being edited.
+    private func importSermon() {
+        if let planID = model.currentServiceID {
+            notesPlanID = planID
+        } else {
+            sermonLibraryShown = true
+        }
+    }
+
+    /// Slides a builder made: the builder has already added them to the
+    /// plan when asked, so this selects that item, or opens them in Edit.
+    private func showBuilt(_ id: String) {
+        if let item = currentPlan?.items.first(where: { $0.refId == id }) {
+            itemID = item.id
+        } else if mode == .edit {
+            itemID = nil
+            model.openInEditor(entryID: id)
+        }
+    }
+
+    /// Everything not used every minute of a service lives in one menu. In
+    /// narrower windows it also takes Schedule Service and the Assistant,
+    /// and in the narrowest the stage display button.
+    @ViewBuilder
+    private func moreMenuItems(fit: TopBarFit) -> some View {
+        if fit != .full, !runOnly {
+            Button("Schedule Service…", systemImage: "calendar.badge.clock") { schedulePlanID = model.currentServiceID }
                 .disabled(model.currentServiceID == nil)
-                .help("When this service starts and when its countdown starts")
-                bibleMenu
-                Button { openWindow(id: "assistant") } label: {
-                    Label("Assistant", systemImage: "sparkles")
-                }
-                .help("Assistant (⇧⌘A)")
+            Button("Assistant", systemImage: "sparkles") { openWindow(id: "assistant") }
+            Divider()
+        }
+        if let planID = model.currentServiceID, !runOnly {
+            Button("Message & Series…", systemImage: "text.book.closed") { messagePlanID = planID }
+        }
+        if !runOnly {
+            Button("Edit Pre-Service Slides…", systemImage: "rectangle.stack") { editPreServiceSlides() }
+        }
+        if !runOnly { Menu("Themes", systemImage: "paintpalette") { themesMenuItems } }
+        if !runOnly { Menu("Bible Theme", systemImage: "book") { bibleThemeItems } }
+        if !runOnly, layout != nil {
+            Button("Simple Mode…", systemImage: "lock") { requestSimpleMode() }
+        }
+        if controls != nil {
+            Button("Timers & Macros…", systemImage: "timer") { controlsShown = true }
+        }
+        if !runOnly { Button("Lower Thirds…", systemImage: "rectangle.bottomthird.inset.filled") { ScreensByTypeRouter.shared.shown = true } }
+        Button("Screen Setup…", systemImage: "display.2") { openWindow(id: "outputs") }
+        Button("Edit Stage Display…", systemImage: "rectangle.inset.filled.and.person.filled") { editStageDisplay() }
+        Button("Edit Video Stage…", systemImage: "play.rectangle") { editStageDisplay(StageLayouts.videoID) }
+    }
+
+    // MARK: Search
+
+    private func openSearch() {
+        search.open(model: model, plan: currentPlan, reduceMotion: reduceMotion)
+    }
+
+    private func toggleSearch() {
+        search.toggle(model: model, plan: currentPlan, reduceMotion: reduceMotion)
+    }
+
+    /// A plan item shows on the Present page, scrolled to (as a click in the
+    /// plan list does); a library item opens in the editor, or with ⌘Return
+    /// goes into the plan after the selected item.
+    private func searchChose(_ result: TopBarSearchResult, add: Bool) {
+        switch result.target {
+        case .planItem(let id):
+            modeRaw = AppMode.present.rawValue
+            if itemID == id {
+                if wholePlanShown { presentFocusScroll.reselect() }
+            } else {
+                itemID = id
             }
-            // Everything not used every minute of a service lives in one menu.
-            Menu {
-                if let planID = model.currentServiceID, !runOnly {
-                    Button("Message & Series…", systemImage: "text.book.closed") { messagePlanID = planID }
-                }
-                if !runOnly {
-                    Button("Edit Pre-Service Slides…", systemImage: "rectangle.stack") { editPreServiceSlides() }
-                }
-                if !runOnly { themesMenu }
-                if !runOnly, layout != nil {
-                    Button("Simple Mode…", systemImage: "lock") { requestSimpleMode() }
-                }
-                if controls != nil {
-                    Button("Timers & Macros…", systemImage: "timer") { controlsShown = true }
-                }
-                if !runOnly { Button("Lower Thirds…", systemImage: "rectangle.bottomthird.inset.filled") { ScreensByTypeRouter.shared.shown = true } }
-                Button("Screen Setup…", systemImage: "display.2") { openWindow(id: "outputs") }
-                Button("Edit Stage Display…", systemImage: "rectangle.inset.filled.and.person.filled") { editStageDisplay() }
-                Button("Edit Video Stage…", systemImage: "play.rectangle") { editStageDisplay(StageLayouts.videoID) }
-            } label: {
-                Label("More", systemImage: "ellipsis")
-            }
-            .help("Message & Series, Pre-Service Slides, Themes, Simple Mode, Timers & Macros, Screen Setup")
-            if screensMenuShown {
-                Button { togglePanel(.screens) } label: {
-                    Label(screensBox.isPinned ? "Fold Screens" : "Pin Screens", systemImage: "sidebar.right")
-                }
-                .help(screensBox.isPinned ? "Fold the screens to the strip (⌃⌘R)" : "Keep the screens open beside the slides (⌃⌘R)")
+        case .library(let entry):
+            if add {
+                addEntry(entry)
+            } else {
+                itemID = nil
+                model.openInEditor(entryID: entry.id)
+                modeRaw = AppMode.edit.rawValue
             }
         }
+    }
+
+    /// The slide builders' sheets, from the top bar and the File menu.
+    private var builderRouted: some View {
+        workspace
+            .sheet(isPresented: $songSearchShown) {
+                SongSearchSheet(model: model, render: render) { showBuilt($0) }
+            }
+            .sheet(isPresented: $pointsShown) {
+                PointSlidesSheet(
+                    model: model, render: render, target: SlideTarget.current(model: model, editor: slideEditor)
+                ) { showBuilt($0) }
+            }
+            .sheet(isPresented: $sermonLibraryShown) {
+                SermonImportSheet(model: model, target: SlideTarget.current(model: model, editor: slideEditor)) { showBuilt($0) }
+            }
     }
 
     // MARK: Pre-service and countdown
@@ -1050,40 +1183,38 @@ struct PlanShell: View {
 
     // MARK: Bible
 
-    /// Click to add a passage; the arrow holds listening and the Bible theme,
-    /// which can change while a passage is up.
-    private var bibleMenu: some View {
+    /// The top bar's Scripture button adds a passage on a click; its
+    /// right-click holds listening and the Bible theme, which can change
+    /// while a passage is up.
+    @ViewBuilder
+    private var bibleMenuItems: some View {
         let assist = LiveAssist.shared
+        Button("Add Scripture…") { scriptureShown = true }
+        Divider()
+        if assist.listening {
+            Button("Stop Listening", systemImage: "mic.slash") { assist.stop() }
+        } else {
+            Button("Listen for Scripture", systemImage: "mic") {
+                assist.showsAutomatically = true
+                Task { await assist.startSermon() }
+            }
+        }
+        Divider()
+        Section("Bible Theme") { bibleThemeItems }
+    }
+
+    /// Also in More, where it can be found without the right-click.
+    @ViewBuilder
+    private var bibleThemeItems: some View {
         // Unset means the built-in Scripture theme, which is what new passages use.
         let current = model.slideBuilding.scriptureThemeId ?? BasicTemplates.scriptureThemeID
-        return Menu {
-            Button("Add Scripture…") { scriptureShown = true }
-            Divider()
-            if assist.listening {
-                Button("Stop Listening", systemImage: "mic.slash") { assist.stop() }
-            } else {
-                Button("Listen for Scripture", systemImage: "mic") {
-                    assist.showsAutomatically = true
-                    Task { await assist.startSermon() }
-                }
+        ForEach(bibleThemes, id: \.id) { theme in
+            Button {
+                setBibleTheme(theme.id)
+            } label: {
+                if theme.id == current { Label(theme.name, systemImage: "checkmark") } else { Text(theme.name) }
             }
-            Divider()
-            Section("Bible Theme") {
-                ForEach(bibleThemes, id: \.id) { theme in
-                    Button {
-                        setBibleTheme(theme.id)
-                    } label: {
-                        if theme.id == current { Label(theme.name, systemImage: "checkmark") } else { Text(theme.name) }
-                    }
-                }
-            }
-        } label: {
-            Label("Bible", systemImage: assist.listening ? "waveform" : "book")
-                .foregroundStyle(assist.listening ? HopeStyle.live : Color.primary)
-        } primaryAction: {
-            scriptureShown = true
         }
-        .help(assist.listening ? "Listening for scripture. Click to add a passage." : "Add scripture (⌘⇧B)")
     }
 
     /// Themes to show scripture in: full-screen designs, not their lower thirds.
@@ -1105,31 +1236,31 @@ struct PlanShell: View {
     // MARK: Themes
 
     /// Every theme, one click from the editor: this plan's series first,
-    /// since that's the one most often adjusted, then the rest by name.
-    private var themesMenu: some View {
+    /// since that's the one most often adjusted, then the rest by name. The
+    /// top bar's Theme button, and Themes in More.
+    @ViewBuilder
+    private var themesMenuItems: some View {
         let seriesID = model.currentServiceID.flatMap { model.resident.services.value($0)?.sermonThemeId }
             ?? model.slideBuilding.sermonThemeId
         let themes = model.entries(of: .theme)
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         let series = themes.first { $0.id == seriesID }
         let others = themes.filter { $0.id != series?.id }
-        return Menu("Themes", systemImage: "paintpalette") {
-            if let series {
-                Section("This Plan’s Series") {
-                    Button(series.name) { editTheme(series.id) }
-                }
-                Section("Other Themes") {
-                    ForEach(others, id: \.id) { theme in Button(theme.name) { editTheme(theme.id) } }
-                }
-            } else {
+        if let series {
+            Section("This Plan’s Series") {
+                Button(series.name) { editTheme(series.id) }
+            }
+            Section("Other Themes") {
                 ForEach(others, id: \.id) { theme in Button(theme.name) { editTheme(theme.id) } }
             }
-            Divider()
-            Button("New Theme from Image…") { themeFromImage = true }
-            Button("Show Themes in Library") {
-                topPane = .library
-                model.switchLibrarySection(.themes)
-            }
+        } else {
+            ForEach(others, id: \.id) { theme in Button(theme.name) { editTheme(theme.id) } }
+        }
+        Divider()
+        Button("New Theme from Image…") { themeFromImage = true }
+        Button("Show Themes in Library") {
+            topPane = .library
+            model.switchLibrarySection(.themes)
         }
     }
 
@@ -1138,7 +1269,7 @@ struct PlanShell: View {
     /// editor. Kept out of `body`, whose chain of modifiers is already as
     /// long as the compiler will check.
     private var themeRouted: some View {
-        workspace
+        builderRouted
             .sheet(isPresented: $themeFromImage) {
                 ThemeFromImageSheet(model: model) { id in editTheme(id) }
             }
