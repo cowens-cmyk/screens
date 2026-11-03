@@ -18,6 +18,7 @@ struct PlanShell: View {
     let layout: PresentLayoutController?
 
     @AppStorage("appMode") private var modeRaw = AppMode.present.rawValue
+    @AppStorage(MediaDrawer.openKey) private var mediaBinOpen = false
     @AppStorage(ShellPanel.Side.plans.defaultsKey) private var planPinnedStored = ShellPanel.Side.plans.pinnedByDefault
     @AppStorage(ShellPanel.Side.screens.defaultsKey) private var screensPinnedStored = ShellPanel.Side.screens.pinnedByDefault
     /// The panels' states. The window reads only whether each is pinned;
@@ -1010,13 +1011,17 @@ struct PlanShell: View {
     }
 
     /// The media library, and back to the mode it was opened from.
+    /// Media opens the media bin under the plan rather than leaving it, so
+    /// a background can be dragged straight onto a slide or the plan. Media
+    /// as a mode of its own (a saved choice from before) goes back to
+    /// where the operator was, with the bin open.
     private func toggleMedia() {
         if mode == .media {
-            modeRaw = modeBeforeMedia
-        } else {
-            modeBeforeMedia = modeRaw
-            modeRaw = AppMode.media.rawValue
+            modeRaw = modeBeforeMedia == AppMode.media.rawValue ? AppMode.present.rawValue : modeBeforeMedia
+            mediaBinOpen = true
+            return
         }
+        withAnimation(.easeOut(duration: 0.2)) { mediaBinOpen.toggle() }
     }
 
     /// With a plan open, Sermon imports its message notes (as Add to Plan ›

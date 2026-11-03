@@ -350,6 +350,7 @@ struct TopBarActions {
 }
 
 struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
+    @AppStorage(MediaDrawer.openKey) private var mediaBinOpen = false
     let fit: TopBarFit
     /// The window's title bar height, so the bar is centred on the traffic lights.
     let height: CGFloat
@@ -490,10 +491,10 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
 
     private var mediaCell: some View {
         Button(action: actions.media) {
-            TopBarCellLabel("Media", systemImage: "photo.on.rectangle", selected: mode == .media)
+            TopBarCellLabel("Media", systemImage: "photo.on.rectangle", selected: mediaBinOpen)
         }
         .buttonStyle(TopBarButtonStyle())
-        .help(mode == .media ? "Close the media library" : "The media library: videos, pictures and audio")
+        .help(mediaBinOpen ? "Fold the media bin away" : "The media bin, under the plan: drag a background onto a slide, a song or the plan")
     }
 
     private var stageCell: some View {
