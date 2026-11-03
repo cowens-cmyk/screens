@@ -121,7 +121,9 @@ public enum LyricCleanup {
 
     static func cleanChordToken(_ token: String) -> String? {
         let trimmed = token.trimmingCharacters(in: CharacterSet(charactersIn: " ()"))
-        return ChordMath.isChordToken(trimmed) ? trimmed : nil
+        if ChordMath.isChordToken(trimmed) { return trimmed }
+        let written = token.trimmingCharacters(in: .whitespaces)
+        return ChordMath.isBracketChord(written) ? written : nil
     }
 
     private static let markerBase: UInt32 = 0xE000

@@ -36,6 +36,21 @@ public enum ChordMath {
         parseSymbol(text) != nil
     }
 
+    /// Whether the text between square brackets in a lyric line is a chord.
+    /// ChordPro puts every chord in brackets, so the brackets are the signal,
+    /// not whether we recognise the symbol: N.C., Hm, C7alt and Bbadd9(no3)
+    /// belong on the stage display, never on the audience screens. A
+    /// section label ("[Chorus]") isn't a chord, and a bracket with spaces
+    /// only counts when it is a ChordPro annotation ("[*Repeat x2]").
+    public static func isBracketChord(_ token: String) -> Bool {
+        let trimmed = token.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        if isChordToken(trimmed) { return true }
+        if trimmed.hasPrefix("*") { return trimmed.count > 1 }
+        guard !trimmed.contains(where: \.isWhitespace) else { return false }
+        return Reflow.labelName(of: trimmed) == nil
+    }
+
     public static func parseKey(_ key: String) -> (pitchClass: Int, isMinor: Bool)? {
         let trimmed = key.trimmingCharacters(in: .whitespaces)
         guard let first = trimmed.first,
@@ -85,7 +100,11 @@ public enum ChordMath {
         displayKey: String?,
         notation: ChordNotation
     ) -> String {
-        guard let parsed = parseSymbol(symbol) else { return symbol }
+        // Annotations and symbols we can't read are shown as written, less
+        // the ChordPro annotation mark.
+        guard let parsed = parseSymbol(symbol) else {
+            return symbol.hasPrefix("*") ? String(symbol.dropFirst()) : symbol
+        }
         let interval = transposeInterval(musicKey: musicKey, displayKey: displayKey) ?? 0
         let keyName = displayKey ?? musicKey
         switch notation {
@@ -223,7 +242,7 @@ public enum ChordMath {
                 break
             }
             let token = String(rest[afterOpen..<close])
-            if isChordToken(token) {
+            if isBracketChord(token) {
                 chords.append((column: text.count, symbol: token.trimmingCharacters(in: .whitespaces)))
             } else {
                 text += rest[open...close]

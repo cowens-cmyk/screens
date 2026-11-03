@@ -127,18 +127,33 @@ public enum LyricTextImporter {
         var hasCCLI = false
         var musicKey: String?
         var body: [String] = []
+        // Inside a tab, grid or notation block nothing is sung, so none of
+        // it may reach a slide.
+        var skippingUntil: String?
+        var lastChorus = "Chorus"
 
         func appendLabel(_ label: String) {
             if body.last?.isEmpty == false { body.append("") }
             body.append(label)
         }
 
+        /// A section's name: its label when we know it as a section name,
+        /// otherwise the kind of section it opens.
+        func sectionLabel(_ value: String?, fallback: String) -> String {
+            guard let value, let label = Reflow.labelName(of: value) else { return fallback }
+            return label
+        }
+
         for rawLine in text.components(separatedBy: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if let directive = chordProDirective(from: line) {
+                if let end = skippingUntil {
+                    if directive.key == end { skippingUntil = nil }
+                    continue
+                }
                 switch directive.key {
                 case "title", "t":
-                    title = directive.value
+                    if title == nil { title = directive.value }
                 case "subtitle", "st", "artist", "author":
                     if ccli.author == nil, let value = directive.value {
                         ccli.author = value
@@ -155,36 +170,51 @@ public enum LyricTextImporter {
                         ccli.songNumber = number
                         hasCCLI = true
                     }
-                case "comment", "c":
-
+                case "comment", "c", "comment_italic", "ci", "comment_box", "cb", "highlight":
+                    // Only a comment that names a section starts one; "Repeat
+                    // x2" and the like are notes for the band.
                     if let value = directive.value, let label = Reflow.labelName(of: value) {
+                        if label.hasPrefix("Chorus") { lastChorus = label }
                         appendLabel(label)
                     }
                 case "start_of_chorus", "soc":
-                    appendLabel(directive.value ?? "Chorus")
+                    lastChorus = sectionLabel(directive.value, fallback: "Chorus")
+                    appendLabel(lastChorus)
+                case "chorus":
+                    // "Sing the chorus again": the label alone repeats it.
+                    appendLabel(directive.value.flatMap { Reflow.labelName(of: $0) } ?? lastChorus)
                 case "start_of_verse", "sov":
-                    appendLabel(directive.value ?? "Verse")
+                    appendLabel(sectionLabel(directive.value, fallback: "Verse"))
                 case "start_of_bridge", "sob":
-                    appendLabel(directive.value ?? "Bridge")
+                    appendLabel(sectionLabel(directive.value, fallback: "Bridge"))
+                case "start_of_tab", "sot", "start_of_grid", "sog", "start_of_abc", "start_of_ly",
+                     "start_of_svg", "start_of_textblock":
+                    skippingUntil = Self.endDirective(for: directive.key)
                 case "key":
-
-                    if let value = directive.value, ChordMath.parseKey(value) != nil {
+                    // The song's first key; a later {key} is a key change.
+                    if musicKey == nil, let value = directive.value, ChordMath.parseKey(value) != nil {
                         musicKey = value
                     }
                 default:
-                    break  
+                    // Any other start_of_ is a section of its own kind
+                    // ({start_of_intro}, {start_of_tag: Tag 2}).
+                    if directive.key.hasPrefix("start_of_") {
+                        let kind = String(directive.key.dropFirst("start_of_".count))
+                        if let label = directive.value.flatMap({ Reflow.labelName(of: $0) })
+                            ?? Reflow.labelName(of: kind.replacingOccurrences(of: "_", with: " ")) {
+                            appendLabel(label)
+                        }
+                    }
                 }
                 continue
             }
+            if skippingUntil != nil { continue }
+            // ChordPro comments.
+            if line.hasPrefix("#") { continue }
             if line.isEmpty {
                 if body.last?.isEmpty == false { body.append("") }
                 continue
             }
-            if Reflow.labelName(of: line) != nil {
-                body.append(line)
-                continue
-            }
-
             body.append(line)
         }
 
@@ -198,13 +228,27 @@ public enum LyricTextImporter {
         )
     }
 
+    private static func endDirective(for start: String) -> String {
+        switch start {
+        case "sot": return "eot"
+        case "sog": return "eog"
+        default: return "end_of_" + start.dropFirst("start_of_".count)
+        }
+    }
+
+    /// `{key: value}`, `{key value}` and ChordPro 6's `{key label="value"}`.
+    /// Instrument selectors (`{title-guitar: …}`) are read as the plain key.
     private static func chordProDirective(from line: String) -> (key: String, value: String?)? {
         guard line.hasPrefix("{"), line.hasSuffix("}") else { return nil }
-        let body = String(line.dropFirst().dropLast())
-        let parts = body.split(separator: ":", maxSplits: 1)
-        guard let key = parts.first else { return nil }
-        let value = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespaces) : nil
-        return (key.trimmingCharacters(in: .whitespaces).lowercased(), value?.isEmpty == true ? nil : value)
+        let body = String(line.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+        let keyEnd = body.firstIndex(where: { $0 == ":" || $0.isWhitespace }) ?? body.endIndex
+        var key = body[..<keyEnd].lowercased()
+        guard !key.isEmpty, key.allSatisfy({ $0.isLetter || $0 == "_" || $0 == "-" }) else { return nil }
+        if let dash = key.firstIndex(of: "-") { key = String(key[..<dash]) }
+        var value = body[keyEnd...].trimmingCharacters(in: .whitespaces)
+        if value.hasPrefix(":") { value = String(value.dropFirst()).trimmingCharacters(in: .whitespaces) }
+        if let label = chordProLabelAttribute.firstMatch(in: value) { value = label }
+        return (key, value.isEmpty ? nil : value)
     }
 
     private static func isCCLIBoilerplate(_ line: String) -> Bool {
@@ -216,7 +260,8 @@ public enum LyricTextImporter {
 
     private static let ccliSongNumberRegex = SimpleRegex(#"CCLI Song #\s*(\d+)"#, caseInsensitive: true)
     private static let copyrightYearRegex = SimpleRegex(#"(\b(?:19|20)\d{2}\b)"#)
-    private static let chordProDirectiveRegex = SimpleRegex(#"^\{[a-zA-Z_]+(:.*)?\}$"#)
+    private static let chordProDirectiveRegex = SimpleRegex(#"^\{[a-zA-Z_]+(-[a-zA-Z]+)?([:\s].*)?\}$"#)
+    private static let chordProLabelAttribute = SimpleRegex(#"^label\s*=\s*["']([^"']*)["']"#)
     private static let inlineChordRegex = SimpleRegex(#"\[[A-G][#b]?(?:m|maj|min|dim|aug|sus|add)?\d*(?:/[A-G][#b]?)?\]"#)
 }
 

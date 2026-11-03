@@ -184,7 +184,9 @@ private func song(
 
     @Test func markersAndSlashChords() {
         #expect(LyricCleanup.cleanLine("[N.C.] [x] [C/E] [/] [|]", chart: true) == nil)
-        #expect(LyricCleanup.cleanLine("[N.C.]Holy [G/B]is the Lord", chart: true) == "Holy [G/B]is the Lord")
+        // N.C. stays a chord: off the slide, on the stage display.
+        #expect(LyricCleanup.cleanLine("[N.C.]Holy [G/B]is the Lord", chart: true) == "[N.C.]Holy [G/B]is the Lord")
+        #expect(ChordMath.extractLine("[N.C.]Holy [G/B]is the Lord").text == "Holy is the Lord")
     }
 }
 
