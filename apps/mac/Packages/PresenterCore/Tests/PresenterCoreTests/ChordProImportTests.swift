@@ -129,6 +129,23 @@ struct ChordProImportTests {
         #expect(ChordMath.isBracketChord("*Coda"))
     }
 
+    @Test func chordsWeCantTransposeAreStillChords() {
+        for chord in ["N.C.", "Hm", "C7alt", "Bbadd9(no3)", "F#m7b5", "C6/9", "Ebmaj7", "Dsus2", "Bø7",
+                      "am", "1", "b7", "4/6", "2m7", "5(add9)"] {
+            #expect(ChordMath.isBracketChord(chord), "\(chord)")
+        }
+    }
+
+    @Test func otherBracketsInPlainLyricsStayOnTheSlide() {
+        for word in ["x2", "2x", "Echo", "Men", "Women", "All", "Spoken", "Hallelujah", "Amen"] {
+            #expect(!ChordMath.isBracketChord(word), "\(word)")
+        }
+        #expect(ChordMath.extractLine("Lord You are good [x2]").text == "Lord You are good [x2]")
+        // No chords, so not a chart: a spaced dash between words stays.
+        let cleaned = LyricCleanup.clean("[Echo] Lord - You are good\n[Men] We sing", removePunctuation: false)
+        #expect(cleaned.contains("Lord - You are good"))
+    }
+
     @Test func plainLyricsAreUnchanged() {
         let text = "On the mountain we will worship\nIn the valley we will sing"
         #expect(lyricText(LyricTextImporter.makePresentation(text)) == text)

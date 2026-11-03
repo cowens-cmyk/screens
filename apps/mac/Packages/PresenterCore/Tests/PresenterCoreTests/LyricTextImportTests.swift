@@ -72,6 +72,48 @@ struct LyricTextImportTests {
         #expect(LyricTextImporter.detectFormat(bare) == .chordPro)
     }
 
+    @Test func decodesTextFilesAndRefusesBinaryOnes() {
+        #expect(LyricTextImporter.decode(Data("Amazing grace".utf8)) == "Amazing grace")
+        #expect(LyricTextImporter.decode(Data([0x43, 0x61, 0x66, 0xE9])) == "Café")
+        let utf16 = try! #require("Amazing grace".data(using: .utf16))
+        #expect(LyricTextImporter.decode(utf16) == "Amazing grace")
+        // A ZIP or other binary download.
+        #expect(LyricTextImporter.decode(Data([0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00])) == nil)
+    }
+
+    @Test func chordProWithALicenceFooterStaysChordPro() {
+        let text = """
+        {title: Way Maker}
+        {key: E}
+
+        {c: Verse 1}
+        You are [E]here moving in our midst
+
+        {soc}
+        Way [E]maker miracle worker
+        {eoc}
+
+        CCLI Song # 7115744
+        Osinachi Okoro
+        © 2016 Integrity Music Europe
+        For use solely with the SongSelect® Terms of Use. All rights reserved. www.ccli.com
+        CCLI License # 123456
+        """
+        #expect(LyricTextImporter.detectFormat(text) == .chordPro)
+        let normalized = LyricTextImporter.normalize(text)
+        #expect(normalized.title == "Way Maker")
+        #expect(normalized.musicKey == "E")
+        #expect(normalized.ccli?.songNumber == 7115744)
+        #expect(normalized.ccli?.author == "Osinachi Okoro")
+        #expect(normalized.ccli?.copyrightYear == 2016)
+        #expect(!normalized.body.contains("CCLI") && !normalized.body.contains("{"))
+        #expect(normalized.body.hasSuffix("Way [E]maker miracle worker"))
+
+        let commented = "{title: Way Maker}\n{comment: CCLI Song # 7115744}\nWay [E]maker"
+        #expect(LyricTextImporter.detectFormat(commented) == .chordPro)
+        #expect(LyricTextImporter.normalize(commented).ccli?.songNumber == 7115744)
+    }
+
     @Test func plainLyricsStayPlain() {
         #expect(LyricTextImporter.detectFormat(plainText) == .plainText)
 

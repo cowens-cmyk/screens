@@ -230,7 +230,11 @@ struct SongSearchSheet: View {
         let arrangement = arrangement
         let key = playingKey.isEmpty ? nil : playingKey
         Task {
-            await sync.importInto(id, song: detail, arrangement: arrangement, playingKey: key, model: model)
+            if let failure = await sync.importInto(
+                id, song: detail, arrangement: arrangement, playingKey: key, model: model) {
+                error = failure
+                return
+            }
             dismiss()
             onCreated(id)
         }

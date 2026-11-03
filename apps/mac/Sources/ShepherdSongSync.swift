@@ -220,7 +220,9 @@ extension ShepherdSync {
             let task = model.updatePresentation(presentationID) { current in
                 current = ShepherdSongImport.replacing(current, with: fresh)
             }
-            _ = try? await task.value
+            // A refused write keeps the old words, so the badge stays and
+            // the operator hears why.
+            _ = try await task.value
             newerCharts[presentationID] = nil
             return nil
         } catch {
@@ -229,14 +231,14 @@ extension ShepherdSync {
     }
 
     /// Import from Shepherd… in the song editor: this song becomes the
-    /// Shepherd song's, and stays linked to it.
+    /// Shepherd song's, and stays linked to it. Nil when done, else why not.
     func importInto(
         _ presentationID: String, song: ShepherdClient.SongDetail, arrangement: ShepherdClient.SongArrangement?,
         playingKey: String?, model: AppModel
-    ) async {
+    ) async -> String? {
         guard let fresh = ShepherdSongImport.presentation(
             song: song, arrangement: arrangement, options: importOptions(playingKey: playingKey, model: model))
-        else { return }
+        else { return "Shepherd has no lyrics or chord chart for this song." }
         let task = model.updatePresentation(presentationID) { current in
             var updated = ShepherdSongImport.replacing(current, with: fresh)
             // A song taken over from elsewhere follows Shepherd's order.
@@ -245,8 +247,13 @@ extension ShepherdSync {
             if playingKey != nil { updated.displayKey = fresh.displayKey }
             current = updated
         }
-        _ = try? await task.value
+        do {
+            _ = try await task.value
+        } catch {
+            return error.localizedDescription
+        }
         newerCharts[presentationID] = nil
+        return nil
     }
 }
 

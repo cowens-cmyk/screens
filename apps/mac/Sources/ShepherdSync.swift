@@ -121,22 +121,25 @@ final class ShepherdSync {
                 if let existing, existing.mxuPlanVersion == version, !Self.hasFlaggedSongs(existing) { continue }
 
                 let detail = try await client.plan(id: plan.id)
-                let synced = ShepherdPlanSync.items(
-                    for: detail, rules: model.serviceLinkRules, existing: existing?.items ?? []
-                ) { song in Self.librarySong(for: song, candidates: candidates) }
-                // Every plan opens with the shared pre-service slideshow:
-                // Shepherd's "Pre-Service" item is linked to it, or one is
-                // put first (unless it was taken out of this plan).
-                var probe = existing ?? Service(id: "", name: "", serviceDate: "", items: [])
-                probe.items = synced
-                let items = PreServiceSlides.ensuring(probe, sharedID: preService)?.items ?? synced
+                let rules = model.serviceLinkRules
+                let items = Self.planItems(
+                    detail, over: existing, rules: rules, candidates: candidates, preService: preService)
                 let name = ShepherdPlanSync.serviceName(for: detail)
                 let date = ShepherdPlanSync.serviceDate(for: detail)
                 if let existing {
                     if existing.items != items || existing.name != name || existing.mxuPlanVersion != version {
                         let times = Self.planTimes(detail)
-                        model.updateService(existing.id) { service in
-                            service.items = items
+                        let readRefs = Set(existing.items.map(\.refId))
+                        // Main, not this Mac's version: the items are worked
+                        // out from main. They are worked out again from the
+                        // service as the write finds it, so an edit made while
+                        // the plan was loading isn't put back; a song linked
+                        // meanwhile is newer than `candidates`, and stays.
+                        model.updateMainService(existing.id) { service in
+                            let linkedSince = Set(service.items.map(\.refId)).subtracting(readRefs)
+                            service.items = Self.planItems(
+                                detail, over: service, rules: rules, candidates: candidates,
+                                preService: preService, linkedSince: linkedSince)
                             service.name = name
                             service.serviceDate = date
                             service.mxuPlanVersion = version
@@ -235,8 +238,24 @@ final class ShepherdSync {
 
     private static func hasFlaggedSongs(_ service: Service) -> Bool { flaggedSongs(in: service.items) > 0 }
 
+    /// A plan's items laid over a service's items. Every plan opens with the
+    /// shared pre-service slideshow: Shepherd's "Pre-Service" item is linked
+    /// to it, or one is put first (unless it was taken out of this plan).
+    nonisolated static func planItems(
+        _ detail: ShepherdClient.PlanDetail, over service: Service?, rules: ServiceLinkRules,
+        candidates: [ServiceLinkLogic.Candidate], preService: String?, linkedSince: Set<String> = []
+    ) -> [ServiceItem] {
+        let library = Set(candidates.map(\.id)).union(linkedSince)
+        let synced = ShepherdPlanSync.items(
+            for: detail, rules: rules, existing: service?.items ?? [], inLibrary: library.contains
+        ) { song in librarySong(for: song, candidates: candidates) }
+        var probe = service ?? Service(id: "", name: "", serviceDate: "", items: [])
+        probe.items = synced
+        return PreServiceSlides.ensuring(probe, sharedID: preService)?.items ?? synced
+    }
+
     /// A library presentation for a plan song, by CCLI number or title.
-    private static func librarySong(
+    nonisolated private static func librarySong(
         for song: PlanFeed.Item, candidates: [ServiceLinkLogic.Candidate]
     ) -> (refId: String, arrangementId: String?)? {
         librarySong(title: song.song?.title ?? song.title, ccli: song.song?.ccliNumber, candidates: candidates)
@@ -245,7 +264,7 @@ final class ShepherdSync {
 
     /// The library presentation for a song title and CCLI number, as sync
     /// links them. The Assistant uses it to link before importing.
-    static func librarySong(title: String, ccli: Int?, candidates: [ServiceLinkLogic.Candidate]) -> String? {
+    nonisolated static func librarySong(title: String, ccli: Int?, candidates: [ServiceLinkLogic.Candidate]) -> String? {
         var probe = ServiceItem(id: "", itemKind: .info, name: title, refId: "")
         probe.mxuSongTitle = title
         probe.mxuCcliNumber = ccli

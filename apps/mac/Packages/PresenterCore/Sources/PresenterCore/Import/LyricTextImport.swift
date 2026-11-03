@@ -19,8 +19,18 @@ public enum LyricTextImporter {
         public var body: String
     }
 
+    /// A lyrics file's text: UTF-8, UTF-16 with its byte-order mark, else
+    /// Latin-1. Nil for binary data (any NUL byte outside UTF-16), which
+    /// Latin-1 would otherwise decode into a song of junk.
+    public static func decode(_ data: Data) -> String? {
+        if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
+            return String(data: data, encoding: .utf16)
+        }
+        guard !data.contains(0) else { return nil }
+        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
+    }
+
     public static func detectFormat(_ text: String) -> LyricTextFormat {
-        if ccliSongNumberRegex.firstMatch(in: text) != nil { return .songSelect }
         var directiveHits = 0
         var chordLineHits = 0
         for line in text.components(separatedBy: .newlines) {
@@ -28,7 +38,12 @@ public enum LyricTextImporter {
             if chordProDirectiveRegex.wholeMatch(trimmed) { directiveHits += 1 }
             if inlineChordRegex.firstMatch(in: trimmed) != nil { chordLineHits += 1 }
         }
-        if directiveHits >= 1 || chordLineHits >= 2 { return .chordPro }
+        // A directive settles it before the CCLI footer does: ChordPro files
+        // often carry the licence footer too, and read as SongSelect text
+        // their {title} and {key} lines would reach the slides.
+        if directiveHits >= 1 { return .chordPro }
+        if ccliSongNumberRegex.firstMatch(in: text) != nil { return .songSelect }
+        if chordLineHits >= 2 { return .chordPro }
         return .plainText
     }
 
@@ -77,29 +92,42 @@ public enum LyricTextImporter {
         }
     }
 
-    private static func normalizeSongSelect(_ text: String) -> Normalized {
-        var lines = text.components(separatedBy: "\n")
-
+    /// Takes the "CCLI Song #" footer (number, authors, © lines and the
+    /// licence lines after them) off the end of `lines`.
+    private static func takeCCLIFooter(_ lines: inout [String]) -> CCLIInfo? {
+        guard let footerStart = lines.firstIndex(where: {
+            chordProDirective(from: $0.trimmingCharacters(in: .whitespaces)) == nil
+                && ccliSongNumberRegex.firstMatch(in: $0) != nil
+        }) else { return nil }
+        let footer = lines[footerStart...].map { $0.trimmingCharacters(in: .whitespaces) }
+        // A ChordPro song that goes on after the line (directives, chords)
+        // has it as a heading, not a footer; the song isn't cut there.
+        guard !footer.contains(where: {
+            chordProDirective(from: $0) != nil || inlineChordRegex.firstMatch(in: $0) != nil
+        }) else { return nil }
         var ccli = CCLIInfo()
-        if let footerStart = lines.firstIndex(where: { ccliSongNumberRegex.firstMatch(in: $0) != nil }) {
-            let footer = lines[footerStart...].map { $0.trimmingCharacters(in: .whitespaces) }
-            lines = Array(lines[..<footerStart])
-            for (offset, line) in footer.enumerated() {
-                if let number = ccliSongNumberRegex.firstMatch(in: line) {
-                    ccli.songNumber = Int(number)
+        lines = Array(lines[..<footerStart])
+        for (offset, line) in footer.enumerated() {
+            if let number = ccliSongNumberRegex.firstMatch(in: line) {
+                ccli.songNumber = Int(number)
 
-                    let next = footer.dropFirst(offset + 1).first(where: { !$0.isEmpty })
-                    if let authors = next, !authors.hasPrefix("©"), !isCCLIBoilerplate(authors) {
-                        ccli.author = authors
-                    }
-                } else if line.hasPrefix("©") {
-                    ccli.copyright = (ccli.copyright.map { $0 + "\n" } ?? "") + line
-                    if ccli.copyrightYear == nil {
-                        ccli.copyrightYear = copyrightYearRegex.firstMatch(in: line).flatMap { Int($0) }
-                    }
+                let next = footer.dropFirst(offset + 1).first(where: { !$0.isEmpty })
+                if let authors = next, !authors.hasPrefix("©"), !isCCLIBoilerplate(authors) {
+                    ccli.author = authors
+                }
+            } else if line.hasPrefix("©") {
+                ccli.copyright = (ccli.copyright.map { $0 + "\n" } ?? "") + line
+                if ccli.copyrightYear == nil {
+                    ccli.copyrightYear = copyrightYearRegex.firstMatch(in: line).flatMap { Int($0) }
                 }
             }
         }
+        return ccli
+    }
+
+    private static func normalizeSongSelect(_ text: String) -> Normalized {
+        var lines = text.components(separatedBy: "\n")
+        var ccli = takeCCLIFooter(&lines) ?? CCLIInfo()
 
         var title: String?
         var body: [String] = []
@@ -144,7 +172,11 @@ public enum LyricTextImporter {
             return label
         }
 
-        for rawLine in text.components(separatedBy: "\n") {
+        // A licence footer after the song is read for its CCLI details and
+        // kept off the last slide.
+        var lines = text.components(separatedBy: "\n")
+        let footer = takeCCLIFooter(&lines)
+        for rawLine in lines {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if let directive = chordProDirective(from: line) {
                 if let end = skippingUntil {
@@ -176,6 +208,10 @@ public enum LyricTextImporter {
                     if let value = directive.value, let label = Reflow.labelName(of: value) {
                         if label.hasPrefix("Chorus") { lastChorus = label }
                         appendLabel(label)
+                    } else if ccli.songNumber == nil, let value = directive.value,
+                              let number = ccliSongNumberRegex.firstMatch(in: value).flatMap({ Int($0) }) {
+                        ccli.songNumber = number
+                        hasCCLI = true
                     }
                 case "start_of_chorus", "soc":
                     lastChorus = sectionLabel(directive.value, fallback: "Chorus")
@@ -216,6 +252,15 @@ public enum LyricTextImporter {
                 continue
             }
             body.append(line)
+        }
+        if let footer {
+            ccli.songNumber = ccli.songNumber ?? footer.songNumber
+            ccli.author = ccli.author ?? footer.author
+            if ccli.copyright == nil {
+                ccli.copyright = footer.copyright
+                ccli.copyrightYear = footer.copyrightYear
+            }
+            hasCCLI = true
         }
 
         return Normalized(

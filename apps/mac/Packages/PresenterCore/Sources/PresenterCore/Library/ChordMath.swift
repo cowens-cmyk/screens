@@ -37,18 +37,60 @@ public enum ChordMath {
     }
 
     /// Whether the text between square brackets in a lyric line is a chord.
-    /// ChordPro puts every chord in brackets, so the brackets are the signal,
-    /// not whether we recognise the symbol: N.C., Hm, C7alt and Bbadd9(no3)
-    /// belong on the stage display, never on the audience screens. A
-    /// section label ("[Chorus]") isn't a chord, and a bracket with spaces
-    /// only counts when it is a ChordPro annotation ("[*Repeat x2]").
+    /// A chord we can't transpose still counts: N.C., Hm, C7alt and
+    /// Bbadd9(no3) belong on the stage display, never on the audience
+    /// screens. But plain lyrics bracket other things too ("[x2]",
+    /// "[Echo]", "[Men]"), so the bracket must read as a chord symbol or a
+    /// Nashville number. A section label ("[Chorus]") isn't a chord, and a
+    /// bracket with spaces only counts when it is a ChordPro annotation
+    /// ("[*Repeat x2]").
     public static func isBracketChord(_ token: String) -> Bool {
         let trimmed = token.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return false }
         if isChordToken(trimmed) { return true }
         if trimmed.hasPrefix("*") { return trimmed.count > 1 }
         guard !trimmed.contains(where: \.isWhitespace) else { return false }
-        return Reflow.labelName(of: trimmed) == nil
+        return Reflow.labelName(of: trimmed) == nil && readsAsChord(trimmed)
+    }
+
+    /// A root (a note letter, lowercase too, or a Nashville number) and then
+    /// only what chord suffixes are made of.
+    static func readsAsChord(_ token: String) -> Bool {
+        if ["N.C.", "N.C", "NC"].contains(token.uppercased()) { return true }
+        var rest = Substring(token)
+        let accidentals: Set<Character> = ["#", "b", "♯", "♭"]
+        func takeRoot() -> Bool {
+            if let first = rest.first, accidentals.contains(first), rest.dropFirst().first?.isNumber == true {
+                rest.removeFirst()
+            }
+            guard let first = rest.first else { return false }
+            if "ABCDEFGHabcdefgh".contains(first) {
+                rest.removeFirst()
+                if let next = rest.first, accidentals.contains(next) { rest.removeFirst() }
+                return true
+            }
+            if let degree = first.wholeNumberValue, (1...7).contains(degree) {
+                rest.removeFirst()
+                return true
+            }
+            return false
+        }
+        guard takeRoot() else { return false }
+        let words = ["maj", "min", "dim", "aug", "sus", "add", "alt", "dom", "omit", "mi", "ma", "no", "m", "M"]
+        let marks: Set<Character> = ["(", ")", "+", "-", "#", "b", "♯", "♭", "°", "ø", "Δ", "^", ","]
+        while let next = rest.first {
+            if next.isNumber || marks.contains(next) {
+                rest.removeFirst()
+            } else if next == "/" {
+                rest.removeFirst()
+                if rest.first?.isNumber != true, !takeRoot() { return false }
+            } else if let word = words.first(where: { rest.hasPrefix($0) }) {
+                rest.removeFirst(word.count)
+            } else {
+                return false
+            }
+        }
+        return true
     }
 
     public static func parseKey(_ key: String) -> (pitchClass: Int, isMinor: Bool)? {

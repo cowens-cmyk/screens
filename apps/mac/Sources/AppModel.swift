@@ -378,7 +378,7 @@ final class AppModel {
         try migrateMediaObjectsToShapes(prepared, rootURL: root)
         try migrateAnimationVocabulary(prepared, rootURL: root)
         try migrateCrossfadeDefaults(prepared, rootURL: root)
-        try migrateImportedCutTransitions(prepared, rootURL: root)
+        migrateImportedCutTransitions(prepared, rootURL: root)
         try backfillContentIndex(prepared, rootURL: root)
         try backfillCCLIIndex(prepared, rootURL: root)
         try seedBasics(prepared, rootURL: root)
@@ -477,11 +477,20 @@ final class AppModel {
         }
     }
 
-    @LibraryActor private static func migrateImportedCutTransitions(_ prepared: Library, rootURL: URL) throws {
+    /// Runs over every existing library once, so nothing here may stop the
+    /// library opening: a song that fails is noted and keeps its Cut, and a
+    /// library whose songs can't be listed tries again next launch.
+    @LibraryActor private static func migrateImportedCutTransitions(_ prepared: Library, rootURL: URL) {
         let marker = rootURL.appendingPathComponent(".migrated-imported-cut-transitions-v1")
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }
-        try prepared.migrateImportedCutTransitions()
-        FileManager.default.createFile(atPath: marker.path, contents: nil)
+        do {
+            try prepared.migrateImportedCutTransitions { id, error in
+                DiagnosticsStore.shared.note("library.cutTransitionMigration.failed", detail: "\(id): \(error)")
+            }
+            FileManager.default.createFile(atPath: marker.path, contents: nil)
+        } catch {
+            DiagnosticsStore.shared.note("library.cutTransitionMigration.failed", detail: "\(error)")
+        }
     }
 
     @LibraryActor private static func migrateAnimationVocabulary(_ prepared: Library, rootURL: URL) throws {
@@ -1197,6 +1206,15 @@ final class AppModel {
     }
 
     var onServiceEdited: ((String) -> Void)?
+
+    /// Writes the main service even when this Mac runs a version. Plan sync
+    /// works its items out from main, so through `updateService` it would
+    /// replace the version's own changes and never reach the other Macs;
+    /// written to main, the version's changes still apply on top.
+    func updateMainService(_ id: String, _ mutate: @escaping @Sendable (inout Service) -> Void) {
+        modify(Service.self, id: id, mutate)
+        onServiceEdited?(id)
+    }
 
     func updateService(_ id: String, _ mutate: @escaping @Sendable (inout Service) -> Void) {
         let before = (try? service(id))?.items ?? []
