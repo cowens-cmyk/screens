@@ -1669,7 +1669,7 @@ final class ServiceControls {
 
         let pageTurn = Paging.Turn.following(
             UserDefaults.standard.string(forKey: "transition.slide.kind").flatMap(TransitionKind.init(rawValue:)),
-            duration: UserDefaults.standard.object(forKey: "transition.slide.duration") as? Double ?? 0.5)
+            duration: UserDefaults.standard.object(forKey: "transition.slide.duration") as? Double ?? SlideTransitionDefault.duration)
 
         if state.pageTurn != pageTurn {
             state.pageTurn = pageTurn

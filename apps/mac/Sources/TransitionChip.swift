@@ -2,6 +2,29 @@ import MediaEngine
 import PresenterCore
 import SwiftUI
 
+/// Slides change with a short dissolve unless the church picks otherwise: a
+/// cut between lyric slides reads as a flicker on the big screens, and 0.2s
+/// is quick enough that the words never trail the singers.
+enum SlideTransitionDefault {
+    static let kindKey = "transition.slide.kind"
+    static let durationKey = "transition.slide.duration"
+    static let kind = TransitionKind.dissolve
+    static let duration = 0.2
+
+    /// The default used to be a cut, so a Mac that still has one moves to
+    /// the dissolve once. Choosing Cut again afterwards sticks.
+    static func migrateFromCut() {
+        let defaults = UserDefaults.standard
+        let flag = "transition.slide.dissolveDefaultApplied"
+        guard !defaults.bool(forKey: flag) else { return }
+        defaults.set(true, forKey: flag)
+        let stored = defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?[kindKey] as? String
+        guard stored == nil || stored == "" || stored == TransitionKind.cut.rawValue else { return }
+        defaults.set(kind.rawValue, forKey: kindKey)
+        defaults.set(duration, forKey: durationKey)
+    }
+}
+
 struct TransitionChip: View {
     let glyph: GlyphKind
     let kindKey: String
@@ -26,6 +49,8 @@ struct TransitionChip: View {
     }
 
     var showSlider = true
+    /// Names the transition beside the glyph ("Dissolve 0.2s").
+    var showsName = false
 
     var body: some View {
         HStack(spacing: 5) {
@@ -33,10 +58,19 @@ struct TransitionChip: View {
                 reload()
                 open = true
             } label: {
-                Glyph(kind: glyph, size: 12)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
+                HStack(spacing: 4) {
+                    Glyph(kind: glyph, size: 12)
+                        .frame(width: 20, height: 20)
+                    if showsName {
+                        Text(kindName + (kindRaw.isEmpty ? "" : String(format: " %.2gs", duration)))
+                            .font(.caption.weight(.medium))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .padding(.trailing, 4)
+                    }
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("\(kindName)\(kindRaw.isEmpty ? "" : String(format: " %.2gs", duration)) — this layer's default; items with their own always win")

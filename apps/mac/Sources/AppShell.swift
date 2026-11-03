@@ -489,7 +489,7 @@ struct ShellView: View {
                             .lineLimit(1)
                     }
                     presentViewMenu
-                    if centerWidth > 1050 { transitionChips }
+                    if centerWidth > 1050 { transitionChips } else { slideTransitionChip }
                 }
             }
             .frame(height: Self.headerHeight)
@@ -499,7 +499,7 @@ struct ShellView: View {
             if mode == .present, sidebarVisible {
                 HStack(spacing: 6) {
                     presentViewMenu
-                    if centerWidth > 1050 { transitionChips }
+                    if centerWidth > 1050 { transitionChips } else { slideTransitionChip }
                 }
                 .frame(height: Self.headerHeight)
                 .padding(.leading, effectiveSidebarWidth + 16)
@@ -1526,13 +1526,20 @@ struct ShellView: View {
                 fallbackKind: TransitionKind.dissolve.rawValue, fallbackDuration: 0.7,
                 showSlider: showTransitionSliders
             )
-            TransitionChip(
-                glyph: .presentations,
-                kindKey: "transition.slide.kind", durationKey: "transition.slide.duration",
-                fallbackKind: "", fallbackDuration: 0.5,
-                showSlider: showTransitionSliders
-            )
+            slideTransitionChip
         }
+        .fixedSize()
+    }
+
+    /// Always in the Present top bar, however narrow the window: it's how
+    /// the booth changes the slide transition during a service.
+    private var slideTransitionChip: some View {
+        TransitionChip(
+            glyph: .presentations,
+            kindKey: SlideTransitionDefault.kindKey, durationKey: SlideTransitionDefault.durationKey,
+            fallbackKind: SlideTransitionDefault.kind.rawValue, fallbackDuration: SlideTransitionDefault.duration,
+            showSlider: showTransitionSliders, showsName: true
+        )
         .fixedSize()
     }
 

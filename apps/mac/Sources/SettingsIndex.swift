@@ -177,7 +177,7 @@ enum SettingsIndex {
         SettingsEntry(
             id: "present.slideTransition", category: .slides,
             title: "Slide transition",
-            caption: "How the slide layer changes between slides. Cut is the lyrics-safe default.",
+            caption: "How the slide layer changes between slides. Dissolve at 0.2s unless you pick another; the Present top bar changes it too.",
             keywords: "transition dissolve fade slide default cut lyrics"),
         SettingsEntry(
             id: "present.mediaTransition", category: .slides,

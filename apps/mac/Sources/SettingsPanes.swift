@@ -23,8 +23,8 @@ struct SlidesSettingsPane: View {
             Section {
                 SettingsRow("present.slideTransition") {
                     DefaultTransitionControl(
-                        kindKey: "transition.slide.kind", durationKey: "transition.slide.duration",
-                        fallbackKind: "", fallbackDuration: 0.5)
+                        kindKey: SlideTransitionDefault.kindKey, durationKey: SlideTransitionDefault.durationKey,
+                        fallbackKind: SlideTransitionDefault.kind.rawValue, fallbackDuration: SlideTransitionDefault.duration)
                 }
                 SettingsRow("present.mediaTransition") {
                     DefaultTransitionControl(
@@ -34,7 +34,7 @@ struct SlidesSettingsPane: View {
             } header: {
                 Text("Transitions")
             } footer: {
-                Text("A slide or item can set its own. The footer chips change the media transition on the fly.")
+                Text("A slide or item can set its own. The chips in the Present top bar change these on the fly.")
             }
             if model != nil {
                 Section {

@@ -115,7 +115,10 @@ struct MxUSlidesApp: App {
 
         UserDefaults.standard.register(defaults: [
             "NSInitialToolTipDelay": 250,
+            SlideTransitionDefault.kindKey: SlideTransitionDefault.kind.rawValue,
+            SlideTransitionDefault.durationKey: SlideTransitionDefault.duration,
         ])
+        SlideTransitionDefault.migrateFromCut()
 
         NDINetworkScope.apply()
         NDINetworkScope.watchNetworkChanges()

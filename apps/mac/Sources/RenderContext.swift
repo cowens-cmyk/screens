@@ -52,7 +52,7 @@ final class RenderContext {
             else { return nil }
             var stored = MediaTransition(transitionKind: kind)
             stored.durationSeconds =
-                defaults.object(forKey: "transition.slide.duration") as? Double ?? 0.5
+                defaults.object(forKey: "transition.slide.duration") as? Double ?? SlideTransitionDefault.duration
             return sceneTransition(from: stored)
         case .loopingVideos, .stillGraphics, .videos:
 
