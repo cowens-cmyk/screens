@@ -180,6 +180,13 @@ final class KeyInController {
             return true
         }
 
+        // The top bar's search is open: what's typed is the query, even in
+        // the moment before its field has focus.
+        if TopBarSearch.blocks(event.window) {
+            cancelGoTo()
+            return false
+        }
+
         if let responder = NSApp.keyWindow?.firstResponder,
            responder is NSText || responder is NSTextView {
             cancelGoTo()

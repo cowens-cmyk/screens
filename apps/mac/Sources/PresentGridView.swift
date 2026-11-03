@@ -350,7 +350,7 @@ private struct SlideClipboardKeyMonitor: NSViewRepresentable {
         }
 
         private func verb(for event: NSEvent) -> SlideClipboardRequests.Verb? {
-            let typing = event.window?.firstResponder is NSText
+            let typing = event.window?.firstResponder is NSText || TopBarSearch.blocks(event.window)
             if let window = view?.window, event.window === window, window.isKeyWindow,
                window.attachedSheet == nil, !typing, deletes,
                event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
