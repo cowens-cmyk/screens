@@ -638,6 +638,7 @@ struct ServiceContinuousView: View {
                             }
                         ),
                         showsPicker: false,
+                        planItem: (serviceID, item.id),
                         onJump: { pill in
                             jumpToBlock(item, presentation, slides, pill: pill, proxy: proxy)
                         }
@@ -1398,11 +1399,16 @@ struct ArrangementStrip: View {
 
     var showsPicker = true
 
+    /// The plan item whose order this is, for Edit Order….
+    var planItem: (serviceID: String, itemID: String)?
+
     var onJump: ((Int) -> Void)?
 
     @Environment(\.runOnly) private var runOnly
 
     @State private var dropIndex: Int?
+    @State private var hoveredPill: Int?
+    @State private var editingOrder = false
 
     @State private var pillWidths: [Int: CGFloat] = [:]
 
@@ -1429,10 +1435,23 @@ struct ArrangementStrip: View {
                 } else {
                     baseOrderPills
                 }
+                if !runOnly {
+                    Button { editingOrder = true } label: {
+                        Label("Edit Order", systemImage: "list.bullet.indent")
+                            .font(.system(size: 10, weight: .medium))
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Drag the song's sections into the order it's sung in")
+                }
             }
             .padding(.vertical, 1)
 
             .padding(.leading, 5)
+        }
+        .sheet(isPresented: $editingOrder) {
+            SongOrderSheet(model: model, presentationID: presentation.id, planItem: planItem,
+                           arrangementID: selection ?? presentation.defaultArrangementId)
         }
     }
 
@@ -1514,16 +1533,43 @@ struct ArrangementStrip: View {
                         return applied
                     }
                 ))
+                .overlay(alignment: .topTrailing) {
+                    if !runOnly, hoveredPill == index {
+                        Button { removeBlock(index, from: arrangement) } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, Color.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: 5, y: -5)
+                        .help("Take this out of the order (⌘Z undoes)")
+                    }
+                }
+                .onHover { inside in
+                    if inside { hoveredPill = index } else if hoveredPill == index { hoveredPill = nil }
+                }
                 .contextMenu {
                     if !runOnly {
-                        Button("Remove Section") {
-                            model.updateArrangement(
-                                presentation.id, arrangementID: arrangement.id
-                            ) { $0.sectionIds.remove(at: index) }
-                        }
+                        Button("Remove Section") { removeBlock(index, from: arrangement) }
                     }
                 }
         }
+    }
+
+    /// Takes one block out of the order, undoable with ⌘Z.
+    private func removeBlock(_ index: Int, from arrangement: Arrangement) {
+        let before = arrangement.sectionIds
+        let after = SongOrderEdit.removing(at: index, in: before)
+        guard after != before else { return }
+        let presentationID = presentation.id
+        let model = model
+        model.updateArrangement(presentationID, arrangementID: arrangement.id) { $0.sectionIds = after }
+        model.moveUndo.registerMove(
+            label: "Remove Section",
+            undo: { model.updateArrangement(presentationID, arrangementID: arrangement.id) { $0.sectionIds = before }; return true },
+            redo: { model.updateArrangement(presentationID, arrangementID: arrangement.id) { $0.sectionIds = after }; return true })
+        hoveredPill = nil
     }
 
     private var insertionBar: some View {

@@ -176,6 +176,7 @@ final class AppUpdater {
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = [file.path]
         try process.run()
+        AppDelegate.quitsWithoutAsking = true
         NSApp.terminate(nil)
     }
 

@@ -43,9 +43,32 @@ enum WindowBridge {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Set by the updater, which quits to swap in the new version.
+    nonisolated(unsafe) static var quitsWithoutAsking = false
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Dark everywhere, including AppKit menus, alerts and panels.
         MainActor.assumeIsolated { NSApp.appearance = NSAppearance(named: .darkAqua) }
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        MainActor.assumeIsolated { MainWindowCloseGuard.watch() }
+    }
+
+    /// Quitting by accident in a service takes every screen down, so ⌘Q
+    /// asks first. A shutdown, restart or log out, and the updater, don't.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if Self.quitsWithoutAsking { return .terminateNow }
+        if let event = NSAppleEventManager.shared().currentAppleEvent,
+           event.attributeDescriptor(forKeyword: kAEQuitReason) != nil {
+            return .terminateNow
+        }
+        return MainActor.assumeIsolated {
+            QuitConfirmation.ask(
+                title: "Quit Screens?",
+                message: "The audience, stage and livestream screens go dark until Screens is opened again.",
+                button: "Quit") ? .terminateNow : .terminateCancel
+        }
     }
 
     /// Double-clicked .screenstheme / .screenspres files import themselves.
@@ -384,4 +407,62 @@ struct MxUSlidesApp: App {
         }
     }
 
+}
+
+@MainActor
+enum QuitConfirmation {
+    /// A plain yes-or-no; Cancel is the default, so Return doesn't quit.
+    static func ask(title: String, message: String, button: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: button)
+        alert.buttons[1].hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+}
+
+/// The main window's red close button asks first too: closing it mid-
+/// service leaves the operator with no controls. Its button is pointed at
+/// this guard as each main window appears; Close Window (⌘W) is handled
+/// the same way through the window's close button.
+@MainActor
+final class MainWindowCloseGuard: NSObject {
+    static let shared = MainWindowCloseGuard()
+    private var observer: NSObjectProtocol?
+
+    static func watch() {
+        shared.observer = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { note in
+            let window = note.object as? NSWindow
+            MainActor.assumeIsolated {
+                guard let window else { return }
+                shared.guardClose(of: window)
+            }
+        }
+        for window in NSApp.windows { shared.guardClose(of: window) }
+    }
+
+    private func guardClose(of window: NSWindow) {
+        guard window.identifier?.rawValue.hasPrefix("main") == true,
+              let button = window.standardWindowButton(.closeButton),
+              button.action != #selector(askToClose(_:))
+        else { return }
+        button.target = self
+        button.action = #selector(askToClose(_:))
+    }
+
+    @objc private func askToClose(_ sender: NSButton) {
+        guard let window = sender.window else { return }
+        if QuitConfirmation.ask(
+            title: "Close the Screens window?",
+            message: "The screens keep showing what's on them, but the controls are gone until you open the window again from the Dock.",
+            button: "Close"
+        ) {
+            window.close()
+        }
+    }
 }

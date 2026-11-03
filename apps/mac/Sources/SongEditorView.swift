@@ -172,35 +172,7 @@ struct SongEditorView: View {
     // MARK: Sequence
 
     private var sequencePane: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Song Order").font(.headline)
-            Text("Drag to reorder. Click a section below to add it again.")
-                .font(.caption).foregroundStyle(.secondary)
-            List {
-                ForEach(Array(sequence.enumerated()), id: \.offset) { index, name in
-                    HStack(spacing: 8) {
-                        Circle().fill(color(for: name)).frame(width: 10, height: 10)
-                        Text(name)
-                        Spacer()
-                        Button { sequence.remove(at: index); saveSequence() } label: {
-                            Image(systemName: "minus.circle").foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove from the order")
-                    }
-                }
-                .onMove { from, to in
-                    sequence.move(fromOffsets: from, toOffset: to)
-                    saveSequence()
-                }
-            }
-            .listStyle(.bordered)
-            .frame(minHeight: 180)
-            FlowChips(names: sections.map(\.name), color: color(for:)) { name in
-                sequence.append(name)
-                saveSequence()
-            }
-        }
+        SongOrderEditor(model: model, presentationID: presentationID)
     }
 
     private func color(for name: String) -> Color {
