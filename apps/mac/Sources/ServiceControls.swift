@@ -173,6 +173,8 @@ final class ServiceControls {
         slide: Slide, in presentation: Presentation, theme: Theme?, arrangementId: String?,
         contextID: String?, occurrence: Int?, autoAdvanced: Bool = false
     ) {
+        landings += 1
+        let landing = landings
 
         let deckWasLive = livePresentationID == presentation.id
         if !deckWasLive {
@@ -223,22 +225,31 @@ final class ServiceControls {
             restart(mediaID: background.mediaId)
         }
 
+        if !deckWasLive {
+            appModel.markUsed(presentation.id)
+        }
+
         // The item's lighting cue and macros first, so the slide's own
         // actions and the song-section note land after them.
         // A library deck fires with its own id as the context (the grid, the
         // Local API), which isn't a plan item: the walk-in check still runs.
+        // Macros and the slide's own actions can fire another slide, which
+        // lands inside this one. Once one has, its lighting cue and its
+        // timing stand, and this slide's are left out.
         let wasPlanItem = contextID.map { planItemWentLive($0, ownActions: slide.actions ?? []) } ?? false
         if !wasPlanItem, !deckWasLive {
             preServiceWentLive(presentation)
         }
+        guard landings == landing else { return }
         actionRouter?.slideDidFire(slide, contextID: contextID)
+        guard landings == landing else { return }
         LightkeyLink.shared.slideWentLive(slide, in: presentation)
         armAutoAdvance(for: slide, in: presentation, keepingMediaAdvance: underVideo)
-
-        if !deckWasLive {
-            appModel.markUsed(presentation.id)
-        }
     }
+
+    /// Counts slides landing, so a land can tell when an action it ran
+    /// landed another slide before it finished.
+    private var landings = 0
 
     func advance(steps: Int, settled: Bool = false, otherwise fireSlide: () throws -> Void) rethrows {
         guard steps != 0 else { return }
@@ -650,7 +661,17 @@ final class ServiceControls {
         mediaAdvancePoll?.invalidate()
         mediaAdvancePoll = nil
         mediaAdvanceWatch = nil
-        clearAdvanceVisibility()
+        // The countdown and pause are shared with a slide's own timing;
+        // they are cleared only when they belong to the media's advance.
+        // A slide waiting on its video (the poll) sets no context.
+        switch advanceTimedContext {
+        case .mediaItem:
+            clearAdvanceVisibility()
+        case .slide:
+            break
+        case nil:
+            if autoAdvanceTimer == nil, autoAdvancePoll == nil { clearAdvanceVisibility() }
+        }
     }
 
     private func armMediaAdvance(for item: MediaItem, serviceItemID: String, countdown: Bool) {
@@ -1240,7 +1261,6 @@ final class ServiceControls {
         mediaEndPoll = nil
         if screenVideoID == id { screenVideoEnded() }
         guard action == .stop || action == .fadeToBlack else { return }
-        settlePending()
         state.clear(layer: layer, atHostTime: CACurrentMediaTime())
         render.nextLiveTransitions[layer] = action == .fadeToBlack
             ? SceneTransition(kind: .dissolve, duration: 1.0)
@@ -1432,7 +1452,10 @@ final class ServiceControls {
     }
 
     func clear(function: ShowFunction) {
-        settlePending()
+        // A slide waiting to land (a look's exit, its theme loading) is
+        // called off only by clearing slides; clearing alerts or media
+        // would otherwise lose the operator's keypress.
+        if function == .slides { settlePending() }
         if function == .media {
             stashExitTransition(for: Array(state.liveMedia.keys))
         }
@@ -1461,7 +1484,7 @@ final class ServiceControls {
     }
 
     func clear(layer: LayerKind) {
-        settlePending()
+        if layer == .slide { settlePending() }
         stashExitTransition(for: [layer])
         state.clear(layer: layer, atHostTime: CACurrentMediaTime())
         if layer == .slide, state.liveSlide == nil {
@@ -1605,9 +1628,17 @@ final class ServiceControls {
         }
         refreshNextSlide()
 
+        // An edit that gives the live slide timing arms it. Timing already
+        // counting, paused, waiting on the slide's builds, or a plan video's
+        // move to the next item is left as it is.
         if autoAdvanceTimer == nil, autoAdvancePoll == nil,
-           let live = state.liveSlide, live.presentation?.id == id {
-            armAutoAdvance(for: live.slide, in: live.presentation)
+           autoAdvancePending == nil, autoAdvanceAwaitingSteps == nil,
+           autoAdvanceArmTimer == nil,
+           mediaAdvanceTimer == nil, mediaAdvancePoll == nil,
+           let live = state.liveSlide, live.presentation?.id == id,
+           SlideSceneBuilder.effectiveAutoAdvance(
+               slide: live.slide, presentation: live.presentation) != nil {
+            armAutoAdvance(for: live.slide, in: live.presentation, keepingMediaAdvance: true)
         }
     }
 
@@ -1905,7 +1936,9 @@ final class ServiceControls {
         let seeds = state.transportSeeds()
         media.refresh(seeds: seeds)
         guard !added.isEmpty, let blobs else { return }
-        Task { [render, appModel, media] in
+        // Media cleared or replaced while it loads is left unstarted: the
+        // clear already ran, and nothing would stop it later.
+        Task { [weak self, render, appModel, media] in
             for mediaID in added {
 
                 if mediaID.hasPrefix(ScreenMirrorService.prefix) {
@@ -1932,7 +1965,8 @@ final class ServiceControls {
                 }
                 switch item.mediaKind {
                 case .video:
-                    if let prepared = try? await render.media.prepare(url: url) {
+                    if let prepared = try? await render.media.prepare(url: url),
+                       await self?.isLiveMedia(mediaID) == true {
                         render.media.play(
                             prepared, id: mediaID,
                             loop: (wanted[mediaID] ?? nil) ?? item.playsLooping,
@@ -1944,6 +1978,7 @@ final class ServiceControls {
                         )
                     }
                 case .image:
+                    guard await self?.isLiveMedia(mediaID) == true else { continue }
                     _ = try? await render.media.showStill(url: url, id: mediaID)
                 }
             }
@@ -1951,6 +1986,8 @@ final class ServiceControls {
             media.refresh(seeds: seeds)
         }
     }
+
+    private func isLiveMedia(_ id: String) -> Bool { liveMediaIDs.contains(id) }
 
     private static func startLiveInput(id: String, render: RenderContext) {
         let parts = id.split(separator: ":", omittingEmptySubsequences: true)

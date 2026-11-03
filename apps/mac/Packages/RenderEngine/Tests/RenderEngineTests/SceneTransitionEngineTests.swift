@@ -287,4 +287,33 @@ extension SceneTransitionEngineTests {
         XCTAssertEqual(mid.count, 1)
         XCTAssertEqual(mid.first?.opacity ?? -1, 0.5, accuracy: 0.001, "the clear FADES")
     }
+
+    func testKeyedOutputFadesThroughClearInsteadOfAPlate() {
+        let transition = SceneTransition(kind: .fade(.black), duration: 1)
+        let early = SceneTransitionEngine.composite(
+            previous: scene(["old"]), target: scene(["new"]),
+            transition: transition, progress: 0.25, layers: [.slide]
+        ).withoutTransitionPlates().layers.first { $0.kind == .slide }!.items
+        XCTAssertNil(early.first { $0.id.hasPrefix("transition-plate") }, "no plate over the camera")
+        let old = early.first { $0.id.hasPrefix("old") }
+        XCTAssertEqual(old?.opacity ?? -1, 0.5, accuracy: 0.001, "halfway down as the plate would be")
+    }
+
+    func testKeyedOutputLeavesOutTheFilmBurnWashOnly() {
+        let transition = SceneTransition(kind: .filmBurn, duration: 1)
+        let full = SceneTransitionEngine.composite(
+            previous: scene(["old"]), target: scene(["new"]),
+            transition: transition, progress: 0.5, layers: [.slide]
+        )
+        let keyed = full.withoutTransitionPlates().layers.first { $0.kind == .slide }!.items
+        let unkeyed = full.layers.first { $0.kind == .slide }!.items
+        XCTAssertNil(keyed.first { $0.id.hasPrefix("transition-plate") })
+        XCTAssertEqual(keyed, unkeyed.filter { !$0.id.hasPrefix("transition-plate") },
+                       "the burn on the slides themselves is kept")
+    }
+
+    func testSceneWithoutAPlateIsUnchanged() {
+        let plain = scene(["a", "b"])
+        XCTAssertEqual(plain.withoutTransitionPlates(), plain)
+    }
 }
