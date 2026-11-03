@@ -971,6 +971,7 @@ struct RunOrderList: View {
                     Text("Add Item")
                 }
             }
+            refreshLyricsButton
             Spacer()
             AnthemPlanSummary(model: model, serviceID: serviceID)
             if let service = try? model.service(serviceID) {
@@ -988,6 +989,31 @@ struct RunOrderList: View {
         .padding(.leading, 12)
         .padding(.trailing, ShellMetrics.rowLeading)
         .padding(.vertical, 8)
+    }
+
+    /// Checks Shepherd for this plan's lyrics and chords now.
+    @ViewBuilder
+    private var refreshLyricsButton: some View {
+        let fetcher = LyricsFetcher.shared
+        if fetcher.refreshingPlanID == serviceID {
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Text("Checking Shepherd…").foregroundStyle(.secondary)
+            }
+        } else if !runOnly {
+            Button {
+                Task { await fetcher.refreshFromShepherd(planID: serviceID, model: model) }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .medium))
+                    Text("Lyrics")
+                }
+            }
+            .disabled(fetcher.refreshingPlanID != nil)
+            .help(["Check Shepherd now for this plan's lyrics and chords: imports songs that have no slides and updates songs from Shepherd.",
+                   fetcher.refreshSummary].compactMap { $0 }.joined(separator: "\n\nLast check: "))
+        }
     }
 
     private func itemCountLabel(_ service: Service) -> String {

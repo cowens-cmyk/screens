@@ -15,6 +15,10 @@ final class LyricsFetcher {
     /// The plan item waiting on a SongSelect download, and what to show.
     private(set) var waitingItemID: String?
     private(set) var status: String?
+    /// The plan whose songs are being checked against Shepherd now.
+    private(set) var refreshingPlanID: String?
+    /// What the last check found, for the button's tooltip.
+    private(set) var refreshSummary: String?
 
     private var watch: Task<Void, Never>?
 
@@ -46,6 +50,40 @@ final class LyricsFetcher {
         watch?.cancel()
         watch = nil
         finish(nil)
+    }
+
+    /// Asks Shepherd about every song in the plan now, instead of waiting
+    /// for the next sync: songs from Shepherd take its newer charts and
+    /// arrangements, and each song with no slides is looked up (its Shepherd
+    /// song, else by CCLI number or title) and imported.
+    func refreshFromShepherd(planID: String, model: AppModel) async {
+        guard refreshingPlanID == nil else { return }
+        guard ShepherdSync.shared.isConfigured else {
+            refreshSummary = "Shepherd isn't set up (Settings › Shepherd)."
+            return
+        }
+        refreshingPlanID = planID
+        defer { refreshingPlanID = nil }
+        let synced = await ShepherdSync.shared.refreshSongs(inServices: [planID], importing: true, model: model)
+        var imported = synced.imported
+        var missing: [String] = []
+        let unlinked = ((try? model.service(planID))?.items ?? [])
+            .filter { $0.itemKind == .info && $0.refId.isEmpty && $0.mxuSongTitle != nil }
+        for item in unlinked {
+            let title = item.mxuSongTitle ?? item.name
+            switch await Self.importFromShepherd(item: item, title: title, planID: planID, model: model) {
+            case .imported: imported += 1
+            case .alreadyLinked: break
+            default: missing.append(title)
+            }
+        }
+        var parts: [String] = []
+        if imported > 0 { parts.append("Imported \(imported)") }
+        if synced.updated > 0 { parts.append("updated \(synced.updated)") }
+        if !missing.isEmpty { parts.append("not in Shepherd with words: \(missing.joined(separator: ", "))") }
+        refreshSummary = parts.isEmpty ? "Every song is up to date with Shepherd." : parts.joined(separator: "; ")
+        if let refreshSummary { model.noteImportSummary("Shepherd: " + refreshSummary) }
+        DiagnosticsStore.shared.note("lyrics.refreshFromShepherd", detail: refreshSummary ?? "")
     }
 
     // MARK: Shepherd
