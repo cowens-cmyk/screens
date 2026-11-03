@@ -398,6 +398,12 @@ public struct ConfidenceInfo: Sendable, Equatable {
     public var currentItemName: String?
 
     public var currentGroupName: String?
+    /// The next slide's section ("Chorus"), for the stage to show what comes.
+    public var nextGroupName: String?
+    /// The sections' colours as the slide grid shows them (the group
+    /// palette's before the deck's own), for stage blocks filled with them.
+    public var currentGroupColorHex: String?
+    public var nextGroupColorHex: String?
     public var nextItemName: String?
 
     public var currentPresentationName: String?
@@ -424,6 +430,9 @@ public struct ConfidenceInfo: Sendable, Equatable {
         slidePosition: SlidePosition? = nil,
         currentItemName: String? = nil,
         currentGroupName: String? = nil,
+        nextGroupName: String? = nil,
+        currentGroupColorHex: String? = nil,
+        nextGroupColorHex: String? = nil,
         nextItemName: String? = nil,
         currentPresentationName: String? = nil,
         nextServiceTitle: String? = nil,
@@ -443,6 +452,9 @@ public struct ConfidenceInfo: Sendable, Equatable {
         self.slidePosition = slidePosition
         self.currentItemName = currentItemName
         self.currentGroupName = currentGroupName
+        self.nextGroupName = nextGroupName
+        self.currentGroupColorHex = currentGroupColorHex
+        self.nextGroupColorHex = nextGroupColorHex
         self.nextItemName = nextItemName
         self.currentPresentationName = currentPresentationName
         self.nextServiceTitle = nextServiceTitle

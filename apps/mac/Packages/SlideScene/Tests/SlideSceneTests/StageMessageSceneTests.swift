@@ -152,7 +152,7 @@ private func item(_ scene: RenderScene, _ layer: LayerKind, showing string: Stri
     #expect(message.text.color == .white)
     let band = try #require(items(scene, .alerts).first { $0.id.hasPrefix("stage-band-msg") && !$0.id.contains("text") })
     #expect(band.content == .shape(ShapeStyle(kind: .rectangle, fill: .solid(ConfidenceSceneBuilder.stageRed))))
-    #expect(band.frame.minY == 960 && band.frame.maxY == 1080)
+    #expect(band.frame.minY == 945 && band.frame.maxY == 1080)
     for lyric in ["Amazing grace", "How sweet the sound"] {
         let shown = try #require(item(scene, .slide, showing: lyric))
         #expect(!shown.item.frame.intersects(band.frame), "the band never covers the lyrics")

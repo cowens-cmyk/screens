@@ -663,8 +663,9 @@ public struct SlideObject: Codable, Sendable, Equatable, Identifiable {
     public var skewX: Double?
     public var skewY: Double?
     public var keystoneMode: KeystoneMode?
+    public var groupColorFill: StageGroupColor?
 
-    public init(id: String, objectKind: SlideObjectKind, name: String, text: String, x: Double? = nil, y: Double? = nil, width: Double? = nil, height: Double? = nil, rotationDegrees: Double? = nil, hidden: Bool? = nil, visibilityMatch: VisibilityMatch? = nil, visibilityConditions: [VisibilityCondition]? = nil, flipHorizontal: Bool? = nil, flipVertical: Bool? = nil, opacity: Double? = nil, blendMode: BlendMode? = nil, groupId: String? = nil, maskObjectId: String? = nil, maskMode: MaskMode? = nil, effects: [Effect]? = nil, effectsApplyBelow: Bool? = nil, textLink: TextLink? = nil, textStyle: TextStyle? = nil, chords: [ChordPlacement]? = nil, styleRuns: [TextStyleRun]? = nil, shapeKind: ShapeKind? = nil, cornerRadius: Double? = nil, pathData: String? = nil, shapeTextPlacement: ShapeTextPlacement? = nil, shapeTextCornerRadius: Double? = nil, fill: ObjectFill? = nil, stroke: ObjectStroke? = nil, shadow: ObjectShadow? = nil, mediaId: String? = nil, mediaScaleMode: MediaScaleMode? = nil, mediaSourceRect: MediaSourceRect? = nil, loops: Bool? = nil, captureSourceKind: CaptureSourceKind? = nil, captureSourceId: String? = nil, screenSourceId: String? = nil, liveInputId: String? = nil, keepFromSlide: KeepFromSlideOptions? = nil, animationSteps: [AnimationStep]? = nil, builds: [AnimationStep]? = nil, tilt: Double? = nil, swing: Double? = nil, tiltPivot: TiltPivot? = nil, keystoneTop: Double? = nil, keystoneBottom: Double? = nil, skewX: Double? = nil, skewY: Double? = nil, keystoneMode: KeystoneMode? = nil) {
+    public init(id: String, objectKind: SlideObjectKind, name: String, text: String, x: Double? = nil, y: Double? = nil, width: Double? = nil, height: Double? = nil, rotationDegrees: Double? = nil, hidden: Bool? = nil, visibilityMatch: VisibilityMatch? = nil, visibilityConditions: [VisibilityCondition]? = nil, flipHorizontal: Bool? = nil, flipVertical: Bool? = nil, opacity: Double? = nil, blendMode: BlendMode? = nil, groupId: String? = nil, maskObjectId: String? = nil, maskMode: MaskMode? = nil, effects: [Effect]? = nil, effectsApplyBelow: Bool? = nil, textLink: TextLink? = nil, textStyle: TextStyle? = nil, chords: [ChordPlacement]? = nil, styleRuns: [TextStyleRun]? = nil, shapeKind: ShapeKind? = nil, cornerRadius: Double? = nil, pathData: String? = nil, shapeTextPlacement: ShapeTextPlacement? = nil, shapeTextCornerRadius: Double? = nil, fill: ObjectFill? = nil, stroke: ObjectStroke? = nil, shadow: ObjectShadow? = nil, mediaId: String? = nil, mediaScaleMode: MediaScaleMode? = nil, mediaSourceRect: MediaSourceRect? = nil, loops: Bool? = nil, captureSourceKind: CaptureSourceKind? = nil, captureSourceId: String? = nil, screenSourceId: String? = nil, liveInputId: String? = nil, keepFromSlide: KeepFromSlideOptions? = nil, animationSteps: [AnimationStep]? = nil, builds: [AnimationStep]? = nil, tilt: Double? = nil, swing: Double? = nil, tiltPivot: TiltPivot? = nil, keystoneTop: Double? = nil, keystoneBottom: Double? = nil, skewX: Double? = nil, skewY: Double? = nil, keystoneMode: KeystoneMode? = nil, groupColorFill: StageGroupColor? = nil) {
         self.id = id
         self.objectKind = objectKind
         self.name = name
@@ -717,7 +718,13 @@ public struct SlideObject: Codable, Sendable, Equatable, Identifiable {
         self.skewX = skewX
         self.skewY = skewY
         self.keystoneMode = keystoneMode
+        self.groupColorFill = groupColorFill
     }
+}
+
+public enum StageGroupColor: String, Codable, Sendable, CaseIterable, Equatable {
+    case current
+    case next
 }
 
 public enum KeystoneMode: String, Codable, Sendable, CaseIterable, Equatable {
@@ -2209,6 +2216,7 @@ public enum TextSourceKind: String, Codable, Sendable, CaseIterable, Equatable {
     case nextServiceTitle
     case songKey
     case slideNotes
+    case nextGroup
 }
 
 public enum TimerTextFormat: String, Codable, Sendable, CaseIterable, Equatable {

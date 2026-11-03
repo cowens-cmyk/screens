@@ -2909,6 +2909,7 @@ extension TextSourceKind {
         case .nextServiceTitle: "Next Service Title"
         case .songKey: "Song Key"
         case .slideNotes: "Slide Notes"
+        case .nextGroup: "Next Slide Group"
         }
     }
 }

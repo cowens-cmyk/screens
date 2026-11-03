@@ -1149,7 +1149,7 @@ struct SlideEditorView: View {
                 // the booth.
                 Menu {
                     ForEach([TextSourceKind.currentSlide, .nextSlide, .clock, .timer, .stageMessage,
-                             .songKey, .slideNotes, .currentGroup, .videoCountdown, .nextServiceItem], id: \.self) { source in
+                             .songKey, .slideNotes, .currentGroup, .nextGroup, .videoCountdown, .nextServiceItem], id: \.self) { source in
                         Button(source.displayName) { model.addLiveText(source) }
                     }
                 } label: {

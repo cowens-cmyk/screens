@@ -24,42 +24,74 @@ private func frame(_ object: SlideObject) -> CGRect {
 
     #expect(section.textLink?.source == .currentGroup)
     #expect(section.textStyle?.textTransform == .uppercase)
-    #expect(frame(section).maxX <= frame(current).minX, "the section name sits left of the words")
-    #expect(frame(section).minY < frame(current).minY + 120, "beside the first line")
-    #expect(section.textStyle?.horizontalAlignment == .left)
     #expect(current.textStyle?.horizontalAlignment == .left, "the words are left-aligned")
     #expect(next.textStyle?.horizontalAlignment == .left)
     #expect(frame(next).minX == frame(current).minX, "the next lines start where the words do")
-    #expect((section.textStyle?.fontSize ?? 0) < (current.textStyle?.fontSize ?? 0) / 2)
 
-    #expect(current.textStyle?.colorHex == ConfidenceLayoutTemplate.white, "white words, the most contrast")
+    #expect(current.textStyle?.colorHex == ConfidenceLayoutTemplate.worshipOrange, "orange words, as ProPresenter had them")
     #expect(current.textStyle?.fontName == "HelveticaNeue-Bold")
     #expect((current.textStyle?.minFontSize ?? 0) >= 60, "never shrinks to tiny text")
     #expect(current.textStyle?.verticalAlignment == .top, "the first line always starts in the same place")
     #expect(current.textStyle?.keepLinesWhole == true)
+    #expect(current.textStyle?.balancedWrap == true)
     #expect(current.textStyle?.showChords == true)
-    #expect(current.textStyle?.chordColorHex == ConfidenceLayoutTemplate.worshipAccent)
+    #expect(current.textStyle?.chordNotation == .numbers)
 
-    #expect(next.textLink?.maxLines == 2, "just the next slide's first lines")
-    #expect((next.textStyle?.fontSize ?? 0) < (current.textStyle?.fontSize ?? 0) * 0.7)
-    #expect(next.textStyle?.colorHex != current.textStyle?.colorHex, "dimmer than the words being sung")
+    #expect(next.textLink?.maxLines == 3, "just the next slide's first lines")
+    #expect((next.textStyle?.fontSize ?? 0) < (current.textStyle?.fontSize ?? 0))
+    #expect(next.textStyle?.colorHex == ConfidenceLayoutTemplate.worshipNextGray, "grey, dimmer than the words being sung")
     #expect(frame(next).minY >= frame(current).maxY)
 
     for bottom in [clock, key, song] {
         #expect(frame(bottom).minY >= 1080 * 2 / 3, "\(bottom.name) is along the bottom")
+        #expect(bottom.textStyle?.colorHex == ConfidenceLayoutTemplate.white)
+        #expect(frame(bottom).minY >= frame(next).maxY, "\(bottom.name) is under the next lines")
     }
+    #expect(clock.textLink?.source == .clock)
+    #expect(clock.textLink?.clockFormat == "h:mm:ssa", "the clock shows seconds and AM/PM")
     #expect(song.textLink?.source == .currentPresentation)
-    #expect(key.textStyle?.colorHex == ConfidenceLayoutTemplate.worshipAccent, "one accent colour")
+    #expect(key.textLink?.source == .songKey)
+    #expect(frame(clock).maxX <= frame(song).minX && frame(song).maxX <= frame(key).minX, "clock, song, key, left to right")
+
+    // Each of the bar's words sits in its own slate box.
+    let boxes = layout.objects.filter { $0.objectKind == .shape && $0.groupColorFill == nil }
+    #expect(boxes.count == 3)
+    for text in [clock, song, key] {
+        #expect(boxes.contains { frame($0).contains(frame(text)) }, "\(text.name) has its box")
+        #expect(boxes.allSatisfy { $0.fill?.colorHex == ConfidenceLayoutTemplate.worshipSlate })
+    }
 }
 
-@Test func theNextLabelOnlyShowsWhenThereIsANextSlide() throws {
+@Test func theWorshipLayoutHasASectionBlockBesideTheWordsAndTheNextLines() throws {
     let layout = ConfidenceLayoutTemplate.worship.make(name: "Stage — Worship")
+    let current = try #require(object(named: "Current Slide", in: layout))
     let next = try #require(object(named: "Next Slide", in: layout))
-    let label = try #require(layout.objects.first { $0.text == "NEXT" })
-    let condition = try #require(label.visibilityConditions?.first)
-    #expect(condition.conditionKind == .objectText)
-    #expect(condition.state == .hasText)
-    #expect(condition.objectId == next.id)
+    let section = try #require(object(named: "Section", in: layout))
+    let nextSection = try #require(object(named: "Next Section", in: layout))
+    let block = try #require(layout.objects.first { $0.groupColorFill == .current })
+    let nextBlock = try #require(layout.objects.first { $0.groupColorFill == .next })
+
+    #expect(nextSection.textLink?.source == .nextGroup)
+    for (label, box, words) in [(section, block, current), (nextSection, nextBlock, next)] {
+        #expect(frame(box).maxX <= frame(words).minX, "\(box.name) sits left of the words")
+        #expect(frame(box).minY <= frame(words).minY, "\(box.name) is beside its words")
+        #expect(label.rotationDegrees == -90, "\(label.name) reads bottom to top")
+        #expect(label.textStyle?.colorHex == ConfidenceLayoutTemplate.white)
+        #expect(label.textStyle?.fontName == "HelveticaNeue-Bold")
+        #expect(label.textStyle?.textTransform == .uppercase)
+        // Turned about its centre, the label is centred in the block.
+        #expect(frame(label).midX == frame(box).midX && frame(label).midY == frame(box).midY)
+        #expect(frame(label).width <= frame(box).height && frame(label).height <= frame(box).width)
+        // The block shows only while its label has a section name.
+        let condition = try #require(box.visibilityConditions?.first)
+        #expect(condition.conditionKind == .objectText)
+        #expect(condition.state == .hasText)
+        #expect(condition.objectId == label.id)
+        let boxPlace = try #require(layout.objects.firstIndex { $0.id == box.id })
+        let labelPlace = try #require(layout.objects.firstIndex { $0.id == label.id })
+        #expect(boxPlace < labelPlace, "the name draws over its block")
+    }
+    #expect(frame(block).maxY <= frame(nextBlock).minY, "the blocks are stacked")
 }
 
 @Test func aStageMessageStillReplacesTheWorshipBottomBand() throws {
@@ -70,7 +102,7 @@ private func frame(_ object: SlideObject) -> CGRect {
     }
     let ids = Set(layout.objects.filter { [.clock, .songKey].contains($0.textLink?.source) }.map(\.id))
     #expect(Set(replaced) == ids)
-    #expect(band.minY == 960 && band.maxY == 1080 && band.width == 1920)
+    #expect(band.minY == 945 && band.maxY == 1080 && band.width == 1920, "over the whole bottom bar")
 }
 
 @Test func anUntouchedOldWorshipLayoutTakesTheNewDesignOnce() throws {
@@ -78,25 +110,29 @@ private func frame(_ object: SlideObject) -> CGRect {
     saved.id = "screens.stage.worship"
     let stored = try JSONDecoder().decode(ConfidenceLayout.self, from: JSONEncoder().encode(saved))
     let upgraded = try #require(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: stored))
-    #expect(upgraded.contains { $0.textLink?.source == .currentGroup })
+    #expect(upgraded.contains { $0.textLink?.source == .nextGroup })
     var fresh = saved
     fresh.objects = upgraded
     #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: fresh) == nil, "once only")
 }
 
-@Test func anUntouchedCenteredWorshipLayoutTakesTheLeftAlignedOne() throws {
-    var saved = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", centered: true)
-    saved.id = "screens.stage.worship"
-    let upgraded = try #require(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: saved))
-    let current = try #require(upgraded.first { $0.name == "Current Slide" })
-    #expect(current.textStyle?.horizontalAlignment == .left)
-    var fresh = saved
-    fresh.objects = upgraded
-    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: fresh) == nil, "once only")
+@Test func anUntouchedEarlierWorshipLayoutTakesTheNewOne() throws {
+    for centered in [true, false] {
+        var saved = ConfidenceLayoutTemplate.previousWorship(name: "Stage — Worship", centered: centered)
+        saved.id = "screens.stage.worship"
+        let stored = try JSONDecoder().decode(ConfidenceLayout.self, from: JSONEncoder().encode(saved))
+        let upgraded = try #require(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: stored))
+        let current = try #require(upgraded.first { $0.name == "Current Slide" })
+        #expect(current.textStyle?.colorHex == ConfidenceLayoutTemplate.worshipOrange)
+        #expect(upgraded.contains { $0.groupColorFill == .next })
+        var fresh = saved
+        fresh.objects = upgraded
+        #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: fresh) == nil, "once only")
 
-    var moved = saved
-    moved.objects[1].x = (moved.objects[1].x ?? 0) + 10
-    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: moved) == nil, "a changed one is left alone")
+        var moved = saved
+        moved.objects[1].x = (moved.objects[1].x ?? 0) + 10
+        #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: moved) == nil, "a changed one is left alone")
+    }
 }
 
 @Test func aChangedWorshipLayoutIsLeftAlone() {

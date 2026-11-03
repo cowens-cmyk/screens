@@ -80,7 +80,7 @@ private let sent = Date(timeIntervalSince1970: 1_000_000)
     }
     #expect(band.minX == 0 && band.width == 1920, "across the screen")
     #expect(band.maxY == 1080, "down to the bottom edge")
-    #expect(band.minY == 960, "where the clock and key were")
+    #expect(band.minY == 945, "where the clock and key boxes start")
 }
 
 @Test func aLayoutWithItsOwnStageMessageBoxKeepsIt() {
