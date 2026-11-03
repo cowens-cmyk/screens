@@ -225,7 +225,18 @@ enum SlidePasteboard {
         copy([slide])
     }
 
+    /// Which ⌘C the last copy answered, and whether the next one adds to
+    /// it (several items' slides copied by one ⌘C).
+    static var copyGeneration = -1
+    static var appendsCopy = false
+
     static func copy(_ slides: [Slide]) {
+        var slides = slides
+        if appendsCopy, let data = NSPasteboard.general.data(forType: slidesType),
+           let earlier = try? JSONDecoder().decode([Slide].self, from: data) {
+            slides = earlier + slides
+        }
+        appendsCopy = false
         if let first = slides.first, let data = try? JSONEncoder().encode(first),
            let all = try? JSONEncoder().encode(slides) {
             NSPasteboard.general.clearContents()
@@ -556,6 +567,9 @@ struct SlideGridBody: View {
     @State private var tileFrames: [Int: CGRect] = [:]
 
     @State private var marqueeRect: CGRect?
+    /// The plan page's selection box, when this grid is on the page: a box
+    /// dragged anywhere selects this grid's slides under it.
+    @Environment(\.pageMarquee) private var pageMarquee
     @Environment(\.actionRouter) private var actionRouter
 
     private struct MediaActionTarget: Identifiable {
@@ -639,6 +653,7 @@ struct SlideGridBody: View {
             }
         }
         .coordinateSpace(name: "slideGrid")
+        .modifier(PageMarqueeFollow(pageMarquee: pageMarquee, onBox: selectUnder))
 
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
         .background {
@@ -818,10 +833,26 @@ struct SlideGridBody: View {
         selectionAnchor = nil
     }
 
+    /// The page's box, in this grid's own coordinates: its slides under it.
+    private func selectUnder(_ local: CGRect) {
+        let hit = Set(tileFrames.filter { $0.value.intersects(local) }.map(\.key))
+        if hit != selectedOccurrences { selectedOccurrences = hit }
+        // Paste goes to the last item the box reaches.
+        if !hit.isEmpty { NewSlideRouter.shared.route = NewSlideRoute(contextID: contextID) }
+    }
+
+    /// On the plan page the box is the page's (so it reaches every item);
+    /// in a single presentation, this grid's own.
     private var marqueeGesture: some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .named("slideGrid"))
+        DragGesture(
+            minimumDistance: 4,
+            coordinateSpace: pageMarquee == nil ? .named("slideGrid") : .named(ServiceContinuousView.contentSpace))
             .onChanged { value in
                 guard !runOnly else { return }
+                if let pageMarquee {
+                    pageMarquee.update(start: value.startLocation, location: value.location)
+                    return
+                }
                 let rect = CGRect(
                     x: min(value.startLocation.x, value.location.x),
                     y: min(value.startLocation.y, value.location.y),
@@ -833,7 +864,10 @@ struct SlideGridBody: View {
                 selectedOccurrences = Set(
                     tileFrames.filter { $0.value.intersects(rect) }.map(\.key))
             }
-            .onEnded { _ in marqueeRect = nil }
+            .onEnded { _ in
+                marqueeRect = nil
+                pageMarquee?.end()
+            }
     }
 
     private func handleTap(index: Int, slide: Slide) {
@@ -960,6 +994,10 @@ struct SlideGridBody: View {
     private func copySelectedSlides() -> Bool {
         let slideIDs = SlideBulkEdit.slideIDs(occurrences: selectedOccurrences, slides: slides)
         if !runOnly, !slideIDs.isEmpty {
+            // A box across several items: each grid adds its slides to the
+            // same copy instead of replacing the one before.
+            SlidePasteboard.appendsCopy = pageMarquee != nil && SlidePasteboard.copyGeneration == clipboardRequests.copies
+            SlidePasteboard.copyGeneration = clipboardRequests.copies
             copySlides(slideIDs)
             return true
         } else {
@@ -968,6 +1006,9 @@ struct SlideGridBody: View {
     }
 
     private func pasteFromKeyboard() {
+        // One paste, into the item last clicked or boxed, not one per item
+        // that has slides selected.
+        if pageMarquee != nil, let routed = NewSlideRouter.shared.route.contextID, routed != contextID { return }
         let liveIndex = controls?.liveContextID == contextID ? controls?.liveOccurrence : nil
         let anchorIndex = selectedOccurrences.max() ?? liveIndex
         if !runOnly, let anchorIndex, slides.indices.contains(anchorIndex) {
@@ -2751,5 +2792,63 @@ extension View {
     @ViewBuilder
     func tileHelp(_ text: @autoclosure () -> String) -> some View {
         self
+    }
+}
+
+/// The plan page's selection box: dragged from any empty space on the
+/// page, it selects the slides under it in every item's grid, so a run of
+/// slides across items can be copied, cut or deleted together.
+@MainActor
+@Observable
+final class PageMarquee {
+    /// In the page's content coordinates; nil when no box is being dragged.
+    private(set) var rect: CGRect?
+
+    func gesture(in space: CoordinateSpace, enabled: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: space)
+            .onChanged { [weak self] value in
+                guard enabled else { return }
+                self?.update(start: value.startLocation, location: value.location)
+            }
+            .onEnded { [weak self] _ in self?.end() }
+    }
+
+    func update(start: CGPoint, location: CGPoint) {
+        rect = CGRect(
+            x: min(start.x, location.x), y: min(start.y, location.y),
+            width: abs(location.x - start.x), height: abs(location.y - start.y))
+    }
+
+    func end() { rect = nil }
+
+    static func box(_ rect: CGRect) -> some View {
+        Rectangle()
+            .fill(Color.accentColor.opacity(0.12))
+            .overlay { Rectangle().strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1) }
+            .frame(width: rect.width, height: rect.height)
+            .offset(x: rect.minX, y: rect.minY)
+            .allowsHitTesting(false)
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var pageMarquee: PageMarquee?
+}
+
+/// Hands a grid the page's box in the grid's own coordinates.
+private struct PageMarqueeFollow: ViewModifier {
+    let pageMarquee: PageMarquee?
+    let onBox: (CGRect) -> Void
+    @State private var origin: CGPoint = .zero
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGPoint.self) {
+                $0.frame(in: .named(ServiceContinuousView.contentSpace)).origin
+            } action: { origin = $0 }
+            .onChange(of: pageMarquee?.rect) { _, rect in
+                guard let rect else { return }
+                onBox(rect.offsetBy(dx: -origin.x, dy: -origin.y))
+            }
     }
 }

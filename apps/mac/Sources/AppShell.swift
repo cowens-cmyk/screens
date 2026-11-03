@@ -129,12 +129,21 @@ struct SidebarSectionHeader<Accessory: View>: View {
 
 struct ModeSwitcher: View {
     @Binding var modeRaw: String
+    /// Media opens the media bin under the plan rather than taking over
+    /// the window.
+    @AppStorage(MediaDrawer.openKey) private var mediaOpen = false
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(AppMode.allCases, id: \.rawValue) { mode in
-                let selected = modeRaw == mode.rawValue
-                Button { modeRaw = mode.rawValue } label: {
+                let selected = mode == .media ? mediaOpen : modeRaw == mode.rawValue
+                Button {
+                    if mode == .media {
+                        withAnimation(.easeOut(duration: 0.2)) { mediaOpen.toggle() }
+                    } else {
+                        modeRaw = mode.rawValue
+                    }
+                } label: {
                     Text(mode.title)
                         .font(.subheadline.weight(selected ? .semibold : .regular))
                         .foregroundStyle(selected ? Color.primary : Color.secondary)
@@ -154,7 +163,14 @@ struct ModeSwitcher: View {
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
         )
         .fixedSize()
-        .help("Present, Edit or Scheduler")
+        .help("Present, Edit or Scheduler; Media opens the media bin under the plan")
+        .onAppear {
+            // Media used to be a mode of its own.
+            if modeRaw == AppMode.media.rawValue {
+                modeRaw = AppMode.present.rawValue
+                mediaOpen = true
+            }
+        }
     }
 }
 

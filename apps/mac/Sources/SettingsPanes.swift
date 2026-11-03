@@ -86,6 +86,7 @@ struct MediaSettingsPane: View {
             switch page {
             case .list:
                 Form {
+                    SoundOutputSection()
                     VideoInputsSection { page = .videoInput($0) }
                     AudioInputsSection { page = .audioInput($0) }
                 }
@@ -707,6 +708,57 @@ private struct WebInputSheet: View {
         }
         .padding(20)
         .frame(width: 420)
+    }
+}
+
+/// Where Screens' sound goes: one device, kept even when macOS changes its
+/// own output (a Mac can switch outputs by itself when something is
+/// plugged in or a display wakes). Left on the Mac's output, it follows
+/// macOS. This is the Main mix's output: songs, playlists and video sound.
+private struct SoundOutputSection: View {
+    @State private var mixes = AudioMixInventory.shared
+    @State private var outputs = AudioOutputInventory.shared
+    @State private var devices: [AudioOutputDevice] = []
+
+    private var chosen: AudioOutputInventory.Entry? {
+        outputs.entry(id: mixes.primaryToken(mixId: AudioMixInventory.mainID))
+    }
+
+    var body: some View {
+        Section {
+            Picker("Play through", selection: Binding(get: { chosen?.deviceUID ?? "" }, set: choose)) {
+                Text("The Mac's output (follows macOS)").tag("")
+                Divider()
+                ForEach(devices, id: \.uid) { Text($0.name).tag($0.uid) }
+                if let chosen, let uid = chosen.deviceUID, !devices.contains(where: { $0.uid == uid }) {
+                    Text("\(chosen.name) (not connected)").tag(uid)
+                }
+            }
+            .settingsAnchor("media.soundOutput")
+        } header: {
+            Text("Sound Output")
+        } footer: {
+            Text(footer)
+        }
+        .onAppear { devices = AudioDeviceList.outputDevices() }
+    }
+
+    private var footer: String {
+        guard let chosen, let uid = chosen.deviceUID else {
+            return "Screens plays wherever macOS sends sound, so it moves when the Mac switches outputs. Pick a device to keep it there."
+        }
+        return devices.contains(where: { $0.uid == uid })
+            ? "Screens always plays through \(chosen.name), whatever macOS is set to."
+            : "\(chosen.name) isn't connected: Screens plays through the Mac's output until it's back, then returns to it."
+    }
+
+    private func choose(_ uid: String) {
+        if uid.isEmpty {
+            mixes.setPrimary(mixId: AudioMixInventory.mainID, token: AudioMixInventory.defaultOutputID)
+        } else {
+            let output = outputs.ensure(deviceUID: uid, channelOffset: 0)
+            mixes.setPrimary(mixId: AudioMixInventory.mainID, token: output.id)
+        }
     }
 }
 

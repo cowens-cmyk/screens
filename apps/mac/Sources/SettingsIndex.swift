@@ -261,6 +261,11 @@ enum SettingsIndex {
 
     private static let media: [SettingsEntry] = [
         SettingsEntry(
+            id: "media.soundOutput", category: .media,
+            title: "Sound output",
+            caption: "The device Screens plays through, kept even when macOS switches its own output; or the Mac's output, which follows macOS.",
+            keywords: "audio sound output speakers headphones device default macos switch"),
+        SettingsEntry(
             id: "avInputs.cameras", category: .media,
             title: "Video inputs",
             caption: "Added inputs run warm from launch and appear in Live Input pickers.",

@@ -52,6 +52,9 @@ struct ServiceContinuousView: View {
     /// The livestream question for slides just made from media here.
     @State private var livestreamPrompt: LivestreamPromptRequest?
 
+    /// The selection box dragged across the page, from any empty space.
+    @State private var pageMarquee = PageMarquee()
+
     /// The page's side margin; the slide grids reach their marquee over it.
     /// 24 keeps the first column clear of the window edge on the booth's
     /// screen; 12 read as cramped there.
@@ -109,6 +112,20 @@ struct ServiceContinuousView: View {
                             .background(alignment: .topLeading) {
                                 PresentScrollWatch().frame(width: 1, height: 1)
                             }
+                            // Empty space anywhere on the page (the margins,
+                            // between items, beside a short row) starts a
+                            // selection box over the slides of every item.
+                            .background {
+                                Color.clear
+                                    .contentShape(Rectangle())
+                                    .gesture(pageMarquee.gesture(in: .named(Self.contentSpace), enabled: !runOnly))
+                            }
+                            .overlay(alignment: .topLeading) {
+                                if let rect = pageMarquee.rect {
+                                    PageMarquee.box(rect)
+                                }
+                            }
+                            .environment(\.pageMarquee, pageMarquee)
                             .coordinateSpace(name: Self.contentSpace)
                         }
                         .coordinateSpace(name: Self.scrollSpace)

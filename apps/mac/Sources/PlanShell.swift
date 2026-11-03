@@ -330,6 +330,9 @@ struct PlanShell: View {
     private var slidesArea: some View {
         center
             .frame(minWidth: 320, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+            // The media bin sits under the plan, which shrinks to make room
+            // and stays where media can be dropped on it.
+            .safeAreaInset(edge: .bottom, spacing: 0) { MediaDrawer(model: model) }
             // The page stays between the docked columns, so nothing on it
             // draws over their edges; above and below it still scrolls on
             // under the bubble and the control bar.

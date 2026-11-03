@@ -370,6 +370,7 @@ public final class AudioEngine: @unchecked Sendable {
 
             for each in decks { each.pause() }
             engine.stop()
+            desiredDeviceUID = device?.uid
             let target = device ?? AudioDeviceList.defaultOutputDevice()
             if let id = target?.id {
                 try engine.outputNode.auAudioUnit.setDeviceID(id)
@@ -383,6 +384,24 @@ public final class AudioEngine: @unchecked Sendable {
 
     private var desiredChannelOffset = 0
     private var deviceChannelCount = 2
+    /// The device chosen for this engine, by UID (its AudioDeviceID changes
+    /// when it's unplugged and back). Nil follows the Mac's default.
+    private var desiredDeviceUID: String?
+
+    /// Points the output back at the chosen device. macOS switching its
+    /// default output reconfigures the engine, which then plays to the new
+    /// default; this keeps Screens on the device the church picked.
+    private func pinOutputDevice() {
+        let target = desiredDeviceUID.flatMap { uid in AudioDeviceList.outputDevices().first { $0.uid == uid } }
+            ?? AudioDeviceList.defaultOutputDevice()
+        guard let target else { return }
+        let current = engine.outputNode.auAudioUnit.deviceID
+        guard current != target.id else { return }
+        let wasRunning = engine.isRunning
+        if wasRunning { engine.stop() }
+        try? engine.outputNode.auAudioUnit.setDeviceID(target.id)
+        deviceChannelCount = target.channelCount
+    }
 
     private func applyChannelMap() {
         guard let unit = engine.outputNode.audioUnit else { return }
@@ -406,6 +425,7 @@ public final class AudioEngine: @unchecked Sendable {
     }
 
     private func rebuildPlayback() {
+        pinOutputDevice()
         applyChannelMap()
         let deck = decks[activeIndex]
         guard let url = deck.url else { return }
@@ -452,6 +472,7 @@ public final class AudioEngine: @unchecked Sendable {
 
     private func ensureRunning() throws {
         guard !engine.isRunning else { return }
+        pinOutputDevice()
         do { try engine.start() } catch { throw AudioEngineError.engineStartFailed(error) }
     }
 
