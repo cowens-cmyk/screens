@@ -21,10 +21,20 @@ struct SongEditorView: View {
     @State private var pasting = false
     @State private var pastedText = ""
     @State private var pasteLinesPerSlide = 2
+    /// The stored slides the cards were made from, to tell when the song
+    /// changed underneath unsaved cards (an undo, a Shepherd update).
+    @State private var base: [Slide] = []
+    @State private var changedUnderneath = false
 
     private var presentation: Presentation? { model.presentation(presentationID) }
     private var sections: [PresentationSection] { presentation?.sections ?? [] }
     private var unsaved: Bool { loaded && cards != saved }
+    private var detailsChanged: Bool {
+        guard loaded, let presentation else { return false }
+        let title = title.trimmingCharacters(in: .whitespaces)
+        return (!title.isEmpty && title != presentation.name)
+            || key.trimmingCharacters(in: .whitespaces) != (presentation.musicKey ?? "")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,6 +53,30 @@ struct SongEditorView: View {
         }
         .task(id: presentationID) { load() }
         .sheet(isPresented: $pasting) { pasteSheet }
+        // The song changed in the library (an undo, a Shepherd update):
+        // cards with nothing typed into them show the new slides.
+        .onChange(of: presentation?.slides) { _, _ in
+            if loaded, !unsaved, let presentation { loadCards(presentation) }
+        }
+        .onChange(of: cards) { _, _ in registerPending() }
+        .onChange(of: title) { _, _ in registerPending() }
+        .onChange(of: key) { _, _ in registerPending() }
+        // Every other editor saves as you type, so leaving this one (the
+        // Slide Editor, another item, Present) saves too rather than
+        // dropping the cards.
+        .onDisappear {
+            if unsaved { commitSlides() } else if detailsChanged { saveDetails() }
+            SongEditorPending.clear(presentationID)
+        }
+        .confirmationDialog("This song's slides changed while you were editing.",
+                            isPresented: $changedUnderneath) {
+            Button("Save My Slides") { commitSlides() }
+            Button("Use the New Slides", role: .destructive) {
+                if let presentation { loadCards(presentation) }
+            }
+        } message: {
+            Text("Saving puts these cards over the new slides.")
+        }
     }
 
     // MARK: Slides
@@ -94,7 +128,7 @@ struct SongEditorView: View {
                 Button("Save Slides", action: saveSlides)
                     .keyboardShortcut(.return, modifiers: .command)
                     .buttonStyle(.borderedProminent)
-                    .disabled(!unsaved && title == presentation?.name)
+                    .disabled(!unsaved && !detailsChanged)
             }
         }
         .padding(16)
@@ -158,12 +192,13 @@ struct SongEditorView: View {
     }
 
     /// Pasted words split into cards the way an import splits them; they
-    /// replace an empty song's cards, else they go after the last one.
+    /// replace an empty song's cards, else they go after the last one. A
+    /// section pasted again is its cards again, so the repeat is sung.
     private func addPasted() {
         let built = LyricTextImporter.makePresentation(
             LyricCleanup.clean(pastedText, removePunctuation: LyricImportSettings.removePunctuation),
             linesPerSlide: pasteLinesPerSlide)
-        let new = SongSlides.cards(from: built).filter { !Self.isEmpty($0) }
+        let new = SongSlides.cardsAsSung(from: built).filter { !Self.isEmpty($0) }
         if cards.allSatisfy(Self.isEmpty) { cards = new } else { cards += new }
         pastedText = ""
         pasting = false
@@ -222,6 +257,11 @@ struct SongEditorView: View {
         guard let presentation else { return }
         title = presentation.name
         key = presentation.musicKey ?? ""
+        loadCards(presentation)
+    }
+
+    private func loadCards(_ presentation: Presentation) {
+        base = presentation.slides
         cards = SongSlides.cards(from: presentation)
         if cards.isEmpty { cards = [SongSlides.Card(section: "Verse 1", lines: [SongSlides.Line(), SongSlides.Line()])] }
         // A song made empty to type into has one blank slide and no section.
@@ -242,31 +282,66 @@ struct SongEditorView: View {
     }
 
     private func saveDetails() {
-        let title = title.trimmingCharacters(in: .whitespaces)
-        let key = key.trimmingCharacters(in: .whitespaces)
-        model.updatePresentation(presentationID) { song in
-            if !title.isEmpty { song.name = title }
-            song.musicKey = key.isEmpty ? nil : key
+        Self.write(nil, title: title, key: key, to: presentationID, model: model)
+    }
+
+    /// Save Slides: the cards go over the stored song, unless the song's
+    /// slides changed since the cards were made from them; then the
+    /// operator picks which to keep.
+    private func saveSlides() {
+        if unsaved, let stored = presentation?.slides, stored != base {
+            changedUnderneath = true
+            return
         }
+        commitSlides()
     }
 
     /// The cards become the song's slides, sections and order.
-    private func saveSlides() {
-        guard var song = presentation else { return }
-        SongSlides.apply(cards, to: &song)
-        let built = song
-        model.updatePresentation(presentationID) { current in
-            current.slides = built.slides
-            current.sections = built.sections
-            current.arrangements = built.arrangements
-            current.defaultArrangementId = built.defaultArrangementId
-            current.reflowSource = built.reflowSource
-            current.chordProSource = built.chordProSource
-        }
-        saveDetails()
+    private func commitSlides() {
+        guard let built = Self.write(cards, title: title, key: key, to: presentationID, model: model)?.song
+        else { return }
+        base = built.slides
         cards = SongSlides.cards(from: built)
         saved = cards
         sequence = Self.order(of: built)
+    }
+
+    /// Writes the cards (when given), title and key over the stored song.
+    @discardableResult
+    private static func write(
+        _ cards: [SongSlides.Card]?, title: String, key: String, to id: String, model: AppModel
+    ) -> (task: Task<LibraryBatch, any Error>, song: Presentation)? {
+        guard var song = model.presentation(id) else { return nil }
+        if let cards { SongSlides.apply(cards, to: &song) }
+        let built = song
+        let title = title.trimmingCharacters(in: .whitespaces)
+        let key = key.trimmingCharacters(in: .whitespaces)
+        let withSlides = cards != nil
+        let task = model.updatePresentation(id) { current in
+            if withSlides {
+                current.slides = built.slides
+                current.sections = built.sections
+                current.arrangements = built.arrangements
+                current.defaultArrangementId = built.defaultArrangementId
+                current.reflowSource = built.reflowSource
+                current.chordProSource = built.chordProSource
+            }
+            if !title.isEmpty { current.name = title }
+            current.musicKey = key.isEmpty ? nil : key
+        }
+        return (task, built)
+    }
+
+    /// Hands quitting what's not saved yet, since onDisappear doesn't run
+    /// when Screens quits.
+    private func registerPending() {
+        guard loaded, unsaved || detailsChanged else {
+            SongEditorPending.clear(presentationID)
+            return
+        }
+        let cards: [SongSlides.Card]? = unsaved ? cards : nil
+        let (title, key, id, model) = (title, key, presentationID, model)
+        SongEditorPending.pending = (id, { Self.write(cards, title: title, key: key, to: id, model: model)?.task })
     }
 
     private func saveSequence() {
@@ -405,5 +480,22 @@ private struct SongSlideCard: View {
 
     private func removeLine(_ id: String) {
         card.lines.removeAll { $0.id == id }
+    }
+}
+
+/// The song editor's cards and details that aren't saved yet, so quitting
+/// can save them first.
+@MainActor
+enum SongEditorPending {
+    static var pending: (id: String, save: () -> Task<LibraryBatch, any Error>?)?
+
+    static func clear(_ id: String) {
+        if pending?.id == id { pending = nil }
+    }
+
+    /// Saves them; returns the write to wait for, if there was one.
+    static func save() -> Task<LibraryBatch, any Error>? {
+        defer { pending = nil }
+        return pending?.save()
     }
 }

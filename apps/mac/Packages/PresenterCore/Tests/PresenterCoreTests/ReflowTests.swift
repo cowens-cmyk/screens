@@ -212,3 +212,46 @@ import Testing
     #expect(built.slides[1].objects.map(\.text) == ["Amazing grace"])
     #expect(built.arrangement == nil)
 }
+
+@Test func reflowKeepsTheSongsOrdersWhereTheSectionsAreStillThere() {
+    let first = Reflow.build(from: "Verse 1\nA\nB\n\nChorus\nC\nD", linesPerSlide: 2)
+    var song = Presentation(id: "s", name: "Song", presentationKind: .song, themeId: "", slides: [])
+    Reflow.apply(first, to: &song)
+    let ids = song.sections!.map(\.id)
+    song.arrangements = [
+        Arrangement(id: "default", name: "Default", sectionIds: [ids[0], ids[1], ids[1]]),
+        Arrangement(id: "shepherd", name: "Shepherd", sectionIds: [ids[1], ids[0]]),
+    ]
+    song.defaultArrangementId = "default"
+
+    let again = Reflow.build(from: "Verse 1\nA\nB\n\nchorus\nC\nD\n\nTag\nE", linesPerSlide: 1)
+    Reflow.apply(again, to: &song)
+    #expect(Array(song.sections!.prefix(2).map(\.id)) == ids)
+    #expect(song.slides.count == 5)
+    #expect(song.defaultArrangementId == "default")
+    let tag = song.sections![2].id
+    #expect(song.arrangements?.map(\.id) == ["default", "shepherd"])
+    #expect(song.arrangements?[0].sectionIds == [ids[0], ids[1], ids[1], tag])
+    #expect(song.arrangements?[1].sectionIds == [ids[1], ids[0]])
+}
+
+@Test func reflowOfASongWithNoOrderKeepsThePastedRepeats() {
+    var song = Presentation(id: "s", name: "Song", presentationKind: .song, themeId: "", slides: [])
+    Reflow.apply(Reflow.build(from: "Chorus\nC\n\nVerse 1\nA\n\nChorus", linesPerSlide: 2), to: &song)
+    let names = Dictionary(uniqueKeysWithValues: song.sections!.map { ($0.id, $0.name) })
+    let order = song.arrangements?.first { $0.id == song.defaultArrangementId }?.sectionIds.compactMap { names[$0] }
+    #expect(order == ["Chorus", "Verse 1", "Chorus"])
+}
+
+@Test func replacingTheWholeTextMovesTheChordsWithTheWords() {
+    var lyric = SlideObject(id: "l", objectKind: .text, name: "Lyrics", text: "Amazing grace\nhow sweet")
+    lyric.chords = [
+        ChordPlacement(line: 0, column: 8, symbol: "C"),
+        ChordPlacement(line: 1, column: 4, symbol: "D"),
+    ]
+    lyric.replaceText(with: "Oh amazing grace\nhow sweet")
+    #expect(lyric.chords?.map(\.column) == [11, 4])
+    lyric.replaceText(with: "Oh amazing grace\nso\nhow sweet")
+    #expect(lyric.chords?.map(\.line) == [0, 2])
+    #expect(lyric.text == "Oh amazing grace\nso\nhow sweet")
+}

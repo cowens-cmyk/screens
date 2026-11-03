@@ -192,6 +192,14 @@ struct ChordEditorSheet: View {
                 .onExitCommand {
                     editingChip = nil
                     focusedChip = nil
+                    // A chord just placed and never typed goes again,
+                    // rather than staying as an empty one.
+                    guard chord.symbol.isEmpty else { return }
+                    writeChords(row: row) { chords in
+                        if chords.indices.contains(id.index), chords[id.index].symbol.isEmpty {
+                            chords.remove(at: id.index)
+                        }
+                    }
                 }
                 .onChange(of: focusedChip) { _, focus in
 
@@ -200,9 +208,14 @@ struct ChordEditorSheet: View {
                 .offset(x: x)
         } else {
             ChipLabel(symbol: chord.symbol, ink: Self.chordInk) {
+                commitOpenChip()
+                let index = storedChords(row).firstIndex {
+                    $0.column == chord.column && $0.symbol == chord.symbol
+                } ?? id.index
+                let chip = ChipID(rowID: row.id, index: index)
                 editingText = chord.symbol
-                editingChip = id
-                focusedChip = id
+                editingChip = chip
+                focusedChip = chip
             } onDelete: {
                 writeChords(row: row) { chords in
                     chords.remove(at: id.index)
@@ -244,7 +257,8 @@ struct ChordEditorSheet: View {
             chords.sort { ($0.column, $0.symbol) < ($1.column, $1.symbol) }
         }
 
-        var placed = row.chords
+        commitOpenChip()
+        var placed = storedChords(row)
         place(&placed)
         let newIndex = placed.firstIndex { $0.column == column && $0.symbol.isEmpty } ?? 0
         writeChords(row: row, place)
@@ -252,6 +266,23 @@ struct ChordEditorSheet: View {
         let chip = ChipID(rowID: row.id, index: newIndex)
         editingChip = chip
         focusedChip = chip
+    }
+
+    /// The chip being typed into is written before another is opened, so
+    /// its chord isn't lost and an empty new one isn't left behind.
+    private func commitOpenChip() {
+        guard let open = editingChip,
+              let presentation = model.presentation(presentationID),
+              let row = Self.rows(of: presentation).first(where: { $0.id == open.rowID })
+        else { return }
+        commitChipEdit(row: row, index: open.index)
+    }
+
+    /// The row's chords as stored now: the row a tap was drawn with can be
+    /// a write behind, and its indices with it.
+    private func storedChords(_ row: Row) -> [ChordPlacement] {
+        model.presentation(presentationID)
+            .flatMap { Self.rows(of: $0).first { $0.id == row.id } }?.chords ?? row.chords
     }
 
     private func commitChipEdit(row: Row, index: Int) {
