@@ -378,6 +378,7 @@ final class AppModel {
         try migrateMediaObjectsToShapes(prepared, rootURL: root)
         try migrateAnimationVocabulary(prepared, rootURL: root)
         try migrateCrossfadeDefaults(prepared, rootURL: root)
+        try migrateImportedCutTransitions(prepared, rootURL: root)
         try backfillContentIndex(prepared, rootURL: root)
         try backfillCCLIIndex(prepared, rootURL: root)
         try seedBasics(prepared, rootURL: root)
@@ -474,6 +475,13 @@ final class AppModel {
             try prepared.migrateCrossfadeDefaults()
             FileManager.default.createFile(atPath: marker.path, contents: nil)
         }
+    }
+
+    @LibraryActor private static func migrateImportedCutTransitions(_ prepared: Library, rootURL: URL) throws {
+        let marker = rootURL.appendingPathComponent(".migrated-imported-cut-transitions-v1")
+        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
+        try prepared.migrateImportedCutTransitions()
+        FileManager.default.createFile(atPath: marker.path, contents: nil)
     }
 
     @LibraryActor private static func migrateAnimationVocabulary(_ prepared: Library, rootURL: URL) throws {

@@ -504,8 +504,10 @@ public enum ProDocumentMapper {
         let name = rv.effect.name.trimmingCharacters(in: .whitespaces)
         let lowered = name.lowercased()
         let duration = rv.duration > 0 ? rv.duration : nil
+        // ProPresenter writes Cut on every slide that doesn't pick a
+        // transition; kept, it would beat the room's default on each one.
         if lowered.isEmpty || lowered == "none" || lowered == "cut" {
-            return Transition(transitionKind: .cut)
+            return nil
         }
         if lowered.contains("blur") {
             return Transition(transitionKind: .blurDissolve, durationSeconds: duration)

@@ -1196,8 +1196,9 @@ struct ProDocumentMapperTests {
             == Transition(transitionKind: .fadeBlack, durationSeconds: 1))
         #expect(ProDocumentMapper.transition(from: rvTransition("Blur Dissolve", duration: 2), state: &state)
             == Transition(transitionKind: .blurDissolve, durationSeconds: 2))
-        #expect(ProDocumentMapper.transition(from: rvTransition("None", duration: 0.5), state: &state)
-            == Transition(transitionKind: .cut))
+        // A ProPresenter cut follows the room default rather than beating it.
+        #expect(ProDocumentMapper.transition(from: rvTransition("None", duration: 0.5), state: &state) == nil)
+        #expect(ProDocumentMapper.transition(from: rvTransition("Cut", duration: 0), state: &state) == nil)
         #expect(ProDocumentMapper.transition(from: RVData_Transition(), state: &state) == nil)
     }
 
