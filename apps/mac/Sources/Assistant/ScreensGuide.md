@@ -219,7 +219,7 @@ The bottom bar has **New** (a new presentation starts with no slides; in Confide
 
 **Right-click a library item** (depending on kind): **Add to Service** (adds to the current plan), **Export…**, **Add Scripture…**, **Add Point Slides…**, **Edit…**, **Media Settings…**, **Replace Media File…**, **Locate Missing Media…**, **Rename…**, **Duplicate**, **Apply Theme** submenu and **Edit Chords…** (presentations), **Apply to All Presentations** (themes), **Show in Finder** (media), **Delete** (cannot be undone).
 
-**Importing media.** Media tab › **Import…**, or drag files onto the Media library, or the **Media Library** window, or plan › Add Item › **Video or Image…**. Files the app can't play directly are flagged for transcode. Put countdown videos in a Media folder named **Countdowns**.
+**Importing media.** Media tab › **Import…**, or drag files onto the Media library, or the **Media Library** window, or plan › Add Item › **Video or Image…**. While files are being added, a bar under the media bin's header shows how far it has got ("Importing 3 of 12 · file name"). Files the app can't play directly are flagged for transcode. Put countdown videos in a Media folder named **Countdowns**.
 
 ## Media Library
 
