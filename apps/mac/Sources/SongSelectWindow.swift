@@ -181,10 +181,15 @@ final class SongSelectWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, 
     private func imported(_ url: URL) async {
         guard let model else { return }
         let text: String?
-        if url.pathExtension.lowercased() == "pdf" {
+        let ext = url.pathExtension.lowercased()
+        if ext == "pdf" {
             text = await Task.detached { ChordChartImport.chordPro(fromPDF: url) }.value
-        } else {
+        } else if LyricsFetcher.lyricExtensions.contains(ext) {
             text = LyricsFetcher.read(url)
+        } else {
+            // A .usr, .zip or other download isn't lyrics text; read as text
+            // it would make a song of junk and link it to the plan.
+            text = nil
         }
         guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             page.status = "\(url.lastPathComponent) has no lyrics Screens can read. Try the lyrics or ChordPro download."

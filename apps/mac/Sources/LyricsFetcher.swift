@@ -22,8 +22,9 @@ final class LyricsFetcher {
 
     private var watch: Task<Void, Never>?
 
-    /// File types SongSelect and chord-chart tools download.
-    nonisolated static let lyricExtensions: Set<String> = ["txt", "chordpro", "cho", "chopro", "crd", "pro6"]
+    /// File types SongSelect and chord-chart tools download. Not .pro6:
+    /// it is ProPresenter 6 XML, and read as text it fills a song with markup.
+    nonisolated static let lyricExtensions: Set<String> = ["txt", "chordpro", "cho", "chopro", "crd"]
 
     private init() {}
 
@@ -244,7 +245,7 @@ final class LyricsFetcher {
     }
 
     nonisolated static func read(_ url: URL) -> String? {
-        (try? String(contentsOf: url, encoding: .utf8)) ?? (try? String(contentsOf: url, encoding: .isoLatin1))
+        (try? Data(contentsOf: url)).flatMap(LyricTextImporter.decode)
     }
 
     /// The presentation a plan item has now; nil when it has none (or is gone).

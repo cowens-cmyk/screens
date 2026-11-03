@@ -37,12 +37,15 @@ public enum ShepherdPlanSync {
     }
 
     /// `songRef` only looks up presentations already in the library; it must not
-    /// import or create songs. Nil leaves an info item with song metadata for the UI.
+    /// import or create songs. Nil leaves an info item with song metadata for the UI,
+    /// unless the item was already linked for the same Shepherd song and
+    /// `inLibrary` says that presentation is still there.
     public static func items(
         for plan: ShepherdClient.PlanDetail,
         serviceTypeName: String? = nil,
         rules: ServiceLinkRules,
         existing: [ServiceItem],
+        inLibrary: (String) -> Bool = { _ in false },
         songRef: (PlanFeed.Item) -> (refId: String, arrangementId: String?)?
     ) -> [ServiceItem] {
         let mapped = plan.items.sorted { $0.position < $1.position }.map { item in
@@ -70,6 +73,15 @@ public enum ShepherdPlanSync {
         for song in mapped where song.itemType == "song" {
             guard let index = result.firstIndex(where: { $0.mxuSourceItemId == song.id }) else { continue }
             let link = songRef(song)
+            // No match isn't a reason to drop a link the item already had for
+            // this Shepherd song: two library songs with one CCLI number, or a
+            // song linked by hand under another name, never match. Dropping it
+            // would flag the song again and import yet another copy.
+            if link == nil, let old = existing.first(where: { $0.mxuSourceItemId == song.id }),
+               !old.refId.isEmpty, old.refId == result[index].refId,
+               old.mxuSourceSongId == song.song?.id, inLibrary(old.refId) {
+                continue
+            }
             let sameSong = link != nil && link?.refId == result[index].refId
             result[index].itemKind = link == nil ? .info : .presentation
             result[index].refId = link?.refId ?? ""

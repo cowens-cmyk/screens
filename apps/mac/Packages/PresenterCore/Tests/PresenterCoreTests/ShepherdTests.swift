@@ -365,6 +365,29 @@ struct ShepherdTests {
         #expect(synced[1].mxuSongTitle == "Living Hope" && synced[1].mxuCcliNumber == 7106807)
     }
 
+    @Test func resyncKeepsALinkTheLookupCantReproduceWhileThatSongIsInTheLibrary() throws {
+        let plan = try shepherdDetail()
+        let rules = ServiceLinkRules(id: "rules", rules: [])
+        var original = ShepherdPlanSync.items(for: plan, rules: rules, existing: []) { _ in nil }
+        // Linked by hand, or to one of two songs sharing a CCLI number: the
+        // library lookup finds no single match.
+        original[1].itemKind = .presentation
+        original[1].refId = "acoustic"
+        let kept = ShepherdPlanSync.items(
+            for: plan, rules: rules, existing: original, inLibrary: { $0 == "acoustic" }) { _ in nil }
+        #expect(kept[1].itemKind == .presentation && kept[1].refId == "acoustic")
+        // The song was deleted: the item is flagged again.
+        let gone = ShepherdPlanSync.items(
+            for: plan, rules: rules, existing: original, inLibrary: { _ in false }) { _ in nil }
+        #expect(gone[1].itemKind == .info && gone[1].refId.isEmpty)
+        // Another Shepherd song in that slot: the old link doesn't carry over.
+        var replaced = plan
+        replaced.items[1].song?.id = "another-song"
+        let other = ShepherdPlanSync.items(
+            for: replaced, rules: rules, existing: original, inLibrary: { _ in true }) { _ in nil }
+        #expect(other[1].itemKind == .info && other[1].refId.isEmpty)
+    }
+
     @Test func resyncKeepsTheItemsArrangementWhileTheSongIsTheSame() throws {
         let plan = try shepherdDetail()
         let rules = ServiceLinkRules(id: "rules", rules: [])
