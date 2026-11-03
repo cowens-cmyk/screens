@@ -22,6 +22,10 @@ struct LightkeySetupSheet: View {
     @State private var step: Step = .connect
     @State private var sent = false
     @State private var learned: Set<String> = []
+    /// The rows as they were when Start was pressed. The table is synced and
+    /// can lose a row from another Mac while the sheet is open; the steps
+    /// keep to the list they started with.
+    @State private var started: [LightingCue] = []
 
     /// The positions Lightkey should learn: every row that's on.
     private var cues: [LightingCue] {
@@ -53,7 +57,7 @@ struct LightkeySetupSheet: View {
     private var progress: String {
         switch step {
         case .connect: "Step 1"
-        case .cue(let index): "Scene \(index + 1) of \(cues.count)"
+        case .cue(let index): "Scene \(index + 1) of \(started.count)"
         case .section(let index): "Section \(index + 1) of \(LightkeyLink.sectionNotes.count)"
         case .done: "Done"
         }
@@ -87,7 +91,7 @@ struct LightkeySetupSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         case .cue(let index):
-            let cue = cues[index]
+            let cue = started[index]
             learnStep(name: title(cue), note: cue.note, key: cue.position,
                       detail: "the scene Lightkey should show for \(title(cue))")
         case .section(let index):
@@ -159,9 +163,10 @@ struct LightkeySetupSheet: View {
     private func next() {
         switch step {
         case .connect:
-            step = cues.isEmpty ? sectionsOrDone : .cue(0)
+            started = cues
+            step = started.isEmpty ? sectionsOrDone : .cue(0)
         case .cue(let index):
-            step = index + 1 < cues.count ? .cue(index + 1) : sectionsOrDone
+            step = index + 1 < started.count ? .cue(index + 1) : sectionsOrDone
         case .section(let index):
             step = index + 1 < LightkeyLink.sectionNotes.count ? .section(index + 1) : .done
         case .done:
@@ -172,7 +177,7 @@ struct LightkeySetupSheet: View {
     private func back() {
         switch step {
         case .cue(let index): step = index > 0 ? .cue(index - 1) : .connect
-        case .section(let index): step = index > 0 ? .section(index - 1) : (cues.isEmpty ? .connect : .cue(cues.count - 1))
+        case .section(let index): step = index > 0 ? .section(index - 1) : (started.isEmpty ? .connect : .cue(started.count - 1))
         default: break
         }
     }

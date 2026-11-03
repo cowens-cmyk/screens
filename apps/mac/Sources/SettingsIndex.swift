@@ -414,7 +414,7 @@ enum SettingsIndex {
         SettingsEntry(
             id: "advanced.updates", category: .advanced,
             title: "Check for updates automatically",
-            caption: "At launch and every six hours.",
+            caption: "At launch and every six hours. A new version shows in the Screens menu; nothing installs until you choose it.",
             keywords: "update updates version release download install automatic"),
         SettingsEntry(
             id: "advanced.diagnostics", category: .advanced,

@@ -457,7 +457,7 @@ struct KeyChordChip: View {
     private func beginRecording() {
         guard !recording, fixedText == nil else { return }
         recording = true
-        KeyMapStore.shared.recorder = { result in
+        KeyMapStore.shared.beginRecording { result in
             recording = false
             KeyMapStore.shared.recorder = nil
             onRecord(result)

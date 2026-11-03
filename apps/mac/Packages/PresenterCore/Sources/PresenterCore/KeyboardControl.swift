@@ -25,6 +25,17 @@ public struct KeyChord: Codable, Hashable, Sendable {
 
     public var isBare: Bool { !hasCommand && !hasOption && !hasControl && !hasShift }
 
+    /// A key that types or moves in a text field: a character, Space,
+    /// Return, Tab, Escape, Delete or an arrow, alone or with Shift. As a
+    /// menu key equivalent it would be taken before the field sees it.
+    public var typesInTextFields: Bool {
+        guard !hasCommand, !hasOption, !hasControl else { return false }
+        let token = KeyChord.normalizeToken(key)
+        return token.count == 1 || [
+            "space", "return", "tab", "escape", "delete", "left", "right", "up", "down",
+        ].contains(token)
+    }
+
     public func matches(_ other: KeyChord) -> Bool {
         KeyChord.normalizeToken(key) == KeyChord.normalizeToken(other.key)
             && hasCommand == other.hasCommand && hasOption == other.hasOption

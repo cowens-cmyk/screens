@@ -60,7 +60,7 @@ Simple Mode is the volunteer view behind a passcode (the run-only lock). It repl
 
 ## Menu bar and shortcuts
 
-**Screens menu**: Settings… (⌘,), **Check for Updates…**.
+**Screens menu**: Settings… (⌘,), **Check for Updates…** (it reads **Update to Screens <version>…** once the automatic check finds one; the automatic check never puts up an alert, and nothing installs until someone chooses it).
 
 **File**
 - **New Presentation** ⌘N, **New Slide…** ⌘⇧N, **New Service**, **New Theme**, **Add to Plan…** ⌥⌘N

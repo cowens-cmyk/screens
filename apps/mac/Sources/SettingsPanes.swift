@@ -239,8 +239,6 @@ struct AdvancedSettingsPane: View {
                 }
             } header: {
                 Text("Updates")
-            } footer: {
-                Text("Turning automatic checks on or off takes effect the next time Screens opens.")
             }
             Section {
                 SettingsRow("advanced.diagnostics") {
@@ -443,6 +441,7 @@ private struct VideoInputDetail: View {
     @State private var confirmRemove = false
     @State private var assigningWeb = false
     @State private var webURL = ""
+    @FocusState private var webURLFocused: Bool
     @State private var decklink = DeckLinkInputCatalog.shared
 
     @State private var frameRates: [Double] = []
@@ -503,10 +502,13 @@ private struct VideoInputDetail: View {
                     }
                     if entry.kind == .web {
                         TextField("Web address", text: $webURL)
-                            .onSubmit {
-                                guard let url = WebInputURL.normalized(webURL) else { return }
-                                inventory.assignDevice(id: id, kind: .web, sourceId: url.absoluteString)
-                            }
+                            .focused($webURLFocused)
+                            .onSubmit(commitWebURL)
+                            // Return isn't the only way out of the field:
+                            // clicking elsewhere or leaving the pane keeps
+                            // the address too.
+                            .onChange(of: webURLFocused) { _, focused in if !focused { commitWebURL() } }
+                            .onDisappear(perform: commitWebURL)
                             .onAppear { webURL = entry.sourceId ?? "" }
                             .onChange(of: entry.sourceId) { _, url in webURL = url ?? "" }
                         Picker("Resolution", selection: Binding(
@@ -644,6 +646,16 @@ private struct VideoInputDetail: View {
         case .decklink: return "decklink:\(sourceId)"
         case .camera: return sourceId
         }
+    }
+
+    /// Saves the typed address. Only while the input is still a web page
+    /// (picking another device also takes focus from the field) and only a
+    /// changed one, since assigning reloads the page.
+    private func commitWebURL() {
+        guard let entry = inventory.entries.first(where: { $0.id == id }), entry.kind == .web,
+              let url = WebInputURL.normalized(webURL), url.absoluteString != entry.sourceId
+        else { return }
+        inventory.assignDevice(id: id, kind: .web, sourceId: url.absoluteString)
     }
 }
 

@@ -292,7 +292,11 @@ struct MxUSlidesApp: App {
             PresentCommands()
             HelpCommands(model: appModel, showWelcome: $showWelcome, showFeedback: $showFeedback)
             CommandGroup(after: .appInfo) {
-                Button("Check for Updates…") { Task { await AppUpdater.shared.check(userInitiated: true) } }
+                // A newer version found by the automatic check shows here
+                // instead of in an alert.
+                Button(AppUpdater.shared.available.map { "Update to Screens \($0.version)…" } ?? "Check for Updates…") {
+                    Task { await AppUpdater.shared.check(userInitiated: true) }
+                }
             }
         }
 
