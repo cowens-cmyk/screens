@@ -58,19 +58,26 @@ struct TransitionChip: View {
                 reload()
                 open = true
             } label: {
-                HStack(spacing: 4) {
-                    Glyph(kind: glyph, size: 12)
-                        .frame(width: 20, height: 20)
-                    if showsName {
+                if showsName {
+                    // Looks like the top bar's other buttons, so it reads as
+                    // one: "Dissolve 0.2s" on a rounded plate.
+                    HStack(spacing: 4) {
+                        Glyph(kind: glyph, size: 12)
                         Text(kindName + (kindRaw.isEmpty ? "" : String(format: " %.2gs", duration)))
-                            .font(.caption.weight(.medium))
+                            .font(.system(size: 12, weight: .medium))
                             .monospacedDigit()
                             .lineLimit(1)
-                            .padding(.trailing, 4)
                     }
+                    .padding(.horizontal, 8)
+                    .frame(height: 26)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                    .contentShape(Rectangle())
+                } else {
+                    Glyph(kind: glyph, size: 12)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
                 }
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("\(kindName)\(kindRaw.isEmpty ? "" : String(format: " %.2gs", duration)) — this layer's default; items with their own always win")

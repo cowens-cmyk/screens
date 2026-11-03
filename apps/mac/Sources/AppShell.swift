@@ -473,7 +473,8 @@ struct ShellView: View {
             // into the chips beside the sidebar or the buttons over the rail.
             .frame(maxWidth: .infinity)
             .padding(.leading, (sidebarVisible ? effectiveSidebarWidth : 120) + (centerWidth > 1050 ? 220 : 60))
-            .padding(.trailing, (railVisible ? effectiveRailWidth : 0) + (compactTopBar ? 170 : 300))
+            .padding(.trailing, (railVisible ? effectiveRailWidth : 0) + (compactTopBar ? 170 : 300)
+                + (mode == .present ? 120 : 0))
         }
         .overlay(alignment: .topLeading) {
             HStack(spacing: 6) {
@@ -489,7 +490,7 @@ struct ShellView: View {
                             .lineLimit(1)
                     }
                     presentViewMenu
-                    if centerWidth > 1050 { transitionChips } else { slideTransitionChip }
+                    if centerWidth > 1050 { transitionChips }
                 }
             }
             .frame(height: Self.headerHeight)
@@ -499,7 +500,7 @@ struct ShellView: View {
             if mode == .present, sidebarVisible {
                 HStack(spacing: 6) {
                     presentViewMenu
-                    if centerWidth > 1050 { transitionChips } else { slideTransitionChip }
+                    if centerWidth > 1050 { transitionChips }
                 }
                 .frame(height: Self.headerHeight)
                 .padding(.leading, effectiveSidebarWidth + 16)
@@ -510,6 +511,10 @@ struct ShellView: View {
             if let controls {
 
                 HStack(spacing: 0) {
+                    if mode == .present {
+                        slideTransitionChip
+                            .padding(.trailing, 6)
+                    }
 
                     if layout?.runOnly != true, compactTopBar {
                         // Narrow windows: the builders and editors share one menu.
@@ -1526,19 +1531,19 @@ struct ShellView: View {
                 fallbackKind: TransitionKind.dissolve.rawValue, fallbackDuration: 0.7,
                 showSlider: showTransitionSliders
             )
-            slideTransitionChip
         }
         .fixedSize()
     }
 
-    /// Always in the Present top bar, however narrow the window: it's how
-    /// the booth changes the slide transition during a service.
+    /// Always in the Present top bar's right-hand buttons, however narrow
+    /// the window or wide the sidebar: it's how the booth changes the slide
+    /// transition during a service.
     private var slideTransitionChip: some View {
         TransitionChip(
             glyph: .presentations,
             kindKey: SlideTransitionDefault.kindKey, durationKey: SlideTransitionDefault.durationKey,
             fallbackKind: SlideTransitionDefault.kind.rawValue, fallbackDuration: SlideTransitionDefault.duration,
-            showSlider: showTransitionSliders, showsName: true
+            showSlider: false, showsName: true
         )
         .fixedSize()
     }
