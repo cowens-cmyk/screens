@@ -2895,6 +2895,15 @@ final class AppModel {
     private(set) var isImporting = false
     var lastImportSummary: String?
 
+    /// Media files being added, for the media bin's progress bar; nil when
+    /// no media import is running.
+    struct MediaImportProgress: Equatable {
+        var done: Int
+        var total: Int
+        var fileName: String
+    }
+    private(set) var mediaImportProgress: MediaImportProgress?
+
     private(set) var importReplaceVersion = 0
 
     func noteImportReplacedDocuments() {
@@ -2913,8 +2922,13 @@ final class AppModel {
             return split.rest.isEmpty ? [] : await importFiles(split.rest, placement: placement)
         }
         isImporting = true
-        defer { isImporting = false }
-        let results = await importer?.importFiles(at: urls, placement: placement ?? newPlacement) ?? []
+        defer {
+            isImporting = false
+            mediaImportProgress = nil
+        }
+        let results = await importer?.importFiles(at: urls, placement: placement ?? newPlacement) { done, total, file in
+            self.mediaImportProgress = MediaImportProgress(done: done, total: total, fileName: file.lastPathComponent)
+        } ?? []
         let flagged = results.filter {
             if case .media(_, .needsTranscode) = $0.outcome { return true } else { return false }
         }.count

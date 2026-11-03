@@ -238,6 +238,23 @@ struct MediaLibraryView: View {
             entryID: { id in file(id, into: row) }))
     }
 
+    /// Shown while files are being added: copying a folder of videos can
+    /// take minutes, and without it the bin looks like nothing happened.
+    private func importBar(_ progress: AppModel.MediaImportProgress) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
+                .progressViewStyle(.linear)
+            Text("Importing \(progress.done + 1) of \(progress.total) \u{00B7} \(progress.fileName)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+
     private func rowFill(_ row: Shown) -> Color {
         if dropTarget == row.rawValue { return Color.accentColor.opacity(0.35) }
         return shown == row ? Color.primary.opacity(0.1) : .clear
@@ -286,6 +303,9 @@ struct MediaLibraryView: View {
     private func detail(entries: [LibraryIndex.Entry]) -> some View {
         VStack(spacing: 0) {
             header(count: entries.count)
+            if let progress = model.mediaImportProgress {
+                importBar(progress)
+            }
             Divider()
             ScrollView {
                 LazyVGrid(

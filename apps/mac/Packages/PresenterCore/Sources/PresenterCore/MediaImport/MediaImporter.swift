@@ -33,9 +33,16 @@ public struct MediaImporter {
         blobs = try BlobStore(libraryRoot: client.rootURL)
     }
 
-    public func importFiles(at urls: [URL], placement: LibraryHome.Placement = .unplaced) async -> [Result] {
+    /// `progress` hears each file as it starts (how many are done, how
+    /// many in all, and the file), so a long copy of videos shows where it is.
+    public func importFiles(
+        at urls: [URL], placement: LibraryHome.Placement = .unplaced,
+        progress: ((_ done: Int, _ total: Int, _ file: URL) -> Void)? = nil
+    ) async -> [Result] {
         var results: [Result] = []
-        for url in expandDirectories(urls) {
+        let files = expandDirectories(urls)
+        for (index, url) in files.enumerated() {
+            progress?(index, files.count, url)
             results.append(await importOne(url, placement: placement))
         }
         return results
