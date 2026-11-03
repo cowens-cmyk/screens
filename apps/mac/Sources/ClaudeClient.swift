@@ -98,7 +98,7 @@ extension ClaudeClient {
         return try ArtAnalysis.decode(json, filling: fallback)
     }
 
-    private static func send(
+    static func send(
         system: String, schema: [String: Any], effort: String, adaptiveThinking: Bool = false, content: [[String: Any]]
     ) async throws -> String {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)

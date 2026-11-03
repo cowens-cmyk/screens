@@ -51,6 +51,11 @@ final class LiveAssist {
     var showsAutomatically = true {
         didSet { UserDefaults.standard.set(showsAutomatically, forKey: "liveAssist.sermon.autoShow") }
     }
+    /// Puts up the sermon's next slide (or the one the pastor jumped to)
+    /// when what he says matches it; off, the slide is only highlighted.
+    var followsSermonSlides = true {
+        didSet { UserDefaults.standard.set(followsSermonSlides, forKey: "liveAssist.sermon.followSlides") }
+    }
 
     private(set) var level: Float = 0
     /// When the input last carried more than room noise, and when listening
@@ -166,6 +171,11 @@ final class LiveAssist {
     private let transcriber = LiveTranscriber()
     private var follower: LyricFollower?
     private var followerKey = ""
+    private var sermonFollower: SermonFollower?
+    private var sermonFollowerKey = ""
+    /// The sermon slide last up, so a passage put up over it doesn't lose
+    /// the place.
+    private var sermonPlace: Int?
     private var lastHeardFinal = ""
     private weak var controls: ServiceControls?
     private weak var model: AppModel?
@@ -185,6 +195,7 @@ final class LiveAssist {
         channel = storedChannel >= 0 ? storedChannel : nil
         // On unless turned off: a heard passage should just appear.
         showsAutomatically = UserDefaults.standard.object(forKey: "liveAssist.sermon.autoShow") as? Bool ?? true
+        followsSermonSlides = UserDefaults.standard.object(forKey: "liveAssist.sermon.followSlides") as? Bool ?? true
         advancesAutomatically = UserDefaults.standard.object(forKey: "liveAssist.follow.advances") as? Bool ?? true
         let confidence = UserDefaults.standard.double(forKey: "liveAssist.follow.confidence")
         autoAdvanceConfidence = (0.5...0.95).contains(confidence) ? confidence : 0.7
@@ -205,6 +216,9 @@ final class LiveAssist {
     /// reference as it's said.
     func startSermon() async {
         mode = .sermon
+        sermonFollower = nil
+        sermonPlace = nil
+        prepareSermonSlides()
         await start()
     }
 
@@ -355,6 +369,7 @@ final class LiveAssist {
                 sermonTranscript = String((sermonTranscript + "\n" + text).suffix(8000))
                 spotScripture(in: before + " " + text)
                 followReading(text)
+                followSermon(text)
             }
             return
         }
@@ -495,6 +510,83 @@ final class LiveAssist {
         let line = ConfidenceSceneBuilder.lyricText(for: slide)
             .split(separator: "\n").first.map { String($0.prefix(18)) } ?? ""
         return line.isEmpty ? "\(index + 1)" : "\(index + 1) \(line)"
+    }
+
+    // MARK: Following the sermon's slides
+
+    /// The plan's message: its item and its deck.
+    private func messageDeck() -> (item: ServiceItem, presentation: Presentation)? {
+        guard let model, let planID = model.currentServiceID, let plan = model.resident.services.value(planID),
+              let index = PlanMessage.itemIndex(in: plan, isSermon: { id in
+                  model.presentation(id).map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
+              }),
+              let presentation = model.presentation(plan.items[index].refId)
+        else { return nil }
+        return (plan.items[index], presentation)
+    }
+
+    /// Reads the message's pictures ahead of time, so the first slide
+    /// already knows what it says when the pastor starts.
+    func prepareSermonSlides() {
+        guard let model, let deck = messageDeck() else { return }
+        SlideImageText.shared.prepare(
+            SlideSceneBuilder.arrangedSlides(for: deck.presentation, arrangementId: deck.item.arrangementId), model: model)
+    }
+
+    /// Matches what the pastor says against the message's slides (their
+    /// words, and what their pictures say) and puts up the one he has come
+    /// to, or highlights it when following is off or the match is weak.
+    /// Only while the message (or a passage listening put up) is on screen,
+    /// never over a video, countdown or camera, and not while the operator
+    /// has just moved.
+    private func followSermon(_ text: String) {
+        guard let controls, let model, let deck = messageDeck() else { return }
+        let slides = SlideSceneBuilder.arrangedSlides(for: deck.presentation, arrangementId: deck.item.arrangementId)
+        SlideImageText.shared.prepare(slides, model: model)
+        let texts = slides.map { SlideImageText.shared.text(for: $0, model: model) }
+        let live = controls.state.liveSlide
+        let onMessage = live?.presentation?.id == deck.presentation.id
+        let liveIndex = onMessage ? (controls.liveOccurrence ?? slides.firstIndex { $0.id == live?.slide.id }) : nil
+        if let liveIndex { sermonPlace = liveIndex }
+
+        let key = "\(deck.presentation.id)|\(deck.item.arrangementId ?? "")|\(texts.hashValue)"
+        if key != sermonFollowerKey || sermonFollower == nil {
+            sermonFollowerKey = key
+            sermonFollower = SermonFollower(slideTexts: texts, live: sermonPlace)
+        } else if let liveIndex, liveIndex != sermonFollower?.live {
+            // The operator moved the message: listen from there.
+            sermonFollower?.liveChanged(to: liveIndex)
+        }
+        guard var follower = sermonFollower else { return }
+        follower.hear(text)
+        sermonFollower = follower
+
+        if let made = follower.suggestion, slides.indices.contains(made.slideIndex) {
+            let next = Suggestion(
+                presentationID: deck.presentation.id, contextID: deck.item.id, fromOccurrence: follower.live ?? -1,
+                slideIndex: made.slideIndex, label: label(for: made.slideIndex, in: slides, of: deck.presentation))
+            if suggestion != next { suggestion = next }
+            if abs(suggestionConfidence - made.confidence) >= 0.01 { suggestionConfidence = made.confidence }
+        } else if suggestion?.presentationID == deck.presentation.id {
+            suggestion = nil
+        }
+
+        guard followsSermonSlides, listening, !isPaused,
+              let decision = follower.decision, slides.indices.contains(decision.slideIndex),
+              Date().timeIntervalSince(lastAutoFire) > 4,
+              !controls.state.liveMedia.keys.contains(where: { $0 != .loopingVideos }),
+              live == nil || onMessage || live?.presentation?.category == PresentationTypes.bible
+        else { return }
+        lastAutoFire = Date()
+        sermonPlace = decision.slideIndex
+        sermonFollower?.liveChanged(to: decision.slideIndex)
+        suggestion = nil
+        controls.fire(
+            slide: slides[decision.slideIndex], in: deck.presentation, arrangementId: deck.item.arrangementId,
+            contextID: deck.item.id, occurrence: decision.slideIndex)
+        DiagnosticsStore.shared.note(
+            "liveAssist.sermon.slide",
+            detail: "\(deck.presentation.name) → \(decision.slideIndex + 1) \(decision.reason) \(Int(decision.confidence * 100))%")
     }
 
     private func follow(_ text: String, isFinal: Bool) {
@@ -1147,6 +1239,9 @@ struct SermonPanel: View {
                 .font(.caption)
             Toggle("Show passages automatically", isOn: $assist.showsAutomatically)
                 .font(.caption)
+            Toggle("Follow the message's slides", isOn: $assist.followsSermonSlides)
+                .font(.caption)
+                .help("Put up the next slide when the pastor gets to it, matching its words and what its picture shows")
             Text("Mentioned").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             if assist.detected.isEmpty {
                 Text("When a reference is said (“turn to Genesis 32”), it appears here, ready to show.")

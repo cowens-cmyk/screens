@@ -53,6 +53,10 @@ struct LiveListeningBar: View {
                             .toggleStyle(.checkbox)
                             .controlSize(.small)
                             .help("Put each passage on screen as soon as it's heard")
+                        Toggle("Follow slides", isOn: $assist.followsSermonSlides)
+                            .toggleStyle(.checkbox)
+                            .controlSize(.small)
+                            .help("Put up the message's next slide when the pastor gets to it (its words, or what its picture shows). Off, it's only highlighted.")
                     }
 
                     Button("Stop", systemImage: "stop.fill") { assist.stop() }
@@ -76,7 +80,7 @@ struct LiveListeningBar: View {
 
     private var title: String {
         switch assist.mode {
-        case .sermon: "Listening for scripture"
+        case .sermon: "Listening for scripture and slides"
         case .worship: "Listening to the singing"
         }
     }
