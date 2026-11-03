@@ -171,6 +171,7 @@ When Anthem triggers a song that is in the plan twice, the slide lands on the li
 - **Song Search…** (⌘⇧L): search Shepherd's song library by title or CCLI number, pick the **Arrangement** and **Key** ("Chart key" keeps the chart's), see the song order, choose the lyrics theme, then **Import Song**. If the song is already in the library: **Open Library Copy**, **Replace Library Copy** (services using it keep it), or **Import Again**.
 - **Import Lyrics…**: paste lyrics or **Load File…**; SongSelect and ChordPro text are detected.
 - **Import Chord Chart…** (File) or **Attach Chord Chart…** (editor inspector): PDF, ChordPro or text; rebuilds lyrics, sections, chords and key.
+- **ChordPro files** (.cho, .chordpro, .chopro, .crd): everything in square brackets is a chord, so it goes on the stage display above its syllable and never on the audience screens, even a chord Screens can't transpose (N.C., Hm, C7alt). `[*Repeat x2]` shows as a note above the words. Section directives ({start_of_verse: Verse 1}, {soc}, {c: Bridge}, label="…") become sections, {chorus} repeats the chorus, and tab and grid blocks and `#` comments are left out.
 
 **Song editor** (opens when you edit a song): song title and **Key** at the top; under them, when Shepherd is set up, **Import from Shepherd…** (search Shepherd's songs, pick one; this song takes its words, chords and order and stays linked to it) and, for a song linked to Shepherd, **Update from Shepherd** (or "Shepherd has a newer chart" with **Update** and what changed); the lyrics with each section name on its own line (Verse 1, Chorus, Bridge); a lines-per-slide stepper (1 to 6); **Update Slides** (⌘Return) rebuilds the slides; **Slide Editor…** opens the full editor. **Song Order**: drag sections to reorder, click a section chip to add it again. **Screens**: Audience theme, Livestream (left on "Worship default: …" it follows Lower Thirds; pick a theme to use that theme's lower thirds for this song only), Stage (Worship layout or another layout).
 
@@ -382,7 +383,7 @@ Editing a video or image (Edit mode) shows: **Name**; **Behavior**: Classificati
 
 A slide's background (editor inspector › **Background**): **Choose…** a media item, **Applies To** (This Slide, Until Replaced, This Section, Entire Song), Classification, Layer (Background Media, Still Graphics, Foreground Videos), **Loop**, **Replace…**, **Remove**.
 
-Default transitions: Settings › Slides & Themes › **Media transition** and **Slide transition** (Cut is the default for slides). A slide can set its own in the inspector's **Transition** section.
+Default transitions: Settings › Slides & Themes › **Media transition** and **Slide transition** (Dissolve at 0.2s is the default for slides). The Present top bar shows the slide transition by name ("Dissolve 0.2s"): click it to pick another or change the duration during a service; wide windows show the media transition and duration sliders beside it. A slide can set its own in the inspector's **Transition** section.
 
 ## Timers, macros, alerts and actions
 
