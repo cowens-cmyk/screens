@@ -9,6 +9,9 @@ final class NDIScreenOutputs {
 
     private(set) var controllers: [UUID: NDIOutputController] = [:]
     private static let defaultsKey = "ndi.screenBackings"
+    /// Nothing is saved until the saved outputs are back (see
+    /// DeckLinkScreenOutputs.restored).
+    private var restored = false
 
     private init() {}
 
@@ -75,12 +78,14 @@ final class NDIScreenOutputs {
     }
 
     func disable(screenID: UUID) {
-        controllers[screenID]?.stop()
+        guard let controller = controllers[screenID] else { return }
+        controller.stop()
         controllers[screenID] = nil
         persist()
     }
 
     func restore(render: RenderContext) {
+        defer { restored = true }
         let stored = UserDefaults.standard.stringArray(forKey: Self.defaultsKey) ?? []
         for raw in stored {
             guard let id = UUID(uuidString: raw) else { continue }
@@ -89,6 +94,7 @@ final class NDIScreenOutputs {
     }
 
     private func persist() {
+        guard restored else { return }
         UserDefaults.standard.set(
             controllers.keys.map(\.uuidString).sorted(), forKey: Self.defaultsKey)
     }

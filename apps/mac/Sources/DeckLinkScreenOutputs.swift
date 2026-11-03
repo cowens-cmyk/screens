@@ -32,6 +32,11 @@ final class DeckLinkScreenOutputs {
     private(set) var controllers: [Int64: DeckLinkOutputController] = [:]
     private(set) var backings: [UUID: Backing] = [:]
     private static let defaultsKey = "decklink.screenBackings"
+    /// Nothing is saved until the saved outputs are back. NDI restores
+    /// first, and switching a screen to NDI switches its DeckLink port off,
+    /// which used to save the empty list over the ports not yet restored,
+    /// so the Audience 8K was gone after every relaunch.
+    private var restored = false
 
     private init() {}
 
@@ -185,10 +190,8 @@ final class DeckLinkScreenOutputs {
     }
 
     func disable(screenID: UUID, render: RenderContext? = nil) {
-        guard let backing = backings.removeValue(forKey: screenID) else {
-            persist()
-            return
-        }
+        // A screen with no port: nothing changed, nothing to save.
+        guard let backing = backings.removeValue(forKey: screenID) else { return }
         if let render {
 
             rebuildCarry(devicePersistentID: backing.devicePersistentID, render: render)
@@ -200,6 +203,7 @@ final class DeckLinkScreenOutputs {
     }
 
     func restore(render: RenderContext) {
+        defer { restored = true }
         guard let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
             let stored = try? JSONDecoder().decode([String: Backing].self, from: data)
         else { return }
@@ -214,6 +218,7 @@ final class DeckLinkScreenOutputs {
     }
 
     private func persist() {
+        guard restored else { return }
         let stored = Dictionary(
             uniqueKeysWithValues: backings.map { ($0.key.uuidString, $0.value) })
         UserDefaults.standard.set(
