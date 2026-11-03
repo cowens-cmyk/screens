@@ -8,6 +8,14 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     case sermon
     /// What the stage shows while a video plays.
     case video
+    /// Before the service: how long until the countdown starts and until
+    /// the service itself.
+    case preService
+
+    /// The built-in timers the Before Service layout shows (Service
+    /// Tracking's, made from the plan's service times).
+    public static let untilCountdownTimerID = "service_tracking.untilCountdown.remaining"
+    public static let untilServiceTimerID = "service_tracking.untilService.remaining"
 
     public var title: String {
         switch self {
@@ -16,6 +24,7 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         case .worship: "Worship"
         case .sermon: "Sermon"
         case .video: "Video"
+        case .preService: "Before Service"
         }
     }
 
@@ -30,6 +39,7 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         case .worship: Self.worship(name: name)
         case .sermon: Self.sermon(name: name)
         case .video: Self.video(name: name)
+        case .preService: Self.preService(name: name)
         }
     }
 
@@ -209,6 +219,35 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
                 timer,
                 rule(y: 712),
                 label("TIME", y: 742),
+                clock,
+            ]
+        )
+    }
+
+    /// Before the service: the countdown's start large, the service time
+    /// under it, the clock at the bottom.
+    static func preService(name: String) -> ConfidenceLayout {
+        func timer(_ objectName: String, _ id: String, y: Double, height: Double, size: Double, color: String) -> SlideObject {
+            var timer = linked(objectName, .timer, x: 60, y: y, width: 1800, height: height,
+                               size: size, color: color, tabular: true, shrink: true, minSize: 80)
+            timer.textLink?.timerId = id
+            timer.textLink?.usesWarningColor = false
+            timer.textStyle?.fontName = "HelveticaNeue-Bold"
+            return timer
+        }
+        var clock = linked("Clock", .clock, x: 60, y: 930, width: 1800, height: 120,
+                           size: 100, color: white, tabular: true, shrink: true, minSize: 40,
+                           clockFormat: "h:mm")
+        clock.textStyle?.fontName = "HelveticaNeue-Medium"
+        return ConfidenceLayout(
+            id: UUID().uuidString,
+            name: name,
+            objects: [
+                label("COUNTDOWN STARTS IN", y: 64),
+                timer("Until Countdown", untilCountdownTimerID, y: 120, height: 430, size: 380, color: messageGreen),
+                rule(y: 580),
+                label("SERVICE STARTS IN", y: 610),
+                timer("Until Service", untilServiceTimerID, y: 660, height: 230, size: 200, color: white),
                 clock,
             ]
         )

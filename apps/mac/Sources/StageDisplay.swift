@@ -30,6 +30,8 @@ enum StageLayouts {
     static let messageID = BasicTemplates.messageStageID
     /// What the stage shows while a video plays.
     static let videoID = BasicTemplates.videoStageID
+    /// Before the service: time until the countdown and the service.
+    static let preServiceID = BasicTemplates.preServiceStageID
     /// Not a layout: a slide's stage choice that shows the audience screen
     /// (right-click › Show on Stage Display).
     static let audienceID = "screens.stage.audience"
@@ -37,13 +39,18 @@ enum StageLayouts {
     /// The layout a mode shows. Mirror has none; its editor entry point opens
     /// the worship layout.
     static func id(for mode: ShowSetup.StageMode) -> String {
-        mode == .message ? messageID : worshipID
+        switch mode {
+        case .message: messageID
+        case .preService: preServiceID
+        case .worship, .mirror: worshipID
+        }
     }
 
     static func template(for id: String) -> ConfidenceLayoutTemplate {
         switch id {
         case messageID: .sermon
         case videoID: .video
+        case preServiceID: .preService
         default: .worship
         }
     }
@@ -52,6 +59,7 @@ enum StageLayouts {
         switch id {
         case messageID: "Stage — Message"
         case videoID: "Stage — Video"
+        case preServiceID: "Stage — Before Service"
         default: "Stage — Worship"
         }
     }

@@ -171,7 +171,7 @@ final class ConfidenceMonitorController {
         switch setup.stageMode {
         case .mirror:
             source = .mirror
-        case .worship, .message:
+        case .worship, .message, .preService:
             let id = setup.stageLayoutOverride ?? StageLayouts.id(for: setup.stageMode)
             let layout = appModel.resident.confidenceLayouts.value(id) ?? StageLayouts.fallback(for: id)
             modeLayout = layout

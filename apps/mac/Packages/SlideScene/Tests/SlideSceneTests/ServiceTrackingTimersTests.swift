@@ -40,7 +40,9 @@ final class ServiceTrackingTimersTests: XCTestCase {
         let idle = ServiceTrackingTimers.remaining(.item, plannedSeconds: 0, remainingSeconds: nil, running: true, now: now)
         XCTAssertFalse(idle.isRunning)
         XCTAssertEqual(idle.value(at: now + 100), 0, accuracy: 0.001)
-        XCTAssertEqual(ServiceTrackingTimers.allIDs.count, 8)
+        // Item, section, service and video each count down and up; Until
+        // Countdown and Until Service only count down.
+        XCTAssertEqual(ServiceTrackingTimers.allIDs.count, 10)
     }
 
     func testRetiredPreAndPostServiceIDsStayPermanentAndDropOnMerge() {

@@ -62,6 +62,9 @@ final class SermonTimerAutoReset {
         }
         defer { lastCheck = now }
 
+        let upcoming = services.filter { $0.time > now }.min { $0.time < $1.time }
+        if controls.nextService != upcoming { controls.nextService = upcoming }
+
         let on = controls.sermonTimerResetsAtServiceStart && ServiceStation.runsService
         let next = on ? SermonTimerReset.next(services, after: now)?.resetAt : nil
         if controls.nextSermonTimerReset != next { controls.nextSermonTimerReset = next }

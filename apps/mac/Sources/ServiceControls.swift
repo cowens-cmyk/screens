@@ -179,6 +179,7 @@ final class ServiceControls {
             applyScreenDefaults(for: presentation)
             actionRouter?.presentationDidGoLive(presentation)
         }
+        followBeforeService(slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID)
         // A slide that advanced by itself while a video plays once on the
         // screens (a looping slideshow the video went up over) isn't anyone
         // taking over: the video keeps the livestream, and its plan keeps
@@ -1012,6 +1013,33 @@ final class ServiceControls {
         }
     }
 
+    /// The pre-service slideshow, or the plan's final slide (where one
+    /// service ends and the next one's walk-in begins), puts the stage on
+    /// Before Service: how long until the countdown and the service. Any
+    /// other slide takes it back off; songs and the message have already
+    /// set their own mode by then.
+    private func followBeforeService(slide: Slide, in presentation: Presentation, arrangementId: String?, contextID: String?) {
+        let setup = ShowSetup.shared
+        guard setup.stageFollowsItems, presentation.stageLayoutId == nil, setup.stageMode != .mirror else { return }
+        let plan = appModel.currentServiceID.flatMap { appModel.resident.services.value($0) }
+        var before = false
+        if let plan {
+            if let contextID, plan.items.first(where: { $0.id == contextID })?.isPreService == true {
+                before = true
+            } else if let last = appModel.fireableItems(plan).last(where: { $0.itemKind == .presentation }),
+                      last.refId == presentation.id {
+                let slides = SlideSceneBuilder.arrangedSlides(
+                    for: presentation, arrangementId: arrangementId ?? last.arrangementId)
+                before = slides.last?.id == slide.id
+            }
+        }
+        if before {
+            if setup.stageMode != .preService { setup.stageMode = .preService }
+        } else if setup.stageMode == .preService {
+            setup.stageMode = PresentationTypes.category(of: presentation) == PresentationTypes.sermon ? .message : .worship
+        }
+    }
+
     // MARK: The sermon timer
 
     /// The Sermon countdown, if there is one.
@@ -1117,6 +1145,11 @@ final class ServiceControls {
     /// When the next service starts and the timer is set back, for a
     /// readout; nil when there's none today, or it's off.
     var nextSermonTimerReset: Date?
+
+    /// Today's next service (its time, and its countdown's start when one
+    /// is scheduled), for the Before Service stage's timers; nil when there
+    /// is none left today.
+    var nextService: SermonTimerReset.Service?
 
     /// A service is starting: sets the Sermon timer back unless a sermon is
     /// still going. `reason` is for Diagnostics.

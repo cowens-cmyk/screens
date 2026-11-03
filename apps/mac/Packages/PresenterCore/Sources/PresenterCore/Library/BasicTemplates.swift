@@ -11,6 +11,7 @@ public enum BasicTemplates {
     public static let worshipStageID = "screens.stage.worship"
     public static let messageStageID = "screens.stage.message"
     public static let videoStageID = "screens.stage.video"
+    public static let preServiceStageID = "screens.stage.preservice"
 
     static let font = "Helvetica Neue"
     static let bold = "HelveticaNeue-Bold"
@@ -31,7 +32,9 @@ public enum BasicTemplates {
         message.id = messageStageID
         var video = ConfidenceLayoutTemplate.video.make(name: "Video")
         video.id = videoStageID
-        return [worship, message, video]
+        var preService = ConfidenceLayoutTemplate.preService.make(name: "Before Service")
+        preService.id = preServiceStageID
+        return [worship, message, video, preService]
     }
 
     // MARK: Themes

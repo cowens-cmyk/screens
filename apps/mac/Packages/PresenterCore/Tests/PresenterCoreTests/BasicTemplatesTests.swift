@@ -17,5 +17,6 @@ import Testing
     }
     #expect(BasicTemplates.stageLayouts().map(\.id) == [
         BasicTemplates.worshipStageID, BasicTemplates.messageStageID, BasicTemplates.videoStageID,
+        BasicTemplates.preServiceStageID,
     ])
 }

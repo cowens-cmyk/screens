@@ -7,6 +7,9 @@ public enum ServiceTrackingTimers {
 
     public enum Subject: String, CaseIterable, Sendable {
         case item, section, service, video
+        /// Time left before the next service's countdown starts (its start
+        /// time when it has no countdown), and before the service itself.
+        case untilCountdown, untilService
 
         public var title: String {
             switch self {
@@ -14,8 +17,13 @@ public enum ServiceTrackingTimers {
             case .section: "Section"
             case .service: "Service"
             case .video: "Video"
+            case .untilCountdown: "Until Countdown"
+            case .untilService: "Until Service"
             }
         }
+
+        /// Counts down to a time of day rather than timing what's running.
+        public var isUntil: Bool { self == .untilCountdown || self == .untilService }
     }
 
     public enum Face: String, CaseIterable, Sendable {
@@ -23,7 +31,7 @@ public enum ServiceTrackingTimers {
     }
 
     public static func faces(of subject: Subject) -> [Face] {
-        Face.allCases
+        subject.isUntil ? [.remaining] : Face.allCases
     }
 
     public enum LocalTiming: Sendable, Equatable {
@@ -50,7 +58,7 @@ public enum ServiceTrackingTimers {
     }
 
     public static func name(_ subject: Subject, _ face: Face) -> String {
-        "\(subject.title) \(face == .remaining ? "Remaining" : "Elapsed")"
+        subject.isUntil ? subject.title : "\(subject.title) \(face == .remaining ? "Remaining" : "Elapsed")"
     }
 
     public static func isPermanent(_ id: String) -> Bool {
@@ -74,6 +82,8 @@ public enum ServiceTrackingTimers {
         case (.service, .elapsed): "Counts up from the moment the first item was fired."
         case (.video, .remaining): "Counts down the video playing for the current item."
         case (.video, .elapsed): "Counts up from the start of the video playing for the current item."
+        case (.untilCountdown, _): "Counts down to the next service's countdown (to the service time when it has no countdown), from the plan's times, Schedule Service or the Service Day setup."
+        case (.untilService, _): "Counts down to the next service's start time."
         }
     }
 
@@ -101,6 +111,16 @@ public enum ServiceTrackingTimers {
             id: id(subject, .elapsed), name: name(subject, .elapsed), mode: .countUp,
             isRunning: running, runningSince: running ? now : nil,
             banked: max(elapsedSeconds, 0), durationSeconds: max(limitSeconds, 0), warnings: warnings)
+    }
+
+    /// A countdown to a moment: running toward `date`, idle once it's past.
+    public static func until(_ subject: Subject, _ date: Date?, now: Date) -> TimerSnapshot {
+        guard let date, date > now else { return idle(subject, .remaining) }
+        let seconds = date.timeIntervalSince(now)
+        return TimerSnapshot(
+            id: id(subject, .remaining), name: name(subject, .remaining), mode: .countdown,
+            isRunning: true, runningSince: now, banked: 0, durationSeconds: seconds,
+            warnings: [])
     }
 
     public static func idle(_ subject: Subject, _ face: Face) -> TimerSnapshot {

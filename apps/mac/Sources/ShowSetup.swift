@@ -33,12 +33,13 @@ final class ShowSetup {
     /// layout: time left and the video) until it ends, whatever the mode,
     /// unless `stageShowsVideos` is off.
     enum StageMode: String, CaseIterable, Identifiable {
-        case worship, message, mirror
+        case worship, message, preService, mirror
         var id: String { rawValue }
         var title: String {
             switch self {
             case .worship: "Worship"
             case .message: "Message"
+            case .preService: "Before Service"
             case .mirror: "Audience Screen"
             }
         }
