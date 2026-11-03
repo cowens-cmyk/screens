@@ -1,11 +1,11 @@
 import PresenterCore
 import SwiftUI
 
-/// Edit › a song: type or paste the lyrics with section names on their own
-/// line ("Verse 1", "Chorus"), set how many lines go on a slide, drag the
-/// sections into the order the band plays them, and choose what each screen
-/// uses. Slides rebuild from the lyrics; the slide editor stays a click away
-/// for fine-tuning.
+/// Edit › a song, slide by slide: each card is one slide and says exactly
+/// what that slide shows. Above each line of words is an optional chord
+/// line for the stage display, typed where the chord is played (the two
+/// lines are monospaced so they line up), so a chord is never mistaken for
+/// a word. The right side sets the song order and what each screen uses.
 struct SongEditorView: View {
     let model: AppModel
     let presentationID: String
@@ -13,86 +13,160 @@ struct SongEditorView: View {
 
     @State private var title = ""
     @State private var key = ""
-    @State private var lyrics = ""
-    @State private var linesPerSlide = 2
+    @State private var cards: [SongSlides.Card] = []
+    @State private var saved: [SongSlides.Card] = []
     @State private var sequence: [String] = []   // section names, in play order
     @State private var loaded = false
     @State private var lowerThirds = LowerThirdCatalog()
+    @State private var pasting = false
+    @State private var pastedText = ""
+    @State private var pasteLinesPerSlide = 2
 
     private var presentation: Presentation? { model.presentation(presentationID) }
     private var sections: [PresentationSection] { presentation?.sections ?? [] }
+    private var unsaved: Bool { loaded && cards != saved }
 
     var body: some View {
-        HSplitView {
-            lyricsPane.frame(minWidth: 320)
-            VStack(alignment: .leading, spacing: 16) {
-                sequencePane
-                Divider()
-                screensPane
+        VStack(spacing: 0) {
+            // The window's title bar and mode switcher sit over the top.
+            Color.clear.frame(height: ShellView.headerHeight)
+            HSplitView {
+                slidesPane.frame(minWidth: 380)
+                VStack(alignment: .leading, spacing: 16) {
+                    sequencePane
+                    Divider()
+                    screensPane
+                }
+                .padding(16)
+                .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
             }
-            .padding(16)
-            .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
         }
         .task(id: presentationID) { load() }
+        .sheet(isPresented: $pasting) { pasteSheet }
     }
 
-    // MARK: Lyrics
+    // MARK: Slides
 
-    private var lyricsPane: some View {
+    private var slidesPane: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 TextField("Song title", text: $title)
                     .font(.title2.weight(.semibold))
                     .textFieldStyle(.plain)
-                    .onSubmit(save)
+                    .onSubmit(saveDetails)
                 TextField("Key", text: $key)
                     .frame(width: 60)
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit(save)
+                    .onSubmit(saveDetails)
                     .help("The key it's charted in, for the stage display")
             }
             ShepherdSongRow(model: model, presentationID: presentationID, reload: load)
-            Text("Put each section's name on its own line (Verse 1, Chorus, Bridge), then its lyrics.")
+            Text("Each card is one slide. The chord line over each line of words is optional and shows only on the stage display.")
                 .font(.caption).foregroundStyle(.secondary)
-            sectionButtons
-            TextEditor(text: $lyrics)
-                .font(.system(.body, design: .default))
-                .scrollContentBackground(.hidden)
-                .padding(8)
-                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach($cards) { $card in
+                        SongSlideCard(
+                            card: $card,
+                            number: (cards.firstIndex { $0.id == card.id } ?? 0) + 1,
+                            sectionNames: sectionSuggestions,
+                            move: { offset in move(card.id, by: offset) },
+                            duplicate: { duplicate(card.id) },
+                            delete: { cards.removeAll { $0.id == card.id } })
+                    }
+                    Button { addSlide() } label: {
+                        Label("Add Slide", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.vertical, 2)
+            }
             HStack {
-                Stepper("\(linesPerSlide) line\(linesPerSlide == 1 ? "" : "s") per slide", value: $linesPerSlide, in: 1...6)
+                Button("Paste Lyrics\u{2026}") { pasting = true }
+                    .help("Type or paste the words; they're split into slides, keeping section names")
+                Button("Slide Editor\u{2026}", action: openSlideEditor)
                 Spacer()
-                Button("Slide Editor…", action: openSlideEditor)
-                Button("Update Slides", action: rebuild)
+                if unsaved {
+                    Text("Not saved").font(.caption).foregroundStyle(.secondary)
+                }
+                Button("Save Slides", action: saveSlides)
                     .keyboardShortcut(.return, modifiers: .command)
                     .buttonStyle(.borderedProminent)
+                    .disabled(!unsaved && title == presentation?.name)
             }
         }
         .padding(16)
     }
 
-    /// Starts a section at the end of the lyrics, for typing a song in
-    /// from the top: Verse numbers itself (Verse 1, Verse 2).
-    private var sectionButtons: some View {
-        FlowChips(names: Self.sectionKinds, color: { _ in .secondary }, add: addSection)
-            .help("Starts this section at the end of the lyrics")
+    /// Names offered for a card's section: the usual ones, then the ones
+    /// this song already has.
+    private var sectionSuggestions: [String] {
+        var names = ["Intro", "Verse 1", "Verse 2", "Verse 3", "Pre-Chorus", "Chorus", "Bridge", "Tag", "Ending"]
+        for name in cards.map(\.section) where !name.isEmpty && !names.contains(name) { names.append(name) }
+        return names
     }
 
-    static let sectionKinds = ["Intro", "Verse", "Pre-Chorus", "Chorus", "Bridge", "Tag", "Ending"]
+    private func addSlide() {
+        let section = cards.last?.section ?? "Verse 1"
+        cards.append(SongSlides.Card(section: section, lines: [SongSlides.Line(), SongSlides.Line()]))
+    }
 
-    private func addSection(_ kind: String) {
-        var name = kind
-        if kind == "Verse" {
-            let verses = lyrics.components(separatedBy: "\n")
-                .compactMap { Reflow.labelName(of: $0) }
-                .filter { $0.hasPrefix("Verse") }
-            name = "Verse \(verses.count + 1)"
+    private func move(_ id: String, by offset: Int) {
+        guard let index = cards.firstIndex(where: { $0.id == id }) else { return }
+        let target = index + offset
+        guard cards.indices.contains(target) else { return }
+        cards.swapAt(index, target)
+    }
+
+    private func duplicate(_ id: String) {
+        guard let index = cards.firstIndex(where: { $0.id == id }) else { return }
+        var copy = cards[index]
+        copy.id = UUID().uuidString
+        copy.lines = copy.lines.map { SongSlides.Line(words: $0.words, chords: $0.chords) }
+        cards.insert(copy, at: index + 1)
+    }
+
+    private var pasteSheet: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Paste Lyrics").font(.headline)
+            Text("Put each section's name on its own line (Verse 1, Chorus, Bridge), then its words. A blank line starts a new slide.")
+                .font(.caption).foregroundStyle(.secondary)
+            TextEditor(text: $pastedText)
+                .font(.body)
+                .frame(minWidth: 460, minHeight: 320)
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+            HStack {
+                Stepper("\(pasteLinesPerSlide) line\(pasteLinesPerSlide == 1 ? "" : "s") per slide",
+                        value: $pasteLinesPerSlide, in: 1...6)
+                Spacer()
+                Button("Cancel") { pasting = false }
+                    .keyboardShortcut(.cancelAction)
+                Button(cards.allSatisfy(Self.isEmpty) ? "Make Slides" : "Add Slides") { addPasted() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(pastedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
         }
-        var text = lyrics
-        while text.hasSuffix("\n\n") { text.removeLast() }
-        if !text.isEmpty { text += text.hasSuffix("\n") ? "\n" : "\n\n" }
-        lyrics = text + name + "\n"
+        .padding(20)
+    }
+
+    private static func isEmpty(_ card: SongSlides.Card) -> Bool {
+        card.lines.allSatisfy { $0.words.isEmpty && $0.chords.isEmpty }
+    }
+
+    /// Pasted words split into cards the way an import splits them; they
+    /// replace an empty song's cards, else they go after the last one.
+    private func addPasted() {
+        let built = LyricTextImporter.makePresentation(
+            LyricCleanup.clean(pastedText, removePunctuation: LyricImportSettings.removePunctuation),
+            linesPerSlide: pasteLinesPerSlide)
+        let new = SongSlides.cards(from: built).filter { !Self.isEmpty($0) }
+        if cards.allSatisfy(Self.isEmpty) { cards = new } else { cards += new }
+        pastedText = ""
+        pasting = false
     }
 
     // MARK: Sequence
@@ -170,39 +244,32 @@ struct SongEditorView: View {
             set: { value in model.updatePresentation(presentationID) { $0[keyPath: path] = value.isEmpty ? nil : value } })
     }
 
-    // MARK: Load, rebuild, save
+    // MARK: Load and save
 
     private func load() {
         guard let presentation else { return }
         title = presentation.name
         key = presentation.musicKey ?? ""
-        lyrics = presentation.reflowSource ?? Self.lyrics(from: presentation)
-        let sectionNames = Dictionary(uniqueKeysWithValues: (presentation.sections ?? []).map { ($0.id, $0.name) })
-        let arrangement = presentation.arrangements?.first { $0.id == presentation.defaultArrangementId }
-            ?? presentation.arrangements?.first
-        sequence = arrangement?.sectionIds.compactMap { sectionNames[$0] } ?? (presentation.sections ?? []).map(\.name)
+        cards = SongSlides.cards(from: presentation)
+        if cards.isEmpty { cards = [SongSlides.Card(section: "Verse 1", lines: [SongSlides.Line(), SongSlides.Line()])] }
+        // A song made empty to type into has one blank slide and no section.
+        if cards.count == 1, Self.isEmpty(cards[0]), cards[0].section.isEmpty {
+            cards[0].section = "Verse 1"
+            cards[0].lines = [SongSlides.Line(), SongSlides.Line()]
+        }
+        saved = cards
+        sequence = Self.order(of: presentation)
         loaded = true
     }
 
-    /// Lyrics written back out from slides, for songs made before the editor.
-    static func lyrics(from presentation: Presentation) -> String {
+    private static func order(of presentation: Presentation) -> [String] {
         let names = Dictionary(uniqueKeysWithValues: (presentation.sections ?? []).map { ($0.id, $0.name) })
-        var lastSection: String?
-        var lines: [String] = []
-        for slide in presentation.slides {
-            if let section = slide.sectionId, section != lastSection, let name = names[section] {
-                if !lines.isEmpty { lines.append("") }
-                lines.append(name)
-                lastSection = section
-            }
-            if let text = slide.objects.first(where: { $0.objectKind == .text })?.text, !text.isEmpty {
-                lines.append(text)
-            }
-        }
-        return lines.joined(separator: "\n")
+        let arrangement = presentation.arrangements?.first { $0.id == presentation.defaultArrangementId }
+            ?? presentation.arrangements?.first
+        return arrangement?.sectionIds.compactMap { names[$0] } ?? (presentation.sections ?? []).map(\.name)
     }
 
-    private func save() {
+    private func saveDetails() {
         let title = title.trimmingCharacters(in: .whitespaces)
         let key = key.trimmingCharacters(in: .whitespaces)
         model.updatePresentation(presentationID) { song in
@@ -211,30 +278,23 @@ struct SongEditorView: View {
         }
     }
 
-    /// New slides from the lyrics, keeping the song's theme and its order.
-    private func rebuild() {
-        guard let current = presentation,
-              let built = SongAssembly.presentation(
-                  lyrics: lyrics, chordChart: nil, title: title.isEmpty ? current.name : title,
-                  themeId: current.themeId, linesPerSlide: linesPerSlide,
-                  removePunctuation: LyricImportSettings.removePunctuation)
-        else { return }
-        let newNames = (built.sections ?? []).map(\.name)
-        // Keep the order the operator set where those sections still exist.
-        let kept = sequence.filter(newNames.contains)
-        sequence = kept.isEmpty ? newNames : kept
-        let order = sequence
-        let lyricsText = lyrics
-        let title = title
-        model.updatePresentation(presentationID) { song in
-            song.slides = built.slides
-            song.sections = built.sections
-            song.reflowSource = lyricsText
-            song.chordProSource = built.chordProSource
-            if !title.isEmpty { song.name = title }
-            Self.applyOrder(order, to: &song)
+    /// The cards become the song's slides, sections and order.
+    private func saveSlides() {
+        guard var song = presentation else { return }
+        SongSlides.apply(cards, to: &song)
+        let built = song
+        model.updatePresentation(presentationID) { current in
+            current.slides = built.slides
+            current.sections = built.sections
+            current.arrangements = built.arrangements
+            current.defaultArrangementId = built.defaultArrangementId
+            current.reflowSource = built.reflowSource
+            current.chordProSource = built.chordProSource
         }
-        save()
+        saveDetails()
+        cards = SongSlides.cards(from: built)
+        saved = cards
+        sequence = Self.order(of: built)
     }
 
     private func saveSequence() {
@@ -278,5 +338,100 @@ private struct FlowChips: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+}
+
+/// One slide of a song: its section, then each line of words with an
+/// optional chord line over it. Both lines are monospaced, so a chord
+/// typed over a word lands on that word on the stage display.
+private struct SongSlideCard: View {
+    @Binding var card: SongSlides.Card
+    let number: Int
+    let sectionNames: [String]
+    let move: (Int) -> Void
+    let duplicate: () -> Void
+    let delete: () -> Void
+
+    @FocusState private var focusedLine: String?
+
+    private static let mono = Font.system(size: 14, design: .monospaced)
+    private static let chordMono = Font.system(size: 12, weight: .semibold, design: .monospaced)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("\(number)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(minWidth: 18, alignment: .leading)
+                TextField("Section", text: $card.section)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 150)
+                Menu {
+                    ForEach(sectionNames, id: \.self) { name in
+                        Button(name) { card.section = name }
+                    }
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Pick a section")
+                Spacer()
+                Button { move(-1) } label: { Image(systemName: "arrow.up") }
+                    .help("Move this slide up")
+                Button { move(1) } label: { Image(systemName: "arrow.down") }
+                    .help("Move this slide down")
+                Button(action: duplicate) { Image(systemName: "plus.square.on.square") }
+                    .help("Duplicate this slide")
+                Button(action: delete) { Image(systemName: "trash") }
+                    .help("Delete this slide")
+            }
+            .buttonStyle(.borderless)
+
+            ForEach($card.lines) { $line in
+                VStack(alignment: .leading, spacing: 2) {
+                    TextField("Chords (optional, stage only)", text: $line.chords)
+                        .font(Self.chordMono)
+                        .foregroundStyle(.orange)
+                        .textFieldStyle(.plain)
+                    HStack(spacing: 6) {
+                        TextField("Words on the slide", text: $line.words)
+                            .font(Self.mono)
+                            .textFieldStyle(.plain)
+                            .focused($focusedLine, equals: line.id)
+                            .onSubmit { addLine(after: line.id) }
+                        if card.lines.count > 1 {
+                            Button { removeLine(line.id) } label: {
+                                Image(systemName: "minus.circle").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Remove this line")
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            Button { addLine(after: card.lines.last?.id) } label: {
+                Label("Line", systemImage: "plus").font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .help("Add a line to this slide (or press Return in the last line)")
+        }
+        .padding(12)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func addLine(after id: String?) {
+        let index = id.flatMap { id in card.lines.firstIndex { $0.id == id } }.map { $0 + 1 } ?? card.lines.count
+        let line = SongSlides.Line()
+        card.lines.insert(line, at: index)
+        focusedLine = line.id
+    }
+
+    private func removeLine(_ id: String) {
+        card.lines.removeAll { $0.id == id }
     }
 }
