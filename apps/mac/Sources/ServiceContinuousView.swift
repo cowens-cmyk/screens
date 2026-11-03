@@ -120,11 +120,9 @@ struct ServiceContinuousView: View {
                                     .contentShape(Rectangle())
                                     .gesture(pageMarquee.gesture(in: .named(Self.contentSpace), enabled: !runOnly))
                             }
-                            .overlay(alignment: .topLeading) {
-                                if let rect = pageMarquee.rect {
-                                    PageMarquee.box(rect)
-                                }
-                            }
+                            // The box in its own view: it changes on every
+                            // mouse move of the drag.
+                            .overlay(alignment: .topLeading) { PageMarqueeBox(marquee: pageMarquee) }
                             .environment(\.pageMarquee, pageMarquee)
                             .coordinateSpace(name: Self.contentSpace)
                         }
@@ -151,10 +149,14 @@ struct ServiceContinuousView: View {
                     .onChange(of: focusItemID) { _, id in
                         // The page moving the selection itself (following the
                         // live slide, the operator's scroll) marks the item
-                        // first; anything else is the operator's pick.
-                        if focusScroll.honoredItemID != id { picks.pick(id) }
+                        // first; anything else is the operator's pick. Read
+                        // before scrollToFocus, which marks it too. Only a
+                        // pick moves where New Slide and paste go: the live
+                        // slide moving on must not take a paste with it.
+                        let followed = focusScroll.honoredItemID == id
+                        if !followed { picks.pick(id) }
                         scrollToFocus(id, reason: "selection", proxy: proxy, service: service)
-                        pointNewSlide(at: id)
+                        if !followed { pointNewSlide(at: id) }
                     }
 
                     .onChange(of: focusScroll.reselects) { _, _ in
@@ -1306,6 +1308,18 @@ extension ServiceContinuousView {
         }
         if PresentFollowRule.reveals(sinceScroll: scroll, sinceKey: key, sinceClick: click) {
             revealLive(service, cause: "live")
+        }
+    }
+}
+
+/// The page's selection box, read here so a drag re-renders this and not
+/// the page.
+private struct PageMarqueeBox: View {
+    let marquee: PageMarquee
+
+    var body: some View {
+        if let rect = marquee.rect {
+            PageMarquee.box(rect)
         }
     }
 }

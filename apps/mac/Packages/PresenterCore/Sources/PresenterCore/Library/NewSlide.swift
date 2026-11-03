@@ -65,6 +65,13 @@ public struct NewSlideRoute: Equatable, Sendable {
         }
     }
 
+    /// A slide in this context was clicked last, rather than the context
+    /// only pointed at (a plan-list pick, a box reaching it, an empty-space
+    /// click).
+    public func clickedSlide(in contextID: String) -> Bool {
+        self.contextID == contextID && occurrence != nil
+    }
+
     public func anchor(in contextID: String, selected: Set<Int>, count: Int) -> Int? {
         if let last = selected.max(), last < count {
             last

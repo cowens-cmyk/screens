@@ -98,3 +98,10 @@ private func theme(_ id: String, _ designs: [Slide]) -> Theme {
     #expect(contexts.filter { offScreen.answers($0, contexts: contexts, isHostTarget: $0 == "sermon") } == ["sermon"])
     #expect(contexts.filter { NewSlideRoute().answers($0, contexts: contexts, isHostTarget: false) }.isEmpty)
 }
+
+@Test func onlyAClickedSlidePointsPasteAtTheLiveSlide() {
+    #expect(NewSlideRoute(contextID: "song", occurrence: 2).clickedSlide(in: "song"))
+    #expect(!NewSlideRoute(contextID: "song", occurrence: 2).clickedSlide(in: "sermon"), "another item's click")
+    #expect(!NewSlideRoute(contextID: "song").clickedSlide(in: "song"), "a plan-list pick, the box, or the page following the live slide")
+    #expect(!NewSlideRoute().clickedSlide(in: "song"))
+}

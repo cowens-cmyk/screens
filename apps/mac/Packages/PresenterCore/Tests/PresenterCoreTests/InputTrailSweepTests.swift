@@ -80,7 +80,8 @@ import Testing
     @Test func onlyInputOnThePageHoldsOrReleasesTheLiveFollow() throws {
         let surface = try source("ServiceContinuousView.swift")
         #expect(surface.contains("hold.follows(live: itemID)"), "a picked-away item is let go")
-        #expect(surface.contains("if focusScroll.honoredItemID != id { picks.pick(id) }"))
+        #expect(surface.contains("let followed = focusScroll.honoredItemID == id\n"))
+        #expect(surface.contains("if !followed { picks.pick(id) }"))
         let recorder = try source("InputTrailRecorder.swift")
         #expect(!recorder.contains("trail.age(of: \"click\""), "a click anywhere in the window")
         #expect(!recorder.contains("trail.age(of: \"key\""), "typing a stage message")
