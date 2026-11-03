@@ -153,7 +153,7 @@ struct MonitorsPanel: View {
         add("Livestream", targets.stream, .stream)
         add("Stage", targets.stage, .stage)
         let roles = Set([targets.audience, targets.stream, targets.stage].compactMap { $0 })
-        for screen in PreviewTargets.screens(render) where !roles.contains(screen.id) {
+        for screen in PreviewTargets.outputScreens(render) where !roles.contains(screen.id) {
             add(screen.name, screen.id, .other)
         }
         return list
@@ -177,7 +177,7 @@ struct MonitorsPanel: View {
 
     private var otherScreens: [(id: String, name: String)] {
         let roles = Set([audienceTarget, streamTarget, stageTarget].compactMap { $0 })
-        return PreviewTargets.screens(render).filter { !roles.contains($0.id) }
+        return PreviewTargets.outputScreens(render).filter { !roles.contains($0.id) }
     }
 
     private var allScreens: [(id: String, label: String)] {

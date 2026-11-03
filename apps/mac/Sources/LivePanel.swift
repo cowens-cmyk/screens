@@ -312,6 +312,16 @@ enum PreviewTargets {
             + outputs.displays.map { ($0.uuid, $0.name) }
     }
 
+    /// The screens Screens sends a picture to: the configured screens and
+    /// any display it has put an output on. The operator's own monitors
+    /// show the app, not the slides, so they don't belong in the previews.
+    static func outputScreens(_ render: RenderContext) -> [(id: String, name: String)] {
+        let outputs = render.outputs
+        let showing = outputs.assignedDisplays.union(outputs.placeholderDevices.values)
+        return outputs.placeholderScreens.map { ($0.id.uuidString, $0.name) }
+            + outputs.displays.filter { showing.contains($0.uuid) }.map { ($0.uuid, $0.name) }
+    }
+
     static func resolve(
         _ stored: String, render: RenderContext,
         layouts: [PreviewTargetLogic.Choice] = []
