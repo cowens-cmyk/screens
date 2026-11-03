@@ -182,9 +182,20 @@ enum ServiceLighting {
 struct LightkeySettingsForm: View {
     var model: AppModel?
     @Bindable private var link = LightkeyLink.shared
+    @State private var settingUp = false
 
     var body: some View {
         Section {
+            if model != nil {
+                LabeledContent {
+                    Button("Set Up Lightkey…") { settingUp = true }
+                } label: {
+                    Text("First time")
+                    Text("Teaches Lightkey a note for each part of the service, one at a time.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Picker("Lightkey runs on", selection: $link.location) {
                 ForEach(LightkeyLink.Location.allCases) { Text($0.title).tag($0) }
             }
@@ -226,6 +237,9 @@ struct LightkeySettingsForm: View {
             }
         }
         .onAppear { link.apply() }
+        .sheet(isPresented: $settingUp) {
+            if let model { LightkeySetupSheet(model: model) }
+        }
         Section {
             Toggle("Send song sections (Verse, Chorus, Bridge…)", isOn: $link.sendsSections)
                 .toggleStyle(.switch)
