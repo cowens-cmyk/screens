@@ -53,7 +53,9 @@ struct ServiceContinuousView: View {
     @State private var livestreamPrompt: LivestreamPromptRequest?
 
     /// The page's side margin; the slide grids reach their marquee over it.
-    static let pageMargin: CGFloat = 12
+    /// 24 keeps the first column clear of the window edge on the booth's
+    /// screen; 12 read as cramped there.
+    static let pageMargin: CGFloat = 24
 
     /// The items the operator picked in the plan list, for LiveSlideFollow.
     @State private var picks = PresentPicks()
