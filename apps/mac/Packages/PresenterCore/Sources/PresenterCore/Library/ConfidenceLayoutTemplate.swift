@@ -55,18 +55,151 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     static let worshipAccent = "#F5C04AFF"
     static let nextGray = "#A1A1A6FF"
 
-    /// Built for reading from the platform. The words being sung, large,
-    /// bold and white, start at the same place on every slide so the eye
-    /// knows where to look: left-aligned, with the section name small in a
-    /// column to their left and NEXT beside the next lines the same way. The
-    /// chords (Nashville numbers) are in the accent over the words. The next
-    /// slide's first two lines are smaller and grey, and NEXT goes away on
-    /// the last slide. The clock, song and key run along the bottom, where a
-    /// stage message replaces them.
+    /// The Worship words, in the orange the church's ProPresenter stage used.
+    static let worshipOrange = "#F0921EFF"
+    static let worshipNextGray = "#A0A0A0FF"
+    /// The bottom bar's boxes, and a section block's colour when its section
+    /// has none of its own.
+    static let worshipSlate = "#333A44FF"
+
+    /// Built as the church's ProPresenter stage was, so the musicians read it
+    /// the same way. Down the left, a block in the current section's colour
+    /// beside the words with its name turned on its side, and one in the next
+    /// slide's section colour beside the next lines; that one goes away when
+    /// there is no next slide. The words being sung are large, bold and
+    /// orange, top-left, so the first line always starts in the same place,
+    /// with the chords (Nashville numbers) over them. The next slide's first
+    /// lines are grey under them. Along the bottom, three slate boxes: the
+    /// clock with seconds, the song, and its key, where a stage message
+    /// replaces them.
+    static func worship(name: String) -> ConfidenceLayout {
+        // The column's two blocks: beside the words, and beside the next lines.
+        let column: (x: Double, width: Double) = (30, 110)
+        let currentBlock: (y: Double, height: Double) = (40, 460)
+        let nextBlock: (y: Double, height: Double) = (505, 435)
+        let words: (x: Double, width: Double) = (170, 1720)
+
+        let section = sideways("Section", .currentGroup, column: column, block: currentBlock)
+        let nextSection = sideways("Next Section", .nextGroup, column: column, block: nextBlock)
+        // A block shows only while there is a section name to put in it.
+        let sectionBlock = groupBlock("Section Block", .current, column: column, block: currentBlock,
+                                      label: section)
+        let nextSectionBlock = groupBlock("Next Section Block", .next, column: column, block: nextBlock,
+                                          label: nextSection)
+
+        var current = linked("Current Slide", .currentSlide,
+                             x: words.x, y: 70, width: words.width, height: 430,
+                             size: 112, color: worshipOrange, alignment: .left, shrink: true, minSize: 60,
+                             chords: true)
+        current.textStyle?.fontName = "HelveticaNeue-Bold"
+        current.textStyle?.verticalAlignment = .top
+        // The lines as the song has them: a line gets smaller before it
+        // breaks, and only breaks (evenly) once it is as small as it goes.
+        current.textStyle?.keepLinesWhole = true
+        current.textStyle?.balancedWrap = true
+        current.textStyle?.chordNotation = .numbers
+        // White, since gold chords over orange words were hard to tell apart.
+        current.textStyle?.chordColorHex = white
+        // The next lines are a glance ahead; chords there were too small to
+        // read and crowded the words.
+        var next = linked("Next Slide", .nextSlide,
+                          x: words.x, y: 520, width: words.width, height: 350,
+                          size: 80, color: worshipNextGray, alignment: .left, shrink: true, minSize: 44,
+                          maxLines: 3)
+        next.textStyle?.fontName = "HelveticaNeue-Bold"
+        next.textStyle?.verticalAlignment = .top
+        next.textStyle?.keepLinesWhole = true
+        next.textStyle?.balancedWrap = true
+        next.textStyle?.chordNotation = .numbers
+        next.textStyle?.chordColorHex = captionGray
+
+        // The bottom bar: three boxes, the words centred in each.
+        let bar: (y: Double, height: Double) = (945, 110)
+        let pad = 20.0
+        let boxes: [(name: String, x: Double, width: Double)] = [
+            ("Clock Box", 30, 560), ("Song Box", 610, 700), ("Key Box", 1330, 560),
+        ]
+        let slates = boxes.map { slate($0.name, x: $0.x, y: bar.y, width: $0.width, height: bar.height) }
+        func inside(_ box: Int) -> (x: Double, width: Double) {
+            (boxes[box].x + pad, boxes[box].width - pad * 2)
+        }
+        var clock = linked("Clock", .clock, x: inside(0).x, y: bar.y, width: inside(0).width,
+                           height: bar.height, size: 72, color: white, tabular: true,
+                           shrink: true, minSize: 40, clockFormat: "h:mm:ssa")
+        clock.textStyle?.fontName = "HelveticaNeue-Bold"
+        var song = linked("Song", .currentPresentation, x: inside(1).x, y: bar.y, width: inside(1).width,
+                          height: bar.height, size: 52, color: white, shrink: true, minSize: 28)
+        song.textStyle?.fontName = "HelveticaNeue-Bold"
+        var key = linked("Song Key", .songKey, x: inside(2).x, y: bar.y, width: inside(2).width,
+                         height: bar.height, size: 60, color: white, shrink: true, minSize: 32)
+        key.textStyle?.fontName = "HelveticaNeue-Bold"
+        return ConfidenceLayout(
+            id: UUID().uuidString,
+            name: name,
+            objects: [sectionBlock, section, nextSectionBlock, nextSection, current, next]
+                + slates + [clock, song, key]
+        )
+    }
+
+    /// A section name turned to read bottom to top, centred in its block.
+    /// The box is laid out unturned (as wide as the block is tall) and turns
+    /// about its centre.
+    private static func sideways(
+        _ objectName: String, _ source: TextSourceKind,
+        column: (x: Double, width: Double), block: (y: Double, height: Double)
+    ) -> SlideObject {
+        let length = block.height - 20
+        let thickness = column.width - 20
+        var label = linked(objectName, source,
+                           x: column.x + column.width / 2 - length / 2,
+                           y: block.y + block.height / 2 - thickness / 2,
+                           width: length, height: thickness,
+                           size: 54, color: white, shrink: true, minSize: 24)
+        label.rotationDegrees = -90
+        label.textStyle?.fontName = "HelveticaNeue-Bold"
+        label.textStyle?.tracking = 4
+        label.textStyle?.textTransform = .uppercase
+        return label
+    }
+
+    /// A block filled with the current or next slide's section colour, shown
+    /// only while `label` has a name in it.
+    private static func groupBlock(
+        _ objectName: String, _ which: StageGroupColor,
+        column: (x: Double, width: Double), block: (y: Double, height: Double),
+        label: SlideObject
+    ) -> SlideObject {
+        var object = slate(objectName, x: column.x, y: block.y, width: column.width, height: block.height)
+        object.groupColorFill = which
+        object.visibilityConditions = [
+            VisibilityCondition(conditionKind: .objectText, state: .hasText, objectId: label.id),
+        ]
+        return object
+    }
+
+    /// A dark slate box behind the bottom bar's words.
+    private static func slate(
+        _ objectName: String, x: Double, y: Double, width: Double, height: Double
+    ) -> SlideObject {
+        var object = SlideObject(id: UUID().uuidString, objectKind: .shape, name: objectName, text: "")
+        object.shapeKind = .roundedRectangle
+        object.cornerRadius = 10
+        object.x = x
+        object.y = y
+        object.width = width
+        object.height = height
+        object.fill = ObjectFill(fillKind: .solid, colorHex: worshipSlate)
+        return object
+    }
+
+    /// The Worship layout as it was made until November 2026: white words
+    /// right of a small section name, NEXT beside the next lines, and the
+    /// clock, song and key over a hairline. Kept only to recognise untouched
+    /// copies of it.
     ///
     /// `centered` is the design as 0.19.0 made it, the section name over
-    /// centred words; kept only to recognise untouched copies of it.
-    static func worship(name: String, centered: Bool = false) -> ConfidenceLayout {
+    /// centred words; kept for the same reason.
+    static func previousWorship(name: String, centered: Bool = false) -> ConfidenceLayout {
         // The words start right of a column wide enough for "PRE CHORUS 2".
         let words: (x: Double, width: Double) = centered ? (80, 1760) : (420, 1440)
         let align: TextHorizontalAlignment = centered ? .center : .left
@@ -129,7 +262,11 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     /// A saved Worship layout still exactly as an earlier template made it
     /// gets the new design's objects; one anybody has touched is left alone.
     public static func upgradedWorshipObjects(for layout: ConfidenceLayout) -> [SlideObject]? {
-        let earlier = [legacyWorship(name: layout.name), worship(name: layout.name, centered: true)]
+        let earlier = [
+            legacyWorship(name: layout.name),
+            previousWorship(name: layout.name, centered: true),
+            previousWorship(name: layout.name),
+        ]
         guard earlier.contains(where: { isUntouched(layout, comparedWith: $0) }) else { return nil }
         return worship(name: layout.name).objects
     }

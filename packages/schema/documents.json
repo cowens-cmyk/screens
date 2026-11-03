@@ -1346,7 +1346,19 @@
           "name": "keystoneMode",
           "type": "KeystoneMode",
           "optional": true
+        },
+        {
+          "name": "groupColorFill",
+          "type": "StageGroupColor",
+          "optional": true
         }
+      ]
+    },
+    "StageGroupColor": {
+      "kind": "enum",
+      "cases": [
+        "current",
+        "next"
       ]
     },
     "KeystoneMode": {
@@ -3891,7 +3903,8 @@
         "currentPresentation",
         "nextServiceTitle",
         "songKey",
-        "slideNotes"
+        "slideNotes",
+        "nextGroup"
       ]
     },
     "TimerTextFormat": {

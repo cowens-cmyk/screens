@@ -49,6 +49,7 @@ public enum LinkedText {
         case .currentServiceItem: return nonEmpty(info.currentItemName)
         case .nextServiceItem: return nonEmpty(info.nextItemName)
         case .currentGroup: return nonEmpty(info.currentGroupName)
+        case .nextGroup: return nonEmpty(info.nextGroupName)
         case .currentPresentation: return nonEmpty(info.currentPresentationName)
 
         case .nextServiceTitle: return nonEmpty(info.nextServiceTitle)
@@ -69,6 +70,7 @@ public enum LinkedText {
         reading: (TextLink) -> TextLink = { $0 }
     ) -> [SlideObject] {
         objects.map { object in
+            let object = groupFilled(object, info: info)
             guard let stored = object.textLink else { return object }
             let link = reading(stored)
             var resolved = object
@@ -99,6 +101,24 @@ public enum LinkedText {
             }
             return resolved
         }
+    }
+
+    /// A stage block filled with the current or next slide's section colour
+    /// takes it now. With no colour known its own fill stays, so a section
+    /// without one still shows as a block.
+    static func groupFilled(_ object: SlideObject, info: ConfidenceInfo) -> SlideObject {
+        guard let which = object.groupColorFill else { return object }
+        let hex = switch which {
+        case .current: info.currentGroupColorHex
+        case .next: info.nextGroupColorHex
+        }
+        guard let hex = nonEmpty(hex) else { return object }
+        var filled = object
+        var fill = filled.fill ?? ObjectFill(fillKind: .solid)
+        fill.fillKind = .solid
+        fill.colorHex = hex
+        filled.fill = fill
+        return filled
     }
 
     static func slideText(for link: TextLink, in info: ConfidenceInfo) -> ConfidenceInfo.SlideText? {
@@ -142,7 +162,7 @@ public enum LinkedText {
             return true
         case .currentSlide, .nextSlide, .lastSlide, .slidePosition,
              .currentServiceItem, .nextServiceItem, .stageMessage, .currentGroup,
-             .currentPresentation, .nextServiceTitle, .songKey, .slideNotes:
+             .currentPresentation, .nextServiceTitle, .songKey, .slideNotes, .nextGroup:
             return false
         }
     }
@@ -153,7 +173,7 @@ public enum LinkedText {
             return link.timerPattern.map(TimerPattern.hasFraction) == true
         case .clock, .currentSlide, .nextSlide, .lastSlide, .slidePosition,
              .currentServiceItem, .nextServiceItem, .stageMessage, .currentGroup,
-             .currentPresentation, .nextServiceTitle, .songKey, .slideNotes:
+             .currentPresentation, .nextServiceTitle, .songKey, .slideNotes, .nextGroup:
             return false
         }
     }
@@ -216,6 +236,9 @@ public enum LinkedText {
         slidePosition: .init(index: 3, total: 12),
         currentItemName: "Amazing Grace",
         currentGroupName: "Verse 1",
+        nextGroupName: "Chorus",
+        currentGroupColorHex: "#0077CCFF",
+        nextGroupColorHex: "#CC004EFF",
         nextItemName: "Welcome & Announcements",
         currentPresentationName: "Amazing Grace",
         nextServiceTitle: "Sunday Gathering"

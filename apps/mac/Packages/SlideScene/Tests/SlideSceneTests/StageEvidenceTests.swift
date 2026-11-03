@@ -146,9 +146,15 @@ private let longLines = ConfidenceInfo.SlideText(
     body: "When we've been there ten thousand years, bright shining as the sun\nWe've no less days to sing God's praise than when we'd first begun\nPraise God, praise God",
     musicKey: "G")
 
-private func worshipInfo(current: ConfidenceInfo.SlideText, next: ConfidenceInfo.SlideText?, group: String) -> ConfidenceInfo {
+private func worshipInfo(
+    current: ConfidenceInfo.SlideText, next: ConfidenceInfo.SlideText?, group: String,
+    nextGroup: String = "Chorus"
+) -> ConfidenceInfo {
     ConfidenceInfo(
-        current: current, next: next, currentGroupName: group, currentPresentationName: "Amazing Grace")
+        current: current, next: next, currentGroupName: group,
+        nextGroupName: next == nil ? nil : nextGroup,
+        currentGroupColorHex: "#0077CCFF", nextGroupColorHex: next == nil ? nil : "#CC004EFF",
+        currentPresentationName: "Amazing Grace")
 }
 
 @MainActor

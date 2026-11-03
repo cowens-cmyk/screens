@@ -1063,6 +1063,9 @@
         },
         "keystoneMode": {
           "$ref": "#/components/schemas/KeystoneMode"
+        },
+        "groupColorFill": {
+          "$ref": "#/components/schemas/StageGroupColor"
         }
       },
       "required": [
@@ -1070,6 +1073,13 @@
         "objectKind",
         "name",
         "text"
+      ]
+    },
+    "StageGroupColor": {
+      "type": "string",
+      "enum": [
+        "current",
+        "next"
       ]
     },
     "KeystoneMode": {
@@ -3279,7 +3289,8 @@
         "currentPresentation",
         "nextServiceTitle",
         "songKey",
-        "slideNotes"
+        "slideNotes",
+        "nextGroup"
       ]
     },
     "TimerTextFormat": {

@@ -1517,6 +1517,10 @@ final class ServiceControls {
 
     private(set) var nextSlideInfo: ConfidenceInfo.SlideText?
 
+    /// The section of the slide the stage shows as next, for its group name
+    /// and colour.
+    private var nextSlideSection: PresentationSection?
+
     var nextSlideText: String? { nextSlideInfo?.body }
 
     /// The slide Next fires, blank or not: the phone remote draws it.
@@ -1606,14 +1610,14 @@ final class ServiceControls {
     func refreshNextSlide() {
         let context = fireContext()
         nextSlideCue = context.upcoming.first.map { NextSlideCue(slide: $0.slide, presentation: $0.presentation) }
-        nextSlideInfo = ConfidenceSceneBuilder.nextSlide(
+        let next = ConfidenceSceneBuilder.nextSlide(
             in: context.upcoming.map(\.slide), skippingBlanks: nextSkipsBlanks
-        ).map { next in
-            ConfidenceSceneBuilder.slideText(
-                for: next,
-                in: context.upcoming.first { $0.slide.id == next.id }?.presentation
-            )
+        )
+        let nextPresentation = next.flatMap { next in
+            context.upcoming.first { $0.slide.id == next.id }?.presentation
         }
+        nextSlideInfo = next.map { ConfidenceSceneBuilder.slideText(for: $0, in: nextPresentation) }
+        nextSlideSection = next.flatMap { Self.section(of: $0, in: nextPresentation) }
         slidePosition = context.slidePosition
         currentItemName = context.currentItemName
         nextItemName = context.nextItemName
@@ -1812,16 +1816,23 @@ final class ServiceControls {
         info.slidePosition = slidePosition
         info.currentItemName = currentItemName
 
-        info.currentGroupName = state.liveSlide.flatMap { live in
-            guard let sectionId = live.slide.sectionId, !sectionId.isEmpty else { return nil }
-            return live.presentation?.sections?.first { $0.id == sectionId }?.name
-        }
+        let currentSection = state.liveSlide.flatMap { Self.section(of: $0.slide, in: $0.presentation) }
+        let palette = appModel.groupColors
+        info.currentGroupName = currentSection?.name
+        info.currentGroupColorHex = currentSection?.resolvedColorHex(paletteColors: palette)
+        info.nextGroupName = nextSlideSection?.name
+        info.nextGroupColorHex = nextSlideSection?.resolvedColorHex(paletteColors: palette)
         info.nextItemName = nextItemName
 
         info.currentPresentationName = state.liveSlide?.presentation?.name
         info.alert = state.liveAlert
         info.alertVisible = alertVisible
         render.confidenceInfo = info
+    }
+
+    private static func section(of slide: Slide, in presentation: Presentation?) -> PresentationSection? {
+        guard let sectionId = slide.sectionId, !sectionId.isEmpty else { return nil }
+        return presentation?.sections?.first { $0.id == sectionId }
     }
 
     private var confidenceMediaWants: [String: Bool?] = [:]
