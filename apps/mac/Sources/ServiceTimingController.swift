@@ -24,7 +24,12 @@ final class ServiceTimingController {
     }
 
     func noteItemFired(serviceItemID: String?) {
-        guard let serviceItemID else { return }
+        // A library deck fired mid-service carries its own id, not a plan
+        // item's: it isn't a new service item, so the timers and the item's
+        // start stay with the item it went up over.
+        guard let serviceItemID,
+              currentService?.items.contains(where: { $0.id == serviceItemID }) == true
+        else { return }
         armLocalTimingEnd(firedItemID: serviceItemID)
         guard serviceItemID != currentServiceItemID else { return }
         let now = Date()

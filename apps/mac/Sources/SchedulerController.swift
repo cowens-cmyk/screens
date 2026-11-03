@@ -471,7 +471,8 @@ final class SchedulerController {
                     // a service ends.
                     let slides = SlideSceneBuilder.arrangedSlides(
                         for: presentation, arrangementId: live.arrangementId ?? lastPresentation.arrangementId)
-                    situation.finalSlideIsUp = slides.last?.id == live.slide.id
+                    situation.finalSlideIsUp = SlideSceneBuilder.isLastArranged(
+                        slideID: live.slide.id, occurrence: controls.liveOccurrence, in: slides)
                 }
             }
         } else {

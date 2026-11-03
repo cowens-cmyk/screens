@@ -114,13 +114,16 @@ public enum ServiceTrackingTimers {
     }
 
     /// A countdown to a moment: running toward `date`, idle once it's past.
+    /// It holds at 0:00 rather than counting on in red, because the snapshot
+    /// is only rebuilt when the next service moves on, seconds or minutes
+    /// after the moment itself.
     public static func until(_ subject: Subject, _ date: Date?, now: Date) -> TimerSnapshot {
         guard let date, date > now else { return idle(subject, .remaining) }
         let seconds = date.timeIntervalSince(now)
         return TimerSnapshot(
             id: id(subject, .remaining), name: name(subject, .remaining), mode: .countdown,
             isRunning: true, runningSince: now, banked: 0, durationSeconds: seconds,
-            warnings: [])
+            warnings: [], keepsCountingAfterZero: false)
     }
 
     public static func idle(_ subject: Subject, _ face: Face) -> TimerSnapshot {

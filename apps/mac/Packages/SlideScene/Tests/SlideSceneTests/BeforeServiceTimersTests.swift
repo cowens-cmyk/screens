@@ -21,3 +21,22 @@ import Testing
     #expect(!ServiceTrackingTimers.until(.untilCountdown, nil, now: now).isRunning)
     #expect(ServiceTrackingTimers.faces(of: .untilCountdown) == [.remaining])
 }
+
+@Test func untilTimersHoldAtZeroOnceTheMomentPasses() {
+    let now = Date()
+    let timer = ServiceTrackingTimers.until(.untilCountdown, now.addingTimeInterval(30), now: now)
+    #expect(timer.value(at: now.addingTimeInterval(45)) == 0)
+}
+
+@Test func onlyTheLastRepeatOfAClosingChorusIsTheFinalSlide() {
+    // V C C: the chorus slide appears twice, the second time last.
+    let verse = Slide(id: "v", name: "Verse", objects: [])
+    let chorus = Slide(id: "c", name: "Chorus", objects: [])
+    let slides = [verse, chorus, chorus]
+    #expect(!SlideSceneBuilder.isLastArranged(slideID: "c", occurrence: 1, in: slides))
+    #expect(SlideSceneBuilder.isLastArranged(slideID: "c", occurrence: 2, in: slides))
+    // Without an occurrence a repeated slide can't be told apart, so it isn't.
+    #expect(!SlideSceneBuilder.isLastArranged(slideID: "c", occurrence: nil, in: slides))
+    #expect(SlideSceneBuilder.isLastArranged(slideID: "c", occurrence: nil, in: [verse, chorus]))
+    #expect(!SlideSceneBuilder.isLastArranged(slideID: "v", occurrence: nil, in: [verse, chorus]))
+}
