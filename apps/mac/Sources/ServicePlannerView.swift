@@ -1288,7 +1288,7 @@ struct GetLyricsButton: View {
             }
             .buttonStyle(.plain)
             .disabled(runOnly || fetcher.waitingItemID != nil)
-            .help("No slides for this song yet. Looks in Shepherd; if it isn't there, opens SongSelect and imports the lyrics file you download. Right-click the song to type the lyrics instead.")
+            .help("No slides for this song yet. Looks in Shepherd; if it isn't there, opens the song in SongSelect inside Screens and imports what you download. Right-click the song to type the lyrics instead.")
         }
     }
 }

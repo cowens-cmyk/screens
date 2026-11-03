@@ -41,10 +41,21 @@ final class LyricsFetcher {
         default:
             break
         }
-        openSongSelect(ccli: item.mxuCcliNumber, title: title)
-        status = "Download the lyrics in SongSelect; Screens picks them up from Downloads."
-        watchDownloads(for: item.id, planID: planID, title: title, model: model)
+        status = "Download the lyrics or ChordPro in the SongSelect window."
+        SongSelectWindow.shared.open(
+            ccli: item.mxuCcliNumber, title: title,
+            for: .init(itemID: item.id, planID: planID, title: title), model: model)
     }
+
+    /// The SongSelect window imported the song (or found it had slides).
+    func completed(_ message: String) {
+        watch?.cancel()
+        watch = nil
+        finish(message)
+    }
+
+    /// Downloads is being watched for a file from the Mac's browser.
+    var isWatching: Bool { watch != nil }
 
     func cancel() {
         watch?.cancel()
@@ -143,20 +154,9 @@ final class LyricsFetcher {
 
     // MARK: SongSelect
 
-    private func openSongSelect(ccli: Int?, title: String) {
-        var components = URLComponents(string: "https://songselect.ccli.com")!
-        if let ccli {
-            components.path = "/songs/\(ccli)"
-        } else {
-            components.path = "/search/results"
-            components.queryItems = [URLQueryItem(name: "search", value: title)]
-        }
-        if let url = components.url { NSWorkspace.shared.open(url) }
-    }
-
     /// Checks Downloads every two seconds for ten minutes for a lyrics file
     /// that arrived after the browser opened.
-    private func watchDownloads(for itemID: String, planID: String, title: String, model: AppModel) {
+    func watchDownloads(for itemID: String, planID: String, title: String, model: AppModel) {
         watch?.cancel()
         let started = Date()
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]

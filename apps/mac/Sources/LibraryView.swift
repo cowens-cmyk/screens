@@ -1422,6 +1422,10 @@ struct LibraryCommands: Commands {
                 .disabled(model == nil || runOnly)
             Button("Import Chord Chart…") { importDocuments(chordChartsOnly: true) }
                 .disabled(model == nil || runOnly)
+            Button("Import from SongSelect…") {
+                if let model { SongSelectWindow.shared.open(ccli: nil, title: nil, for: nil, model: model) }
+            }
+            .disabled(model == nil || runOnly)
             Divider()
             Menu("Import") {
                 Button("Theme…") { importShared() }
