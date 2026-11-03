@@ -225,10 +225,20 @@ enum SlidePasteboard {
         copy([slide])
     }
 
-    /// Which ⌘C the last copy answered, and whether the next one adds to
-    /// it (several items' slides copied by one ⌘C).
+    /// Which ⌘C or ⌘X the last copy answered, and whether the next one
+    /// adds to it (several items' slides copied by one keypress).
     static var copyGeneration = -1
     static var appendsCopy = false
+
+    /// Counts every ⌘C and ⌘X for the life of the app, so each keypress
+    /// has its own number: a page rebuilt by leaving Present starts its own
+    /// counts at zero, and a cut never changes the copy count.
+    private static var lastRound = 0
+
+    static func nextRound() -> Int {
+        lastRound += 1
+        return lastRound
+    }
 
     static func copy(_ slides: [Slide]) {
         var slides = slides
@@ -282,10 +292,18 @@ struct SlideClipboardRequests: Equatable {
     var pastes = 0
     var selectAlls = 0
 
+    /// The ⌘C or ⌘X every grid is answering (SlidePasteboard.nextRound).
+    var round = 0
+
+    @MainActor
     mutating func take(_ verb: Verb) {
         switch verb {
-        case .copy: copies += 1
-        case .cut: cuts += 1
+        case .copy:
+            round = SlidePasteboard.nextRound()
+            copies += 1
+        case .cut:
+            round = SlidePasteboard.nextRound()
+            cuts += 1
         case .paste: pastes += 1
         case .selectAll: selectAlls += 1
         case .delete: break
@@ -625,6 +643,7 @@ struct SlideGridBody: View {
                 .padding(-marqueeMargin)
                 .onTapGesture {
                     clearSelection()
+                    pageMarquee?.own(contextID)
                     NewSlideRouter.shared.route = NewSlideRoute(contextID: contextID)
                 }
                 .gesture(marqueeGesture)
@@ -653,7 +672,8 @@ struct SlideGridBody: View {
             }
         }
         .coordinateSpace(name: "slideGrid")
-        .modifier(PageMarqueeFollow(pageMarquee: pageMarquee, onBox: selectUnder))
+        .modifier(PageMarqueeFollow(
+            pageMarquee: pageMarquee, contextID: contextID, onBox: selectUnder, onOtherOwner: clearSelection))
 
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
         .background {
@@ -874,6 +894,7 @@ struct SlideGridBody: View {
         let modifiers = NSEvent.modifierFlags
 
         NewSlideRouter.shared.route = NewSlideRoute(contextID: contextID, occurrence: index)
+        pageMarquee?.own(contextID)
         if !runOnly, modifiers.contains(.command) {
             if selectedOccurrences.contains(index) {
                 selectedOccurrences.remove(index)
@@ -996,8 +1017,8 @@ struct SlideGridBody: View {
         if !runOnly, !slideIDs.isEmpty {
             // A box across several items: each grid adds its slides to the
             // same copy instead of replacing the one before.
-            SlidePasteboard.appendsCopy = pageMarquee != nil && SlidePasteboard.copyGeneration == clipboardRequests.copies
-            SlidePasteboard.copyGeneration = clipboardRequests.copies
+            SlidePasteboard.appendsCopy = pageMarquee != nil && SlidePasteboard.copyGeneration == clipboardRequests.round
+            SlidePasteboard.copyGeneration = clipboardRequests.round
             copySlides(slideIDs)
             return true
         } else {
@@ -1008,8 +1029,13 @@ struct SlideGridBody: View {
     private func pasteFromKeyboard() {
         // One paste, into the item last clicked or boxed, not one per item
         // that has slides selected.
-        if pageMarquee != nil, let routed = NewSlideRouter.shared.route.contextID, routed != contextID { return }
-        let liveIndex = controls?.liveContextID == contextID ? controls?.liveOccurrence : nil
+        let route = NewSlideRouter.shared.route
+        if pageMarquee != nil, let routed = route.contextID, routed != contextID { return }
+        // On the page, after the live slide only when a slide here was
+        // clicked: an item the page pointed at by itself would get the
+        // slides in the middle of what fires next.
+        let followsLive = pageMarquee == nil || route.clickedSlide(in: contextID)
+        let liveIndex = followsLive && controls?.liveContextID == contextID ? controls?.liveOccurrence : nil
         let anchorIndex = selectedOccurrences.max() ?? liveIndex
         if !runOnly, let anchorIndex, slides.indices.contains(anchorIndex) {
             pasteSlides(after: slides[anchorIndex])
@@ -2804,6 +2830,16 @@ final class PageMarquee {
     /// In the page's content coordinates; nil when no box is being dragged.
     private(set) var rect: CGRect?
 
+    /// The item whose grid holds the selection after a click there; every
+    /// other grid lets its own go, so Delete, ⌘X and ⌘C never reach slides
+    /// left selected in an item scrolled away. Nil after a box, which
+    /// selects across items.
+    private(set) var owner: String?
+
+    func own(_ contextID: String) {
+        if owner != contextID { owner = contextID }
+    }
+
     func gesture(in space: CoordinateSpace, enabled: Bool) -> some Gesture {
         DragGesture(minimumDistance: 4, coordinateSpace: space)
             .onChanged { [weak self] value in
@@ -2814,6 +2850,7 @@ final class PageMarquee {
     }
 
     func update(start: CGPoint, location: CGPoint) {
+        if owner != nil { owner = nil }
         rect = CGRect(
             x: min(start.x, location.x), y: min(start.y, location.y),
             width: abs(location.x - start.x), height: abs(location.y - start.y))
@@ -2835,10 +2872,13 @@ extension EnvironmentValues {
     @Entry var pageMarquee: PageMarquee?
 }
 
-/// Hands a grid the page's box in the grid's own coordinates.
+/// Hands a grid the page's box in the grid's own coordinates, and tells it
+/// when a click in another item takes the selection.
 private struct PageMarqueeFollow: ViewModifier {
     let pageMarquee: PageMarquee?
+    let contextID: String
     let onBox: (CGRect) -> Void
+    let onOtherOwner: () -> Void
     @State private var origin: CGPoint = .zero
 
     func body(content: Content) -> some View {
@@ -2849,6 +2889,9 @@ private struct PageMarqueeFollow: ViewModifier {
             .onChange(of: pageMarquee?.rect) { _, rect in
                 guard let rect else { return }
                 onBox(rect.offsetBy(dx: -origin.x, dy: -origin.y))
+            }
+            .onChange(of: pageMarquee?.owner) { _, owner in
+                if let owner, owner != contextID { onOtherOwner() }
             }
     }
 }

@@ -232,7 +232,7 @@ The bottom bar has **New** (a new presentation starts with no slides; in Confide
 
 **Sound output.** Settings › Media › **Sound Output** › **Play through**: a device (headphones, an interface) keeps Screens' sound there whatever macOS is set to, even when the Mac switches its output by itself; unplugged, Screens plays through the Mac's output until it's back. **The Mac's output** follows macOS. This is the Main mix's output: songs, playlists and video sound.
 
-**Selecting slides on the plan page.** Drag from any empty grey space (the margins, between items, beside a short row) to draw a box: the slides under it are selected in every item it crosses. ⌘C copies them all, ⌘X cuts, Delete deletes, and ⌘V pastes into the last item the box reached.
+**Selecting slides on the plan page.** Drag from any empty grey space (the margins, between items, beside a short row) to draw a box: the slides under it are selected in every item it crosses. ⌘C copies them all, ⌘X cuts, Delete deletes, and ⌘V pastes into the last item the box reached. Clicking a slide or empty space in one item lets go of slides selected in the others. With nothing selected, ⌘V pastes after the live slide only if a slide in that item was clicked last, otherwise at the end of the selected item; the page following the live slide into another item doesn't move where a paste goes.
 
 **Importing media.** Media tab › **Import…**, or drag files onto the Media library, or the **Media Library** window, or plan › Add Item › **Video or Image…**. While files are being added, a bar under the media bin's header shows how far it has got ("Importing 3 of 12 · file name"). Files the app can't play directly are flagged for transcode. Put countdown videos in a Media folder named **Countdowns**.
 
