@@ -162,7 +162,13 @@ public final class AudioEngine: @unchecked Sendable {
             }
             cancelRamp(resolving: true)
             decks[1 - activeIndex].clear()
-            beginFade(deck: deck, to: 0, duration: fade) { deck.clear() }
+            // The closure holds the engine on purpose. Callers usually let go
+            // of their player as soon as they stop it, and deinit would then
+            // cut the sound before the fade ends. The timer drops the closure
+            // when the fade finishes or is cancelled.
+            beginFade(deck: deck, to: 0, duration: fade) { [self] in
+                withExtendedLifetime(self) { deck.clear() }
+            }
         }
     }
 
@@ -366,21 +372,44 @@ public final class AudioEngine: @unchecked Sendable {
         _ device: AudioOutputDevice?, channelOffset: Int = 0
     ) throws {
         try lock.withLock {
+            let target = device ?? AudioDeviceList.defaultOutputDevice()
+
+            // Any device appearing or the default input changing re-applies
+            // every player's routing. When nothing about this engine's output
+            // has changed, restarting it would only put a gap in the music
+            // and cut a fade short. Comparing against the current default
+            // still re-routes a follow-default engine when the default moves.
+            if let target,
+               device?.uid == desiredDeviceUID,
+               channelOffset == desiredChannelOffset,
+               target.channelCount == deviceChannelCount,
+               engine.outputNode.auAudioUnit.deviceID == target.id,
+               engine.isRunning || !transportPlaying {
+                return
+            }
+            routingRebuildsForTests += 1
             cancelRamp(resolving: true)
 
             for each in decks { each.pause() }
             engine.stop()
             desiredDeviceUID = device?.uid
-            let target = device ?? AudioDeviceList.defaultOutputDevice()
+            // A device that is listed but not ready yet can refuse. Carry on
+            // and rebuild anyway, so the paused decks start again on whatever
+            // output the engine falls back to, and report the error after.
+            var deviceError: (any Error)?
             if let id = target?.id {
-                try engine.outputNode.auAudioUnit.setDeviceID(id)
+                do { try engine.outputNode.auAudioUnit.setDeviceID(id) } catch { deviceError = error }
             }
             desiredChannelOffset = channelOffset
             deviceChannelCount = target?.channelCount ?? 2
             applyChannelMap()
             rebuildPlayback()
+            if let deviceError { throw deviceError }
         }
     }
+
+    /// How many times setOutputDevice actually stopped and rebuilt the engine.
+    private(set) var routingRebuildsForTests = 0
 
     private var desiredChannelOffset = 0
     private var deviceChannelCount = 2
@@ -433,7 +462,10 @@ public final class AudioEngine: @unchecked Sendable {
         let resume = transportPlaying
         for each in decks where each !== deck { each.clear() }
         guard (try? ensureRunning()) != nil,
-              (try? loadTracked(deck: deck, url: url, from: position)) != nil
+              (try? loadTracked(
+                  deck: deck, url: url, from: position,
+                  windowStart: deck.trimStart, until: deck.trimUntil
+              )) != nil
         else { return }
         deck.player.volume = 1
         if resume { deck.player.play() }

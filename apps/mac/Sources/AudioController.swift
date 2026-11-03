@@ -31,6 +31,10 @@ final class AudioPlayer {
 
     private var repeatOverride: Bool?
 
+    /// A single item that played to its end has no buffers left, so Play
+    /// has to start it again rather than resume the empty deck.
+    private var endedNaturally = false
+
     private var crossfadeArmedEntryID: String?
     private var pollTimer: Timer?
     private var consecutiveSkips = 0
@@ -142,6 +146,8 @@ final class AudioPlayer {
         if isPlaying {
             engine.pause(fade: transportFade())
             isPlaying = false
+        } else if endedNaturally, let singleItemID, let item = appModel.audio(singleItemID) {
+            start(item: item, crossfade: 0, fadeIn: transportFade())
         } else {
             engine.resume(fade: transportFade())
             isPlaying = true
@@ -180,6 +186,7 @@ final class AudioPlayer {
            queue?.currentEntryID == entryID {
             crossfadeArmedEntryID = nil
         }
+        endedNaturally = false
         engine.seek(to: seconds + currentTrimStart)
         isPlaying = engine.isPlaying
         refreshPosition()
@@ -232,6 +239,7 @@ final class AudioPlayer {
             trimStart = 0
             trimEnd = nil
         }
+        endedNaturally = false
         do {
             try engine.play(
                 url: url, crossfade: crossfade, fadeIn: fadeIn,
@@ -281,6 +289,7 @@ final class AudioPlayer {
                 return
             }
             isPlaying = false
+            endedNaturally = true
             refreshPosition()
             return
         }

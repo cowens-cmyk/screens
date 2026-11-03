@@ -412,7 +412,13 @@ final class LiveAssist {
     /// Fetches and lays out the passage ahead of time. It only goes up by
     /// itself while listening and while nothing newer has been heard.
     private func prepare(_ reference: BibleReference, thenShow: Bool, generation: Int) async {
-        func stillShows() -> Bool { thenShow && generation == scriptureGeneration && listening }
+        // Held back like a reading: not during the operator's pause, and
+        // never over a video, countdown, camera or graphic. It stays
+        // prepared, one click away.
+        func stillShows() -> Bool {
+            thenShow && generation == scriptureGeneration && listening
+                && !isPaused && controls?.otherMediaIsUp == false
+        }
         guard let model, prepared[reference.display] == nil else {
             if stillShows() { try? await show(reference) }
             return
@@ -574,7 +580,7 @@ final class LiveAssist {
         guard followsSermonSlides, listening, !isPaused,
               let decision = follower.decision, slides.indices.contains(decision.slideIndex),
               Date().timeIntervalSince(lastAutoFire) > 4,
-              !controls.state.liveMedia.keys.contains(where: { $0 != .loopingVideos }),
+              !controls.otherMediaIsUp,
               live == nil || onMessage || live?.presentation?.category == PresentationTypes.bible
         else { return }
         lastAutoFire = Date()
@@ -897,7 +903,8 @@ final class LiveAssist {
     /// quoted from memory: more words, and phrases in a row that fit.
     private func mayPutUp(_ place: ScriptureFollower.Place, streak: Int) -> Bool {
         guard showsAutomatically, listening, !isPaused, let controls else { return false }
-        if controls.state.liveMedia.keys.contains(where: { $0 != .loopingVideos }) { return false }
+        // A video playing once on the background layer counts as media too.
+        if controls.otherMediaIsUp { return false }
         guard let live = controls.state.liveSlide else {
             return place.evidence >= ScriptureFollower.Threshold.show
         }
