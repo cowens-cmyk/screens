@@ -75,11 +75,15 @@ enum StageLayouts {
     static let worshipFallback = make(worshipID)
     static let messageFallback = make(messageID)
     static let videoFallback = make(videoID)
+    /// Libraries seeded before Before Service existed have no document for
+    /// it, so the stand-in is what they show.
+    static let preServiceFallback = make(preServiceID)
 
     static func fallback(for id: String) -> ConfidenceLayout {
         switch id {
         case messageID: messageFallback
         case videoID: videoFallback
+        case preServiceID: preServiceFallback
         default: worshipFallback
         }
     }

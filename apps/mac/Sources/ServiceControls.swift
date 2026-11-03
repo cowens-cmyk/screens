@@ -179,7 +179,9 @@ final class ServiceControls {
             applyScreenDefaults(for: presentation)
             actionRouter?.presentationDidGoLive(presentation)
         }
-        followBeforeService(slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID)
+        followBeforeService(
+            slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID,
+            occurrence: occurrence)
         // A slide that advanced by itself while a video plays once on the
         // screens (a looping slideshow the video went up over) isn't anyone
         // taking over: the video keeps the livestream, and its plan keeps
@@ -1018,19 +1020,30 @@ final class ServiceControls {
     /// Before Service: how long until the countdown and the service. Any
     /// other slide takes it back off; songs and the message have already
     /// set their own mode by then.
-    private func followBeforeService(slide: Slide, in presentation: Presentation, arrangementId: String?, contextID: String?) {
+    private func followBeforeService(
+        slide: Slide, in presentation: Presentation, arrangementId: String?, contextID: String?,
+        occurrence: Int?
+    ) {
         let setup = ShowSetup.shared
         guard setup.stageFollowsItems, presentation.stageLayoutId == nil, setup.stageMode != .mirror else { return }
         let plan = appModel.currentServiceID.flatMap { appModel.resident.services.value($0) }
-        var before = false
-        if let plan {
+        // The walk-in slideshow put up on its own (Service Day's restart, the
+        // library grid, the Local API) carries no plan item, and its every
+        // auto-advance would otherwise take the stage back to Worship.
+        var before = ServiceLighting.isPreService(
+            presentation, preServiceID: appModel.slideBuilding.serviceDay?.preServicePresentationId)
+        if !before, let plan {
             if let contextID, plan.items.first(where: { $0.id == contextID })?.isPreService == true {
                 before = true
             } else if let last = appModel.fireableItems(plan).last(where: { $0.itemKind == .presentation }),
-                      last.refId == presentation.id {
+                      last.refId == presentation.id,
+                      // The pastor preaches over the message's last slide,
+                      // so a plan that ends on the message keeps the
+                      // Message stage until the walk-in or the next item.
+                      PresentationTypes.category(of: presentation) != PresentationTypes.sermon {
                 let slides = SlideSceneBuilder.arrangedSlides(
                     for: presentation, arrangementId: arrangementId ?? last.arrangementId)
-                before = slides.last?.id == slide.id
+                before = SlideSceneBuilder.isLastArranged(slideID: slide.id, occurrence: occurrence, in: slides)
             }
         }
         if before {

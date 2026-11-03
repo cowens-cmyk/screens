@@ -45,6 +45,16 @@ public enum SlideSceneBuilder {
         }
     }
 
+    /// Whether the slide on screen is the arrangement's last. A repeated
+    /// section repeats the same slides, so the id alone can't tell the final
+    /// chorus from the earlier ones: the occurrence it was fired at decides,
+    /// and without one only a slide that appears once counts.
+    public static func isLastArranged(slideID: String, occurrence: Int?, in slides: [Slide]) -> Bool {
+        guard let last = slides.last, last.id == slideID else { return false }
+        if let occurrence { return occurrence == slides.count - 1 }
+        return slides.count { $0.id == slideID } == 1
+    }
+
     public static func arrangementBlockStarts(
         for presentation: Presentation,
         arrangementId: String? = nil
