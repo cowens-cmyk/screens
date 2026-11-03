@@ -25,18 +25,21 @@ public struct SceneTransition: Sendable, Equatable {
 }
 
 public final class SceneTransitionEngine: @unchecked Sendable {
+    /// One layer's transition. Each layer keeps its own, on its own clock:
+    /// a slide fire changes the words and then, a few milliseconds later,
+    /// the slide's background or media cue, and that second change must
+    /// not cut short the words' dissolve (nor restart it).
     private struct Active {
         var previous: RenderScene
         var startedAt: Date
+        var transition: SceneTransition
 
-        var transitions: [LayerKind: SceneTransition]
-
-        var duration: Double
+        var end: Date { startedAt.addingTimeInterval(transition.duration) }
     }
 
     private struct State {
         var target: RenderScene
-        var active: Active?
+        var active: [LayerKind: Active] = [:]
     }
 
     private let state: Locked<State>
@@ -46,36 +49,32 @@ public final class SceneTransitionEngine: @unchecked Sendable {
     public func telemetry(at date: Date = Date()) -> (pulls: Int, transition: String?) {
         let pulls = pullCount.value
         let description: String? = state.withLock { s in
-            guard let active = s.active else { return nil }
-            let progress = Self.progress(of: active, at: date)
-            let kinds = active.transitions.values.map { "\($0.kind)" }.joined(separator: "+")
-            return "\(kinds) \(Int(progress * 100))% over \(active.transitions.count) layer(s)"
+            let running = s.active.filter { $0.value.end > date }
+            guard !running.isEmpty else { return nil }
+            return running.sorted { $0.key.rawValue < $1.key.rawValue }.map { layer, active in
+                "\(active.transition.kind) \(Int(Self.progress(of: active, at: date) * 100))% on \(layer.rawValue)"
+            }.joined(separator: ", ")
         }
         return (pulls, description)
     }
 
     public init(initial: RenderScene = RenderScene()) {
-        state = Locked(State(target: initial, active: nil))
+        state = Locked(State(target: initial))
     }
 
-    /// When the transition under way finishes; nil when none is running.
+    /// When the transitions under way finish; nil when none is running.
     public func transitionEnd(after date: Date = Date()) -> Date? {
         state.withLock { s in
-            guard let active = s.active else { return nil }
-            let end = active.startedAt.addingTimeInterval(active.duration)
-            return end > date ? end : nil
+            guard let end = s.active.values.map(\.end).max(), end > date else { return nil }
+            return end
         }
     }
 
     public func heldMediaIDs(at date: Date = Date()) -> Set<String> {
         state.withLock { s in
-            guard let active = s.active,
-                  date.timeIntervalSince(active.startedAt) < active.duration
-            else { return [] }
             var ids = Set<String>()
-            for layer in active.previous.layers where active.transitions.keys.contains(layer.kind) {
-                for item in layer.items {
-
+            for (kind, active) in s.active where active.end > date {
+                for item in active.previous.layers.first(where: { $0.kind == kind })?.items ?? [] {
                     if let id = item.content.mediaID { ids.insert(id) }
                 }
             }
@@ -89,6 +88,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
 
     public func push(_ scene: RenderScene, transitionFor: (LayerKind) -> SceneTransition?) {
         state.withLock { s in
+            let now = Date()
             let scene = Self.settled(scene, after: s.target)
             let changed = Self.changedLayers(from: s.target, to: scene)
 
@@ -96,29 +96,16 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                 s.target = scene
                 return
             }
-            var transitions: [LayerKind: SceneTransition] = [:]
+            // What the screens show this moment, so a layer that changes
+            // again mid-transition carries on from where it is.
+            let showing = Self.current(s, at: now)
             for layer in changed {
                 if let transition = transitionFor(layer), transition.kind != .cut {
-                    transitions[layer] = transition
+                    s.active[layer] = Active(previous: showing, startedAt: now, transition: transition)
+                } else {
+                    s.active[layer] = nil
                 }
             }
-            guard !transitions.isEmpty else {
-                s.target = scene
-
-                s.active = nil
-                return
-            }
-
-            let base = s.active.map { Self.composite(
-                previous: $0.previous, target: s.target,
-                transitions: $0.transitions,
-                progress: Self.progress(of: $0, at: Date())
-            ) } ?? s.target
-            s.active = Active(
-                previous: base, startedAt: Date(),
-                transitions: transitions,
-                duration: transitions.values.map(\.duration).max() ?? 0.05
-            )
             s.target = scene
         }
     }
@@ -126,21 +113,30 @@ public final class SceneTransitionEngine: @unchecked Sendable {
     public func scene(at date: Date) -> RenderScene {
         pullCount.withLock { $0 += 1 }
         return state.withLock { s in
-            guard let active = s.active else { return s.target }
-            let progress = Self.progress(of: active, at: date)
-            if progress >= 1 {
-                s.active = nil
-                return s.target
-            }
-            return Self.composite(
-                previous: active.previous, target: s.target,
-                transitions: active.transitions, progress: progress
-            )
+            s.active = s.active.filter { $0.value.end > date }
+            return Self.current(s, at: date)
         }
     }
 
+    /// The target, with each layer still in its transition drawn partway.
+    private static func current(_ s: State, at date: Date) -> RenderScene {
+        var scene = s.target
+        for (kind, active) in s.active {
+            let progress = progress(of: active, at: date)
+            guard progress < 1,
+                  let index = scene.layers.firstIndex(where: { $0.kind == kind }) else { continue }
+            let blended = composite(
+                previous: active.previous, target: s.target,
+                transitions: [kind: active.transition], progress: progress)
+            if let layer = blended.layers.first(where: { $0.kind == kind }) {
+                scene.layers[index] = layer
+            }
+        }
+        return scene
+    }
+
     private static func progress(of active: Active, at date: Date) -> Double {
-        min(max(date.timeIntervalSince(active.startedAt) / active.duration, 0), 1)
+        min(max(date.timeIntervalSince(active.startedAt) / active.transition.duration, 0), 1)
     }
 
     static func membershipKey(_ item: RenderItem) -> String {
