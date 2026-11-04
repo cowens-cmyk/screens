@@ -34,11 +34,20 @@ final class DeckLinkOutputStore: @unchecked Sendable {
         releaseDetached(dropped?.output)
     }
 
+    /// Closes run here, in order and off the XPC queues. An open for the
+    /// same port waits for them (`waitForCloses`): a close finishing after
+    /// the next open had enabled the port would stop that open's playback
+    /// and leave it taking no frames, and an open racing a close fails as
+    /// "claimed by another app".
+    private let closer = DispatchQueue(label: "decklink.output.close", qos: .userInitiated)
+
     private func releaseDetached(_ output: DeckLinkOutput?) {
         guard let output else { return }
-        DispatchQueue.global(qos: .utility).async {
-            _ = output  
-        }
+        closer.async { output.close() }
+    }
+
+    func waitForCloses() {
+        closer.sync {}
     }
 
     func output(device: Int64, generation: UUID) -> DeckLinkOutput? {
@@ -254,6 +263,7 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol, @unchecked 
         do {
 
             DeckLinkOutputStore.shared.evict(device: devicePersistentID)
+            DeckLinkOutputStore.shared.waitForCloses()
             let output = try DeckLinkOutput(
                 persistentID: devicePersistentID,
                 modeID: chosenModeID,

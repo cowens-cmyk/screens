@@ -38,6 +38,13 @@ final class DeckLinkScreenOutputs {
     /// so the Audience 8K was gone after every relaunch.
     private var restored = false
 
+    /// Kept from the last enable or restore so the catalog's checks can
+    /// start a port again without a screen change to hand one in.
+    private weak var render: RenderContext?
+
+    /// The ports the catalog saw last time, to tell when one appears.
+    private var knownDevices: Set<Int64> = []
+
     private init() {}
 
     private func controller(for screenID: UUID) -> DeckLinkOutputController? {
@@ -70,7 +77,12 @@ final class DeckLinkScreenOutputs {
         mode: DeckLinkHelperDisplayMode? = nil, joining: Bool = false,
         render: RenderContext
     ) {
-        guard render.outputs.sliceInfo(for: screenID) != nil else { return }
+        guard render.outputs.sliceInfo(for: screenID) != nil else {
+            DiagnosticsStore.shared.note(
+                "decklink.enable", detail: "\(device.name): screen \(screenID) not found — skipped")
+            return
+        }
+        self.render = render
         if backings[screenID] != nil {
             backings.removeValue(forKey: screenID)
         }
@@ -204,9 +216,18 @@ final class DeckLinkScreenOutputs {
 
     func restore(render: RenderContext) {
         defer { restored = true }
+        self.render = render
         guard let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
             let stored = try? JSONDecoder().decode([String: Backing].self, from: data)
         else { return }
+        DiagnosticsStore.shared.note(
+            "decklink.restore",
+            detail: stored.values.map { "\($0.deviceName) (\($0.devicePersistentID))" }
+                .sorted().joined(separator: ", "))
+        // The port opens straight away, without waiting for the catalog:
+        // the helper looks the device up itself, and each port keeps trying
+        // until it sends, so a card the driver hasn't finished bringing up
+        // at launch comes up on a later try.
         for (raw, backing) in stored {
             guard let id = UUID(uuidString: raw) else { continue }
 
@@ -214,6 +235,30 @@ final class DeckLinkScreenOutputs {
                 screenID: id, device: device(for: backing),
                 keying: backing.keying, mode: backing.mode, joining: true,
                 render: render)
+        }
+    }
+
+    /// The catalog's answer, every few seconds. A port waiting to retry
+    /// whose device has just appeared tries now rather than at the end of
+    /// its wait, and a port with screens on it but nothing running (its
+    /// start was skipped) is started again. A port that is sending is left
+    /// alone.
+    func catalogFound(_ devices: [DeckLinkHelperDevice]) {
+        let found = Set(devices.map(\.persistentID))
+        let appeared = found.subtracting(knownDevices)
+        knownDevices = found
+        let wanted = Set(backings.values.map(\.devicePersistentID))
+        for device in wanted {
+            if let controller = controllers[device], controller.isActive {
+                if appeared.contains(device) { controller.retrySoon() }
+            } else if let render,
+                members(onDevice: device).contains(where: {
+                    render.outputs.sliceInfo(for: $0) != nil
+                }) {
+                DiagnosticsStore.shared.note(
+                    "decklink.restore", detail: "port \(device) assigned but not running — starting it")
+                rebuildCarry(devicePersistentID: device, render: render)
+            }
         }
     }
 
@@ -270,6 +315,7 @@ final class DeckLinkDeviceCatalog {
                 self?.allDevices = devices
                 self?.devices = devices.filter(\.supportsPlayback)
                 self?.hasFetched = true
+                DeckLinkScreenOutputs.shared.catalogFound(self?.devices ?? [])
                 replyConnection.invalidate()
 
                 for device in self?.devices ?? [] {
