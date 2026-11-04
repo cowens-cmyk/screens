@@ -28,6 +28,10 @@ final class MediaPlayer: @unchecked Sendable {
 
     let onFrameVended = Locked<(@Sendable (Double) -> Void)?>(nil)
 
+    /// The sound's fade out as it leaves the screens, applied in the audio
+    /// tap so the room and every audio send fade together.
+    private let audioFade = Locked<VideoAudioTap.FadeOut?>(nil)
+
     var stats: PlaybackStats {
         guarded.value.stats
     }
@@ -67,7 +71,7 @@ final class MediaPlayer: @unchecked Sendable {
         let item = AVPlayerItem(asset: media.asset)
 
         if let audioSink {
-            VideoAudioTap.attach(to: item, sink: audioSink, delay: audioDelay)
+            VideoAudioTap.attach(to: item, sink: audioSink, delay: audioDelay, fade: audioFade)
         }
         var state = Guarded()
         if loop {
@@ -137,6 +141,36 @@ final class MediaPlayer: @unchecked Sendable {
 
     func setAudioVolume(_ volume: Float) {
         player.volume = volume
+    }
+
+    /// Fades the sound to silence over `seconds` from now; a fade already
+    /// running carries on. nil brings the sound back.
+    func fadeOutAudio(over seconds: Double?) {
+        audioFade.withLock { fade in
+            guard let seconds else {
+                fade = nil
+                return
+            }
+            if fade == nil {
+                fade = VideoAudioTap.FadeOut(startHostTime: CACurrentMediaTime(), duration: max(seconds, 0.01))
+            }
+        }
+    }
+
+    var isFadingOutAudio: Bool { audioFade.value != nil }
+
+    /// Whether there's a frame to draw: one already drawn, or one ready.
+    /// Asks without taking the frame, so a transition can wait for a
+    /// video's first picture before it starts.
+    var hasPicture: Bool {
+        let item = player.currentItem
+        return guarded.withLock { state in
+            if state.currentSurface != nil { return true }
+            guard let item, item.status == .readyToPlay,
+                  let output = state.outputs[ObjectIdentifier(item)] else { return false }
+            let time = output.itemTime(forHostTime: CACurrentMediaTime())
+            return time.isValid && output.hasNewPixelBuffer(forItemTime: time)
+        }
     }
 
     func pause() {

@@ -317,3 +317,144 @@ extension SceneTransitionEngineTests {
         XCTAssertEqual(plain.withoutTransitionPlates(), plain)
     }
 }
+
+/// Slides made from a video or picture: the media is the slide, full frame
+/// on a media layer, letterboxed over black unless it fills.
+extension SceneTransitionEngineTests {
+    private static let canvas = CGSize(width: 192, height: 108)
+
+    private func media(_ mediaID: String?, on layer: LayerKind, letterbox: Bool = true) -> RenderScene {
+        var scene = RenderScene(canvasSize: Self.canvas)
+        guard let mediaID else { return scene }
+        let frame = CGRect(origin: .zero, size: Self.canvas)
+        let id = "live-media-\(layer.rawValue)"
+        if letterbox {
+            scene.addItem(
+                RenderItem(id: id + "-letterbox", frame: frame, content: .solid(SceneColor(red: 0, green: 0, blue: 0))),
+                to: layer)
+        }
+        scene.addItem(RenderItem(id: id, frame: frame, content: .media(id: mediaID, scaleMode: .fit)), to: layer)
+        return scene
+    }
+
+    private func merged(_ a: RenderScene, _ b: RenderScene) -> RenderScene {
+        var scene = a
+        for layer in b.layers {
+            for item in layer.items { scene.addItem(item, to: layer.kind) }
+        }
+        return scene
+    }
+
+    private func items(_ scene: RenderScene, _ layer: LayerKind) -> [RenderItem] {
+        scene.layers.first { $0.kind == layer }!.items
+    }
+
+    func testLetterboxedClipSwapKeepsTheOutgoingClipAboveItsBacking() {
+        let mid = SceneTransitionEngine.composite(
+            previous: media("intro", on: .videos), target: media("welcome", on: .videos),
+            transition: SceneTransition(kind: .dissolve, duration: 0.2),
+            progress: 0.5, layers: [.videos])
+        let stack = items(mid, .videos)
+        XCTAssertEqual(
+            stack.map(\.id),
+            ["live-media-videos-letterbox", "live-media-videos::leaving", "live-media-videos"],
+            "the black backing stays under both clips instead of covering the one leaving")
+        XCTAssertEqual(stack[1].opacity, 1, accuracy: 0.001, "the outgoing clip holds under the incoming one")
+        XCTAssertEqual(stack[2].opacity, 0.5, accuracy: 0.001)
+    }
+
+    func testVideoSlideToPictureSlideHoldsThePictureUnderTheFadingVideo() {
+        let engine = SceneTransitionEngine(initial: media("intro", on: .videos))
+        engine.push(media("announcement", on: .stillGraphics), transition: SceneTransition(kind: .dissolve, duration: 0.2))
+        let mid = engine.scene(at: Date(timeIntervalSinceNow: 0.1))
+        let video = items(mid, .videos).first { $0.id == "live-media-videos::leaving" }
+        XCTAssertEqual(video?.opacity ?? -1, 0.5, accuracy: 0.1, "the video fades away")
+        XCTAssertEqual(
+            items(mid, .stillGraphics).map(\.opacity), [1, 1],
+            "the picture is already there under it: no dip through black")
+    }
+
+    func testPictureSlideToVideoSlideHoldsThePictureUnderTheRisingVideo() {
+        let engine = SceneTransitionEngine(initial: media("announcement", on: .stillGraphics))
+        engine.push(media("intro", on: .videos), transition: SceneTransition(kind: .dissolve, duration: 0.2))
+        let mid = engine.scene(at: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(
+            items(mid, .stillGraphics).map(\.opacity), [1, 1],
+            "the picture stays full until the video has covered it")
+        let video = items(mid, .videos).first { $0.id == "live-media-videos" }
+        XCTAssertEqual(video?.opacity ?? -1, 0.5, accuracy: 0.1, "the video fades up")
+    }
+
+    func testMediaOnBothLayersAtDifferentPacesStillCrossFades() {
+        let engine = SceneTransitionEngine(initial: media("intro", on: .videos))
+        engine.push(media("announcement", on: .stillGraphics)) { layer in
+            layer == .videos
+                ? SceneTransition(kind: .dissolve, duration: 0.2)
+                : SceneTransition(kind: .dissolve, duration: 1)
+        }
+        let early = engine.scene(at: Date(timeIntervalSinceNow: 0.1))
+        let picture = items(early, .stillGraphics).first { $0.id == "live-media-stillGraphics" }
+        XCTAssertLessThan(picture?.opacity ?? 1, 0.5, "no hold that would end before the fade over it")
+    }
+
+    func testMediaChangeWaitsForTheIncomingPicture() {
+        let ready = Locked<Set<String>>(["intro"])
+        let engine = SceneTransitionEngine(initial: media("intro", on: .videos)) { ready.value.contains($0) }
+        engine.push(media("welcome", on: .videos), transition: SceneTransition(kind: .dissolve, duration: 0.2))
+
+        let waiting = engine.scene(at: Date(timeIntervalSinceNow: 0.3))
+        XCTAssertEqual(
+            items(waiting, .videos).first { $0.id == "live-media-videos" }?.opacity ?? -1, 0, accuracy: 0.001,
+            "nothing to show yet: the old clip stays up rather than going to black")
+        XCTAssertEqual(engine.heldMediaIDs(), ["intro"], "and keeps playing")
+        XCTAssertEqual(engine.transition(on: .videos), SceneTransition(kind: .dissolve, duration: 0.2))
+
+        ready.value.insert("welcome")
+        let start = Date()
+        _ = engine.scene(at: start)
+        let mid = engine.scene(at: start.addingTimeInterval(0.1))
+        XCTAssertEqual(
+            items(mid, .videos).first { $0.id == "live-media-videos" }?.opacity ?? -1, 0.5, accuracy: 0.05,
+            "the dissolve runs its full length from the first frame")
+        XCTAssertNil(engine.transitionEnd(after: start.addingTimeInterval(0.25)))
+    }
+
+    func testMediaChangeDissolvesAnywayWhenThePictureNeverComes() {
+        let engine = SceneTransitionEngine(initial: media("intro", on: .videos)) { _ in false }
+        engine.push(media("missing", on: .videos), transition: SceneTransition(kind: .dissolve, duration: 0.2))
+        let late = engine.scene(at: Date(timeIntervalSinceNow: SceneTransitionEngine.longestMediaWait + 0.1))
+        XCTAssertEqual(
+            items(late, .videos).first { $0.id == "live-media-videos" }?.opacity ?? -1, 0.5, accuracy: 0.1)
+        XCTAssertNil(engine.transitionEnd(after: Date(timeIntervalSinceNow: SceneTransitionEngine.longestMediaWait + 0.25)))
+    }
+
+    func testLayersChangedTogetherWaitTogether() {
+        let ready = Locked<Bool>(false)
+        let engine = SceneTransitionEngine(initial: media("announcement", on: .stillGraphics)) { _ in ready.value }
+        engine.push(media("intro", on: .videos), transition: SceneTransition(kind: .dissolve, duration: 0.2))
+        let waiting = engine.scene(at: Date(timeIntervalSinceNow: 0.3))
+        XCTAssertEqual(
+            items(waiting, .stillGraphics).map(\.opacity), [1, 1],
+            "the picture leaving waits with the video coming, not gone before it arrives")
+    }
+
+    func testOutgoingMediaReportsHowLongItsTransitionRuns() {
+        let engine = SceneTransitionEngine(initial: media("intro", on: .videos))
+        engine.push(media("welcome", on: .videos), transition: SceneTransition(kind: .dissolve, duration: 0.2))
+        XCTAssertEqual(engine.heldMedia(), ["intro": 0.2])
+    }
+
+    func testOnlyOpaqueFullFrameItemsCoverTheCanvas() {
+        let frame = CGRect(origin: .zero, size: Self.canvas)
+        XCTAssertTrue(SceneTransitionEngine.coversCanvas(
+            RenderItem(id: "b", frame: frame, content: .solid(SceneColor(red: 0, green: 0, blue: 0))), canvas: Self.canvas))
+        XCTAssertTrue(SceneTransitionEngine.coversCanvas(
+            RenderItem(id: "f", frame: frame, content: .media(id: "m", scaleMode: .fill)), canvas: Self.canvas))
+        XCTAssertFalse(SceneTransitionEngine.coversCanvas(
+            RenderItem(id: "m", frame: frame, content: .media(id: "m", scaleMode: .fit)), canvas: Self.canvas),
+            "a letterboxed clip leaves bars")
+        XCTAssertFalse(SceneTransitionEngine.coversCanvas(
+            RenderItem(id: "s", frame: CGRect(x: 0, y: 0, width: 50, height: 50),
+                       content: .solid(SceneColor(red: 0, green: 0, blue: 0))), canvas: Self.canvas))
+    }
+}
