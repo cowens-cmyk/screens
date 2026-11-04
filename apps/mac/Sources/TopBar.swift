@@ -1,4 +1,5 @@
 import AppKit
+import AudioEngine
 import RenderEngine
 import SwiftUI
 
@@ -33,17 +34,17 @@ enum TopBarMetrics {
     static let groupStroke = Color.white.opacity(0.08)
 }
 
-/// What fits at the window's width. Full shows every button on its own;
-/// compact folds the slide builders into one Add menu and the planning
-/// buttons into More; tight also moves Stage into More, which already has
-/// Edit Stage Display. The widths are the full row's sum with a margin, so
-/// a resize never makes the bar flip back and forth or overlap.
+/// What fits at the window's width. Full shows every button; compact lets
+/// the bar's Clear go (Clear All is also under the slides); tight also
+/// lets the screens' lights go (the Screens panel shows the same). The
+/// widths are the full row's sum with a margin, so a resize never makes
+/// the bar flip back and forth or overlap.
 enum TopBarFit: Equatable {
     case full, compact, tight
 
     static func at(_ width: CGFloat) -> TopBarFit {
-        if width >= 1320 { return .full }
-        if width >= 1080 { return .compact }
+        if width >= 1240 { return .full }
+        if width >= 1110 { return .compact }
         return .tight
     }
 }
@@ -217,27 +218,92 @@ struct ScreenStatusCell: View {
 
 // MARK: Listening
 
-/// Starts and stops sermon listening; a red plate while it's on.
+/// Sermon listening on and off with a click; the menu picks the input it
+/// hears, which LiveAssist saves, so the next service starts on the same
+/// microphone. A red plate while it's on.
 struct TopBarListenCell: View {
     @Bindable private var assist = LiveAssist.shared
     @AppStorage("show.controlsTab") private var tab: ShowControlsPanel.Tab = .timers
+    @State private var inputs: [(uid: String, name: String, channels: Int)] = []
 
     private var on: Bool { assist.listening && assist.mode == .sermon }
 
     var body: some View {
-        Button {
-            if on {
-                assist.stop()
-            } else {
-                tab = .sermon
-                Task { await assist.startSermon() }
+        Menu {
+            Button(on ? "Stop Listening" : "Listen to the Sermon") { toggle() }
+            Section("Input") {
+                inputButton(uid: "", name: "The Mac's Input (System Settings)")
+                ForEach(inputs, id: \.uid) { inputButton(uid: $0.uid, name: $0.name) }
+                if !assist.deviceUID.isEmpty, !inputs.contains(where: { $0.uid == assist.deviceUID }) {
+                    inputButton(uid: assist.deviceUID, name: "Last Used Input (not connected)")
+                }
             }
         } label: {
             TopBarCellLabel("Listen", systemImage: on ? "mic.fill" : "mic",
                             tint: on ? .white : nil, plate: on ? HopeStyle.live : nil)
+        } primaryAction: {
+            toggle()
         }
-        .buttonStyle(TopBarButtonStyle())
-        .help(on ? "Stop listening to the sermon" : "Listen to the sermon: transcribe it and catch every Bible reference")
+        .topBarMenu()
+        // Read when the menu could open, so a microphone plugged in since shows.
+        .onHover { inside in if inside { inputs = LiveTranscriber.inputDevices() } }
+        .onAppear { inputs = LiveTranscriber.inputDevices() }
+        .help(on ? "Stop listening to the sermon. Hold to choose the input."
+                 : "Listen to the sermon: transcribe it and catch every Bible reference. Hold to choose the input.")
+    }
+
+    private func inputButton(uid: String, name: String) -> some View {
+        Toggle(name, isOn: Binding(get: { assist.deviceUID == uid }, set: { if $0 { assist.deviceUID = uid } }))
+    }
+
+    private func toggle() {
+        if on {
+            assist.stop()
+        } else {
+            tab = .sermon
+            Task { await assist.startSermon() }
+        }
+    }
+}
+
+// MARK: Sound
+
+/// Where Screens' sound goes: the menu lists every output, and the choice
+/// is the same one as Settings › Media › Sound Output, kept through a quit
+/// and a restart. The label says which while one is pinned.
+struct TopBarSoundCell: View {
+    @State private var mixes = AudioMixInventory.shared
+    @State private var outputs = AudioOutputInventory.shared
+    @State private var devices: [AudioOutputDevice] = []
+
+    var body: some View {
+        // Read through the inventories so a change elsewhere redraws the label.
+        let chosen = outputs.entry(id: mixes.primaryToken(mixId: AudioMixInventory.mainID))
+        let uid = chosen?.deviceUID ?? ""
+        Menu {
+            Section("Play Through") {
+                choice(uid: "", name: "The Mac's Output (follows macOS)", chosen: uid)
+                ForEach(devices, id: \.uid) { choice(uid: $0.uid, name: $0.name, chosen: uid) }
+                if !uid.isEmpty, !devices.contains(where: { $0.uid == uid }) {
+                    choice(uid: uid, name: "\(chosen?.name ?? "Chosen Output") (not connected)", chosen: uid)
+                }
+            }
+            Divider()
+            Button("Sound Settings…") { SettingsRouter.shared.open(.media) }
+        } label: {
+            TopBarCellLabel("Sound", systemImage: uid.isEmpty ? "speaker.wave.2" : "headphones",
+                            selected: !uid.isEmpty)
+        }
+        .topBarMenu()
+        .onHover { inside in if inside { devices = AudioDeviceList.outputDevices() } }
+        .onAppear { devices = AudioDeviceList.outputDevices() }
+        .help(uid.isEmpty
+              ? "Sound plays wherever macOS sends it. Click to keep it on one device."
+              : "Sound always plays through \(chosen?.name ?? "the chosen output"). Click to change.")
+    }
+
+    private func choice(uid: String, name: String, chosen: String) -> some View {
+        Toggle(name, isOn: Binding(get: { chosen == uid }, set: { if $0 { SoundOutputChoice.choose(uid) } }))
     }
 }
 
@@ -339,16 +405,17 @@ struct TopBarToggle {
 
 /// What the bar's buttons do; the window that owns the sheets supplies them.
 struct TopBarActions {
-    var songs: () -> Void
+    /// The plan's series theme in the editor (the theme library without one).
+    var theme: () -> Void
     var scripture: () -> Void
-    var points: () -> Void
-    var sermon: () -> Void
     var media: () -> Void
-    var scheduleService: (() -> Void)?
-    var assistant: () -> Void
-    var editStage: () -> Void
 }
 
+/// Laid out as the operator asked for it: Search; the plan's pin; Present,
+/// Edit and the theme editor; the Bible; then, at the right, the media bin,
+/// listening and where the sound goes, the slide transition, More, Clear,
+/// and the screens' lights. Everything else (Schedule, songs, points, the
+/// sermon notes, the stage display) is in More.
 struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
     @AppStorage(MediaDrawer.openKey) private var mediaBinOpen = false
     let fit: TopBarFit
@@ -374,10 +441,18 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
             Color.clear.frame(width: TopBarMetrics.trafficLights - TopBarMetrics.groupGap, height: 1)
             TopBarSearchButton(open: searchOpen, namespace: namespace, action: onSearch)
             if let plan { TopBarGroup { toggleCell(plan) } }
-            modes
-            builders
+            TopBarGroup {
+                modeCell(.present, title: "Present", symbol: "play.rectangle", help: "Present (⌘1)")
+                modeCell(.edit, title: "Edit", symbol: "square.3.layers.3d", help: "Edit: slides, layers and zoom (⌘2)")
+                themeCell
+            }
+            TopBarGroup { bibleCell }
             Spacer(minLength: 12)
-            TopBarGroup { mediaCell }
+            TopBarGroup {
+                mediaCell
+                TopBarListenCell()
+                TopBarSoundCell()
+            }
             if let controls {
                 TopBarGroup {
                     TransitionChip(
@@ -386,25 +461,19 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
                         fallbackKind: SlideTransitionDefault.kind.rawValue, fallbackDuration: SlideTransitionDefault.duration,
                         showSlider: false, showsName: true, inTopBar: true)
                 }
-                TopBarGroup {
-                    if fit != .tight { stageCell }
-                    TopBarListenCell()
-                }
+                TopBarGroup { moreCell }
+                // Clear All is also in the bar under the slides, so a
+                // narrow window lets this one go first.
                 if fit == .full {
-                    TopBarGroup {
-                        scheduleCell
-                        assistantCell
-                        moreCell
-                    }
-                } else {
-                    TopBarGroup { moreCell }
+                    TopBarGroup { ClearChip(controls: controls, inTopBar: true) }
                 }
-                TopBarGroup { ClearChip(controls: controls, inTopBar: true) }
             } else {
                 TopBarGroup { moreCell }
             }
-            TopBarGroup {
-                ForEach(ShowScreen.allCases) { ScreenStatusCell(role: $0, render: render) }
+            if fit != .tight {
+                TopBarGroup {
+                    ForEach(ShowScreen.allCases) { ScreenStatusCell(role: $0, render: render) }
+                }
             }
             if let screens { TopBarGroup { toggleCell(screens) } }
         }
@@ -421,56 +490,6 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
         }
     }
 
-    // MARK: Groups
-
-    private var modes: some View {
-        TopBarGroup {
-            modeCell(.present, title: "Present", symbol: "play.rectangle", help: "Present (⌘1)")
-            modeCell(.edit, title: "Edit", symbol: "pencil", help: "Edit (⌘2)")
-            modeCell(.scheduler, title: "Schedule", symbol: "calendar", help: "Schedule (⌘3)")
-        }
-    }
-
-    @ViewBuilder
-    private var builders: some View {
-        if fit == .full {
-            TopBarGroup {
-                Button(action: actions.songs) { TopBarCellLabel("Songs", systemImage: "music.note") }
-                    .buttonStyle(TopBarButtonStyle())
-                    .help("Song Search: import a song and arrangement from Shepherd (⌘⇧L)")
-                Button(action: actions.scripture) { TopBarCellLabel("Scripture", systemImage: "book") }
-                    .buttonStyle(TopBarButtonStyle())
-                    .contextMenu { scriptureMenu() }
-                    .help("Add scripture slides (⌘⇧B). Right-click for listening and the Bible theme.")
-                Button(action: actions.points) { TopBarCellLabel("Points", systemImage: "list.bullet.rectangle") }
-                    .buttonStyle(TopBarButtonStyle())
-                    .help("Add sermon point slides (⌘⇧P)")
-                Button(action: actions.sermon) { TopBarCellLabel("Sermon", systemImage: "doc.text.magnifyingglass") }
-                    .buttonStyle(TopBarButtonStyle())
-                    .help("Import the week's sermon notes (⌘⇧I)")
-                Menu { themes() } label: { TopBarCellLabel("Theme", systemImage: "paintpalette") }
-                    .topBarMenu()
-                    .help("Open a theme in the theme editor")
-            }
-        } else {
-            // Narrow windows: the builders share one menu.
-            TopBarGroup {
-                Menu {
-                    Button("Song Search…", action: actions.songs)
-                    Button("Scripture…", action: actions.scripture)
-                    Button("Point Slides…", action: actions.points)
-                    Button("Import Sermon…", action: actions.sermon)
-                    Divider()
-                    Menu("Themes") { themes() }
-                } label: {
-                    TopBarCellLabel("Add", systemImage: "plus.rectangle.on.rectangle")
-                }
-                .topBarMenu()
-                .help("Songs, scripture, sermon points, sermon notes and themes")
-            }
-        }
-    }
-
     // MARK: Cells
 
     private func modeCell(_ cellMode: AppMode, title: String, symbol: String, help: String) -> some View {
@@ -479,6 +498,29 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
         }
         .buttonStyle(TopBarButtonStyle())
         .help(help)
+    }
+
+    /// A click opens the plan's series theme in the theme editor; the menu
+    /// opens any other.
+    private var themeCell: some View {
+        Menu { themes() } label: {
+            TopBarCellLabel("Theme", systemImage: "paintpalette")
+        } primaryAction: {
+            actions.theme()
+        }
+        .topBarMenu()
+        .help("Open this plan's theme in the theme editor. Hold or click the arrow for the others.")
+    }
+
+    /// A click adds scripture; the menu has listening for references and the Bible theme.
+    private var bibleCell: some View {
+        Menu { scriptureMenu() } label: {
+            TopBarCellLabel("Bible", systemImage: "book")
+        } primaryAction: {
+            actions.scripture()
+        }
+        .topBarMenu()
+        .help("Add scripture slides (⌘⇧B). Hold for listening and the Bible theme.")
     }
 
     private func toggleCell(_ toggle: TopBarToggle) -> some View {
@@ -497,32 +539,9 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
         .help(mediaBinOpen ? "Fold the media bin away" : "The media bin, under the plan: drag a background onto a slide, a song or the plan")
     }
 
-    private var stageCell: some View {
-        Button(action: actions.editStage) {
-            TopBarCellLabel("Stage", systemImage: "rectangle.inset.filled.and.person.filled")
-        }
-        .buttonStyle(TopBarButtonStyle())
-        .help("Edit the stage display")
-    }
-
-    private var scheduleCell: some View {
-        Button { actions.scheduleService?() } label: {
-            TopBarCellLabel("Start Time", systemImage: "calendar.badge.clock")
-        }
-        .buttonStyle(TopBarButtonStyle())
-        .disabled(actions.scheduleService == nil)
-        .help("When this service starts and when its countdown starts")
-    }
-
-    private var assistantCell: some View {
-        Button(action: actions.assistant) { TopBarCellLabel("Assistant", systemImage: "sparkles") }
-            .buttonStyle(TopBarButtonStyle())
-            .help("Assistant (⇧⌘A)")
-    }
-
     private var moreCell: some View {
         Menu { more() } label: { TopBarCellLabel("More", systemImage: "ellipsis.circle") }
             .topBarMenu()
-            .help("Message & Series, Pre-Service Slides, Themes, Simple Mode, Timers & Macros, Screen Setup")
+            .help("Schedule, songs, sermon points and notes, the stage display, Timers & Macros, Screen Setup")
     }
 }

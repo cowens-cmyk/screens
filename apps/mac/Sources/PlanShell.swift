@@ -71,7 +71,6 @@ struct PlanShell: View {
     /// The window's width, measured, which decides what the top bar shows;
     /// and the title bar's height, which the bar matches.
     @State private var barWidth: CGFloat = 1480
-    @State private var barHeight = TopBarMetrics.height
     /// Where the Media button goes back to.
     @State private var modeBeforeMedia = AppMode.present.rawValue
     /// The slide editor, when one is open: built slides go into it.
@@ -220,31 +219,32 @@ struct PlanShell: View {
         }
     }
 
-    /// The full app: the top bar, then the plans and library, the slides
-    /// and every screen. The bar is drawn by the window's content, up in
-    /// the title bar's place (the window keeps an empty toolbar so the
-    /// traffic lights sit centred on it); the search opens over all of it.
+    /// The full app: the plans and library, the slides and every screen,
+    /// with the top bar over them in the title bar's place (the window
+    /// keeps an empty toolbar so the traffic lights sit centred on it); the
+    /// search opens over all of it.
+    ///
+    /// The bar is laid over the split view rather than stacked above it.
+    /// AppKit runs the split view's columns up under the title bar whatever
+    /// SwiftUI's frame says, and the slides' backdrop, which fills its safe
+    /// area, then painted over a bar stacked above: the bar was laid out
+    /// but never seen (0.22.0). Over the split view it's drawn last, and the
+    /// columns' content already starts below the title bar.
     private var workspace: some View {
-        VStack(spacing: 0) {
-            topBar
-            splitView
-        }
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { inset in
-            // The title bar's height, so the bar's centre is the traffic
-            // lights'. Anything unlikely keeps the usual toolbar height.
-            let height = (44 ... 72).contains(inset) ? inset : TopBarMetrics.height
-            if height != barHeight { barHeight = height }
-        }
-        .ignoresSafeArea(.container, edges: .top)
-        .toolbar(removing: .title)
-        .background(TopBarWindowChrome())
-        .overlay { TopBarSearchOverlay(search: search, namespace: searchSpace) }
-        .onAppear { search.perform = { result, add in searchChose(result, add: add) } }
-        // Simple Mode takes the window: a search left open would keep the keys.
-        .onDisappear { search.close() }
-        .focusedSceneValue(\.presentSongSearch, MenuAction("songs") { songSearchShown = true })
-        .focusedSceneValue(\.presentPoints, MenuAction("points") { pointsShown = true })
-        .focusedSceneValue(\.presentSermonImport, MenuAction("sermon") { importSermon() })
+        splitView
+            .overlay(alignment: .top) {
+                topBar
+                    .ignoresSafeArea(.container, edges: .top)
+            }
+            .toolbar(removing: .title)
+            .background(TopBarWindowChrome())
+            .overlay { TopBarSearchOverlay(search: search, namespace: searchSpace) }
+            .onAppear { search.perform = { result, add in searchChose(result, add: add) } }
+            // Simple Mode takes the window: a search left open would keep the keys.
+            .onDisappear { search.close() }
+            .focusedSceneValue(\.presentSongSearch, MenuAction("songs") { songSearchShown = true })
+            .focusedSceneValue(\.presentPoints, MenuAction("points") { pointsShown = true })
+            .focusedSceneValue(\.presentSermonImport, MenuAction("sermon") { importSermon() })
     }
 
     private var splitView: some View {
@@ -963,21 +963,16 @@ struct PlanShell: View {
     private var topBar: some View {
         let fit = TopBarFit.at(barWidth)
         return TopBar(
-            fit: fit, height: barHeight, modeRaw: $modeRaw, render: render, controls: controls,
+            fit: fit, height: TopBarMetrics.height, modeRaw: $modeRaw, render: render, controls: controls,
             searchOpen: search.shown, namespace: searchSpace, onSearch: { openSearch() },
             plan: planToggle, screens: screensToggle,
             actions: TopBarActions(
-                songs: { songSearchShown = true },
+                theme: { openPlanTheme() },
                 scripture: { scriptureShown = true },
-                points: { pointsShown = true },
-                sermon: { importSermon() },
-                media: { toggleMedia() },
-                scheduleService: model.currentServiceID.map { id in { schedulePlanID = id } },
-                assistant: { openWindow(id: "assistant") },
-                editStage: { editStageDisplay() }),
+                media: { toggleMedia() }),
             themes: { themesMenuItems },
             scriptureMenu: { bibleMenuItems },
-            more: { moreMenuItems(fit: fit) })
+            more: { moreMenuItems })
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
                 let rounded = (width / 8).rounded(.down) * 8
                 if rounded != barWidth { barWidth = rounded }
@@ -1045,15 +1040,18 @@ struct PlanShell: View {
         }
     }
 
-    /// Everything not used every minute of a service lives in one menu. In
-    /// narrower windows it also takes Schedule Service and the Assistant,
-    /// and in the narrowest the stage display button.
+    /// Everything not used every minute of a service lives in one menu:
+    /// Schedule and the slide builders first, then the rest.
     @ViewBuilder
-    private func moreMenuItems(fit: TopBarFit) -> some View {
-        if fit != .full, !runOnly {
-            Button("Schedule Service…", systemImage: "calendar.badge.clock") { schedulePlanID = model.currentServiceID }
+    private var moreMenuItems: some View {
+        if !runOnly {
+            Button("Schedule", systemImage: "calendar") { modeRaw = AppMode.scheduler.rawValue }
+            Button("Start Time…", systemImage: "calendar.badge.clock") { schedulePlanID = model.currentServiceID }
                 .disabled(model.currentServiceID == nil)
-            Button("Assistant", systemImage: "sparkles") { openWindow(id: "assistant") }
+            Divider()
+            Button("Song Search…", systemImage: "music.note") { songSearchShown = true }
+            Button("Sermon Points…", systemImage: "list.bullet.rectangle") { pointsShown = true }
+            Button("Import Sermon Notes…", systemImage: "doc.text.magnifyingglass") { importSermon() }
             Divider()
         }
         if let planID = model.currentServiceID, !runOnly {
@@ -1062,7 +1060,6 @@ struct PlanShell: View {
         if !runOnly {
             Button("Edit Pre-Service Slides…", systemImage: "rectangle.stack") { editPreServiceSlides() }
         }
-        if !runOnly { Menu("Themes", systemImage: "paintpalette") { themesMenuItems } }
         if !runOnly { Menu("Bible Theme", systemImage: "book") { bibleThemeItems } }
         if !runOnly, layout != nil {
             Button("Simple Mode…", systemImage: "lock") { requestSimpleMode() }
@@ -1071,9 +1068,30 @@ struct PlanShell: View {
             Button("Timers & Macros…", systemImage: "timer") { controlsShown = true }
         }
         if !runOnly { Button("Lower Thirds…", systemImage: "rectangle.bottomthird.inset.filled") { ScreensByTypeRouter.shared.shown = true } }
+        Divider()
         Button("Screen Setup…", systemImage: "display.2") { openWindow(id: "outputs") }
         Button("Edit Stage Display…", systemImage: "rectangle.inset.filled.and.person.filled") { editStageDisplay() }
         Button("Edit Video Stage…", systemImage: "play.rectangle") { editStageDisplay(StageLayouts.videoID) }
+        if !runOnly {
+            Divider()
+            Button("Assistant", systemImage: "sparkles") { openWindow(id: "assistant") }
+        }
+    }
+
+    /// The bar's Theme: the plan's series theme in the editor, as the first
+    /// item of its menu does; with no series theme, the theme library.
+    private func openPlanTheme() {
+        let seriesID = model.currentServiceID.flatMap { model.resident.services.value($0)?.sermonThemeId }
+            ?? model.slideBuilding.sermonThemeId
+        if let seriesID, model.indexEntry(seriesID) != nil {
+            editTheme(seriesID)
+        } else if let first = model.entries(of: .theme)
+            .min(by: { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) {
+            editTheme(first.id)
+        } else {
+            topPane = .library
+            model.switchLibrarySection(.themes)
+        }
     }
 
     // MARK: Search

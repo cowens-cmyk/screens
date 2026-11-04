@@ -422,16 +422,20 @@ struct MxUSlidesApp: App {
 
 @MainActor
 enum QuitConfirmation {
-    /// A plain yes-or-no; Cancel is the default, so Return doesn't quit.
+    /// A plain yes-or-no. Return confirms, as the operator asked: the
+    /// question itself is the guard against a stray ⌘Q or click, and
+    /// answering it shouldn't need the mouse. Escape cancels.
     static func ask(title: String, message: String, button: String) -> Bool {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: button)
-        alert.buttons[1].hasDestructiveAction = true
-        return alert.runModal() == .alertSecondButtonReturn
+        let confirm = alert.addButton(withTitle: button)
+        confirm.hasDestructiveAction = true
+        confirm.keyEquivalent = "\r"
+        let cancel = alert.addButton(withTitle: "Cancel")
+        cancel.keyEquivalent = "\u{1b}"
+        return alert.runModal() == .alertFirstButtonReturn
     }
 }
 

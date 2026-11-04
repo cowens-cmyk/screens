@@ -68,7 +68,7 @@ struct CanvasZoomControl: View {
             Menu {
                 Button("Fit") { navigator.fit() }
                 Divider()
-                ForEach([0.5, 1, 2, 4], id: \.self) { (scale: CGFloat) in
+                ForEach([0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 8], id: \.self) { (scale: CGFloat) in
                     Button("\(Int(scale * 100))%") { navigator.zoom(to: scale) }
                 }
                 Divider()

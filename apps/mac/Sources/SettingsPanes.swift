@@ -727,6 +727,30 @@ private struct WebInputSheet: View {
 /// own output (a Mac can switch outputs by itself when something is
 /// plugged in or a display wakes). Left on the Mac's output, it follows
 /// macOS. This is the Main mix's output: songs, playlists and video sound.
+/// Which device Screens plays through: the main mix's output, or none for
+/// wherever macOS sends sound. Settings › Media › Sound Output and the top
+/// bar's Sound menu both choose it here, so they always agree, and the
+/// choice is saved with the mixes, through a quit and a restart.
+@MainActor
+enum SoundOutputChoice {
+    static var chosen: AudioOutputInventory.Entry? {
+        AudioOutputInventory.shared.entry(id: AudioMixInventory.shared.primaryToken(mixId: AudioMixInventory.mainID))
+    }
+
+    /// The chosen device's UID, or "" for the Mac's output.
+    static var chosenUID: String { chosen?.deviceUID ?? "" }
+
+    static func choose(_ uid: String) {
+        let mixes = AudioMixInventory.shared
+        if uid.isEmpty {
+            mixes.setPrimary(mixId: AudioMixInventory.mainID, token: AudioMixInventory.defaultOutputID)
+        } else {
+            let output = AudioOutputInventory.shared.ensure(deviceUID: uid, channelOffset: 0)
+            mixes.setPrimary(mixId: AudioMixInventory.mainID, token: output.id)
+        }
+    }
+}
+
 private struct SoundOutputSection: View {
     @State private var mixes = AudioMixInventory.shared
     @State private var outputs = AudioOutputInventory.shared
@@ -738,7 +762,7 @@ private struct SoundOutputSection: View {
 
     var body: some View {
         Section {
-            Picker("Play through", selection: Binding(get: { chosen?.deviceUID ?? "" }, set: choose)) {
+            Picker("Play through", selection: Binding(get: { chosen?.deviceUID ?? "" }, set: SoundOutputChoice.choose)) {
                 Text("The Mac's output (follows macOS)").tag("")
                 Divider()
                 ForEach(devices, id: \.uid) { Text($0.name).tag($0.uid) }
@@ -762,15 +786,6 @@ private struct SoundOutputSection: View {
         return devices.contains(where: { $0.uid == uid })
             ? "Screens always plays through \(chosen.name), whatever macOS is set to."
             : "\(chosen.name) isn't connected: Screens plays through the Mac's output until it's back, then returns to it."
-    }
-
-    private func choose(_ uid: String) {
-        if uid.isEmpty {
-            mixes.setPrimary(mixId: AudioMixInventory.mainID, token: AudioMixInventory.defaultOutputID)
-        } else {
-            let output = outputs.ensure(deviceUID: uid, channelOffset: 0)
-            mixes.setPrimary(mixId: AudioMixInventory.mainID, token: output.id)
-        }
     }
 }
 

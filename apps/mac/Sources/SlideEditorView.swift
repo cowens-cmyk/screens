@@ -34,6 +34,9 @@ struct SlideEditorView: View {
     @AppStorage("editor.inspectorWidth") private var inspectorWidth = PanelWidthGrip.minPanelWidth
 
     @AppStorage("editor.timelineHeight") private var timelineHeight = 236.0
+    /// The Layers panel under the slide list: its top edge drags, as a
+    /// Photoshop panel's does, and the height is remembered.
+    @AppStorage("editor.layersHeight") private var layersHeight = 300.0
     @State private var quickEditTarget: QuickEditTarget?
     @State private var newSectionTarget: QuickEditTarget?
     @State private var newSectionName = ""
@@ -141,9 +144,12 @@ struct SlideEditorView: View {
                 if !model.isSingleComposition {
                     slideList(model)
                     Divider()
+                        .overlay { PanelHeightGrip(height: $layersHeight, range: 140 ... 700) }
+                        .zIndex(1)
                 }
                 objectsPanel(model)
-                    .frame(maxHeight: model.isSingleComposition ? .infinity : 220)
+                    .frame(height: model.isSingleComposition ? nil : min(max(layersHeight, 140), 700))
+                    .frame(maxHeight: model.isSingleComposition ? .infinity : nil)
             }
             .frame(width: 190)
             .floatingPanel()
@@ -868,7 +874,7 @@ struct SlideEditorView: View {
 
     private func objectsPanel(_ model: SlideEditorModel) -> some View {
         List(selection: objectSelection(model)) {
-            Section("Objects") {
+            Section {
 
                 let selectionArrange = ObjectRowArrangeState(
                     canGroup: model.canGroup, canUngroup: model.canUngroup,
@@ -908,12 +914,22 @@ struct SlideEditorView: View {
                             )
                             Spacer(minLength: 4)
 
-                            if entry.object.hidden == true {
-                                Image(systemName: "eye.slash")
+                            // The eye, as in Photoshop: hide a layer
+                            // without deleting it.
+                            Button {
+                                model.updateObject(id: entry.object.id) {
+                                    $0.hidden = $0.hidden == true ? nil : true
+                                }
+                            } label: {
+                                Image(systemName: entry.object.hidden == true ? "eye.slash" : "eye")
                                     .imageScale(.small)
-                                    .foregroundStyle(.tertiary)
-                                    .help("Hidden — shown on no surface")
+                                    .foregroundStyle(entry.object.hidden == true ? .tertiary : .secondary)
+                                    .frame(width: 20, height: 18)
+                                    .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
+                            .help(entry.object.hidden == true ? "Hidden: shown on no screen. Click to show." : "Click to hide this layer")
+                            .accessibilityLabel(entry.object.hidden == true ? "Show layer" : "Hide layer")
                         }
                             .opacity(entry.object.hidden == true ? 0.5 : 1)
                             .tag(entry.object.id)
@@ -996,6 +1012,8 @@ struct SlideEditorView: View {
                         }
                     }
                 }
+            } header: {
+                layersHeader(model)
             }
         }
         .listStyle(.sidebar)
@@ -1030,6 +1048,46 @@ struct SlideEditorView: View {
             case .delete: model.deleteSelectedObjects()
             }
         }
+    }
+
+    /// The Layers panel's own bar: add a layer, and duplicate or delete
+    /// the selected ones. The top of the list is the front of the slide.
+    private func layersHeader(_ model: SlideEditorModel) -> some View {
+        HStack(spacing: 6) {
+            Text("Layers")
+            Spacer(minLength: 4)
+            Menu {
+                Button("Text", systemImage: "textformat") { model.addTextObject() }
+                Button("Shape", systemImage: "rectangle") { model.addShapeObject() }
+                Button("Image or Video…", systemImage: "photo") { showingMediaPicker = true }
+                Button("Live Input", systemImage: "video") { model.addLiveInputObject() }
+            } label: {
+                Image(systemName: "plus")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Add a layer")
+            .accessibilityLabel("Add layer")
+            Button {
+                model.duplicateSelectedObjects()
+            } label: {
+                Image(systemName: "plus.square.on.square")
+            }
+            .disabled(model.selectedObjectIDs.isEmpty)
+            .help("Duplicate the selected layers")
+            .accessibilityLabel("Duplicate layers")
+            Button {
+                model.deleteSelectedObjects()
+            } label: {
+                Image(systemName: "trash")
+            }
+            .disabled(model.selectedObjectIDs.isEmpty)
+            .help("Delete the selected layers")
+            .accessibilityLabel("Delete layers")
+        }
+        .buttonStyle(.borderless)
+        .imageScale(.small)
     }
 
     private func objectSelection(_ model: SlideEditorModel) -> Binding<Set<String>> {
