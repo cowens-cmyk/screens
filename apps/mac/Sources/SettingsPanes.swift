@@ -199,6 +199,7 @@ private struct LocalAPISettingsForm: View {
             } footer: {
                 Text(SettingsIndex.entry("api.remote")?.caption ?? "")
             }
+            BoothRelaySection()
             Section {
                 SettingsRow("api.tokens") { LocalAPITokensButton(api: api) }
                 SettingsRow("api.docs") { LocalAPIContractRow(api: api) }
@@ -1068,5 +1069,45 @@ private struct MIDIDeviceDetail: View {
                 Text("Port not present").tag(bound)
             }
         }
+    }
+}
+
+/// Integrations › Remote & API › Booth Board: BoothRelay's switch and token.
+private struct BoothRelaySection: View {
+    @State private var relay = BoothRelay.shared
+    @State private var token = ""
+
+    var body: some View {
+        Section {
+            SettingsToggle("booth.enabled", isOn: Binding(
+                get: { relay.enabled }, set: { relay.enabled = $0 }))
+            SettingsRow("booth.token") {
+                HStack(spacing: 8) {
+                    SecureField(relay.hasToken ? "Saved" : "Paste token", text: $token)
+                        .frame(width: 220)
+                    Button("Save") {
+                        relay.setToken(token)
+                        token = ""
+                    }
+                    .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if relay.hasToken {
+                        Button("Remove") { relay.setToken(nil) }
+                    }
+                }
+            }
+            if relay.enabled {
+                Text(statusText)
+                    .font(.subheadline)
+                    .foregroundStyle(relay.problem == nil ? Color.secondary : Color.orange)
+            }
+        } header: {
+            Text("Booth Board")
+        }
+    }
+
+    private var statusText: String {
+        if let problem = relay.problem { return problem }
+        guard let sent = relay.lastSent else { return "Connecting…" }
+        return "Sending. Last sent " + sent.formatted(date: .omitted, time: .standard) + "."
     }
 }

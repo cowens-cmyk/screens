@@ -368,6 +368,16 @@ enum SettingsIndex {
             caption: "Scan with a phone or iPad on the same Wi-Fi to open the remote.",
             keywords: "remote phone iphone ipad qr code scan pastor worship leader booth message home screen"),
         SettingsEntry(
+            id: "booth.enabled", category: .integrations, tab: .remote,
+            title: "Send to the booth board",
+            caption: "The live slide, stage display, timers and stage messages on the TV in the green room and the sound booth (dashboard.hopejc.org/booth). Turn on only on the Mac running the service. Kept per Mac.",
+            keywords: "booth board green room sound tv dashboard cms hopejc stage message timers live slide"),
+        SettingsEntry(
+            id: "booth.token", category: .integrations, tab: .remote,
+            title: "Booth token",
+            caption: "From the Booth page in the CMS (the gear, then Make a Screens token). Kept in this Mac's Keychain.",
+            keywords: "booth token cms key secret dashboard"),
+        SettingsEntry(
             id: "api.tokens", category: .integrations, tab: .remote,
             title: "Access keys",
             caption: "Required: nothing connects without one. Each key grants Watch, Operate or Manage.",

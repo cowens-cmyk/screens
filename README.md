@@ -71,6 +71,10 @@ That rewrites `PresenterCore/Sources/PresenterCore/Generated/Models.swift` and `
 
 With Settings › Local API enabled, the app serves a REST and WebSocket API on port 6980, authenticated by scoped bearer tokens created in the same pane. `GET /v1/status` returns the live slide; `scripts/*.mjs` show it driving a show. The route table and OpenAPI document live in `apps/mac/Packages/LocalAPI`.
 
+### Booth board
+
+`apps/mac/Sources/BoothRelay.swift` sends the show to the booth board in the Hope CMS (dashboard.hopejc.org/booth): the status, timers, transport and stage display as JSON every time they change and every 5 seconds, and a 960-px JPEG of the audience screen when it changes and once a minute. The CMS can't reach the Mac, so the Mac pushes. It is off on each Mac until turned on in Settings › Integrations › Remote & API › Booth Board, with the token from the board's setup sheet (kept in the Keychain, service `org.hopejc.screens.booth`). The CMS side is documented in `docs/cms/BOOTH.md` in hope-church-automation.
+
 ### Assistant
 
 Window › Assistant (⇧⌘A) is a chat with Claude that answers questions about Screens and changes plans and slides through tools that run on the Mac (`apps/mac/Sources/Assistant`; the request building, streaming, tool schemas and event matching are tested in `PresenterCore/Sources/PresenterCore/Assistant`). It uses the Anthropic API key from Settings › Network & API › Assistant, the same one Sermon import uses, and Claude Opus 5.5 unless Sonnet 5.5 is chosen there. What it knows about the app comes from `apps/mac/Sources/Assistant/ScreensGuide.md`, which is bundled and loaded into its system prompt. When a feature changes, update `ScreensGuide.md` so the in-app assistant stays current.

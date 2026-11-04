@@ -461,6 +461,8 @@ Lightkey's scenes can follow the service. It is off on each Mac until **Change L
 
 Settings › Integrations › Remote & API: **Local API** on/off, **Port**, **Connect at** (open http://address/ in Safari or Chrome on the same Wi-Fi), **Access keys** (required; each grants Watch, Operate or Manage), **API reference**. The phone remote has tabs Show, Slides, Timers, Macros and Stage. Companion and Stream Deck use the same address.
 
+**Booth Board** (same tab): sends the live slide, the stage display's mode, the timers and any stage message to the booth board in the Hope CMS, the TV in the green room and sound booth. Turn it on only on the Mac running the service, and paste the token from the board's setup sheet (the gear on dashboard.hopejc.org/booth). It needs internet, not the Local API.
+
 ## Other integrations
 
 - **MIDI** (Settings › Integrations › Lightkey & MIDI): MIDI devices, Lightkey, and a **MIDI input map** for incoming notes (ProPresenter's numbers by default).
