@@ -202,6 +202,28 @@ public final class MediaEngine: @unchecked Sendable {
         contentChanged()
     }
 
+    /// Whether `id` has a picture to draw yet: a still that's loaded, a
+    /// video with its first frame, or a camera or feed that's running.
+    public func hasPicture(id: String) -> Bool {
+        if captures.value[id] != nil || liveSources.value[id] != nil || stills.value[id] != nil {
+            return true
+        }
+        return players.value[id]?.hasPicture ?? false
+    }
+
+    /// Fades out the sound of the videos leaving the screens, each over its
+    /// transition, and brings back any other that was fading (a clip
+    /// fired again before its fade finished).
+    public func setAudioFades(_ fades: [String: Double]) {
+        for (id, player) in players.value {
+            if let seconds = fades[id] {
+                player.fadeOutAudio(over: seconds)
+            } else if player.isFadingOutAudio {
+                player.fadeOutAudio(over: nil)
+            }
+        }
+    }
+
     public func hasStill(id: String) -> Bool {
         stills.value[id] != nil
     }

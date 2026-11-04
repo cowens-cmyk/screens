@@ -73,21 +73,7 @@ final class RenderContext {
     }
 
     static func sceneTransition(from transition: MediaTransition?) -> SceneTransition? {
-        guard let transition else { return nil }
-        let duration = transition.durationSeconds ?? 0.5
-
-        guard duration >= 0.05 else { return .cut }
-        switch transition.transitionKind {
-        case .cut: return .cut
-        case .dissolve: return SceneTransition(kind: .dissolve, duration: duration)
-        case .fadeBlack: return SceneTransition(kind: .fade(.black), duration: duration)
-        case .fadeWhite: return SceneTransition(kind: .fade(.white), duration: duration)
-        case .fadeColor:
-            let plate = transition.colorHex.flatMap { ColorHex.color($0) } ?? .black
-            return SceneTransition(kind: .fade(plate), duration: duration)
-        case .blurDissolve: return SceneTransition(kind: .blurDissolve, duration: duration)
-        case .filmBurn: return SceneTransition(kind: .filmBurn, duration: duration)
-        }
+        SlideTransitions.scene(from: transition)
     }
 
     var liveScene: RenderScene {
@@ -103,12 +89,14 @@ final class RenderContext {
 
     func setLiveScenes(_ scene: RenderScene, variants: [String: RenderScene]) {
         let stash = nextLiveTransitions
+        let media = media
         variantEngines.withLock { engines in
             for key in engines.keys where variants[key] == nil {
                 engines.removeValue(forKey: key)
             }
             for (themeID, variant) in variants {
-                let engine = engines[themeID] ?? SceneTransitionEngine(initial: variant)
+                let engine = engines[themeID]
+                    ?? SceneTransitionEngine(initial: variant, mediaReady: { [media] in media.hasPicture(id: $0) })
                 engines[themeID] = engine
                 engine.push(variant) { layer in
                     stash[layer] ?? Self.roomDefault(for: layer)
@@ -118,9 +106,9 @@ final class RenderContext {
         liveScene = scene
     }
 
-    func heldVariantMediaIDs(at date: Date = Date()) -> Set<String> {
-        variantEngines.value.values.reduce(into: Set<String>()) {
-            $0.formUnion($1.heldMediaIDs(at: date))
+    func heldVariantMedia(at date: Date = Date()) -> [String: TimeInterval] {
+        variantEngines.value.values.reduce(into: [String: TimeInterval]()) {
+            $0.merge($1.heldMedia(at: date)) { max($0, $1) }
         }
     }
 
@@ -160,6 +148,9 @@ final class RenderContext {
         self.stageBox = Locked(.initial)
         self.previewLayoutsBox = Locked([:])
         compositor.mediaSource = media
+        // A change of media waits for the incoming video's first frame
+        // before it dissolves, so it fades up from the old picture.
+        transitions.setMediaReady { [media] in media.hasPicture(id: $0) }
 
         outputs.sceneProvider = { [transitions, confidenceBox] in
             let now = Date()

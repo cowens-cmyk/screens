@@ -191,9 +191,11 @@ final class ServiceControls {
         let underVideo = autoAdvanced && screenVideoID.map(isMediaLive) == true
         actionRouter?.noteLiveTheme(theme, slide: slide, contextID: contextID, wentLive: !underVideo)
 
-        if let own = RenderContext.sceneTransition(from: slide.transition) {
+        let own = RenderContext.sceneTransition(from: slide.transition)
+        if let own {
             render.nextLiveTransitions[.slide] = own
         }
+        let mediaBefore = state.liveMedia
         state.fire(
             slide: slide, presentation: presentation,
             theme: theme, arrangementId: arrangementId,
@@ -202,6 +204,14 @@ final class ServiceControls {
 
             arrivesSettled: nextFireArrivesSettled
         )
+        // The media the slide puts up or takes down (a video slide's clip,
+        // a song's background) changes with the slide's transition, not the
+        // media one: the slideshow's video slides are nothing but media.
+        for (layer, transition) in SlideTransitions.carried(
+            own ?? RenderContext.roomDefault(for: .slide), from: mediaBefore, to: state.liveMedia)
+        where render.nextLiveTransitions[layer] == nil {
+            render.nextLiveTransitions[layer] = transition
+        }
         liveContextID = contextID
         liveOccurrence = occurrence
 
@@ -1906,9 +1916,9 @@ final class ServiceControls {
         let wanted = MonitoringMedia.wanted(onAir: onAir, monitoring: previewMediaWants)
         let wantedIDs = Set(wanted.keys)
 
-        let held = render.transitions.heldMediaIDs()
-            .union(render.heldVariantMediaIDs())
-            .intersection(liveMediaIDs)
+        let heldFor = render.transitions.heldMedia()
+            .merging(render.heldVariantMedia()) { max($0, $1) }
+        let held = Set(heldFor.keys).intersection(liveMediaIDs)
         for id in liveMediaIDs.subtracting(wantedIDs) {
 
             if id.hasPrefix("input::"), VideoInputInventory.shared.isInventoried(engineID: id) {
@@ -1917,6 +1927,10 @@ final class ServiceControls {
             if held.contains(id) { continue }
             render.media.stop(id: id)
         }
+        // A video still on screen only while it dissolves away takes its
+        // sound down over the same time, rather than cutting off when the
+        // dissolve ends.
+        render.media.setAudioFades(heldFor.filter { held.contains($0.key) && !wantedIDs.contains($0.key) })
         let added = wantedIDs.subtracting(liveMediaIDs)
         liveMediaIDs = wantedIDs.union(held)
         if !held.isEmpty, !transitionResweepScheduled {

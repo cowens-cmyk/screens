@@ -403,7 +403,7 @@ Editing a video or image (Edit mode) shows: **Name**; **Behavior**: Classificati
 
 A slide's background (editor inspector › **Background**): **Choose…** a media item, **Applies To** (This Slide, Until Replaced, This Section, Entire Song), Classification, Layer (Background Media, Still Graphics, Foreground Videos), **Loop**, **Replace…**, **Remove**.
 
-Default transitions: Settings › Slides & Themes › **Media transition** and **Slide transition** (Dissolve at 0.2s is the default for slides). The top bar's right-hand groups start, after Media, with the slide transition by name ("Dissolve 0.2s"): click it to pick another or change the duration during a service. A slide that sets its own transition keeps it; slides imported from ProPresenter with Cut follow the default. A slide can set its own in the inspector's **Transition** section.
+Default transitions: Settings › Slides & Themes › **Media transition** and **Slide transition** (Dissolve at 0.2s is the default for slides). The top bar's right-hand groups start, after Media, with the slide transition by name ("Dissolve 0.2s"): click it to pick another or change the duration during a service. A slide that sets its own transition keeps it; slides imported from ProPresenter with Cut follow the default. The media a slide brings or takes down (a video or picture slide, a background) changes with the slide transition; media fired on its own uses the media transition. A change to a video waits for its first frame, so it dissolves from the old picture instead of through black, and the outgoing video's sound fades out with it. A slide can set its own in the inspector's **Transition** section.
 
 ## Timers, macros, alerts and actions
 

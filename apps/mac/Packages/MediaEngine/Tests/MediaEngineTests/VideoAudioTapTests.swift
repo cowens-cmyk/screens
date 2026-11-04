@@ -65,4 +65,23 @@ final class VideoAudioTapTests: XCTestCase {
         context.handle(buffer)
         XCTAssertEqual(left(buffer), [Float](repeating: 0, count: 48), "held back from the next buffer")
     }
+
+    func testFadeRampsTheBufferDownWithoutSteps() {
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4)!
+        buffer.frameLength = 4
+        for channel in 0 ..< 2 {
+            for index in 0 ..< 4 { buffer.floatChannelData![channel][index] = 1 }
+        }
+        VideoAudioTap.ramp(
+            UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList), frames: 4, from: 1, to: 0.5)
+        XCTAssertEqual(left(buffer), [1, 0.875, 0.75, 0.625], "both channels follow the same ramp")
+        XCTAssertEqual(buffer.floatChannelData![1][3], 0.625)
+    }
+
+    func testFadeOutReachesSilenceAtItsEnd() {
+        let fade = VideoAudioTap.FadeOut(startHostTime: 10, duration: 0.2)
+        XCTAssertEqual(fade.gain(at: 9), 1)
+        XCTAssertEqual(fade.gain(at: 10.1), 0.5, accuracy: 0.001)
+        XCTAssertEqual(fade.gain(at: 10.3), 0)
+    }
 }

@@ -33,6 +33,17 @@ public final class SceneTransitionEngine: @unchecked Sendable {
         var previous: RenderScene
         var startedAt: Date
         var transition: SceneTransition
+        /// The media layers changed by one push share it, so a video
+        /// leaving one layer and a picture arriving on another cross on
+        /// the same clock.
+        var group: Int
+        /// Media arriving with this change that has no picture yet. Until
+        /// it has one (or `startedAt`, the latest the change may wait,
+        /// comes) the layer shows what it showed before: a video takes a
+        /// moment to open, and a dissolve run on its clock alone would be
+        /// over before the first frame came, so the old picture would go
+        /// to black and the new one pop in.
+        var awaiting: Set<String> = []
 
         var end: Date { startedAt.addingTimeInterval(transition.duration) }
     }
@@ -40,11 +51,24 @@ public final class SceneTransitionEngine: @unchecked Sendable {
     private struct State {
         var target: RenderScene
         var active: [LayerKind: Active] = [:]
+        var groups = 0
     }
 
     private let state: Locked<State>
 
     private let pullCount = Locked<Int>(0)
+
+    /// Whether a media id has a picture to show yet. Without one, changes
+    /// start at once.
+    private let mediaReady = Locked<(@Sendable (String) -> Bool)?>(nil)
+
+    /// The longest a media change waits for its incoming picture before
+    /// it dissolves anyway.
+    public static let longestMediaWait: TimeInterval = 1.0
+
+    /// The layers that carry full-frame media: a slide's background or
+    /// video, and media cues.
+    static let mediaLayers: Set<LayerKind> = [.loopingVideos, .stillGraphics, .videos]
 
     public func telemetry(at date: Date = Date()) -> (pulls: Int, transition: String?) {
         let pulls = pullCount.value
@@ -58,8 +82,21 @@ public final class SceneTransitionEngine: @unchecked Sendable {
         return (pulls, description)
     }
 
-    public init(initial: RenderScene = RenderScene()) {
+    public init(initial: RenderScene = RenderScene(), mediaReady: (@Sendable (String) -> Bool)? = nil) {
         state = Locked(State(target: initial))
+        self.mediaReady.value = mediaReady
+    }
+
+    public func setMediaReady(_ ready: (@Sendable (String) -> Bool)?) {
+        mediaReady.value = ready
+    }
+
+    /// The transition a layer is in at `date`, nil when it isn't in one.
+    public func transition(on layer: LayerKind, at date: Date = Date()) -> SceneTransition? {
+        state.withLock { s in
+            guard let active = s.active[layer], active.end > date else { return nil }
+            return active.transition
+        }
     }
 
     /// When the transitions under way finish; nil when none is running.
@@ -71,14 +108,22 @@ public final class SceneTransitionEngine: @unchecked Sendable {
     }
 
     public func heldMediaIDs(at date: Date = Date()) -> Set<String> {
+        Set(heldMedia(at: date).keys)
+    }
+
+    /// The outgoing media still on screen in a transition, each with how
+    /// long that transition runs, so its sound can fade out with it.
+    public func heldMedia(at date: Date = Date()) -> [String: TimeInterval] {
         state.withLock { s in
-            var ids = Set<String>()
+            var held: [String: TimeInterval] = [:]
             for (kind, active) in s.active where active.end > date {
                 for item in active.previous.layers.first(where: { $0.kind == kind })?.items ?? [] {
-                    if let id = item.content.mediaID { ids.insert(id) }
+                    if let id = item.content.mediaID {
+                        held[id] = max(held[id] ?? 0, active.transition.duration)
+                    }
                 }
             }
-            return ids
+            return held
         }
     }
 
@@ -87,6 +132,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
     }
 
     public func push(_ scene: RenderScene, transitionFor: (LayerKind) -> SceneTransition?) {
+        let ready = mediaReady.value
         state.withLock { s in
             let now = Date()
             let scene = Self.settled(scene, after: s.target)
@@ -99,40 +145,127 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             // What the screens show this moment, so a layer that changes
             // again mid-transition carries on from where it is.
             let showing = Self.current(s, at: now)
+            s.groups += 1
+            var awaiting = Set<String>()
+            if ready != nil {
+                for layer in changed where Self.mediaLayers.contains(layer) {
+                    guard let transition = transitionFor(layer), transition.kind != .cut else { continue }
+                    awaiting.formUnion(Self.arrivingMediaIDs(on: layer, from: showing, to: scene))
+                }
+            }
             for layer in changed {
                 if let transition = transitionFor(layer), transition.kind != .cut {
-                    s.active[layer] = Active(previous: showing, startedAt: now, transition: transition)
+                    var active = Active(
+                        previous: showing, startedAt: now, transition: transition, group: s.groups)
+                    if Self.mediaLayers.contains(layer), !awaiting.isEmpty {
+                        active.awaiting = awaiting
+                        active.startedAt = now.addingTimeInterval(Self.longestMediaWait)
+                    }
+                    s.active[layer] = active
                 } else {
                     s.active[layer] = nil
                 }
             }
             s.target = scene
         }
+        if let ready { startReady(ready, at: Date()) }
     }
 
     public func scene(at date: Date) -> RenderScene {
         pullCount.withLock { $0 += 1 }
+        if let ready = mediaReady.value { startReady(ready, at: date) }
         return state.withLock { s in
             s.active = s.active.filter { $0.value.end > date }
             return Self.current(s, at: date)
         }
     }
 
+    /// Starts each change whose incoming media now has a picture. Asked
+    /// outside the lock: the media engine has locks of its own.
+    private func startReady(_ ready: (String) -> Bool, at date: Date) {
+        let waiting = state.withLock { s in
+            s.active.values.reduce(into: [Int: Set<String>]()) { groups, active in
+                guard !active.awaiting.isEmpty, active.startedAt > date else { return }
+                groups[active.group, default: []].formUnion(active.awaiting)
+            }
+        }
+        guard !waiting.isEmpty else { return }
+        let landed = Set(waiting.filter { $0.value.allSatisfy(ready) }.keys)
+        guard !landed.isEmpty else { return }
+        state.withLock { s in
+            for (kind, active) in s.active where landed.contains(active.group) && !active.awaiting.isEmpty {
+                s.active[kind]?.awaiting = []
+                s.active[kind]?.startedAt = min(active.startedAt, date)
+            }
+        }
+    }
+
+    /// Media ids on a layer of `new` that `old` doesn't have there.
+    static func arrivingMediaIDs(on kind: LayerKind, from old: RenderScene, to new: RenderScene) -> Set<String> {
+        let oldIDs = Set((old.layers.first { $0.kind == kind }?.items ?? []).compactMap(\.content.mediaID))
+        let newIDs = Set((new.layers.first { $0.kind == kind }?.items ?? []).compactMap(\.content.mediaID))
+        return newIDs.subtracting(oldIDs)
+    }
+
     /// The target, with each layer still in its transition drawn partway.
     private static func current(_ s: State, at date: Date) -> RenderScene {
         var scene = s.target
+        let order = Dictionary(
+            s.target.layers.enumerated().map { ($0.element.kind, $0.offset) },
+            uniquingKeysWith: { first, _ in first })
         for (kind, active) in s.active {
             let progress = progress(of: active, at: date)
             guard progress < 1,
                   let index = scene.layers.firstIndex(where: { $0.kind == kind }) else { continue }
             let blended = composite(
                 previous: active.previous, target: s.target,
-                transitions: [kind: active.transition], progress: progress)
+                transitions: [kind: active.transition], progress: progress,
+                holds: [kind: holds(for: kind, in: active, among: s, order: order)])
             if let layer = blended.layers.first(where: { $0.kind == kind }) {
                 scene.layers[index] = layer
             }
         }
         return scene
+    }
+
+    /// Full-frame media crossing between two media layers in one change (a
+    /// video slide to a picture slide: the video's layer clears as the
+    /// picture's fills) would dip through black if both faded: halfway, each
+    /// is at half strength. The lower layer holds at full instead, and only
+    /// the upper one fades, over it or away from it.
+    private static func holds(
+        for kind: LayerKind, in active: Active, among s: State, order: [LayerKind: Int]
+    ) -> Hold {
+        guard mediaLayers.contains(kind), let mine = order[kind] else { return [] }
+        var hold: Hold = []
+        // Only on one clock: a hold that ended before the fade over it
+        // would pop.
+        for (other, peer) in s.active
+        where peer.group == active.group && other != kind && peer.transition == active.transition
+            && peer.startedAt == active.startedAt {
+            guard mediaLayers.contains(other), let theirs = order[other], theirs > mine else { continue }
+            let canvas = s.target.canvasSize
+            let leaving = peer.previous.layers.first { $0.kind == other }?.items ?? []
+            let arriving = s.target.layers.first { $0.kind == other }?.items ?? []
+            // Arrivals here are revealed as the full-frame picture above
+            // fades away; what leaves here is covered as one above fades in.
+            if leaving.contains(where: { coversCanvas($0, canvas: canvas) }) { hold.insert(.arriving) }
+            if arriving.contains(where: { coversCanvas($0, canvas: canvas) }) { hold.insert(.leaving) }
+        }
+        return hold
+    }
+
+    /// Whether an item hides everything under it: an opaque full-frame
+    /// colour (a letterbox's backing) or media filling the frame.
+    static func coversCanvas(_ item: RenderItem, canvas: CGSize) -> Bool {
+        guard item.opacity >= 0.999, item.maskedBy == nil, item.blendMode == .normal,
+              item.frame.insetBy(dx: -0.5, dy: -0.5).contains(CGRect(origin: .zero, size: canvas))
+        else { return false }
+        switch item.content {
+        case .solid(let color): return color.alpha >= 0.999
+        case .media(_, let scaleMode, _): return scaleMode != .fit
+        default: return false
+        }
     }
 
     private static func progress(of active: Active, at date: Date) -> Double {
@@ -157,6 +290,14 @@ public final class SceneTransitionEngine: @unchecked Sendable {
         return changed
     }
 
+    /// What a layer keeps at full strength through a dissolve instead of
+    /// fading it (see `holds(for:in:among:order:)`).
+    struct Hold: OptionSet, Hashable {
+        let rawValue: Int
+        static let leaving = Hold(rawValue: 1)
+        static let arriving = Hold(rawValue: 2)
+    }
+
     static func composite(
         previous: RenderScene, target: RenderScene,
         transition: SceneTransition, progress: Double,
@@ -171,12 +312,14 @@ public final class SceneTransitionEngine: @unchecked Sendable {
 
     static func composite(
         previous: RenderScene, target: RenderScene,
-        transitions: [LayerKind: SceneTransition], progress: Double
+        transitions: [LayerKind: SceneTransition], progress: Double,
+        holds: [LayerKind: Hold] = [:]
     ) -> RenderScene {
         var scene = target
         for index in scene.layers.indices {
             let kind = scene.layers[index].kind
             guard let transition = transitions[kind] else { continue }
+            let hold = holds[kind] ?? []
             let oldItems = previous.layers.first { $0.kind == kind }?.items ?? []
             let newItems = scene.layers[index].items
 
@@ -201,24 +344,33 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                     return out
                 }
             func arrivingFaded(_ items: [RenderItem], to opacity: Double) -> [RenderItem] {
-                items.map { item in
+                guard !hold.contains(.arriving) else { return items }
+                return items.map { item in
                     guard !oldKeys.contains(membershipKey(item)) else { return item }
                     var out = item
                     out.opacity *= opacity
                     return out
                 }
             }
+            // On a media layer the outgoing picture goes in just under the
+            // incoming one, so anything that stays (a letterbox's black
+            // backing, shared by both clips) stays under both rather than
+            // covering the clip that's leaving.
+            func stacked(_ leaving: [RenderItem], _ arriving: [RenderItem]) -> [RenderItem] {
+                guard mediaLayers.contains(kind) else { return leaving + arriving }
+                let at = arriving.firstIndex { !oldKeys.contains(membershipKey($0)) } ?? arriving.count
+                return Array(arriving[..<at]) + leaving + Array(arriving[at...])
+            }
 
             let hasArrivals = newItems.contains { !oldKeys.contains(membershipKey($0)) }
-            let holdsUnder = hasArrivals
-                && (kind == .loopingVideos || kind == .stillGraphics || kind == .videos)
+            let holdsUnder = hold.contains(.leaving) || (hasArrivals && mediaLayers.contains(kind))
             switch transition.kind {
             case .cut:
                 continue
             case .dissolve:
-                scene.layers[index].items =
-                    (holdsUnder ? leaving : faded(leaving, to: 1 - progress))
-                    + lineDissolved(arrivingFaded(newItems, to: progress), reworded, progress: progress)
+                scene.layers[index].items = stacked(
+                    holdsUnder ? leaving : faded(leaving, to: 1 - progress),
+                    lineDissolved(arrivingFaded(newItems, to: progress), reworded, progress: progress))
             case .fade(let plate):
 
                 let firstHalf = progress < 0.5
@@ -236,9 +388,9 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             case .blurDissolve:
 
                 let swell = (1 - abs(progress * 2 - 1)) * 60
-                scene.layers[index].items =
-                    blurred(holdsUnder ? leaving : faded(leaving, to: 1 - progress), radius: swell)
-                    + lineDissolved(arrivingFaded(newItems, to: progress), reworded, progress: progress)
+                scene.layers[index].items = stacked(
+                    blurred(holdsUnder ? leaving : faded(leaving, to: 1 - progress), radius: swell),
+                    lineDissolved(arrivingFaded(newItems, to: progress), reworded, progress: progress))
             case .filmBurn:
 
                 let peak = 1 - abs(progress * 2 - 1)
@@ -246,7 +398,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                 let arriving = burned(
                     lineDissolved(arrivingFaded(newItems, to: progress), reworded, progress: progress),
                     amount: peak, phase: progress)
-                var items = leaving + arriving
+                var items = stacked(leaving, arriving)
                 items.append(RenderItem(
                     id: "\(Self.platePrefix)burn-\(kind.rawValue)",
                     frame: CGRect(origin: .zero, size: scene.canvasSize),
