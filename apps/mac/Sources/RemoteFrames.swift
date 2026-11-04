@@ -20,7 +20,13 @@ import UniformTypeIdentifiers
 /// thumbnails stands in where there is one.
 @MainActor
 final class RemoteFrames {
+    /// The phone remote's width; the booth board draws its own at a TV's.
     static let width = 480
+    let width: Int
+
+    init(width: Int = RemoteFrames.width) {
+        self.width = width
+    }
     /// How long the scene must stay the same before it's drawn.
     static let settle: Duration = .milliseconds(600)
     /// The longest a picture waits for the show to be still.
@@ -50,7 +56,7 @@ final class RemoteFrames {
             await self.waitForStill(since: since, transitions: render.transitions)
             // Asked for again with a newer scene while waiting: that one answers.
             if let newer = self.pending[slot], newer.scene != scene { return await newer.task.value }
-            let jpeg = await Self.draw(scene, at: hostTime, render: render)
+            let jpeg = await Self.draw(scene, width: self.width, at: hostTime, render: render)
             if self.pending[slot]?.scene == scene { self.pending[slot] = nil }
             if let jpeg { self.kept[slot] = Kept(scene: scene, jpeg: jpeg) }
             return jpeg
@@ -73,14 +79,13 @@ final class RemoteFrames {
         }
     }
 
-    private static func draw(_ scene: RenderScene, at hostTime: CFTimeInterval, render: RenderContext) async -> Data? {
+    private static func draw(_ scene: RenderScene, width: Int, at hostTime: CFTimeInterval, render: RenderContext) async -> Data? {
         let media = render.media
         let drawn = scene.remappingMediaIDs { id in
             if media.hasStill(id: ThumbnailStore.thumbMediaPrefix + id) { return ThumbnailStore.thumbMediaPrefix + id }
             return media.hasStill(id: id) ? id : "remote.none"
         }
         let compositor = render.compositor
-        let width = Self.width
         let height = max(1, Int((CGFloat(width) * scene.canvasSize.height / max(1, scene.canvasSize.width)).rounded()))
         return await withCheckedContinuation { continuation in
             Self.queue.async {
