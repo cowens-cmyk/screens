@@ -437,6 +437,11 @@ private struct ScreenOutputSection: View {
         }
         let ports = output.deckLinkPorts
         if !ports.isEmpty { Divider() }
+        let carrying = output.deckLinkBackings
+        if carrying.count > 1 {
+            Text("DeckLink: \(carrying.map(\.deviceName).joined(separator: " + "))")
+                .tag(ScreenOutput.severalPortsToken)
+        }
         ForEach(ports) { device in
             Text("DeckLink: \(device.name)").tag("decklink:\(device.persistentID)")
         }
@@ -534,7 +539,7 @@ private struct NetworkOutputsSections: View {
                         let carried = ScreenRouting.roles(onDeckLink: device.persistentID, render: render)
                         ForEach(ShowScreen.allCases) { role in
                             roleToggle(role, isOn: carried.contains(role)) { on in
-                                ScreenOutput(role, render: render)?.choose(on ? "decklink:\(device.persistentID)" : "none")
+                                ScreenOutput(role, render: render)?.setDeckLink(device, on: on)
                             }
                         }
                     }
@@ -544,7 +549,7 @@ private struct NetworkOutputsSections: View {
         } header: {
             Text("Blackmagic DeckLink")
         } footer: {
-            Text("A port carries the screens switched on beside it. Ports mapped as inputs in Desktop Video Setup are left for capture.")
+            Text("A port carries the screens switched on beside it, and a screen can go out of more than one port. Ports mapped as inputs in Desktop Video Setup are left for capture.")
         }
     }
 
