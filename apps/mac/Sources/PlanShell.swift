@@ -129,6 +129,7 @@ struct PlanShell: View {
     /// type-checks in reasonable time.
     private var withSheets: some View {
         face
+            .modifier(AnthemSessionImportPresenter(model: model))
             .sheet(item: Binding(get: { messagePlanID.map(IdentifiedID.init) }, set: { messagePlanID = $0?.id })) { plan in
                 PlanMessageSheet(model: model, planID: plan.id)
             }

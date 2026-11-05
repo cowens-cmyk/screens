@@ -177,10 +177,18 @@ Songs are matched by CCLI number, then title. A song whose arrangement differs f
 
 When Anthem triggers a song that is in the plan twice, the slide lands on the live item if it is that song, else the next one after it, else the one Anthem says is playing.
 
+**Anthem session files.** The band's `.anthem` file (Anthem › File › Save Session…) brings the week's setlist without Anthem on the network. Drop it on a plan, choose File › **Import Anthem Session…**, or open it with Screens from the Finder (right-click › Open With › Screens; double-clicking opens Anthem). A sheet shows the setlist's songs in order with their keys and section orders, and the plan they go into: the plan dropped on, else the Shepherd plan Anthem made the setlist from, else a plan on that date, else the upcoming plan whose songs match, else the next plan. A file with several setlists has a **Setlist** picker. **Import** (Return):
+- Puts the plan's songs in Anthem's order, each in a place a song already had; headers, the message and everything else stay put. Shepherd sync keeps this order, so a sync doesn't put Shepherd's back.
+- Adds Anthem's songs the plan doesn't have, after the song before them, as songs needing lyrics.
+- Gives each song with no slides a copy already in the library (by CCLI number, then title), else its lyrics from Shepherd. The file has no lyrics, so a song neither has keeps **Get Lyrics**.
+- Gives each song Anthem's section order, as **Match Anthem** does (Edit › Undo puts back each one).
+- Then lists what it did, any song still without lyrics, and any section Anthem plays that a song has no slides for. The plan's ⚠ Anthem marks follow the file's setlist until Anthem itself is found on the network.
+
 ## Songs
 
 - **Song Search…** (⌘⇧L): search Shepherd's song library by title or CCLI number, pick the **Arrangement** and **Key** ("Chart key" keeps the chart's), see the song order, choose the lyrics theme, then **Import Song**. If the song is already in the library: **Open Library Copy**, **Replace Library Copy** (services using it keep it), or **Import Again**.
 - **Import Lyrics…**: paste lyrics or **Load File…**; SongSelect and ChordPro text are detected.
+- **Import Anthem Session…** (File): the setlist from Anthem's `.anthem` file; see Anthem.
 - **Import Chord Chart…** (File) or **Attach Chord Chart…** (editor inspector): PDF, ChordPro or text; rebuilds lyrics, sections, chords and key.
 - **ChordPro files** (.cho, .chordpro, .chopro, .crd): a chord in square brackets goes on the stage display above its syllable and never on the audience screens, even one Screens can't transpose (N.C., Hm, C7alt). Other brackets in lyrics, such as [x2] or [Echo], stay in the words. `[*Repeat x2]` shows as a note above the words. Section directives ({start_of_verse: Verse 1}, {soc}, {c: Bridge}, label="…") become sections, {chorus} repeats the chorus, and tab and grid blocks and `#` comments are left out.
 

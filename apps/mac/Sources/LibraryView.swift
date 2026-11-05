@@ -1426,6 +1426,8 @@ struct LibraryCommands: Commands {
                 if let model { SongSelectWindow.shared.open(ccli: nil, title: nil, for: nil, model: model) }
             }
             .disabled(model == nil || runOnly)
+            Button("Import Anthem Session…") { AnthemSessionImporter.shared.choose() }
+                .disabled(model == nil || runOnly)
             Divider()
             Menu("Import") {
                 Button("Theme…") { importShared() }

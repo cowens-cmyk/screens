@@ -101,13 +101,18 @@ struct RunOrderList: View {
                     addBar
                 }
             }
-            // A SongSelect or ChordPro file dropped anywhere on the plan
+            // An Anthem session file imports its setlist into this plan. A
+            // SongSelect or ChordPro file dropped anywhere on the plan
             // (between rows places it; see onInsert). One picture or one
             // ZIP offers to start this plan's new sermon series, and nothing
             // is read until Build Designs: a plan is dropped on for many
             // reasons, and the art would go to Claude.
             .dropDestination(for: URL.self) { urls, _ in
                 guard !runOnly else { return false }
+                if let session = urls.first(where: AnthemSessionImporter.accepts) {
+                    AnthemSessionImporter.shared.open(session, planID: serviceID)
+                    return true
+                }
                 let lyrics = urls.filter { LyricsFetcher.lyricExtensions.contains($0.pathExtension.lowercased()) }
                 if lyrics.isEmpty, PhotoSeries.acceptsOnPlan(urls) {
                     seriesArt = SeriesArtDrop(files: urls)
@@ -216,7 +221,9 @@ struct RunOrderList: View {
                         _ = provider.loadObject(ofClass: URL.self) { url, _ in
                             guard let url else { return }
                             Task { @MainActor in
-                                if LyricsFetcher.lyricExtensions.contains(url.pathExtension.lowercased()) {
+                                if AnthemSessionImporter.accepts(url) {
+                                    AnthemSessionImporter.shared.open(url, planID: serviceID)
+                                } else if LyricsFetcher.lyricExtensions.contains(url.pathExtension.lowercased()) {
                                     LyricsFetcher.shared.importDropped(
                                         url, planID: serviceID, beforeItemID: anchorID, model: model)
                                 } else if single, !runOnly, PhotoSeries.acceptsOnPlan([url]) {

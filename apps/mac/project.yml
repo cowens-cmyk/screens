@@ -108,6 +108,15 @@ targets:
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification:
               public.filename-extension: [screenspres]
+        # Anthem owns its session files; Screens only reads their setlists
+        # (Open With › Screens, or File › Import Anthem Session…).
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.anthem.session-file
+            UTTypeDescription: Anthem Session
+            UTTypeConformsTo: [public.data, public.composite-content]
+            UTTypeTagSpecification:
+              public.filename-extension: [anthem]
+              public.mime-type: [application/x-anthem-session]
         CFBundleDocumentTypes:
           - CFBundleTypeName: Screens Theme
             CFBundleTypeRole: Viewer
@@ -117,6 +126,10 @@ targets:
             CFBundleTypeRole: Viewer
             LSHandlerRank: Owner
             LSItemContentTypes: [org.hopejc.screens.presentation]
+          - CFBundleTypeName: Anthem Session
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.anthem.session-file]
     settings:
       base:
         PRODUCT_NAME: "Screens"

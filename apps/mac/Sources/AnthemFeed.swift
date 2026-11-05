@@ -294,6 +294,14 @@ final class AnthemFeed {
         reportCache.removeAll()
     }
 
+    /// A setlist read from an Anthem session file, so the plan's marks
+    /// follow it while Anthem isn't on the network. A connected Anthem's own
+    /// setlist wins and replaces it at the next read.
+    func useSetlist(fromFile fresh: AnthemShow.Setlist) {
+        if case .connected = connection { return }
+        setSetlist(fresh)
+    }
+
     // MARK: Comparing with plans
 
     /// How the plan's songs compare with Anthem's setlist; nil when there is

@@ -250,7 +250,9 @@ final class ShepherdSync {
             for: detail, rules: rules, existing: service?.items ?? [], inLibrary: library.contains
         ) { song in librarySong(for: song, candidates: candidates) }
         var probe = service ?? Service(id: "", name: "", serviceDate: "", items: [])
-        probe.items = synced
+        // Songs put in Anthem's order by an Anthem session import stay in
+        // it; Shepherd's order comes back only for songs that order lacks.
+        probe.items = AnthemSessionImport.applyOrder(service?.mxuSyncedOrder, to: synced)
         return PreServiceSlides.ensuring(probe, sharedID: preService)?.items ?? synced
     }
 

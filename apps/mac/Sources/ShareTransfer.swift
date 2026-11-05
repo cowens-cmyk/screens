@@ -131,7 +131,7 @@ enum ShareOpenQueue {
 
     static func open(_ urls: [URL]) {
         let kinds = [ShareBundle.themeExtension, ShareBundle.presentationExtension]
-        pending += urls.filter { kinds.contains($0.pathExtension.lowercased()) }
+        pending += urls.filter { kinds.contains($0.pathExtension.lowercased()) || AnthemSessionImporter.accepts($0) }
         flush()
     }
 
@@ -141,7 +141,13 @@ enum ShareOpenQueue {
         pending = []
         model.whenLibraryReady {
             Task { @MainActor in
-                for url in urls { await ShareTransferRunner(model: model).importFile(url) }
+                for url in urls {
+                    if AnthemSessionImporter.accepts(url) {
+                        AnthemSessionImporter.shared.open(url, planID: nil)
+                    } else {
+                        await ShareTransferRunner(model: model).importFile(url)
+                    }
+                }
             }
         }
     }
