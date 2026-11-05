@@ -30,8 +30,17 @@ final class DeckLinkScreenOutputs {
     }
 
     private(set) var controllers: [Int64: DeckLinkOutputController] = [:]
-    private(set) var backings: [UUID: Backing] = [:]
-    private static let defaultsKey = "decklink.screenBackings"
+    /// The ports each screen goes out of. One screen can be on several
+    /// (the Audience on ports 1 and 4 of an 8K Pro, one per projector), and
+    /// one port can carry several screens packed into its frame.
+    private(set) var backings: [UUID: [Backing]] = [:]
+    /// Saved as a list of ports per screen. The old key held one port per
+    /// screen: giving the Audience a second port replaced the first in what
+    /// was saved while the first went on sending, so after a quit only the
+    /// last port chosen came back. It is still read when the new one is
+    /// missing, so the ports set before this change are kept.
+    private static let defaultsKey = "decklink.screenPorts"
+    private static let legacyDefaultsKey = "decklink.screenBackings"
     /// Nothing is saved until the saved outputs are back. NDI restores
     /// first, and switching a screen to NDI switches its DeckLink port off,
     /// which used to save the empty list over the ports not yet restored,
@@ -47,34 +56,62 @@ final class DeckLinkScreenOutputs {
 
     private init() {}
 
-    private func controller(for screenID: UUID) -> DeckLinkOutputController? {
-        backings[screenID].flatMap { controllers[$0.devicePersistentID] }
+    private func portControllers(for screenID: UUID) -> [DeckLinkOutputController] {
+        (backings[screenID] ?? []).compactMap { controllers[$0.devicePersistentID] }
+    }
+
+    private func backing(_ screenID: UUID, on devicePersistentID: Int64) -> Backing? {
+        backings[screenID]?.first { $0.devicePersistentID == devicePersistentID }
     }
 
     func members(onDevice devicePersistentID: Int64) -> [UUID] {
-        backings.filter { $0.value.devicePersistentID == devicePersistentID }
+        backings.filter { $0.value.contains { $0.devicePersistentID == devicePersistentID } }
             .keys.sorted { $0.uuidString < $1.uuidString }
     }
 
+    /// The screen's state across its ports. The least healthy one wins, so
+    /// a port that has stopped isn't hidden by another that is sending.
     func status(for screenID: UUID) -> DeckLinkOutputController.Status? {
-        controller(for: screenID)?.status
+        let statuses = portControllers(for: screenID).map(\.status)
+        guard !statuses.isEmpty else { return nil }
+        func rank(_ status: DeckLinkOutputController.Status) -> Int {
+            switch status {
+            case .failed: 4
+            case .interrupted: 3
+            case .starting: 2
+            case .sending: 1
+            case .idle: 0
+            }
+        }
+        return statuses.max { rank($0) < rank($1) }
     }
 
     func isCarrying(_ screenID: UUID) -> Bool {
-        backings[screenID] != nil && (controller(for: screenID)?.isActive ?? false)
+        portControllers(for: screenID).contains(where: \.isActive)
     }
 
     func wireDetail(for screenID: UUID) -> String {
-        controller(for: screenID)?.wireDetail ?? ""
+        portControllers(for: screenID).map(\.wireDetail).first { !$0.isEmpty } ?? ""
     }
 
+    /// The screen's first port, for the settings that show one: its keying
+    /// and what the Output menu names.
     func backing(for screenID: UUID) -> Backing? {
-        backings[screenID]
+        backings[screenID]?.first
     }
 
+    /// Every port the screen is on, in the order they were added.
+    func backingList(for screenID: UUID) -> [Backing] {
+        backings[screenID] ?? []
+    }
+
+    /// Puts the screen on a port. `adding` keeps the screen's other ports
+    /// (a second projector); otherwise this port replaces them, and the
+    /// ports it leaves stop or go on with their other screens. `joining`
+    /// keeps the port's other screens; otherwise this screen replaces them.
     func enable(
         screenID: UUID, device: DeckLinkHelperDevice, keying: DeckLinkAlphaKey,
-        mode: DeckLinkHelperDisplayMode? = nil, joining: Bool = false,
+        mode: DeckLinkHelperDisplayMode? = nil, joining: Bool = false, adding: Bool = false,
         render: RenderContext
     ) {
         guard render.outputs.sliceInfo(for: screenID) != nil else {
@@ -83,32 +120,41 @@ final class DeckLinkScreenOutputs {
             return
         }
         self.render = render
-        if backings[screenID] != nil {
-            backings.removeValue(forKey: screenID)
+        var left: Set<Int64> = []
+        var ports = backings[screenID] ?? []
+        if adding {
+            ports.removeAll { $0.devicePersistentID == device.persistentID }
+        } else {
+            left = Set(ports.map(\.devicePersistentID))
+            ports = []
         }
 
         NDIScreenOutputs.shared.disable(screenID: screenID)
         if !joining {
-
             for otherID in members(onDevice: device.persistentID) where otherID != screenID {
-                backings.removeValue(forKey: otherID)
+                backings[otherID]?.removeAll { $0.devicePersistentID == device.persistentID }
+                if backings[otherID]?.isEmpty == true { backings.removeValue(forKey: otherID) }
             }
         }
         render.outputs.assignPlaceholderDevice(placeholderID: screenID, displayUUID: nil)
         let incumbent = members(onDevice: device.persistentID)
-            .compactMap { backings[$0] }.first
-        backings[screenID] = Backing(
+            .filter { $0 != screenID }
+            .compactMap { backing($0, on: device.persistentID) }.first
+        ports.append(Backing(
             devicePersistentID: device.persistentID,
             deviceName: device.name,
             keying: joining ? incumbent?.keying ?? keying : keying,
-            mode: joining ? incumbent?.mode ?? mode : mode)
+            mode: joining ? incumbent?.mode ?? mode : mode))
+        backings[screenID] = ports
+        left.remove(device.persistentID)
+        for port in left { rebuildCarry(devicePersistentID: port, render: render) }
         rebuildCarry(devicePersistentID: device.persistentID, render: render)
         persist()
     }
 
     private func rebuildCarry(devicePersistentID: Int64, render: RenderContext) {
         let memberIDs = members(onDevice: devicePersistentID)
-        guard let firstID = memberIDs.first, let backing = backings[firstID] else {
+        guard let firstID = memberIDs.first, let backing = self.backing(firstID, on: devicePersistentID) else {
             controllers[devicePersistentID]?.stop()
             controllers.removeValue(forKey: devicePersistentID)
             return
@@ -167,29 +213,41 @@ final class DeckLinkScreenOutputs {
         )
     }
 
-    func setKeying(screenID: UUID, keying: DeckLinkAlphaKey, render: RenderContext) {
-        guard let backing = backings[screenID] else { return }
-        for member in members(onDevice: backing.devicePersistentID) {
-            backings[member]?.keying = keying
+    /// One port's keying. Each port is keyed for itself, since two ports
+    /// on different cards may not key the same way.
+    func setKeying(
+        screenID: UUID, devicePersistentID: Int64, keying: DeckLinkAlphaKey, render: RenderContext
+    ) {
+        guard backing(screenID, on: devicePersistentID) != nil else { return }
+        for member in members(onDevice: devicePersistentID) {
+            update(member, on: devicePersistentID) { $0.keying = keying }
         }
-        rebuildCarry(devicePersistentID: backing.devicePersistentID, render: render)
+        rebuildCarry(devicePersistentID: devicePersistentID, render: render)
         persist()
     }
 
     func setMode(
         screenID: UUID, mode: DeckLinkHelperDisplayMode?, render: RenderContext
     ) {
-        guard let backing = backings[screenID] else { return }
-        for member in members(onDevice: backing.devicePersistentID) {
-            backings[member]?.mode = mode
+        for port in backingList(for: screenID).map(\.devicePersistentID) {
+            for member in members(onDevice: port) {
+                update(member, on: port) { $0.mode = mode }
+            }
+            rebuildCarry(devicePersistentID: port, render: render)
         }
-        rebuildCarry(devicePersistentID: backing.devicePersistentID, render: render)
         persist()
     }
 
+    private func update(_ screenID: UUID, on devicePersistentID: Int64, _ change: (inout Backing) -> Void) {
+        guard let index = backings[screenID]?.firstIndex(where: { $0.devicePersistentID == devicePersistentID })
+        else { return }
+        change(&backings[screenID]![index])
+    }
+
     func refreshCarry(for screenID: UUID, render: RenderContext) {
-        guard let backing = backings[screenID] else { return }
-        rebuildCarry(devicePersistentID: backing.devicePersistentID, render: render)
+        for port in backingList(for: screenID).map(\.devicePersistentID) {
+            rebuildCarry(devicePersistentID: port, render: render)
+        }
     }
 
     private func device(for backing: Backing) -> DeckLinkHelperDevice {
@@ -201,40 +259,62 @@ final class DeckLinkScreenOutputs {
             supportsExternalKeying: true)
     }
 
+    /// Takes the screen off every port it's on.
     func disable(screenID: UUID, render: RenderContext? = nil) {
         // A screen with no port: nothing changed, nothing to save.
-        guard let backing = backings.removeValue(forKey: screenID) else { return }
-        if let render {
-
-            rebuildCarry(devicePersistentID: backing.devicePersistentID, render: render)
-        } else if members(onDevice: backing.devicePersistentID).isEmpty {
-            controllers[backing.devicePersistentID]?.stop()
-            controllers.removeValue(forKey: backing.devicePersistentID)
-        }
+        guard let ports = backings.removeValue(forKey: screenID) else { return }
+        for port in ports { release(port.devicePersistentID, render: render) }
         persist()
+    }
+
+    /// Takes the screen off one port and leaves its others sending.
+    func disable(screenID: UUID, devicePersistentID: Int64, render: RenderContext) {
+        guard backing(screenID, on: devicePersistentID) != nil else { return }
+        backings[screenID]?.removeAll { $0.devicePersistentID == devicePersistentID }
+        if backings[screenID]?.isEmpty == true { backings.removeValue(forKey: screenID) }
+        release(devicePersistentID, render: render)
+        persist()
+    }
+
+    /// A port that just lost a screen: it carries the ones left, or stops.
+    private func release(_ devicePersistentID: Int64, render: RenderContext?) {
+        if let render {
+            rebuildCarry(devicePersistentID: devicePersistentID, render: render)
+        } else if members(onDevice: devicePersistentID).isEmpty {
+            controllers[devicePersistentID]?.stop()
+            controllers.removeValue(forKey: devicePersistentID)
+        }
     }
 
     func restore(render: RenderContext) {
         defer { restored = true }
         self.render = render
-        guard let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
-            let stored = try? JSONDecoder().decode([String: Backing].self, from: data)
-        else { return }
+        let defaults = UserDefaults.standard
+        var stored: [String: [Backing]] = [:]
+        if let data = defaults.data(forKey: Self.defaultsKey),
+           let lists = try? JSONDecoder().decode([String: [Backing]].self, from: data) {
+            stored = lists
+        } else if let data = defaults.data(forKey: Self.legacyDefaultsKey),
+                  let single = try? JSONDecoder().decode([String: Backing].self, from: data) {
+            stored = single.mapValues { [$0] }
+        }
+        guard !stored.isEmpty else { return }
         DiagnosticsStore.shared.note(
             "decklink.restore",
-            detail: stored.values.map { "\($0.deviceName) (\($0.devicePersistentID))" }
+            detail: stored.values.flatMap { $0 }.map { "\($0.deviceName) (\($0.devicePersistentID))" }
                 .sorted().joined(separator: ", "))
         // The port opens straight away, without waiting for the catalog:
         // the helper looks the device up itself, and each port keeps trying
         // until it sends, so a card the driver hasn't finished bringing up
         // at launch comes up on a later try.
-        for (raw, backing) in stored {
+        for (raw, ports) in stored {
             guard let id = UUID(uuidString: raw) else { continue }
-
-            enable(
-                screenID: id, device: device(for: backing),
-                keying: backing.keying, mode: backing.mode, joining: true,
-                render: render)
+            for backing in ports {
+                enable(
+                    screenID: id, device: device(for: backing),
+                    keying: backing.keying, mode: backing.mode, joining: true, adding: true,
+                    render: render)
+            }
         }
     }
 
@@ -247,7 +327,7 @@ final class DeckLinkScreenOutputs {
         let found = Set(devices.map(\.persistentID))
         let appeared = found.subtracting(knownDevices)
         knownDevices = found
-        let wanted = Set(backings.values.map(\.devicePersistentID))
+        let wanted = Set(backings.values.flatMap { $0 }.map(\.devicePersistentID))
         for device in wanted {
             if let controller = controllers[device], controller.isActive {
                 if appeared.contains(device) { controller.retrySoon() }

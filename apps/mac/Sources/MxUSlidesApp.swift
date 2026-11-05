@@ -426,16 +426,22 @@ enum QuitConfirmation {
     /// A plain yes-or-no. Return confirms, as the operator asked: the
     /// question itself is the guard against a stray ⌘Q or click, and
     /// answering it shouldn't need the mouse. Escape cancels.
+    ///
+    /// The confirm button isn't marked destructive: macOS can keep Return
+    /// off a destructive button, the likely reason Return still did
+    /// nothing after 0.22.1 set the key. It is made the window's default
+    /// button after the alert lays itself out, so the layout can't undo it.
     static func ask(title: String, message: String, button: String) -> Bool {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
         let confirm = alert.addButton(withTitle: button)
-        confirm.hasDestructiveAction = true
-        confirm.keyEquivalent = "\r"
         let cancel = alert.addButton(withTitle: "Cancel")
         cancel.keyEquivalent = "\u{1b}"
+        alert.layout()
+        confirm.keyEquivalent = "\r"
+        alert.window.defaultButtonCell = confirm.cell as? NSButtonCell
         return alert.runModal() == .alertFirstButtonReturn
     }
 }

@@ -207,6 +207,9 @@ final class KeyInController {
     ]
 
     private func handle(_ event: NSEvent) -> Bool {
+        // A modal alert (Quit Screens?) is up: its keys are its own, so
+        // Return answers it rather than firing a slide behind it.
+        if NSApp.modalWindow != nil { return false }
         guard let chord = KeyChord.from(event) else { return false }
 
         if let recorder = KeyMapStore.shared.recorder {

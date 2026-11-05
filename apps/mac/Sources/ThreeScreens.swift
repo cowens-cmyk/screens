@@ -144,6 +144,11 @@ struct ScreenOutput {
         DeckLinkScreenOutputs.shared.backing(for: screen.id)
     }
 
+    /// Every DeckLink port the screen goes out of.
+    var deckLinkBackings: [DeckLinkScreenOutputs.Backing] {
+        DeckLinkScreenOutputs.shared.backingList(for: screen.id)
+    }
+
     var ndiOn: Bool { NDIScreenOutputs.shared.status(for: screen.id) != nil }
 
     /// The display showing this screen, when a display does.
@@ -157,20 +162,26 @@ struct ScreenOutput {
     var deckLinkPorts: [DeckLinkHelperDevice] {
         catalog.devices.filter { device in
             catalog.displayModes[device.persistentID]?.isEmpty != true
-                || deckLinkBacking?.devicePersistentID == device.persistentID
+                || deckLinkBackings.contains { $0.devicePersistentID == device.persistentID }
         }
     }
 
-    /// "none", "display:<uuid>", "decklink:<id>" or "ndi".
+    /// "none", "display:<uuid>", "decklink:<id>", "decklink:several" or
+    /// "ndi".
     var current: String {
+        if deckLinkBackings.count > 1 { return Self.severalPortsToken }
         if let backing = deckLinkBacking { return "decklink:\(backing.devicePersistentID)" }
         if ndiOn { return "ndi" }
         if let display = outputs.placeholderDevices[screen.id] { return "display:\(display)" }
         return "none"
     }
 
+    /// The Output menu's entry for a screen on more than one port. Choosing
+    /// it changes nothing; the ports are set in the DeckLink section.
+    static let severalPortsToken = "decklink:several"
+
     func choose(_ token: String) {
-        guard token != current else { return }
+        guard token != current, token != Self.severalPortsToken else { return }
         if token.hasPrefix("decklink:"),
            let id = Int64(token.dropFirst("decklink:".count)),
            let device = catalog.devices.first(where: { $0.persistentID == id }) {
@@ -183,6 +194,20 @@ struct ScreenOutput {
             DeckLinkScreenOutputs.shared.disable(screenID: screen.id, render: render)
             let display = token.hasPrefix("display:") ? String(token.dropFirst("display:".count)) : nil
             outputs.assignPlaceholderDevice(placeholderID: screen.id, displayUUID: display)
+        }
+    }
+
+    /// The DeckLink section's switch for one port: on adds the port and
+    /// keeps the screen's others, off takes this port away and leaves the
+    /// rest. A screen on a display or NDI moves to DeckLink.
+    func setDeckLink(_ device: DeckLinkHelperDevice, on: Bool) {
+        if on {
+            DeckLinkScreenOutputs.shared.enable(
+                screenID: screen.id, device: device, keying: keying(for: device),
+                adding: true, render: render)
+        } else {
+            DeckLinkScreenOutputs.shared.disable(
+                screenID: screen.id, devicePersistentID: device.persistentID, render: render)
         }
     }
 
@@ -270,11 +295,15 @@ struct ScreenOutput {
         }
     }
 
-    /// After the alpha key settings change: the port re-keys at once.
+    /// After the alpha key settings change: each port re-keys at once.
     func applyKeying() {
-        guard let device = deckLinkDevice else { return }
-        DeckLinkScreenOutputs.shared.setKeying(
-            screenID: screen.id, keying: keying(for: device), render: render)
+        for backing in deckLinkBackings {
+            guard let device = catalog.devices.first(where: { $0.persistentID == backing.devicePersistentID })
+            else { continue }
+            DeckLinkScreenOutputs.shared.setKeying(
+                screenID: screen.id, devicePersistentID: device.persistentID,
+                keying: keying(for: device), render: render)
+        }
     }
 
     var alphaCaption: String {
@@ -316,8 +345,8 @@ enum ScreenRouting {
     }
 
     static func roles(onDeckLink id: Int64, render: RenderContext) -> [ShowScreen] {
-        ShowScreen.allCases.filter {
-            ScreenOutput($0, render: render)?.deckLinkBacking?.devicePersistentID == id
+        ShowScreen.allCases.filter { role in
+            ScreenOutput(role, render: render)?.deckLinkBackings.contains { $0.devicePersistentID == id } == true
         }
     }
 }
