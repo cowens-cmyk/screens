@@ -320,6 +320,14 @@ struct TopBarWindowChrome: NSViewRepresentable {
     final class ChromeView: NSView {
         private weak var configured: NSWindow?
         private var toolbarWatch: NSKeyValueObservation?
+        private var transparencyWatch: NSKeyValueObservation?
+
+        /// The chrome view each window was last set up by. When SwiftUI
+        /// rebuilds the workspace, the new view sets the window up before
+        /// the old one is dismantled; the old one must then leave it alone.
+        /// It used to put the title bar back to opaque, and an opaque title
+        /// bar takes every click on the top bar while it still shows (0.23.1).
+        private static let owners = NSMapTable<NSWindow, ChromeView>.weakToWeakObjects()
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -328,6 +336,7 @@ struct TopBarWindowChrome: NSViewRepresentable {
 
         func configure(_ window: NSWindow) {
             configured = window
+            Self.owners.setObject(self, forKey: window)
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.titlebarSeparatorStyle = .none
@@ -342,6 +351,17 @@ struct TopBarWindowChrome: NSViewRepresentable {
                     DispatchQueue.main.async { self?.installToolbar(window) }
                 }
             }
+            // Whatever turns the title bar opaque again, the bar's buttons
+            // stop taking clicks, so it is put straight back.
+            transparencyWatch = window.observe(\.titlebarAppearsTransparent, options: [.new]) { [weak self] window, _ in
+                MainActor.assumeIsolated {
+                    guard !window.titlebarAppearsTransparent, self?.configured === window else { return }
+                    DispatchQueue.main.async {
+                        guard self?.configured === window else { return }
+                        window.titlebarAppearsTransparent = true
+                    }
+                }
+            }
         }
 
         private func installToolbar(_ window: NSWindow) {
@@ -354,8 +374,13 @@ struct TopBarWindowChrome: NSViewRepresentable {
         func restore() {
             toolbarWatch?.invalidate()
             toolbarWatch = nil
+            transparencyWatch?.invalidate()
+            transparencyWatch = nil
             guard let window = configured else { return }
             configured = nil
+            // A newer workspace has the window now.
+            guard Self.owners.object(forKey: window) === self else { return }
+            Self.owners.removeObject(forKey: window)
             window.titleVisibility = .visible
             window.titlebarAppearsTransparent = false
             window.titlebarSeparatorStyle = .automatic
