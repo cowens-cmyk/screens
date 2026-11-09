@@ -215,6 +215,7 @@ struct MxUSlidesApp: App {
             PlanTimeBridge.shared.start(model)
             SermonTimerAutoReset.shared.start(model: model, controls: controls)
             WebsiteEventSync.shared.start(model: model, controls: controls)
+            CloudSync.shared.start(model: model)
             LiveAssist.shared.attach(model: model, controls: controls)
             AppUpdater.shared.start()
             let tracking = ServiceTimingController(model: model, controls: controls, render: render)

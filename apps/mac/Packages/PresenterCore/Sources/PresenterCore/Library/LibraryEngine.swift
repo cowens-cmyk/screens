@@ -390,10 +390,14 @@ import Foundation
     @discardableResult
     public func removeSyncEntry(kind: DocumentKind, id: String) throws -> LibraryBatch {
         try publishing {
-            pendingSidecar = true
-            try opened().index.removeSyncEntry(kind: kind, id: id)
-            sync.remove(SyncLedger.Key(kind: kind, id: id))
+            try forgetSyncEntry(SyncLedger.Key(kind: kind, id: id))
         }
+    }
+
+    func forgetSyncEntry(_ key: SyncLedger.Key) throws {
+        pendingSidecar = true
+        try opened().index.removeSyncEntry(kind: key.kind, id: key.id)
+        sync.remove(key)
     }
 
     @discardableResult

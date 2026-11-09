@@ -4,8 +4,10 @@ import Security
 enum SecretStore {
     // Keys sync through iCloud Keychain once the app is signed with a provisioning
     // profile; until then, they stay on this Mac.
-    static func load(service: String, account: String) -> String? {
-        for synchronizable in [true, false] {
+    /// `localOnly` keeps a key on this Mac: one that identifies the Mac
+    /// itself must not follow the person to their other Macs.
+    static func load(service: String, account: String, localOnly: Bool = false) -> String? {
+        for synchronizable in localOnly ? [false] : [true, false] {
             var query = keychainQuery(service: service, account: account, synchronizable: synchronizable)
             query[kSecReturnData as String] = true
             query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -19,9 +21,14 @@ enum SecretStore {
         return nil
     }
 
-    static func save(_ value: String, service: String, account: String) {
+    static func save(_ value: String, service: String, account: String, localOnly: Bool = false) {
         let synced = keychainQuery(service: service, account: account, synchronizable: true)
         let local = keychainQuery(service: service, account: account, synchronizable: false)
+        if localOnly {
+            SecItemDelete(local as CFDictionary)
+            if !value.isEmpty { _ = upsert(Data(value.utf8), query: local) }
+            return
+        }
         if value.isEmpty {
             SecItemDelete(synced as CFDictionary)
             SecItemDelete(local as CFDictionary)

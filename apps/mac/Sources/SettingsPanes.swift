@@ -168,6 +168,8 @@ struct IntegrationsSettingsPane: View {
                 .settingsForm()
         case .website:
             WebsiteEventsSettingsForm(model: model)
+        case .cloud:
+            CloudSettingsForm()
         case .remote:
             if let api {
                 LocalAPISettingsForm(api: api)
