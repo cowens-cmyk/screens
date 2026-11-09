@@ -27,6 +27,7 @@ final class CloudSync {
     private(set) var problem: String?
     private(set) var lastActivity: Date?
     private(set) var isLinking = false
+    private(set) var files = CloudBlobTransfer.Progress()
 
     @ObservationIgnored private weak var model: AppModel?
     @ObservationIgnored private var session: CloudSyncSession?
@@ -34,6 +35,8 @@ final class CloudSync {
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var observer: LibraryBatchObservers.Token?
     @ObservationIgnored private var failures = 0
+    @ObservationIgnored private var transfer: CloudBlobTransfer?
+    @ObservationIgnored private var retrier: Task<Void, Never>?
 
     private static let keychainService = "org.hopejc.screens.cloud"
     private static let keychainAccount = "device-token"
@@ -68,6 +71,10 @@ final class CloudSync {
         self.model = model
         deviceName = UserDefaults.standard.string(forKey: Self.deviceNameKey)
         observer = model.batchObservers.add { batch in
+            let media = batch.changes.filter { [.media, .audio].contains($0.kind) && $0.value != nil }.map(\.key)
+            if !media.isEmpty {
+                Task { @MainActor in await CloudSync.shared.moveFiles(for: media) }
+            }
             let route = SyncBatchRoute(batch)
             guard !route.edited.isEmpty || !route.deleted.isEmpty else { return }
             Task { @MainActor in
@@ -116,6 +123,7 @@ final class CloudSync {
     /// the church library afresh.
     func unlink() {
         disconnect()
+        transfer = nil
         SecretStore.save("", service: Self.keychainService, account: Self.keychainAccount, localOnly: true)
         UserDefaults.standard.removeObject(forKey: Self.deviceNameKey)
         deviceName = nil
@@ -161,6 +169,51 @@ final class CloudSync {
         }
     }
 
+    // MARK: Media files
+
+    /// Once caught up: every file the library refers to that this Mac lacks
+    /// is fetched, and every one it has that the hub lacks is sent.
+    private func startFiles() {
+        guard let model, let blobs = model.blobs, let token else { return }
+        if transfer == nil {
+            let client = model.client
+            transfer = CloudBlobTransfer(
+                base: Self.socketHost, token: token, blobs: blobs,
+                uploaded: { hash in _ = try? await client.markBlobUploaded(hash).value },
+                landed: { _ in await MainActor.run { CloudSync.shared.model?.noteBlobsChanged() } },
+                progress: { progress in Task { @MainActor in CloudSync.shared.files = progress } })
+        }
+        Task { await moveFiles(for: nil) }
+        retrier?.cancel()
+        retrier = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(300))
+                if let transfer = self?.transfer { await transfer.retryMissing() }
+            }
+        }
+    }
+
+    /// The files of these media and audio items (all of them when nil).
+    fileprivate func moveFiles(for keys: [SyncLedger.Key]?) async {
+        guard let model, let blobs = model.blobs, let transfer, status == .live else { return }
+        let keys = keys ?? (model.entries(of: .media).map { SyncLedger.Key(kind: .media, id: $0.id) }
+            + model.entries(of: .audio).map { SyncLedger.Key(kind: .audio, id: $0.id) })
+        let refs = Set(keys.compactMap { key -> CloudBlobRef? in
+            switch key.kind {
+            case .media: model.media(key.id).flatMap { CloudBlobRef(hash: $0.fileHash, fileName: $0.fileName) }
+            case .audio: model.audio(key.id).flatMap { CloudBlobRef(hash: $0.fileHash, fileName: $0.fileName) }
+            default: nil
+            }
+        })
+        guard !refs.isEmpty else { return }
+        let hashes = refs.map(\.hash)
+        let present = blobs.presence(forHashes: hashes)
+        let uploaded = (try? await model.client.uploadedBlobs(among: hashes)) ?? []
+        let plan = CloudBlobPlan.plan(refs: refs, present: present, uploaded: uploaded)
+        await transfer.want(plan.download)
+        await transfer.offer(plan.upload)
+    }
+
     // MARK: The socket
 
     private func connect() {
@@ -179,6 +232,8 @@ final class CloudSync {
     private func disconnect() {
         loop?.cancel()
         loop = nil
+        retrier?.cancel()
+        retrier = nil
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         if let session {
@@ -272,7 +327,9 @@ final class CloudSync {
         switch event {
         case .phase(.connecting): status = .connecting
         case .phase(.catchingUp): status = .catchingUp
-        case .phase(.live): status = .live
+        case .phase(.live):
+            status = .live
+            startFiles()
         case .phase(.needsJoin(let documents)):
             status = .needsJoin(documents: documents)
             // Nothing more until the person chooses.
@@ -281,6 +338,8 @@ final class CloudSync {
             socket?.cancel(with: .normalClosure, reason: nil)
         case .applied, .pushed:
             lastActivity = Date()
+        case .blobArrived(let sha):
+            if let transfer { Task { await transfer.arrived(sha) } }
         case .problem(let text):
             problem = text
         }

@@ -275,3 +275,17 @@ private func song(_ id: String, _ name: String, _ lyrics: [String]) -> Presentat
     try await hub.pump(sessions)
     return (hub, studio, laptop, sessions)
 }
+
+@Suite struct CloudBlobPlanTests {
+    @Test func fetchWhatIsMissingAndSendWhatTheHubLacks() {
+        let a = CloudBlobRef(hash: String(repeating: "a", count: 64), ext: "JPG")
+        let b = CloudBlobRef(hash: String(repeating: "b", count: 64), ext: "mp4")
+        let c = CloudBlobRef(hash: String(repeating: "c", count: 64), ext: "png")
+        let plan = CloudBlobPlan.plan(refs: [a, b, c], present: [a.hash, b.hash], uploaded: [b.hash])
+        #expect(plan.download == [c])
+        #expect(plan.upload == [a])
+        #expect(a.ext == "jpg")
+        #expect(CloudBlobRef(hash: "not-a-hash", fileName: "x.jpg") == nil)
+        #expect(CloudBlobRef(hash: String(repeating: "d", count: 64), fileName: "Clip.MOV")?.ext == "mov")
+    }
+}

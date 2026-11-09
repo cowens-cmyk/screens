@@ -23,8 +23,28 @@ is whatever `Document.encodeChangesSince(heads:)` or `Document.save()` made;
 the client applies any of them with `applyEncodedChanges` (Automerge's
 `load_incremental`), which accepts both.
 
-Media files (blobs) are step 2 and go through R2 by their SHA-256; this file
-covers documents only.
+## Media files
+
+Media files (blobs) go through R2, named by their SHA-256 (64 lowercase hex),
+over HTTP on the same host as the socket. Every route takes the Mac's token as
+`Authorization: Bearer <token>`; no token, a wrong one or an unlinked Mac's is
+401. A bad sha is 400.
+
+| Method | Path | What it does |
+|---|---|---|
+| HEAD | `/api/screens/blobs/<sha>` | 200 with `Content-Length`, `Content-Type` and `X-Screens-Ext`, or 404. |
+| GET | `/api/screens/blobs/<sha>` | The file. One `Range: bytes=a-b` or `bytes=a-` is answered 206 with `Content-Range`, so a download can resume; a start past the end is 416. 404 if missing. |
+| PUT | `/api/screens/blobs/<sha>` | The file, up to 95 MB, with `Content-Length` (411 without). `Content-Type` and `X-Screens-Ext` (1 to 8 of `[a-z0-9]`) are kept. 201 `{sha, size}`; 200 `{existed:true}` if it is already there (nothing rewritten); 413 over 95 MB. |
+| POST | `/api/screens/blobs/<sha>/uploads` | Starts a multipart upload (same headers as PUT, empty body): 201 `{uploadId}`, or 200 `{existed:true}` if the file is already there. |
+| PUT | `/api/screens/blobs/<sha>/uploads/<uploadId>/<partNumber>` | One part, 1 to 10000, up to 95 MB: `{partNumber, etag}`. Every part but the last must be at least 5 MiB (R2's rule; `complete` refuses otherwise). Unknown upload: 404. |
+| POST | `/api/screens/blobs/<sha>/uploads/<uploadId>/complete` | `{parts:[{partNumber, etag}]}`: 201 `{sha, size}`. |
+| DELETE | `/api/screens/blobs/<sha>/uploads/<uploadId>` | Aborts the upload. |
+
+Put the `uploadId` through `encodeURIComponent`. The server does not hash
+uploads (it cannot for a multipart one): it trusts the linked Mac. The Mac
+that downloads a file hashes it and discards it if it does not match its name.
+When an upload finishes, the hub sends `{t:'blob', sha}` to every connected
+Mac. Nothing deletes unused files yet.
 
 ## Joining
 
@@ -70,6 +90,7 @@ frames. `bytes` fields are standard base64.
 | `{t:'ack', ref, seq}` | A push or delete was stored at `seq`. |
 | `{t:'error', ref, code, message}` | A request was refused. `code`: `'deleted'` (pushing `changes` to a deleted document; the client should delete its copy), `'too-large'`, `'bad-request'`. |
 | `{t:'want-snapshot', kind, id}` | The document has many chunks since its last snapshot; the client should push `mode:'snapshot'` when it can. |
+| `{t:'blob', sha}` | A media file finished uploading (any Mac, the receiver included). A Mac waiting for it can fetch it now. Best effort: a Mac that misses it finds the file on its next HEAD. |
 
 A catch-up item has the same fields as a `change`, with `mode` one of
 `changes`, `snapshot`, `reset` or `deleted`.

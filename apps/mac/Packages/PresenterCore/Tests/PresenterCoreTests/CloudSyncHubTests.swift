@@ -94,4 +94,57 @@ struct CloudSyncHubTests {
         first.socket.cancel(with: .normalClosure, reason: nil)
         rejoined.socket.cancel(with: .normalClosure, reason: nil)
     }
+
+    @Test func mediaFilesGoUpOnceAndComeDownChecked() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        let socket = try #require(environment["CLOUD_SYNC_HUB"].flatMap(URL.init(string:)))
+        let token = try #require(environment["CLOUD_SYNC_TOKEN"])
+        var http = URLComponents(url: socket, resolvingAgainstBaseURL: false)!
+        http.scheme = http.scheme == "wss" ? "https" : "http"
+        http.path = ""
+        let base = try #require(http.url)
+        let roots = (0..<2).map { _ in FileManager.default.temporaryDirectory.appendingPathComponent("blobs-\(UUID().uuidString)") }
+        defer { roots.forEach { try? FileManager.default.removeItem(at: $0) } }
+        let studio = try BlobStore(libraryRoot: roots[0])
+        let laptop = try BlobStore(libraryRoot: roots[1])
+
+        // A picture and a video big enough to go up in parts (the part
+        // threshold lowered for the test; parts but the last are 5 MiB).
+        var picture = Data("picture \(UUID().uuidString)".utf8)
+        picture.append(Data(repeating: 7, count: 1000))
+        let video = Data((0 ..< (12 << 20)).map { UInt8(truncatingIfNeeded: $0 &* 31 &+ 7) }) + Data(UUID().uuidString.utf8)
+        var refs: [CloudBlobRef] = []
+        for (data, ext) in [(picture, "jpg"), (video, "mp4")] {
+            let file = roots[0].appendingPathComponent("in.\(ext)")
+            try data.write(to: file)
+            refs.append(CloudBlobRef(hash: try studio.store(fileURL: file), ext: ext))
+        }
+
+        final class Done: @unchecked Sendable {
+            var uploaded: Set<String> = []
+            var landed: Set<String> = []
+            let lock = NSLock()
+            func add(_ hash: String, up: Bool) { lock.withLock { if up { uploaded.insert(hash) } else { landed.insert(hash) } } }
+            func count(up: Bool) -> Int { lock.withLock { up ? uploaded.count : landed.count } }
+        }
+        let done = Done()
+        let sender = CloudBlobTransfer(
+            base: base, token: token, blobs: studio,
+            uploaded: { done.add($0, up: true) }, landed: { _ in },
+            singleUploadLimit: 8 << 20, partSize: 5 << 20)
+        await sender.offer(refs)
+        let deadline = ContinuousClock.now + .seconds(60)
+        while done.count(up: true) < 2, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(100)) }
+        #expect(done.count(up: true) == 2)
+
+        let receiver = CloudBlobTransfer(base: base, token: token, blobs: laptop, uploaded: { _ in }, landed: { done.add($0, up: false) })
+        await receiver.want(refs + [CloudBlobRef(hash: String(repeating: "ab", count: 32), ext: "png")])
+        while done.count(up: false) < 2, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(100)) }
+        for ref in refs {
+            let url = try #require(laptop.url(forHash: ref.hash))
+            #expect(url.pathExtension == ref.ext)
+            #expect(try BlobStore.sha256(of: url) == ref.hash)
+        }
+        #expect(laptop.url(forHash: String(repeating: "ab", count: 32)) == nil, "one the hub never had stays missing")
+    }
 }

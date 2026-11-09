@@ -48,6 +48,7 @@ public struct CloudSyncState: Codable, Equatable, Sendable {
         case phase(Phase)
         case applied(Int)
         case pushed(Int)
+        case blobArrived(String)
         case problem(String)
     }
 
@@ -157,6 +158,8 @@ public struct CloudSyncState: Codable, Equatable, Sendable {
             snapshotsWanted.insert(key)
             edited.insert(key)
             try await flush()
+        case .blob(let sha):
+            report(.blobArrived(sha))
         case .pong, .unknown:
             break
         }

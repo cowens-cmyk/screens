@@ -66,6 +66,8 @@ public enum CloudServerMessage: Equatable, Sendable {
     case ack(ref: Int, seq: Int)
     case error(ref: Int?, code: String, message: String)
     case wantSnapshot(kind: DocumentKind, id: String)
+    /// A media file reached the hub's storage.
+    case blob(sha: String)
     case pong
     /// A kind this version doesn't know, or a message it can't read: skipped.
     case unknown(String)
@@ -98,6 +100,9 @@ public enum CloudServerMessage: Equatable, Sendable {
                   let id = object["id"] as? String
             else { return .unknown(type) }
             return .wantSnapshot(kind: kind, id: id)
+        case "blob":
+            guard let sha = object["sha"] as? String else { return .unknown(type) }
+            return .blob(sha: sha.lowercased())
         case "pong":
             return .pong
         default:

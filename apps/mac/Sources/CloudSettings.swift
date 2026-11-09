@@ -17,6 +17,9 @@ struct CloudSettingsForm: View {
                     if case .needsJoin(let documents) = sync.status {
                         joinPrompt(documents)
                     }
+                    if sync.files.downloading + sync.files.uploading + sync.files.waitingForHub > 0 {
+                        LabeledContent("Media files") { Text(filesText).foregroundStyle(.secondary) }
+                    }
                     if let last = sync.lastActivity {
                         LabeledContent("Last change") {
                             Text(last.formatted(date: .omitted, time: .shortened)).foregroundStyle(.secondary)
@@ -72,6 +75,14 @@ struct CloudSettingsForm: View {
         case .offline(let reason): Text("Offline. Trying again. (\(reason))").foregroundStyle(.secondary)
         case .unlinked: Text("This Mac was unlinked in the CMS.").foregroundStyle(.orange)
         }
+    }
+
+    private var filesText: String {
+        var parts: [String] = []
+        if sync.files.downloading > 0 { parts.append("Downloading \(sync.files.downloading)") }
+        if sync.files.uploading > 0 { parts.append("Uploading \(sync.files.uploading)") }
+        if sync.files.waitingForHub > 0 { parts.append("\(sync.files.waitingForHub) not on the hub yet") }
+        return parts.joined(separator: " · ")
     }
 
     private func joinPrompt(_ documents: Int) -> some View {
