@@ -107,6 +107,18 @@ struct CloudEditorInteropTests {
         #expect(after.defaultArrangementId == expected.defaultArrangementId)
     }
 
+    @Test func songsSplitThemedAndReorderedInTheBrowserDecode() throws {
+        let split = try decode(Presentation.self, "song-split")
+        #expect(split.slides.map { $0.objects.first?.text ?? "" } == (try meta("song-split")["slides"] as? [String] ?? []))
+        #expect(split.slides[1].objects[0].chords == [ChordPlacement(line: 0, column: 5, symbol: "C")])
+        let themed = try decode(Presentation.self, "song-theme")
+        #expect(themed.themeId == "T2" && themed.slides.allSatisfy { $0.themeId == nil })
+        let ordered = try decode(Presentation.self, "song-orders")
+        let names = Dictionary((ordered.sections ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+        let order = ordered.arrangements?.first { $0.name == "Ableton" }?.sectionIds.compactMap { names[$0] }
+        #expect(order == (try meta("song-orders")["order"] as? [String]))
+    }
+
     @Test func decksChangedInTheBrowserDecode() throws {
         for name in try names("deck-") {
             let deck = try decode(Presentation.self, name)
