@@ -382,7 +382,7 @@ enum IntegrationTab: String, CaseIterable, Identifiable {
         case .lightkey: "Lightkey & MIDI"
         case .shepherd: "Shepherd"
         case .website: "Website"
-        case .cloud: "Church Library"
+        case .cloud: "Sync"
         case .remote: "Remote & API"
         }
     }

@@ -39,8 +39,12 @@ final class CloudSync {
     @ObservationIgnored private var retrier: Task<Void, Never>?
 
     private static let keychainService = "org.hopejc.screens.cloud"
-    private static let keychainAccount = "device-token"
-    private static let deviceNameKey = "cloud.deviceName"
+    /// A copy of the app on a test library (SCREENS_LIBRARY_ROOT) is linked
+    /// as a Mac of its own, so its key and name are kept apart.
+    private static let testScope: String = ProcessInfo.processInfo.environment["SCREENS_LIBRARY_ROOT"]
+        .map { "-" + String($0.utf8.reduce(UInt64(14_695_981_039_346_656_037)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }, radix: 36) } ?? ""
+    private static let keychainAccount = "device-token" + testScope
+    private static let deviceNameKey = "cloud.deviceName" + testScope
     /// For testing against a hub run locally; unset in use.
     private static let hostKey = "cloud.host"
 
@@ -97,6 +101,7 @@ final class CloudSync {
         isLinking = true
         problem = nil
         defer { isLinking = false }
+        DiagnosticsStore.shared.note("cloud.link", detail: "to \(Self.host.absoluteString)")
         do {
             var request = URLRequest(url: Self.host.appendingPathComponent("api/screens/link"))
             request.httpMethod = "POST"
@@ -115,6 +120,7 @@ final class CloudSync {
             deviceName = name
             connect()
         } catch {
+            DiagnosticsStore.shared.note("cloud.link.failed", detail: "\(error)")
             problem = "Couldn't reach the CMS: \(error.localizedDescription)"
         }
     }

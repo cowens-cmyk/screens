@@ -57,6 +57,14 @@ struct OnboardingView: View {
                 Label("Import ProPresenter Workspace…", systemImage: "square.and.arrow.down")
             }
             .disabled(importWorkspace == nil)
+            Button {
+                UserDefaults.standard.set(IntegrationTab.cloud.rawValue, forKey: IntegrationTab.defaultsKey)
+                finish()
+                SettingsRouter.shared.open(.integrations)
+            } label: {
+                Label("Join the Church Library…", systemImage: "link")
+            }
+            .help("Link this Mac with a code from the CMS to share the church's plans, songs and media")
             Spacer(minLength: 0)
             Button("Moving from another Mac? Restore a library backup…") {
                 BackupTransferRunner(model: model).presentImport()

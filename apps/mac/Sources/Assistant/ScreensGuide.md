@@ -228,6 +228,10 @@ The sheet has: **Auto Advance** on/off (turning it on starts at 7 seconds), **Co
 
 The plan item's **Slideshow** submenu is the quickest way: pick "10 seconds per slide", then **Loop back to the first slide**.
 
+## Church library (sync between Macs)
+
+Every Mac linked to the church library has the same plans, songs, presentations, themes, media, stage layouts, lower thirds and Pre-Service slideshow; a change on one shows on the others within a few seconds, through the hub in the CMS. Outputs, MIDI devices, control boards and **Run on this Mac** stay separate on each Mac. **Settings › Integrations › Sync**: enter a code made in the CMS (**Screens › Link a Mac**, single use, good for 15 minutes) and a name for the Mac, then **Link**. The first Mac linked to an empty church library uploads its own library, which becomes the church library. A Mac joining a church library that already has items shows how many and waits for **Join Church Library**: its own library is copied to Application Support › Screens › Backups first, then replaced by the church's (the two are never merged, which would double up songs). Media files upload once and download to every Mac that lacks them; the page shows how many are downloading or uploading. A Mac that was offline catches up when it reconnects and sends what changed meanwhile; two people editing the same song at once both keep their changes. Deleting something deletes it on every Mac. **Unlink This Mac…** stops syncing and keeps the library as it is; unlinking a Mac in the CMS does the same from there. The first-run welcome also offers **Join the Church Library…**.
+
 ## Library
 
 Switch the plan panel (or Edit's sidebar) to **Library**. Tabs: **Slides** (presentations), **Media**, **Themes**, **Confidence** (stage layouts). The search field searches names and lyrics; a filter menu limits which libraries it searches. With no search, the menu sorts and can show only items **Used in an Upcoming Service**.

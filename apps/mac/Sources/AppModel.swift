@@ -348,6 +348,11 @@ final class AppModel {
     }
 
     private static func libraryRoot() -> (url: URL, error: String?) {
+        // A second library for testing sync between two copies of the app on
+        // one Mac; never set in use.
+        if let path = ProcessInfo.processInfo.environment["SCREENS_LIBRARY_ROOT"], !path.isEmpty {
+            return (URL(fileURLWithPath: path, isDirectory: true), nil)
+        }
         do {
             let support = try FileManager.default.url(
                 for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings › Integrations › Church Library: linking this Mac to the hub in
+/// Settings › Integrations › Sync (the church library): linking this Mac to the hub in
 /// the CMS, and where syncing stands.
 struct CloudSettingsForm: View {
     @State private var sync = CloudSync.shared
