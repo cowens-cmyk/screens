@@ -171,7 +171,8 @@ final class ShepherdSync {
 
             // The second plans already imported, and copies of one plan, go.
             let open = Set([model.currentServiceID].compactMap { $0 })
-            let extra = ShepherdDayPick.duplicates(in: Array(model.resident.services.values), pick: pick, keep: open)
+            let extra = ShepherdDayPick.duplicates(
+                in: Array(model.resident.services.values), pick: pick, keep: open, window: from...to)
             for id in extra { model.client.delete(kind: .service, id: id) }
 
             let ids = plans.compactMap { plan in

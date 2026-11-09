@@ -69,6 +69,28 @@ struct ShepherdDayPickTests {
         #expect(!ShepherdDayPick.duplicates(in: library, pick: pick, keep: ["B"]).contains("B"), "the plan open on this Mac stays")
     }
 
+    @Test func withinTheWindowOnlyShepherdsPlansStay() {
+        let pick = ShepherdDayPick.pick(sundays, songs: ["m15": 5, "m22": 5])
+        func service(_ id: String, plan: String, date: String) -> Service {
+            Service(id: id, name: id, serviceDate: date, items: [], origin: ShepherdPlanSync.origin, mxuPlanHexId: plan, mxuServiceTypeName: "Sunday Morning Worship")
+        }
+        let library = [
+            service("A", plan: "m15", date: "2026-11-15"),
+            // An earlier import of a plan Shepherd has since replaced.
+            service("OLD", plan: "gone-15", date: "2026-11-15"),
+            // A Wednesday import from before Sundays only.
+            service("WED", plan: "students", date: "2026-11-18"),
+            // Past the window: left to the other rules.
+            service("LATER", plan: "gone-27", date: "2026-12-27"),
+            Service(id: "mine", name: "Made here", serviceDate: "2026-11-15", items: []),
+        ]
+        let out = ShepherdDayPick.duplicates(in: library, pick: pick, keep: [], window: "2026-11-09"..."2026-12-07")
+        #expect(Set(out) == ["OLD", "WED"])
+        let none = ShepherdDayPick.Pick(kept: [], dropped: [], mainServiceTypeName: nil)
+        #expect(ShepherdDayPick.duplicates(in: library, pick: none, keep: [], window: "2026-11-09"..."2026-12-07").isEmpty,
+                "an empty answer from Shepherd takes nothing")
+    }
+
     @Test func everyMacNamesAnImportedPlanTheSame() {
         #expect(ShepherdDayPick.serviceID(forPlan: "a49a4154-a9ac-4219-b035-20dca8f0614c") == "shepherd-a49a4154-a9ac-4219-b035-20dca8f0614c")
     }

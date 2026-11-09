@@ -68,13 +68,17 @@ public enum ShepherdDayPick {
     }
 
     /// Plans already in the library that `pick` says shouldn't be, by service
-    /// id: those made from a dropped Shepherd plan; second copies of one
-    /// Shepherd plan (two Macs that imported it at the same moment); and, for
-    /// days `pick` didn't look at (past Sundays), a plan of another service
-    /// type beside one of the church's. A plan whose sync is paused, a
-    /// template, or one listed in `keep` (open or live on this Mac) is never
-    /// taken.
-    public static func duplicates(in services: [Service], pick: Pick, keep: Set<String>) -> [String] {
+    /// id: those made from a dropped Shepherd plan; within `window` (the days
+    /// sync read from Shepherd), any made from a plan Shepherd no longer has
+    /// or no longer lists; second copies of one Shepherd plan (two Macs that
+    /// imported it at the same moment); and, for days `pick` didn't look at
+    /// (past Sundays), a plan of another service type beside one of the
+    /// church's. A plan whose sync is paused, a template, or one listed in
+    /// `keep` (open or live on this Mac) is never taken. With nothing kept
+    /// (Shepherd answered with no plans) nothing in the window is taken.
+    public static func duplicates(
+        in services: [Service], pick: Pick, keep: Set<String>, window: ClosedRange<String>? = nil
+    ) -> [String] {
         let shepherd = services.filter {
             $0.origin == ShepherdPlanSync.origin && $0.mxuSyncPaused != true && $0.isTemplate != true
         }
@@ -83,6 +87,12 @@ public enum ShepherdDayPick {
         var out: [String] = []
 
         for service in shepherd where dropped.contains(service.mxuPlanHexId ?? "") { out.append(service.id) }
+        let kept = Set(pick.kept.map(\.id))
+        if let window, !kept.isEmpty {
+            for service in shepherd where window.contains(service.serviceDate) && !kept.contains(service.mxuPlanHexId ?? "") {
+                out.append(service.id)
+            }
+        }
 
         // Two copies of one plan: the one named for the plan stays (every Mac
         // names it the same), else the first by id.
