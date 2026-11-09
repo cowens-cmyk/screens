@@ -231,6 +231,18 @@ final class CloudSync {
 
     // MARK: The socket
 
+    /// A message of the app's own (the phone remote's) on the open socket;
+    /// false when there isn't one.
+    func send(_ message: CloudClientMessage) async -> Bool {
+        guard status == .live, let socket, let data = try? message.encoded() else { return false }
+        do {
+            try await socket.send(.string(String(decoding: data, as: UTF8.self)))
+            return true
+        } catch {
+            return false
+        }
+    }
+
     private func connect() {
         guard loop == nil, let model, let token else {
             if token == nil { status = .notLinked }
@@ -290,7 +302,13 @@ final class CloudSync {
                 case .data(let data): data
                 @unknown default: Data()
                 }
-                try await Self.deliver(CloudServerMessage.decode(data), to: session)
+                let decoded = CloudServerMessage.decode(data)
+                if case .remote(let request) = decoded {
+                    // The phone remote's tap: done here, not in the library.
+                    Task { await PhoneRemoteController.shared.handle(request) }
+                } else {
+                    try await Self.deliver(decoded, to: session)
+                }
                 lastActivity = Date()
                 failures = 0
             }
@@ -345,6 +363,7 @@ final class CloudSync {
         case .phase(.live):
             status = .live
             startFiles()
+            PhoneRemoteController.shared.connected()
         case .phase(.needsJoin(let documents)):
             status = .needsJoin(documents: documents)
             // Nothing more until the person chooses.

@@ -486,6 +486,8 @@ Lightkey's scenes can follow the service. It is off on each Mac until **Change L
 
 Settings › Integrations › Remote & API: **Local API** on/off, **Port**, **Connect at** (open http://address/ in Safari or Chrome on the same Wi-Fi), **Access keys** (required; each grants Watch, Operate or Manage), **API reference**. The phone remote has tabs Show, Slides, Timers, Macros and Stage. Companion and Stream Deck use the same address.
 
+**From anywhere: the CMS's remote.** On a phone, sign in to the CMS and open **Sunday › Screens › Remote** (it can be added to the home screen). It works over cellular as well as Wi-Fi, through the same link the Macs sync over: pick a plan item or any slide, **Back** and **Next**, clear, run the timers, fire macros and send stage messages, and it shows what's live. Only the Mac with **Run on this Mac** on (Service Day) follows it, and only while Settings › Integrations › Sync › **Phone remote: take commands from the CMS** is on (it is unless turned off). Every other Mac ignores it. The Wi-Fi remote above still works as before.
+
 **Booth Board** (same tab): sends the live slide, the stage display's mode, the timers and any stage message to the booth board in the Hope CMS, the TV in the green room and sound booth. Turn it on only on the Mac running the service, and paste the token from the board's setup sheet (the gear on dashboard.hopejc.org/booth). It needs internet, not the Local API.
 
 ## Other integrations

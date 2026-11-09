@@ -132,13 +132,13 @@ final class BoothRelay {
             if token == nil { problem = "Paste the token from the Booth page in the CMS." }
             return
         }
-        let payload = makePayload(bridge: bridge)
-        let shape = Self.shape(of: payload)
+        let payload = ShowStatePayload.make(bridge: bridge, model: model)
+        let shape = ShowStatePayload.shape(of: payload)
         let now = Date()
         if shape != lastShape || now.timeIntervalSince(lastPush) >= Self.heartbeatSeconds {
             var stamped = payload
             stamped.sentAt = now.timeIntervalSince1970 * 1000
-            if await send(path: "/api/booth/screens", method: "POST", body: Self.encode(stamped), type: "application/json", token: token) {
+            if await send(path: "/api/booth/screens", method: "POST", body: ShowStatePayload.encode(stamped), type: "application/json", token: token) {
                 lastShape = shape
                 lastPush = now
             } else {
@@ -196,78 +196,6 @@ final class BoothRelay {
         return false
     }
 
-    // MARK: What's sent
-
-    private struct Payload: Encodable {
-        struct App: Encodable {
-            var version: String
-            var host: String
-        }
-
-        struct Stage: Encodable {
-            var mode: String
-            var title: String
-            var layout: String?
-            var video: Bool
-            var videoName: String?
-        }
-
-        var sentAt: Double = 0
-        var app: App
-        var status: APIShowStatus
-        var timers: [APITimerStatus]
-        var transport: [APITransportRow]
-        var stage: Stage
-    }
-
-    private func makePayload(bridge: AppAPIBridge) -> Payload {
-        let setup = ShowSetup.shared
-        let transport = bridge.transportRows()
-        // A playing video takes the stage over (the Video layout) unless the
-        // stage is set to keep its layout; looping backgrounds don't.
-        let video = setup.stageShowsVideos ? transport.first { $0.playing && !$0.looping } : nil
-        let layoutID = setup.stageLayoutOverride ?? StageLayouts.id(for: setup.stageMode)
-        let layout = setup.stageMode == .mirror
-            ? nil
-            : model?.resident.confidenceLayouts.value(layoutID)?.name ?? StageLayouts.name(for: layoutID)
-        return Payload(
-            app: .init(
-                version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
-                host: Host.current().localizedName ?? ""),
-            status: bridge.showStatus(),
-            timers: bridge.timers(),
-            transport: transport,
-            stage: .init(
-                mode: setup.stageMode.rawValue, title: setup.stageMode.title,
-                layout: layout, video: video != nil, videoName: video?.name))
-    }
-
-    private static func encode(_ payload: Payload) -> Data {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .millisecondsSince1970
-        encoder.outputFormatting = [.sortedKeys]
-        return (try? encoder.encode(payload)) ?? Data("{}".utf8)
-    }
-
-    /// What decides whether to send: everything but the send time, the
-    /// running timers' and videos' ticking values (the board counts those
-    /// itself) and the stage message's seconds left.
-    private static func shape(of payload: Payload) -> Data {
-        var p = payload
-        p.sentAt = 0
-        p.timers = p.timers.map { timer in
-            var t = timer
-            if t.running { t.displaySeconds = 0 }
-            return t
-        }
-        p.transport = p.transport.map { row in
-            var r = row
-            r.position = 0
-            return r
-        }
-        p.status.alert?.secondsLeft = nil
-        return encode(p)
-    }
 }
 
 /// The booth board token, in the Keychain on this Mac only.

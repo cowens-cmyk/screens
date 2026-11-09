@@ -20,6 +20,10 @@ public enum CloudClientMessage: Equatable, Sendable {
     case push(ref: Int, kind: DocumentKind, id: String, bytes: Data, mode: CloudSyncMode, base: Int? = nil)
     case delete(ref: Int, kind: DocumentKind, id: String)
     case ping
+    /// The answer to a phone remote's tap (PhoneRemote).
+    case remoteDone(id: String, ok: Bool, message: String?)
+    /// What's live, for the phone remote: a JSON object the hub keeps as it is.
+    case live(state: Data)
 
     public func encoded() throws -> Data {
         var object: [String: Any]
@@ -34,6 +38,11 @@ public enum CloudClientMessage: Equatable, Sendable {
             object = ["t": "delete", "ref": ref, "kind": kind.rawValue, "id": id]
         case .ping:
             object = ["t": "ping"]
+        case .remoteDone(let id, let ok, let message):
+            object = ["t": "remote-done", "id": id, "ok": ok]
+            if let message, !ok { object["message"] = message }
+        case .live(let state):
+            object = ["t": "live", "state": (try? JSONSerialization.jsonObject(with: state)) ?? [String: Any]()]
         }
         return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
@@ -68,6 +77,8 @@ public enum CloudServerMessage: Equatable, Sendable {
     case wantSnapshot(kind: DocumentKind, id: String)
     /// A media file reached the hub's storage.
     case blob(sha: String)
+    /// A tap on the phone remote.
+    case remote(PhoneRemote.Request)
     case pong
     /// A kind this version doesn't know, or a message it can't read: skipped.
     case unknown(String)
@@ -105,6 +116,8 @@ public enum CloudServerMessage: Equatable, Sendable {
             return .blob(sha: sha.lowercased())
         case "pong":
             return .pong
+        case "remote":
+            return PhoneRemote.request(object).map(CloudServerMessage.remote) ?? .unknown(type)
         default:
             return .unknown(type)
         }

@@ -7,6 +7,8 @@ struct CloudSettingsForm: View {
     @State private var code = ""
     @State private var name = Host.current().localizedName ?? "This Mac"
     @State private var confirmingUnlink = false
+    @AppStorage(PhoneRemoteController.enabledKey) private var phoneRemote = true
+    @AppStorage(ServiceStation.runsServiceKey) private var runsHere = false
 
     var body: some View {
         Form {
@@ -25,6 +27,13 @@ struct CloudSettingsForm: View {
                             Text(last.formatted(date: .omitted, time: .shortened)).foregroundStyle(.secondary)
                         }
                     }
+                    Toggle("Phone remote: take commands from the CMS", isOn: $phoneRemote)
+                    Text(runsHere
+                        ? "Sunday › Screens › Remote in the CMS can move slides, fire plan items, clear, run timers and send stage messages on this Mac, from anywhere."
+                        : "Only the Mac with Run on this Mac on (Service Day) follows the phone remote. This one doesn't.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     HStack {
                         Spacer()
                         Button("Unlink This Mac…") { confirmingUnlink = true }

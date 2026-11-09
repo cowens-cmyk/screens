@@ -87,6 +87,8 @@ import Testing
             }
         case .ping:
             to(client, .pong)
+        case .remoteDone, .live:
+            break
         }
     }
 }

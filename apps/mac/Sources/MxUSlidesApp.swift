@@ -195,6 +195,7 @@ struct MxUSlidesApp: App {
             )
             _localAPI = State(initialValue: api)
             BoothRelay.shared.attach(model: model, controls: controls, render: render, bridge: api.bridge)
+            PhoneRemoteController.shared.attach(model: model, bridge: api.bridge)
             MIDIDeviceInventory.shared.configure(model: model)
 
             let midiIn = MIDIInController(

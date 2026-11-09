@@ -88,6 +88,8 @@ frames. `bytes` fields are standard base64.
 | `{t:'push', ref, kind, id, bytes, mode, base?}` | Changes to one document. `mode` is `'changes'` (encodeChangesSince the heads the hub already has), `'snapshot'` (a full save of the same history, sent when the hub asks, so it can drop older chunks) or `'reset'` (a full save of a new history replacing the document: it was deleted and made again, or replaced wholesale). `base`, sent with a snapshot or reset, is the last hub `seq` this Mac had applied when it saved; compaction keeps other Macs' chunks after it. |
 | `{t:'delete', ref, kind, id}` | The document was deleted. |
 | `{t:'ping'}` | Keep-alive; answered with `{t:'pong'}`. |
+| `{t:'remote-done', id, ok, message?}` | The phone remote's tap with that `id` was done (`ok:true`) or not (`message` says why, short and factual). Only the Mac that follows the remote sends it. |
+| `{t:'live', state}` | What's live, for the phone remote: on connecting, on every change and at least every 5 s. Under 64 KB. `state` is the booth board's state (`sentAt`, `app`, `status`, `timers`, `transport`, `stage`; see BoothRelay) plus `ids {serviceId, itemId, presentationId, slideId, slideIndex}` (nulls when nothing is live; `serviceId`/`itemId` only when the live slide was fired from the current plan), `combos [{id, name}]` (up to 40) and `deviceName`. |
 
 `ref` is the client's own number for the request, echoed in the answer.
 
@@ -102,10 +104,29 @@ frames. `bytes` fields are standard base64.
 | `{t:'ack', ref, seq}` | A push or delete was stored at `seq`. |
 | `{t:'error', ref, code, message}` | A request was refused. `code`: `'deleted'` (pushing `changes` to a deleted document; the client should delete its copy), `'too-large'`, `'bad-request'`. |
 | `{t:'want-snapshot', kind, id}` | The document has many chunks since its last snapshot; the client should push `mode:'snapshot'` when it can. |
+| `{t:'remote', id, cmd, args}` | A tap on the phone remote (CMS, Sunday › Screens › Remote). Only the Mac with Run on this Mac on and Settings › Integrations › Sync › Phone remote on does it and answers with `remote-done`; every other Mac ignores it. See The phone remote. |
 | `{t:'blob', sha}` | A media file finished uploading (any Mac, the receiver included). A Mac waiting for it can fetch it now. Best effort: a Mac that misses it finds the file on its next HEAD. |
 
 A catch-up item has the same fields as a `change`, with `mode` one of
 `changes`, `snapshot`, `reset` or `deleted`.
+
+### The phone remote
+
+Commands (`cmd`, then `args`), done the way the Wi-Fi remote's Local API calls are:
+
+| cmd | args | Does |
+|---|---|---|
+| `advance` | `{steps}` (±1…50) | `/v1/show/advance` |
+| `slide` | `{presentationId, slideId, serviceId?, itemId?, index?}` | With `itemId`, fires the slide in that plan item's place (its arrangement, lights, screens), `index` choosing among its arranged slides when the slide repeats; without, `/v1/show/slide`. |
+| `item` | `{serviceId, itemId}` | Fires the plan item from its start (a presentation's first arranged slide, or a media item). |
+| `clear` | `{function}` | `slides` (or `slide`), `media`, `overlays` (or `props`), `audio`, `alerts` (or `messages`), `signage`, or `all` (clear-all). |
+| `timer` | `{id, action}` | `start`, `stop` (pause) or `reset`. |
+| `combo` | `{id}` | Fires the action combo. |
+| `alert` | `{message}` (≤300) | A stage message until cleared (persist, confidence). |
+| `alertDismiss` | `{}` | Takes it down. |
+| `service` | `{id}` | Makes that plan the current one. |
+
+Anything else answers `ok:false`, "Unknown command."; missing arguments answer `ok:false` saying what's missing.
 
 ### Ordering and compaction
 

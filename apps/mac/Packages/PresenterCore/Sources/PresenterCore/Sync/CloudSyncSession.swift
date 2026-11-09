@@ -160,7 +160,8 @@ public struct CloudSyncState: Codable, Equatable, Sendable {
             try await flush()
         case .blob(let sha):
             report(.blobArrived(sha))
-        case .pong, .unknown:
+        // The phone remote is the app's (CloudSync takes it before it gets here).
+        case .pong, .unknown, .remote:
             break
         }
     }

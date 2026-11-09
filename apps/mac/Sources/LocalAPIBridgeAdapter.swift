@@ -391,6 +391,49 @@ final class AppAPIBridge: LocalAPIBridge {
         )
     }
 
+    /// The phone remote's slide: in its plan item's place when it names
+    /// one (the item's arrangement, lights and screens, as a click in
+    /// Present), else as /v1/show/slide. `index` picks among the item's
+    /// arranged slides when the slide comes more than once.
+    func fireRemoteSlide(presentationId: String, slideId: String, serviceId: String?, itemId: String?, index: Int?) async throws {
+        guard let itemId else {
+            try await fireSlide(APIFireSlideCommand(presentationId: presentationId, slideId: slideId))
+            return
+        }
+        let service = serviceId.flatMap { id in
+            (try? appModel.service(id)).flatMap { $0.items.contains { $0.id == itemId } ? $0 : nil }
+        } ?? self.service(containingItem: itemId)
+        guard let service else { throw APIError.notFound("That plan item isn't on this Mac.") }
+        let decks = await filledDecks(in: service)
+        let positions = positions(in: service, decks: decks).filter { $0.itemID == itemId }
+        let chosen = index.flatMap { positions.indices.contains($0) && positions[$0].slide.id == slideId ? positions[$0] : nil }
+            ?? positions.first { $0.slide.id == slideId }
+        guard let position = chosen else { throw APIError.notFound("That slide isn't in the plan item's order.") }
+        controls.fire(
+            slide: position.slide, in: position.presentation,
+            arrangementId: position.arrangementId,
+            contextID: position.itemID, occurrence: position.occurrence)
+    }
+
+    /// The phone remote's plan item, from its start (as clicking it).
+    func fireRemoteItem(serviceId: String, itemId: String) async throws {
+        let service = (try? appModel.service(serviceId)) ?? self.service(containingItem: itemId)
+        guard let item = service?.items.first(where: { $0.id == itemId }) else {
+            throw APIError.notFound("That plan item isn't on this Mac.")
+        }
+        var result = controls.fireServiceItem(item)
+        if result == .decoding {
+            // Not loaded yet: load it, then once more.
+            _ = await appModel.presentationsFilled([item.refId])
+            result = controls.fireServiceItem(item)
+        }
+        switch result {
+        case .fired: return
+        case .decoding: throw APIError.notFound("That presentation couldn't be opened.")
+        case .unresolvable: throw APIError.badRequest("That item has nothing to show.")
+        }
+    }
+
     private func libraryDeck(_ id: String) async -> Presentation? {
         if let held = appModel.heldPresentation(id) {
             held
