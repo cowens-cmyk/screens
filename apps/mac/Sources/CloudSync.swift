@@ -107,7 +107,8 @@ final class CloudSync {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: [
-                "code": code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(), "name": name,
+                // Shown grouped in the CMS ("3Y8N JK2U"); typed either way.
+                "code": code.uppercased().filter { $0.isLetter || $0.isNumber }, "name": name,
             ])
             let (data, response) = try await URLSession.shared.data(for: request)
             let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]

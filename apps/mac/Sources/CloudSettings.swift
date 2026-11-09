@@ -41,7 +41,7 @@ struct CloudSettingsForm: View {
                         Button("Link") {
                             Task { await sync.link(code: code, name: name) }
                         }
-                        .disabled(code.trimmingCharacters(in: .whitespaces).count < 8 || name.isEmpty || sync.isLinking)
+                        .disabled(code.filter { $0.isLetter || $0.isNumber }.count < 8 || name.isEmpty || sync.isLinking)
                         .keyboardShortcut(.defaultAction)
                     }
                 }
