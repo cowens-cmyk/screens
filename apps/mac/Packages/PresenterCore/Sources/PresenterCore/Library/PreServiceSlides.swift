@@ -168,11 +168,13 @@ public enum PreServiceSlides {
     }
 
     /// Takes an item out of the plan. Taking out the pre-service slideshow
-    /// (or the countdown) is remembered, so the plan isn't given another.
+    /// (or the countdown, Transition or Walkout) is remembered, so the plan
+    /// isn't given another.
     public static func remove(itemID: String, from service: inout Service) {
         if service.items.contains(where: { $0.id == itemID && $0.isPreService == true }) {
             service.preServiceRemoved = true
         }
+        StandingItems.noteRemoval(itemID: itemID, from: &service)
         ServiceCountdown.remove(itemID: itemID, from: &service)
     }
 

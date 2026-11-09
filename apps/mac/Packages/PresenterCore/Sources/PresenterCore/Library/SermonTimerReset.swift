@@ -155,3 +155,24 @@ public enum SermonTimerReset {
         return .reset
     }
 }
+
+extension SermonTimerReset {
+    /// Whether the Sermon timer is set back as worship starts again: a
+    /// backstop for a service with no countdown. A song that sits before the
+    /// plan's message going live means the next service has begun; the
+    /// closing song (after the message) never counts. A timer that has run
+    /// at all (running, paused or past zero) is set back, unless the song
+    /// was put up straight from the message while the timer still ran — a
+    /// slip back during the sermon, not a new service.
+    public static func decideOnWorship(
+        _ timer: TimerState?, length: Double, songIsBeforeMessage: Bool, cameFromMessage: Bool
+    ) -> Decision {
+        guard songIsBeforeMessage else { return .skip("The song is after the message.") }
+        guard let timer else { return .ready }
+        if cameFromMessage, timer.isRunning, timer.remaining > 0 {
+            return .skip("The song went up from the message while the timer ran.")
+        }
+        if !timer.isRunning, timer.elapsed == 0, timer.duration == length { return .ready }
+        return .reset
+    }
+}

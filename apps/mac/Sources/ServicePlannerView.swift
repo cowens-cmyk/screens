@@ -518,6 +518,9 @@ struct RunOrderList: View {
                     .layoutPriority(2)
             }
             AnthemMismatchBadge(model: model, serviceID: serviceID, itemID: item.id)
+            if let service, let tags = model.stageStreamTags(for: item, in: service) {
+                StageStreamGlyph(tags: tags)
+            }
             lightingBadges(item, position: position)
         }
         .overlay(

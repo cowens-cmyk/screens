@@ -1171,8 +1171,10 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
     public var actions: [SlideAction]?
     public var mxuSyncedArrangementId: String?
     public var mxuArrangementWarnings: [String]?
+    public var isTransition: Bool?
+    public var isWalkout: Bool?
 
-    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuSourceItemId: String? = nil, mxuSourceSongId: String? = nil, mxuSourceArrangementId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil, isCountdown: Bool? = nil, isPreService: Bool? = nil, lightingCue: String? = nil, actions: [SlideAction]? = nil, mxuSyncedArrangementId: String? = nil, mxuArrangementWarnings: [String]? = nil) {
+    public init(id: String, itemKind: ServiceItemKind, name: String, refId: String, arrangementId: String? = nil, colorHex: String? = nil, outputPresetId: String? = nil, mxuItemHexId: String? = nil, duration: Int? = nil, mxuKind: String? = nil, excludedTimeHexIds: [String]? = nil, hiddenInPresenter: Bool? = nil, mxuSongTitle: String? = nil, mxuCcliNumber: Int? = nil, mxuArrangementName: String? = nil, mxuSongAuthor: String? = nil, mxuMultiTracksUrl: String? = nil, mxuNotes: [MxUPlanItemNote]? = nil, mxuMessageNotesDocumentHexId: String? = nil, mxuMessageNotesSubmittedAt: String? = nil, mxuMessageNotesOnReady: String? = nil, mxuMessageNotesDeckDocId: String? = nil, mxuSourceItemId: String? = nil, mxuSourceSongId: String? = nil, mxuSourceArrangementId: String? = nil, mxuSongKey: String? = nil, mxuDescription: String? = nil, mxuServicePosition: String? = nil, mxuBpm: Double? = nil, mxuTimeSignature: String? = nil, mxuSongKeyApplied: String? = nil, isCountdown: Bool? = nil, isPreService: Bool? = nil, lightingCue: String? = nil, actions: [SlideAction]? = nil, mxuSyncedArrangementId: String? = nil, mxuArrangementWarnings: [String]? = nil, isTransition: Bool? = nil, isWalkout: Bool? = nil) {
         self.id = id
         self.itemKind = itemKind
         self.name = name
@@ -1210,10 +1212,12 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         self.actions = actions
         self.mxuSyncedArrangementId = mxuSyncedArrangementId
         self.mxuArrangementWarnings = mxuArrangementWarnings
+        self.isTransition = isTransition
+        self.isWalkout = isWalkout
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, itemKind, name, refId, arrangementId, colorHex, outputPresetId, mxuItemHexId, duration, mxuKind, excludedTimeHexIds, hiddenInPresenter, mxuSongTitle, mxuCcliNumber, mxuArrangementName, mxuSongAuthor, mxuMultiTracksUrl, mxuNotes, mxuMessageNotesDocumentHexId, mxuMessageNotesSubmittedAt, mxuMessageNotesOnReady, mxuMessageNotesDeckDocId, mxuSourceItemId, mxuSourceSongId, mxuSourceArrangementId, mxuSongKey, mxuDescription, mxuServicePosition, mxuBpm, mxuTimeSignature, mxuSongKeyApplied, isCountdown, isPreService, lightingCue, actions, mxuSyncedArrangementId, mxuArrangementWarnings
+        case id, itemKind, name, refId, arrangementId, colorHex, outputPresetId, mxuItemHexId, duration, mxuKind, excludedTimeHexIds, hiddenInPresenter, mxuSongTitle, mxuCcliNumber, mxuArrangementName, mxuSongAuthor, mxuMultiTracksUrl, mxuNotes, mxuMessageNotesDocumentHexId, mxuMessageNotesSubmittedAt, mxuMessageNotesOnReady, mxuMessageNotesDeckDocId, mxuSourceItemId, mxuSourceSongId, mxuSourceArrangementId, mxuSongKey, mxuDescription, mxuServicePosition, mxuBpm, mxuTimeSignature, mxuSongKeyApplied, isCountdown, isPreService, lightingCue, actions, mxuSyncedArrangementId, mxuArrangementWarnings, isTransition, isWalkout
     }
 
     private enum LegacyCodingKeys: String, CodingKey {
@@ -1263,6 +1267,8 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         actions = try container.decodeIfPresent([SlideAction].self, forKey: .actions)
         mxuSyncedArrangementId = try container.decodeIfPresent(String.self, forKey: .mxuSyncedArrangementId)
         mxuArrangementWarnings = try container.decodeIfPresent([String].self, forKey: .mxuArrangementWarnings)
+        isTransition = try container.decodeIfPresent(Bool.self, forKey: .isTransition)
+        isWalkout = try container.decodeIfPresent(Bool.self, forKey: .isWalkout)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1304,6 +1310,8 @@ public struct ServiceItem: Codable, Sendable, Equatable, Identifiable {
         try container.encodeIfPresent(actions, forKey: .actions)
         try container.encodeIfPresent(mxuSyncedArrangementId, forKey: .mxuSyncedArrangementId)
         try container.encodeIfPresent(mxuArrangementWarnings, forKey: .mxuArrangementWarnings)
+        try container.encodeIfPresent(isTransition, forKey: .isTransition)
+        try container.encodeIfPresent(isWalkout, forKey: .isWalkout)
     }
 }
 
@@ -1439,8 +1447,10 @@ public struct Service: Codable, Sendable, Equatable, Identifiable {
     public var isTemplate: Bool?
     public var countdownRemoved: Bool?
     public var preServiceRemoved: Bool?
+    public var transitionRemoved: Bool?
+    public var walkoutRemoved: Bool?
 
-    public init(id: String, name: String, serviceDate: String, items: [ServiceItem], origin: String? = nil, mxuPlanHexId: String? = nil, mxuServiceTypeName: String? = nil, mxuPlanVersion: String? = nil, mxuPlanTimes: [MxUPlanTime]? = nil, mxuTimeOrders: [MxUPlanTimeOrder]? = nil, mxuSyncedOrder: [String]? = nil, mxuDerivedName: String? = nil, mxuSyncPaused: Bool? = nil, versions: [ServiceVersion]? = nil, sermonThemeId: String? = nil, messagePresentationId: String? = nil, isTemplate: Bool? = nil, countdownRemoved: Bool? = nil, preServiceRemoved: Bool? = nil) {
+    public init(id: String, name: String, serviceDate: String, items: [ServiceItem], origin: String? = nil, mxuPlanHexId: String? = nil, mxuServiceTypeName: String? = nil, mxuPlanVersion: String? = nil, mxuPlanTimes: [MxUPlanTime]? = nil, mxuTimeOrders: [MxUPlanTimeOrder]? = nil, mxuSyncedOrder: [String]? = nil, mxuDerivedName: String? = nil, mxuSyncPaused: Bool? = nil, versions: [ServiceVersion]? = nil, sermonThemeId: String? = nil, messagePresentationId: String? = nil, isTemplate: Bool? = nil, countdownRemoved: Bool? = nil, preServiceRemoved: Bool? = nil, transitionRemoved: Bool? = nil, walkoutRemoved: Bool? = nil) {
         self.id = id
         self.name = name
         self.serviceDate = serviceDate
@@ -1460,6 +1470,8 @@ public struct Service: Codable, Sendable, Equatable, Identifiable {
         self.isTemplate = isTemplate
         self.countdownRemoved = countdownRemoved
         self.preServiceRemoved = preServiceRemoved
+        self.transitionRemoved = transitionRemoved
+        self.walkoutRemoved = walkoutRemoved
     }
 }
 
@@ -2682,12 +2694,18 @@ public struct ServiceDaySettings: Codable, Sendable, Equatable {
     public var days: [Int]?
     public var preServicePresentationId: String?
     public var clearFirst: Bool?
+    public var transitionPresentationId: String?
+    public var walkoutPresentationId: String?
+    public var walkoutReturnMinutes: Double?
 
-    public init(services: [ServiceDayTime], days: [Int]? = nil, preServicePresentationId: String? = nil, clearFirst: Bool? = nil) {
+    public init(services: [ServiceDayTime], days: [Int]? = nil, preServicePresentationId: String? = nil, clearFirst: Bool? = nil, transitionPresentationId: String? = nil, walkoutPresentationId: String? = nil, walkoutReturnMinutes: Double? = nil) {
         self.services = services
         self.days = days
         self.preServicePresentationId = preServicePresentationId
         self.clearFirst = clearFirst
+        self.transitionPresentationId = transitionPresentationId
+        self.walkoutPresentationId = walkoutPresentationId
+        self.walkoutReturnMinutes = walkoutReturnMinutes
     }
 }
 

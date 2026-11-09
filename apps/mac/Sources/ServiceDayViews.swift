@@ -151,6 +151,9 @@ struct ServiceDaySheet: View {
     @State private var makeLoop = true
     @State private var runsHere = ServiceStation.sheetDefault
     @State private var search = ""
+    @State private var transitionID = ""
+    @State private var walkoutID = ""
+    @State private var walkoutMinutes = StandingItems.defaultWalkoutReturnMinutes
     @State private var loaded = false
 
     private var existing: ServiceDaySettings? { model.slideBuilding.serviceDay }
@@ -181,6 +184,8 @@ struct ServiceDaySheet: View {
                 }
                 .buttonStyle(.borderless)
             }
+
+            standingPickers
 
             Toggle("Clear the screens first", isOn: $clearFirst)
                 .help("Clears everything on the screens, and audio, before the slides start")
@@ -276,6 +281,30 @@ struct ServiceDaySheet: View {
         }
     }
 
+    // MARK: Transition and Walkout
+
+    private var standingPickers: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            StandingPresentationPicker(
+                label: "Transition", id: $transitionID, presentations: presentations,
+                suggest: StandingItems.looksLikeTransition)
+                .help("Added to every plan right before the message")
+            StandingPresentationPicker(
+                label: "Walkout", id: $walkoutID, presentations: presentations,
+                suggest: StandingItems.looksLikeWalkout)
+                .help("Added last in every plan")
+            if !walkoutID.isEmpty {
+                HStack {
+                    Spacer().frame(width: 90)
+                    Stepper(value: $walkoutMinutes, in: 1 ... 30, step: 1) {
+                        Text("Pre-service after \(Int(walkoutMinutes)) min")
+                    }
+                    .help("After this long on the walkout, the pre-service slides start. A countdown due sooner takes over first.")
+                }
+            }
+        }
+    }
+
     /// The timing the slideshow needs to advance and loop by itself; nil
     /// when it already does (or isn't loaded yet).
     private var loopFix: AutoAdvance? {
@@ -339,18 +368,27 @@ struct ServiceDaySheet: View {
         days = ServiceDay.days(settings)
         slideshowID = settings.preServicePresentationId ?? ""
         clearFirst = ServiceDay.clearsFirst(settings)
+        transitionID = settings.transitionPresentationId ?? ""
+        walkoutID = settings.walkoutPresentationId ?? ""
+        walkoutMinutes = StandingItems.walkoutReturnMinutes(settings)
     }
 
     private func save() {
         let settings = ServiceDaySettings(
             services: ServiceDay.sorted(services), days: days,
-            preServicePresentationId: slideshowID.isEmpty ? nil : slideshowID, clearFirst: clearFirst)
+            preServicePresentationId: slideshowID.isEmpty ? nil : slideshowID, clearFirst: clearFirst,
+            transitionPresentationId: transitionID.isEmpty ? nil : transitionID,
+            walkoutPresentationId: walkoutID.isEmpty ? nil : walkoutID,
+            walkoutReturnMinutes: walkoutMinutes)
+        let standingChanged = settings.transitionPresentationId != existing?.transitionPresentationId
+            || settings.walkoutPresentationId != existing?.walkoutPresentationId
         // A different slideshow chosen here becomes the one every plan shows.
         let previous = model.preServiceSlideshowID()
         model.updateSlideBuilding { $0.serviceDay = settings }
         if !slideshowID.isEmpty, slideshowID != previous {
             model.relinkPreServiceItems(to: slideshowID)
         }
+        if standingChanged { model.relinkStandingItems() }
         ServiceStation.runsService = runsHere
         apply(ServiceDay.changes(from: model.residentScheduleTriggers, to: settings))
         if makeLoop, let fix = loopFix {
@@ -387,5 +425,53 @@ struct ServiceDaySheet: View {
             if let placed = board.placingServiceDay(triggerIDs: ids) { board = placed }
         }
         scheduler?.sweep()
+    }
+}
+
+/// One of the Service Day's standing presentations: the ones named for it
+/// first, then any presentation by name.
+struct StandingPresentationPicker: View {
+    let label: String
+    @Binding var id: String
+    let presentations: [LibraryIndex.Entry]
+    let suggest: (String) -> Bool
+
+    @State private var search = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label).frame(width: 90, alignment: .leading)
+                Menu {
+                    Button("None") { id = "" }
+                    let named = presentations.filter { suggest($0.name) }
+                    if !named.isEmpty { Divider() }
+                    ForEach(named, id: \.id) { entry in
+                        Button(entry.name) { id = entry.id }
+                    }
+                } label: {
+                    Text(id.isEmpty ? "None" : (presentations.first { $0.id == id }?.name ?? "Missing presentation"))
+                }
+                .fixedSize()
+                TextField("Find", text: $search)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 120)
+            }
+            let query = search.trimmingCharacters(in: .whitespaces)
+            if !query.isEmpty {
+                let hits = presentations.filter { $0.name.localizedCaseInsensitiveContains(query) }.prefix(5)
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(hits), id: \.id) { entry in
+                        Button(entry.name) {
+                            id = entry.id
+                            search = ""
+                        }
+                        .buttonStyle(.link)
+                    }
+                    if hits.isEmpty { Text("No match").foregroundStyle(.secondary) }
+                }
+                .padding(.leading, 98)
+            }
+        }
     }
 }

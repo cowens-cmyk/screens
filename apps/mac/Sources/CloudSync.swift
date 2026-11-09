@@ -187,7 +187,13 @@ final class CloudSync {
             transfer = CloudBlobTransfer(
                 base: Self.socketHost, token: token, blobs: blobs,
                 uploaded: { hash in _ = try? await client.markBlobUploaded(hash).value },
-                landed: { _ in await MainActor.run { CloudSync.shared.model?.noteBlobsChanged() } },
+                landed: { _ in
+                    await MainActor.run {
+                        CloudSync.shared.model?.noteBlobsChanged()
+                        // A file added in the browser is read for what it couldn't say.
+                        CloudSync.shared.model?.fillMediaDetails()
+                    }
+                },
                 progress: { progress in Task { @MainActor in CloudSync.shared.files = progress } })
         }
         Task { await moveFiles(for: nil) }
@@ -219,6 +225,8 @@ final class CloudSync {
         let plan = CloudBlobPlan.plan(refs: refs, present: present, uploaded: uploaded)
         await transfer.want(plan.download)
         await transfer.offer(plan.upload)
+        // Media added in the browser whose file this Mac already has.
+        model.fillMediaDetails()
     }
 
     // MARK: The socket

@@ -191,6 +191,26 @@ public struct MediaImporter {
         }
     }
 
+    /// A file already in the blob store read for MediaDetails: a picture's
+    /// size, or a video's length, size and whether it plays here.
+    public static func probe(fileURL: URL, kind: MediaKind) async -> MediaDetails.Probe {
+        switch kind {
+        case .image:
+            guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+                  let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+            else { return MediaDetails.Probe(status: .ready, detail: "unreadable image", duration: nil, width: nil, height: nil) }
+            return MediaDetails.Probe(
+                status: .ready, detail: "", duration: nil,
+                width: properties[kCGImagePropertyPixelWidth] as? Int,
+                height: properties[kCGImagePropertyPixelHeight] as? Int)
+        case .video:
+            let video = await probeVideo(AVURLAsset(url: fileURL))
+            return MediaDetails.Probe(
+                status: video.status, detail: video.detail, duration: video.duration,
+                width: video.width, height: video.height)
+        }
+    }
+
     static func fourCC(_ code: CMVideoCodecType) -> String {
         let bytes = [24, 16, 8, 0].map { UInt8((code >> $0) & 0xFF) }
         return String(bytes: bytes, encoding: .ascii) ?? String(code)

@@ -845,6 +845,9 @@ struct ServiceContinuousView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                 leading()
+                if let plan = try? model.service(serviceID), let tags = model.stageStreamTags(for: item, in: plan) {
+                    StageStreamTagLine(tags: tags)
+                }
                 Spacer(minLength: 8)
                 detail()
             }

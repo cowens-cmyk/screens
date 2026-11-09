@@ -935,7 +935,9 @@ final class ServiceControls {
               let service = try? appModel.service(serviceID),
               let item = service.items.first(where: { $0.id == itemID }), item.itemKind != .header
         else { return false }
+        let previous = liveItem.current
         guard liveItem.wentLive(itemID) else { return true }
+        standingItemWentLive(item, in: service, previous: previous)
         let macros = item.actions ?? []
         let link = LightkeyLink.shared
         if link.followsService,
@@ -964,6 +966,87 @@ final class ServiceControls {
               let position = ServiceLighting.positions(in: service, model: appModel)[headerID]
         else { return }
         sendLightingCue(position)
+    }
+
+    // MARK: The walkout and worship starting again
+
+    private var walkoutReturn: Task<Void, Never>?
+
+    /// A plan item newly live. The Walkout arms the return to the
+    /// pre-service slides; anything else calls it off. A song before the
+    /// message sets the Sermon timer back for the service that's starting
+    /// (SermonTimerReset.decideOnWorship).
+    private func standingItemWentLive(_ item: ServiceItem, in service: Service, previous: String?) {
+        walkoutReturn?.cancel()
+        walkoutReturn = nil
+        if item.isWalkout == true { armWalkoutReturn(itemID: item.id) }
+
+        let positions = ServiceLighting.positions(in: service, model: appModel)
+        guard case .song = positions[item.id] else { return }
+        let messageID = StandingItems.messageItemID(in: service, positions: positions)
+        let index = { (id: String?) in id.flatMap { id in service.items.firstIndex { $0.id == id } } }
+        let songIsBeforeMessage = messageID != nil && (index(item.id) ?? .max) < (index(messageID) ?? .min)
+        let cameFrom = previous.flatMap { id in service.items.first { $0.id == id } }
+        let cameFromMessage = cameFrom.map { $0.id == messageID || $0.isTransition == true } ?? false
+        sermonTimerAtWorship(songIsBeforeMessage: songIsBeforeMessage, cameFromMessage: cameFromMessage)
+    }
+
+    private func sermonTimerAtWorship(songIsBeforeMessage: Bool, cameFromMessage: Bool) {
+        guard sermonTimerResetsAtServiceStart else { return }
+        let now = Date()
+        let length = sermonLength
+        let timerState = sermonTimer.map {
+            SermonTimerReset.TimerState(
+                isRunning: $0.isRunning, remaining: $0.value(at: now),
+                elapsed: $0.elapsed(at: now), duration: $0.durationSeconds)
+        }
+        switch SermonTimerReset.decideOnWorship(
+            timerState, length: length, songIsBeforeMessage: songIsBeforeMessage, cameFromMessage: cameFromMessage) {
+        case .reset:
+            resetSermonTimer(to: length)
+            DiagnosticsStore.shared.note("sermonTimer.resetAtWorship")
+        case .ready:
+            break
+        case .skip(let why):
+            if songIsBeforeMessage { DiagnosticsStore.shared.note("sermonTimer.resetSkipped", detail: why) }
+        }
+    }
+
+    private func armWalkoutReturn(itemID: String) {
+        let minutes = StandingItems.walkoutReturnMinutes(appModel.slideBuilding.serviceDay)
+        walkoutReturn = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(minutes * 60))
+            guard let self, !Task.isCancelled else { return }
+            self.walkoutReturn = nil
+            self.returnFromWalkout(itemID: itemID)
+        }
+    }
+
+    private func returnFromWalkout(itemID: String) {
+        let stillLive = liveItem.current == itemID
+            && (liveContextID == itemID || mediaFireContexts.contains { $0.value == itemID && isMediaLive($0.key) })
+        let now = Date()
+        let nextCountdown = appModel.residentScheduleTriggers
+            .filter { $0.archived != true && $0.notes?.hasPrefix(ServiceCountdown.triggerNotePrefix) == true }
+            .compactMap { ServiceCountdown.startDate(of: $0) }
+            .filter { $0 >= now }
+            .min()
+        switch WalkoutReturn.decide(
+            walkoutStillLive: stillLive, runsService: ServiceStation.runsService, now: now, nextCountdown: nextCountdown) {
+        case .skip(let why):
+            DiagnosticsStore.shared.note("walkout.returnSkipped", detail: why)
+        case .returnToPreService:
+            DiagnosticsStore.shared.note("walkout.returnToPreService")
+            let plan = appModel.currentServiceID.flatMap { appModel.resident.services.value($0) }
+            if let item = plan.flatMap(PreServiceSlides.item(in:)), !item.refId.isEmpty,
+               fireServiceItem(item) == .fired {
+                return
+            }
+            if let id = appModel.preServiceSlideshowID(), let deck = appModel.presentation(id),
+               let first = SlideSceneBuilder.arrangedSlides(for: deck, arrangementId: nil).first {
+                fire(slide: first, in: deck, contextID: deck.id, occurrence: 0)
+            }
+        }
     }
 
     /// The walk-in slideshow put up on its own (Service Day's restart, the

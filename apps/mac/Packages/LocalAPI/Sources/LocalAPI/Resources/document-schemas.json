@@ -1847,6 +1847,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "isTransition": {
+          "type": "boolean"
+        },
+        "isWalkout": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2115,6 +2121,12 @@
           "type": "boolean"
         },
         "preServiceRemoved": {
+          "type": "boolean"
+        },
+        "transitionRemoved": {
+          "type": "boolean"
+        },
+        "walkoutRemoved": {
           "type": "boolean"
         }
       },
@@ -4048,6 +4060,15 @@
         },
         "clearFirst": {
           "type": "boolean"
+        },
+        "transitionPresentationId": {
+          "type": "string"
+        },
+        "walkoutPresentationId": {
+          "type": "string"
+        },
+        "walkoutReturnMinutes": {
+          "type": "number"
         }
       },
       "required": [

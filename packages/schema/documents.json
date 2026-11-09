@@ -2298,6 +2298,16 @@
           "name": "mxuArrangementWarnings",
           "type": "list:string",
           "optional": true
+        },
+        {
+          "name": "isTransition",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "isWalkout",
+          "type": "bool",
+          "optional": true
         }
       ]
     },
@@ -2576,6 +2586,16 @@
         },
         {
           "name": "preServiceRemoved",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "transitionRemoved",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "walkoutRemoved",
           "type": "bool",
           "optional": true
         }
@@ -4774,6 +4794,21 @@
         {
           "name": "clearFirst",
           "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "transitionPresentationId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "walkoutPresentationId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "walkoutReturnMinutes",
+          "type": "double",
           "optional": true
         }
       ]

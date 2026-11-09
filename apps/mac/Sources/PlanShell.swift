@@ -1150,8 +1150,12 @@ struct PlanShell: View {
     /// and the Service Day setup's slideshow.
     private var planOpenersKey: [String] {
         let current = plans
-        return current.upcoming.map(\.id) + ["|"] + current.templates.map(\.id)
-            + ["|", model.slideBuilding.serviceDay?.preServicePresentationId ?? ""]
+        let day = model.slideBuilding.serviceDay
+        // Item counts too: a re-sync that adds an item after the Walkout
+        // moves it back to the end.
+        return current.upcoming.map { "\($0.id):\($0.items.count)" } + ["|"] + current.templates.map(\.id)
+            + ["|", day?.preServicePresentationId ?? "", day?.transitionPresentationId ?? "",
+               day?.walkoutPresentationId ?? ""]
     }
 
     /// The upcoming plans, plus the open one when it's dated earlier: a

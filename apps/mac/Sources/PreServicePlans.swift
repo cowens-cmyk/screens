@@ -58,10 +58,50 @@ extension AppModel {
             let preService = PreServiceSlides.change(
                 for: plan, sharedID: shared, isOtherSlideshow: { isOtherPreServiceSlideshow($0, shared: shared) })
             let countdown = ServiceCountdown.change(for: plan, isCountdownLink: isCountdownLink)
-            guard preService != nil || countdown != nil else { continue }
+            let standing = standingLinks(for: plan)
+            let needsStanding = standing.flatMap {
+                StandingItems.ensuring(plan, transitionID: $0.transition, walkoutID: $0.walkout, messageItemID: $0.message)
+            } != nil
+            guard preService != nil || countdown != nil || needsStanding else { continue }
             updateService(plan.id) { service in
                 if let preService { PreServiceSlides.apply(preService, to: &service) }
                 if let countdown { ServiceCountdown.apply(countdown, to: &service) }
+                // Worked out again on the plan as it stands now.
+                if needsStanding, let standing, let updated = StandingItems.ensuring(
+                    service, transitionID: standing.transition, walkoutID: standing.walkout,
+                    messageItemID: standing.message) {
+                    service = updated
+                }
+            }
+        }
+    }
+
+    /// The Service Day's Transition and Walkout presentations (each nil when
+    /// none is chosen or it isn't in the library) and the plan's message
+    /// item, for StandingItems; nil when neither is chosen.
+    func standingLinks(for plan: Service) -> (transition: String?, walkout: String?, message: String?)? {
+        let day = slideBuilding.serviceDay
+        let inLibrary = { (id: String?) -> String? in id.flatMap { self.libraryEntry($0) != nil ? $0 : nil } }
+        let transition = inLibrary(day?.transitionPresentationId)
+        let walkout = inLibrary(day?.walkoutPresentationId)
+        guard transition != nil || walkout != nil else { return nil }
+        let message = StandingItems.messageItemID(in: plan, positions: ServiceLighting.positions(in: plan, model: self))
+        return (transition, walkout, message)
+    }
+
+    /// The Service Day setup chose a different Transition or Walkout: every
+    /// upcoming plan's item follows it.
+    func relinkStandingItems() {
+        let day = slideBuilding.serviceDay
+        let today = Self.isoDate(.now)
+        for plan in resident.services.values where plan.isTemplate != true && String(plan.serviceDate.prefix(10)) >= today {
+            guard StandingItems.relinking(plan, transitionID: day?.transitionPresentationId,
+                                          walkoutID: day?.walkoutPresentationId) != nil else { continue }
+            updateService(plan.id) { service in
+                if let relinked = StandingItems.relinking(
+                    service, transitionID: day?.transitionPresentationId, walkoutID: day?.walkoutPresentationId) {
+                    service = relinked
+                }
             }
         }
     }
