@@ -119,6 +119,59 @@ struct CloudEditorInteropTests {
         #expect(order == (try meta("song-orders")["order"] as? [String]))
     }
 
+    /// Pictures and videos added in the browser: media items as
+    /// MediaImporter makes them, and slides as MediaSlides.make makes them,
+    /// with "_LowerThird" pictures as the slides' livestream lower thirds.
+    @Test func picturesAndVideosAddedInTheBrowserDecode() throws {
+        let picture = try decode(MediaItem.self, "media-image")
+        #expect(picture.mediaKind == .image && picture.fileStatus == .ready && picture.pixelWidth == 1920)
+        #expect(picture.statusDetail == "Added in the browser")
+        let video = try decode(MediaItem.self, "media-video")
+        #expect(video.mediaKind == .video && video.durationSeconds == 31.5 && video.pixelWidth == nil)
+
+        let deck = try decode(Presentation.self, "browser-deck")
+        let info = try meta("browser-deck")
+        #expect(deck.presentationKind == .deck && deck.category == PresentationTypes.sermon)
+        #expect(deck.slides.count == info["slides"] as? Int)
+        #expect(deck.slides[0].background?.layer == .stillGraphics)
+        #expect(deck.slides[0].streamDesign?.lowerThirdImageID == info["lowerThird"] as? String)
+        let bumper = try #require(deck.slides.first { $0.id == info["video"] as? String })
+        #expect(bumper.background?.layer == .videos && bumper.background?.loops == false)
+        #expect(bumper.autoAdvance?.afterPlayback == true && bumper.autoAdvance?.delaySeconds == 0)
+        #expect(bumper.streamDesign?.mode == .audience)
+        #expect(bumper.actions?.map(\.kind) == [.setStageMode] && bumper.actions?.first?.stageMode == "message")
+
+        let plan = try decode(Service.self, "browser-plan")
+        #expect(plan.items.contains { $0.itemKind == .presentation && $0.refId == (try? meta("browser-plan"))?["refId"] as? String })
+        #expect(plan.transitionRemoved == true)
+    }
+
+    /// The browser's stage and livestream tags (screensEditorModel.screenTags)
+    /// are the ones Present shows, item by item and slide by slide.
+    @Test func browserTagsMatchTheMacs() throws {
+        func load<T: Decodable>(_ kind: String, _ type: T.Type) throws -> [String: T] {
+            var out: [String: T] = [:]
+            for name in try names("tags-\(kind)-") { out[String(name.dropFirst("tags-\(kind)-".count))] = try decode(T.self, name) }
+            return out
+        }
+        let presentations = try load("presentation", Presentation.self)
+        let media = try load("media", MediaItem.self)
+        let themes = try load("theme", Theme.self)
+        let plan = try decode(Service.self, "tags-service-TAGS-PLAN")
+        let want = try JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("tags.json"))) as? [String: Any] ?? [:]
+        let library = StageStreamTags.Library(
+            presentation: { presentations[$0] }, media: { media[$0] }, theme: { themes[$0] }, settings: nil)
+        #expect(want.count >= 8)
+        for item in plan.items {
+            let tags = StageStreamTags.tags(for: item, in: plan, library: library)
+            #expect(tags.map { [$0.stage, $0.stream] } == want[item.id] as? [String], "\(item.name)")
+            for slide in presentations[item.refId]?.slides ?? [] {
+                let one = StageStreamTags.tags(for: slide, of: item, in: plan, library: library)
+                #expect(one.map { [$0.stage, $0.stream] } == want[item.id + "#" + slide.id] as? [String], "\(item.name) \(slide.name)")
+            }
+        }
+    }
+
     @Test func decksChangedInTheBrowserDecode() throws {
         for name in try names("deck-") {
             let deck = try decode(Presentation.self, name)
