@@ -1,7 +1,7 @@
 # Cloud sync
 
-Every Mac running Screens (and, later, the browser editor in the CMS) shares
-one church library through a hub in the Hope Church CMS Worker. This file is
+Every Mac running Screens, and the browser editor on the CMS's Screens page,
+shares one church library through a hub in the Hope Church CMS Worker. This file is
 the contract between the two sides: the Screens client
 (`apps/mac/Packages/PresenterCore/Sources/PresenterCore/Sync/`) and the hub
 (`ScreensHub` in `~/Desktop/hope-media-worker.js`, documented in
@@ -22,6 +22,18 @@ opaque Automerge byte chunks, and hands them to every other client. A chunk
 is whatever `Document.encodeChangesSince(heads:)` or `Document.save()` made;
 the client applies any of them with `applyEncodedChanges` (Automerge's
 `load_incremental`), which accepts both.
+
+## The browser editor
+
+The CMS's Screens page reads and writes the same documents with Automerge in
+the browser (`screensEditorModel` in the Worker; see the CMS's SCREENS.md). It
+is not a socket client: it reads the hub's log over HTTP and sends its changes
+with `POST /api/admin/screens/library/<kind>/<id>`, which the hub stores as a
+`changes` push from device `cms` and sends to every Mac as a `change` with
+`from: 'cms'`. It only changes plans (`service`) and presentations. It writes
+strings as plain strings and keeps each value's type when it copies one, so
+Codable decodes what it wrote; `CloudEditorInteropTests` checks that against
+documents it made.
 
 ## Media files
 
