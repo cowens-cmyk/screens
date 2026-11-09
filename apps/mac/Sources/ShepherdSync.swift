@@ -107,6 +107,13 @@ final class ShepherdSync {
             let (from, to) = Self.window(weeks: weeksAhead)
             var plans = try await client.plans(from: from, to: to, serviceType: serviceType.isEmpty ? nil : serviceType)
             if sundaysOnly { plans = plans.filter(Self.isSunday) }
+            // One plan per day (ShepherdDayPick): a day with more than one is
+            // read in full to see which is the church's service.
+            var details: [String: ShepherdClient.PlanDetail] = [:]
+            let crowded = Dictionary(grouping: plans, by: ShepherdPlanSync.serviceDate(for:)).values.filter { $0.count > 1 }
+            for plan in crowded.joined() { details[plan.id] = try await client.plan(id: plan.id) }
+            let pick = ShepherdDayPick.pick(plans, songs: details.mapValues(ShepherdDayPick.songCount))
+            plans = pick.kept
 
             var created = 0, updated = 0
             let preService = model.preServiceSlideshowID()
@@ -120,7 +127,8 @@ final class ShepherdSync {
                 // songs, so importing the song links it on the next pass.
                 if let existing, existing.mxuPlanVersion == version, !Self.hasFlaggedSongs(existing) { continue }
 
-                let detail = try await client.plan(id: plan.id)
+                let detail: ShepherdClient.PlanDetail
+                if let read = details[plan.id] { detail = read } else { detail = try await client.plan(id: plan.id) }
                 let rules = model.serviceLinkRules
                 let items = Self.planItems(
                     detail, over: existing, rules: rules, candidates: candidates, preService: preService)
@@ -150,7 +158,7 @@ final class ShepherdSync {
                     }
                 } else {
                     var service = Service(
-                        id: UUID().uuidString, name: name, serviceDate: date, items: items,
+                        id: ShepherdDayPick.serviceID(forPlan: plan.id), name: name, serviceDate: date, items: items,
                         origin: ShepherdPlanSync.origin, mxuPlanHexId: plan.id,
                         mxuServiceTypeName: detail.serviceType.name, mxuPlanVersion: version)
                     service.mxuDerivedName = name
@@ -160,6 +168,11 @@ final class ShepherdSync {
                 }
                 if index == 0 { await applyKeys(items, model: model) }
             }
+
+            // The second plans already imported, and copies of one plan, go.
+            let open = Set([model.currentServiceID].compactMap { $0 })
+            let extra = ShepherdDayPick.duplicates(in: Array(model.resident.services.values), pick: pick, keep: open)
+            for id in extra { model.client.delete(kind: .service, id: id) }
 
             let ids = plans.compactMap { plan in
                 model.resident.services.values.first {
@@ -176,6 +189,7 @@ final class ShepherdSync {
             var parts: [String] = []
             if created > 0 { parts.append("\(created) new") }
             if updated > 0 { parts.append("\(updated) updated") }
+            if !extra.isEmpty { parts.append("\(extra.count) duplicate plan\(extra.count == 1 ? "" : "s") removed") }
             if songs.imported > 0 { parts.append("\(songs.imported) song\(songs.imported == 1 ? "" : "s") imported") }
             if songs.updated > 0 { parts.append("\(songs.updated) song\(songs.updated == 1 ? "" : "s") updated") }
             if songs.arranged > 0 {
