@@ -43,11 +43,27 @@ final class ScreensMCP {
     with confirm true. Never set confirm true without the user's yes.
     """
 
-    func server(version: String) -> MCPServer {
+    /// The tools that read a file on this Mac, which Claude through the CMS
+    /// can't hand over: pictures for lower thirds go in through the browser
+    /// editor there instead.
+    private static let localFiles: Set<String> = [
+        "attach_file", "import_media", "build_message_from_notes", "import_announcement_cards",
+    ]
+
+    /// `remote`: for Claude through the CMS (ClaudeRelay) rather than on this
+    /// Mac's Local API.
+    func server(version: String, remote: Bool = false) -> MCPServer {
         var tools = AssistantToolCatalog.all.map(assistantTool)
         tools += [attachFile, importMedia, buildSong, setSongSequence, buildMessageFromOutline,
                   setStageDisplay, listStageLayouts, setSlideNotes, stageAndStream]
-        return MCPServer(name: "screens", version: version, instructions: Self.instructions, tools: tools)
+        var instructions = Self.instructions
+        if remote {
+            tools.removeAll { Self.localFiles.contains($0.name) }
+            instructions += "\n\nThis connection comes through the church's CMS, so files on the Mac can't be attached. "
+                + "Pictures and lower-third PNGs are added in the CMS (Sunday › Screens, a presentation's Add pictures or videos); "
+                + "list_media then finds them."
+        }
+        return MCPServer(name: "screens", version: version, instructions: instructions, tools: tools)
     }
 
     // MARK: The Assistant's tools

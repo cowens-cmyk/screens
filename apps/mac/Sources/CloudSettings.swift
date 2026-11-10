@@ -8,6 +8,7 @@ struct CloudSettingsForm: View {
     @State private var name = Host.current().localizedName ?? "This Mac"
     @State private var confirmingUnlink = false
     @AppStorage(PhoneRemoteController.enabledKey) private var phoneRemote = true
+    @AppStorage(ClaudeRelay.enabledKey) private var claude = false
     @AppStorage(ServiceStation.runsServiceKey) private var runsHere = false
 
     var body: some View {
@@ -31,6 +32,15 @@ struct CloudSettingsForm: View {
                     Text(runsHere
                         ? "Sunday › Screens › Remote in the CMS can move slides, fire plan items, clear, run timers and send stage messages on this Mac, from anywhere."
                         : "Only the Mac with Run on this Mac on (Service Day) follows the phone remote. This one doesn't.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Toggle("Claude: build presentations when asked through the CMS", isOn: $claude)
+                    Text(!claude
+                        ? "Off. When on, Claude connected at dashboard.hopejc.org/screens/mcp (by an admin) can read and change the library through this Mac."
+                        : runsHere
+                            ? "Claude connected at dashboard.hopejc.org/screens/mcp can read and change the library through this Mac: songs, slides, plans, the message and the stage display. Admins see and end connections in the CMS under Screens › Macs."
+                            : "On, but only the Mac with Run on this Mac on (Service Day) answers Claude. This one doesn't.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

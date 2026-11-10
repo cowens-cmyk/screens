@@ -161,7 +161,7 @@ public struct CloudSyncState: Codable, Equatable, Sendable {
         case .blob(let sha):
             report(.blobArrived(sha))
         // The phone remote is the app's (CloudSync takes it before it gets here).
-        case .pong, .unknown, .remote:
+        case .pong, .unknown, .remote, .claude:
             break
         }
     }

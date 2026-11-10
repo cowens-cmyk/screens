@@ -306,6 +306,9 @@ final class CloudSync {
                 if case .remote(let request) = decoded {
                     // The phone remote's tap: done here, not in the library.
                     Task { await PhoneRemoteController.shared.handle(request) }
+                } else if case .claude(let id, let body, let user) = decoded {
+                    // Claude's request: answered by this Mac's MCP tools.
+                    Task { await ClaudeRelay.shared.handle(id: id, body: body, user: user) }
                 } else {
                     try await Self.deliver(decoded, to: session)
                 }
@@ -364,6 +367,7 @@ final class CloudSync {
             status = .live
             startFiles()
             PhoneRemoteController.shared.connected()
+            ClaudeRelay.shared.connected()
         case .phase(.needsJoin(let documents)):
             status = .needsJoin(documents: documents)
             // Nothing more until the person chooses.

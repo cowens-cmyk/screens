@@ -7,7 +7,24 @@ from the pastor's notes, lower thirds and the stage display. Changes go
 through the app's own edit paths, so they sync to every linked Mac and the
 browser editor like an operator's.
 
-## Connecting
+## From anywhere: through the CMS
+
+`https://dashboard.hopejc.org/screens/mcp` works from claude.ai, the Claude
+apps and Claude Code anywhere. Add it as a custom connector; an admin allows
+it on a CMS page. The CMS passes each request over the sync socket to the
+Mac that runs the service, which answers with the tools below
+(`ClaudeRelay`, `ScreensMCP.server(remote: true)`: without `attach_file`,
+`import_media`, `build_message_from_notes` and `import_announcement_cards`,
+which read files on the Mac). That Mac needs **Claude** on in Settings ›
+Integrations › Sync (off by default) and Run on this Mac on. The sign-in,
+tokens and what keeps them safe are in the CMS's docs/cms/SCREENS.md
+("Claude").
+
+Messages on the sync socket: `{t:'claude-ready', on}` from the Mac when the
+switch or Run on this Mac changes and on connecting; `{t:'claude', id, body,
+user}` from the hub; `{t:'claude-done', id, body}` back.
+
+## On the church network: the Local API
 
 1. In Screens, Settings › Remote & API: turn on the Local API (port 6980 by
    default).

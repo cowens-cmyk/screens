@@ -24,6 +24,10 @@ public enum CloudClientMessage: Equatable, Sendable {
     case remoteDone(id: String, ok: Bool, message: String?)
     /// What's live, for the phone remote: a JSON object the hub keeps as it is.
     case live(state: Data)
+    /// Whether this Mac takes Claude's requests (the CMS's /screens/mcp).
+    case claudeReady(on: Bool)
+    /// This Mac's JSON-RPC reply to one of Claude's requests, as text.
+    case claudeDone(id: String, body: String)
 
     public func encoded() throws -> Data {
         var object: [String: Any]
@@ -43,6 +47,10 @@ public enum CloudClientMessage: Equatable, Sendable {
             if let message, !ok { object["message"] = message }
         case .live(let state):
             object = ["t": "live", "state": (try? JSONSerialization.jsonObject(with: state)) ?? [String: Any]()]
+        case .claudeReady(let on):
+            object = ["t": "claude-ready", "on": on]
+        case .claudeDone(let id, let body):
+            object = ["t": "claude-done", "id": id, "body": body]
         }
         return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
@@ -79,6 +87,9 @@ public enum CloudServerMessage: Equatable, Sendable {
     case blob(sha: String)
     /// A tap on the phone remote.
     case remote(PhoneRemote.Request)
+    /// One of Claude's MCP requests, passed on by the CMS: the JSON-RPC
+    /// message as it came, and the account that sent it.
+    case claude(id: String, body: Data, user: String?)
     case pong
     /// A kind this version doesn't know, or a message it can't read: skipped.
     case unknown(String)
@@ -118,6 +129,9 @@ public enum CloudServerMessage: Equatable, Sendable {
             return .pong
         case "remote":
             return PhoneRemote.request(object).map(CloudServerMessage.remote) ?? .unknown(type)
+        case "claude":
+            guard let id = object["id"] as? String, let body = object["body"] as? String else { return .unknown(type) }
+            return .claude(id: id, body: Data(body.utf8), user: object["user"] as? String)
         default:
             return .unknown(type)
         }

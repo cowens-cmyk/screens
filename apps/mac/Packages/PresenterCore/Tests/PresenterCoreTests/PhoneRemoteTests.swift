@@ -77,4 +77,23 @@ struct PhoneRemoteTests {
         #expect(ids?.keys.sorted() == ["itemId", "presentationId", "serviceId", "slideId", "slideIndex"])
         #expect(ids?["itemId"] is NSNull)
     }
+
+    /// Claude's requests through the CMS (ClaudeRelay): the request comes as
+    /// the JSON-RPC text it was, and the answer goes back as text.
+    @Test func claudesRequestsAndAnswersAreReadAndWrittenAsTheHubDoes() throws {
+        let body = #"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#
+        let text = #"{"t":"claude","id":"c-1","user":"cowens@hopejc.org","body":"#
+            + String(decoding: try JSONEncoder().encode(body), as: UTF8.self) + "}"
+        guard case .claude(let id, let data, let user) = decode(text) else {
+            Issue.record("not read as a Claude request")
+            return
+        }
+        #expect(id == "c-1" && user == "cowens@hopejc.org" && String(decoding: data, as: UTF8.self) == body)
+        #expect(decode(#"{"t":"claude","id":"c-2"}"#) == .unknown("claude"))
+
+        let ready = try JSONSerialization.jsonObject(with: CloudClientMessage.claudeReady(on: true).encoded()) as? [String: Any]
+        #expect(ready?["t"] as? String == "claude-ready" && ready?["on"] as? Bool == true)
+        let done = try JSONSerialization.jsonObject(with: CloudClientMessage.claudeDone(id: "c-1", body: "{}").encoded()) as? [String: Any]
+        #expect(done?["t"] as? String == "claude-done" && done?["id"] as? String == "c-1" && done?["body"] as? String == "{}")
+    }
 }
