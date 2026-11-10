@@ -290,6 +290,11 @@ enum SettingsIndex {
             title: "Anthem's MIDI",
             keywords: "anthem midi notes fallback next previous trigger"),
         SettingsEntry(
+            id: "atem.link", category: .integrations, tab: .atem,
+            title: "ATEM",
+            caption: "Puts the livestream graphics on and off air on the switcher by itself.",
+            keywords: "atem blackmagic switcher keyer key fill dsk downstream upstream lower third livestream stream graphics on air"),
+        SettingsEntry(
             id: "midi.lightkey", category: .integrations, tab: .lightkey,
             title: "Lightkey",
             keywords: "lightkey lighting dmx midi network rtp channel test note section verse chorus"),

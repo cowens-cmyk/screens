@@ -299,6 +299,7 @@ struct MonitorsPanel: View {
             HStack {
                 ScreenLabel(title: "Livestream", color: HopeStyle.stagePurple)
                 Spacer()
+                ATEMKeyerChip()
                 if controls?.screenVideoID != nil {
                     Text("Video")
                         .font(.caption2.weight(.semibold))

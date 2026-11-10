@@ -179,6 +179,7 @@ struct MxUSlidesApp: App {
             controls.actionRouter = router
             assistantRouter = router
             AnthemLink.shared.attach(model: model, controls: controls)
+            ATEMLink.shared.attach(render: render)
             AnthemFeed.shared.attach(model: model, controls: controls)
             _actionRouter = State(initialValue: router)
             _confidenceMonitor = State(initialValue: confidence)

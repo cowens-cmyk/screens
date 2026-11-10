@@ -75,6 +75,8 @@ With Settings › Local API enabled, the app serves a REST and WebSocket API on 
 
 `apps/mac/Sources/BoothRelay.swift` sends the show to the booth board in the Hope CMS (dashboard.hopejc.org/booth): the status, timers, transport and stage display as JSON every time they change and every 5 seconds, and a 960-px JPEG of the audience screen when it changes and once a minute. The CMS can't reach the Mac, so the Mac pushes. It is off on each Mac until turned on in Settings › Integrations › Remote & API › Booth Board, with the token from the board's setup sheet (kept in the Keychain, service `org.hopejc.screens.booth`). The CMS side is documented in `docs/cms/BOOTH.md` in hope-church-automation.
 
+`apps/mac/Sources/ATEMLink.swift` puts the livestream graphics on and off air on the ATEM switcher: it cuts the keyer carrying the Livestream screen's Fill and Key on when that screen shows something and off once it's clear. Off on each Mac until turned on in Settings › Integrations › ATEM. See `docs/atem.md`.
+
 ### Assistant
 
 Window › Assistant (⇧⌘A) is a chat with Claude that answers questions about Screens and changes plans and slides through tools that run on the Mac (`apps/mac/Sources/Assistant`; the request building, streaming, tool schemas and event matching are tested in `PresenterCore/Sources/PresenterCore/Assistant`). It uses the Anthropic API key from Settings › Network & API › Assistant, the same one Sermon import uses, and Claude Opus 5.5 unless Sonnet 5.5 is chosen there. What it knows about the app comes from `apps/mac/Sources/Assistant/ScreensGuide.md`, which is bundled and loaded into its system prompt. When a feature changes, update `ScreensGuide.md` so the in-app assistant stays current.

@@ -163,6 +163,9 @@ struct IntegrationsSettingsPane: View {
                 }
             }
             .settingsForm()
+        case .atem:
+            Form { ATEMSettingsForm() }
+                .settingsForm()
         case .shepherd:
             Form { ShepherdSettingsForm() }
                 .settingsForm()
