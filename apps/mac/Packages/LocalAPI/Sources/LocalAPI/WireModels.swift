@@ -745,8 +745,8 @@ public enum APIShowFrame: String, Codable, Sendable, CaseIterable {
     case live
     /// The slide Next fires.
     case next
-    /// The live slide's background on its own: a video's poster frame or the
-    /// picture, without the words. Hope Lights colours the lights from it,
+    /// The live slide's background on its own: a lit frame of the video, or
+    /// the picture, without the words. Prism colours the lights from it,
     /// which `live` can't do for motion backgrounds (it draws videos black).
     case background
 }

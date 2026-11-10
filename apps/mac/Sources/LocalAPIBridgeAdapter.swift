@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreGraphics
 import Foundation
 import LocalAPI
@@ -853,13 +854,53 @@ final class AppAPIBridge: LocalAPIBridge {
         guard let media, !media.mediaId.isEmpty, let item = appModel.media(media.mediaId) else {
             throw APIError.notFound("The live slide has no background.")
         }
-        guard let blobs = appModel.blobs,
-              let poster = await ThumbnailStore.shared.poster(for: item, blobs: blobs),
-              let jpeg = ThumbnailStore.jpegData(Self.scaled(poster, width: 480))
-        else {
+        guard let blobs = appModel.blobs else {
+            throw APIError(status: 503, code: "render_failed", message: "Couldn't draw the background.")
+        }
+        var picture: CGImage?
+        if item.mediaKind == .video, let url = blobs.url(forHash: item.fileHash) {
+            picture = await Self.litVideoFrame(url: url, from: item.inPoint ?? 0)
+        }
+        if picture == nil {
+            picture = await ThumbnailStore.shared.poster(for: item, blobs: blobs)
+        }
+        guard let picture, let jpeg = ThumbnailStore.jpegData(Self.scaled(picture, width: 480)) else {
             throw APIError(status: 503, code: "render_failed", message: "Couldn't draw the background.")
         }
         return jpeg
+    }
+
+    /// A frame with something in it. The library's poster is 0.1 s in,
+    /// which for a motion background that fades up from black is black, and
+    /// the lights would match nothing; so this looks 1, 2.5 and 5 seconds in
+    /// (within the video) and takes the first frame that isn't dark.
+    private nonisolated static func litVideoFrame(url: URL, from inPoint: Double) async -> CGImage? {
+        let asset = AVURLAsset(url: url)
+        let duration = (try? await asset.load(.duration)).map(CMTimeGetSeconds) ?? 0
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 480, height: 480)
+        var last: CGImage?
+        for offset in [1.0, 2.5, 5] {
+            let seconds = duration > 0 ? min(inPoint + offset, max(duration - 0.1, 0)) : inPoint + offset
+            guard let frame = try? await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image else { continue }
+            if averageBrightness(frame) > 0.06 { return frame }
+            last = frame
+        }
+        return last
+    }
+
+    /// Mean brightness, 0–1, from an 8×8 reduction.
+    private nonisolated static func averageBrightness(_ image: CGImage) -> Double {
+        var pixels = [UInt8](repeating: 0, count: 8 * 8 * 4)
+        guard let context = CGContext(
+            data: &pixels, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 32,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        else { return 1 }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 8, height: 8))
+        var total = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) { total += max(Int(pixels[i]), Int(pixels[i + 1]), Int(pixels[i + 2])) }
+        return Double(total) / Double(64 * 255)
     }
 
     private static func scaled(_ image: CGImage, width: Int) -> CGImage {
