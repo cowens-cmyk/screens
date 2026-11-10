@@ -64,11 +64,15 @@ struct RemoteStageAndFramesTests {
             #expect(!response.isJSON)
             #expect(response.body == FakeBridge.frameBytes)
         }
-        #expect(bridge.calls == ["frame:live", "frame:next"])
+        #expect(bridge.calls == ["frame:live", "frame:next", "frame:background"])
 
         bridge.hasNextSlide = false
         await #expect(throws: APIError.self) {
             _ = try await call(router, "GET", "/v1/show/frames/next", scope: .view)
+        }
+        bridge.hasBackground = false
+        await #expect(throws: APIError.self) {
+            _ = try await call(router, "GET", "/v1/show/frames/background", scope: .view)
         }
         do {
             _ = try await call(router, "GET", "/v1/show/frames/later", scope: .view)

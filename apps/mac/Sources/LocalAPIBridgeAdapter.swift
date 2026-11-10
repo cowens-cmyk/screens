@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import LocalAPI
 import QuartzCore
@@ -816,9 +817,12 @@ final class AppAPIBridge: LocalAPIBridge {
     // MARK: Phone remote
 
     func showFrame(_ which: APIShowFrame) async throws -> Data {
+        if which == .background { return try await liveBackgroundJPEG() }
         let scene: RenderScene
         var hostTime: CFTimeInterval = 0
         switch which {
+        case .background:
+            preconditionFailure("handled above")
         case .live:
             scene = render.liveScene
             hostTime = CACurrentMediaTime() + 10
@@ -834,6 +838,40 @@ final class AppAPIBridge: LocalAPIBridge {
             throw APIError(status: 503, code: "render_failed", message: "Couldn't draw the picture.")
         }
         return jpeg
+    }
+
+    /// The live background's poster: whatever plays on the background layers
+    /// (a looping video first, then a still, then a video), else the live
+    /// slide's own background. Videos give the poster frame the library
+    /// already shows, so this doesn't touch the playing video.
+    private func liveBackgroundJPEG() async throws -> Data {
+        let live = controls.state.liveMedia
+        let media = [LayerKind.loopingVideos, .stillGraphics, .videos].lazy.compactMap { live[$0] }.first
+            ?? controls.state.liveSlide.flatMap {
+                SlideSceneBuilder.effectiveBackground(slide: $0.slide, presentation: $0.presentation)
+            }
+        guard let media, !media.mediaId.isEmpty, let item = appModel.media(media.mediaId) else {
+            throw APIError.notFound("The live slide has no background.")
+        }
+        guard let blobs = appModel.blobs,
+              let poster = await ThumbnailStore.shared.poster(for: item, blobs: blobs),
+              let jpeg = ThumbnailStore.jpegData(Self.scaled(poster, width: 480))
+        else {
+            throw APIError(status: 503, code: "render_failed", message: "Couldn't draw the background.")
+        }
+        return jpeg
+    }
+
+    private static func scaled(_ image: CGImage, width: Int) -> CGImage {
+        guard image.width > width else { return image }
+        let height = max(1, image.height * width / image.width)
+        guard let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        else { return image }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage() ?? image
     }
 
     func sendBoothMessage(_ command: APIBoothMessageCommand) throws -> APIBoothMessage {

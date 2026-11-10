@@ -233,10 +233,12 @@ final class FakeBridge: LocalAPIBridge {
     /// A JPEG's first bytes, so a test can tell the picture came through untouched.
     static let frameBytes = Data([0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02])
     var hasNextSlide = true
+    var hasBackground = true
 
     func showFrame(_ which: APIShowFrame) async throws -> Data {
         calls.append("frame:\(which.rawValue)")
         if which == .next && !hasNextSlide { throw APIError.notFound("No next slide.") }
+        if which == .background && !hasBackground { throw APIError.notFound("The live slide has no background.") }
         return Self.frameBytes
     }
 

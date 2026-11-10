@@ -44,7 +44,7 @@ public enum APIRouteTable {
         routes.append(APIRoute(
             "GET", "/v1/show/frames/{which}", scope: .view,
             operationId: "getShowFrame",
-            summary: "A small JPEG (480 wide) for the phone remote: `live` is the audience screen, `next` the slide Next fires. Videos and live inputs draw black. 404 when there is no next slide.",
+            summary: "A small JPEG (480 wide): `live` is the audience screen and `next` the slide Next fires, for the phone remote; videos and live inputs draw black in both. `background` is the live slide's background alone, a video's frame included, for the lights. 404 when there is no next slide or no background.",
             tag: "Show",
             responseSchema: .object(["type": "string", "format": "binary"]),
             responseContentType: "image/jpeg"
