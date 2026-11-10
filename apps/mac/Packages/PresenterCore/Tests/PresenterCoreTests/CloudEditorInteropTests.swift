@@ -140,6 +140,12 @@ struct CloudEditorInteropTests {
         #expect(bumper.autoAdvance?.afterPlayback == true && bumper.autoAdvance?.delaySeconds == 0)
         #expect(bumper.streamDesign?.mode == .audience)
         #expect(bumper.actions?.map(\.kind) == [.setStageMode] && bumper.actions?.first?.stageMode == "message")
+        let typed = try #require(deck.slides.first { $0.id == info["typed"] as? String })
+        #expect(typed.themeSlideName == "Scripture" && typed.themeId == "T1")
+        #expect(typed.objects.map(\.name) == ["Reference", "Verse"] && typed.objects.allSatisfy { $0.objectKind == .text })
+        #expect(typed.objects.last?.text == "Joseph interprets the dreams")
+        let plain = try #require(deck.slides.first { $0.id == info["plain"] as? String })
+        #expect(plain.unthemed == true && plain.objects.first?.width == 1600 && plain.objects.first?.objectKind == .text)
 
         let plan = try decode(Service.self, "browser-plan")
         #expect(plan.items.contains { $0.itemKind == .presentation && $0.refId == (try? meta("browser-plan"))?["refId"] as? String })
