@@ -91,6 +91,8 @@ final class LocalAPIController {
     private let appModel: AppModel
 
     let bridge: AppAPIBridge
+    /// Claude's tools for building presentations, on the same port (POST /mcp).
+    let mcp: ScreensMCP
     private var server: LocalAPIServer?
     private var serverTask: Task<Void, Never>?
 
@@ -110,6 +112,7 @@ final class LocalAPIController {
             render: render,
             scheduler: scheduler
         )
+        self.mcp = ScreensMCP(model: appModel, router: nil)
         self.tokens = APITokenStore(
             fileURL: appModel.client.rootURL
                 .appendingPathComponent("local-api-tokens.json"),
@@ -220,7 +223,7 @@ final class LocalAPIController {
                 advertise: true,
                 info: info
             ),
-            routes: APIRouteTable.build(bridge: bridge),
+            routes: APIRouteTable.build(bridge: bridge) + [mcp.server(version: info.apiVersion).route()],
             tokens: tokens
         )
         self.server = server
