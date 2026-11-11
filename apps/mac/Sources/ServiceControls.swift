@@ -124,6 +124,25 @@ final class ServiceControls {
 
     private(set) var mediaFireContexts: [String: String] = [:]
 
+    /// The plan item whose video ended and took itself down (its end action
+    /// is Stop or Fade to Black). Next carries on from it instead of going
+    /// back to the top of the plan. Anything else going up forgets it.
+    private var endedPlanMediaItemID: String?
+
+    /// Where Next and Previous start in the plan, given its items' ids in
+    /// run order (PlanSlideSteps.step). With no plan slide up, a plan video
+    /// on the screens (the countdown, an announcement) is where the plan
+    /// is, so the next press goes to the item after it, not the walk-in.
+    func planStepStart(order: [String]) -> PlanSlideSteps.Start {
+        if let itemID = liveContextID, let occurrence = liveOccurrence {
+            return .slide(PlanSlideSteps.Place(itemID: itemID, occurrence: occurrence))
+        }
+        let liveMediaItems = Set(mediaFireContexts.filter { isMediaLive($0.key) }.values)
+        if let itemID = order.last(where: liveMediaItems.contains) { return .item(itemID) }
+        if let ended = endedPlanMediaItemID, order.contains(ended) { return .item(ended) }
+        return state.liveSlide == nil ? .clear : .elsewhere
+    }
+
     /// `autoAdvanced` marks a fire made by a slide's own timing rather than
     /// by anyone: see land().
     func fire(
@@ -179,6 +198,7 @@ final class ServiceControls {
     ) {
         landings += 1
         let landing = landings
+        endedPlanMediaItemID = nil
 
         let deckWasLive = livePresentationID == presentation.id
         if !deckWasLive {
@@ -851,6 +871,7 @@ final class ServiceControls {
         }
 
         let contextID: String? = if case .serviceItem(let id) = context { id } else { nil }
+        endedPlanMediaItemID = nil
         if let contextID {
             mediaFireContexts[mediaItem.id] = contextID
         } else {
@@ -1390,6 +1411,7 @@ final class ServiceControls {
         mediaEndPoll = nil
         if screenVideoID == id { screenVideoEnded() }
         guard action == .stop || action == .fadeToBlack else { return }
+        endedPlanMediaItemID = mediaFireContexts[id]
         state.clear(layer: layer, atHostTime: CACurrentMediaTime())
         render.nextLiveTransitions[layer] = action == .fadeToBlack
             ? SceneTransition(kind: .dissolve, duration: 1.0)
@@ -1670,6 +1692,7 @@ final class ServiceControls {
         if cancelsPendingActions { actionRouter?.cancelPendingDelayedActions() }
         state.clearAll(includingAudio: true, protecting: protecting)
         audio.stop()
+        endedPlanMediaItemID = nil
 
         if state.liveSlide == nil {
             liveContextID = nil

@@ -82,6 +82,8 @@ struct ServiceContinuousView: View {
         let _ = model.listVersion
         if let service = try? model.service(serviceID) {
             let positions = firePositions(service)
+            // Every item, hidden ones too: a hidden video can still be live.
+            let order = service.items.map(\.id)
 
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
@@ -175,7 +177,7 @@ struct ServiceContinuousView: View {
                 .focused($focused)
                 .focusEffectDisabled()
                 .onPresentFireKeys {
-                    fireStep($0, positions)
+                    fireStep($0, positions, order: order)
                     controls?.noteKeyboardFire()
                 }
 
@@ -1120,17 +1122,18 @@ struct ServiceContinuousView: View {
         return positions
     }
 
-    private func fireStep(_ delta: Int, _ positions: [FirePosition]) {
+    /// `order` is the plan's item ids in run order, media items included,
+    /// so a press made while a plan video is up goes to the item after it.
+    private func fireStep(_ delta: Int, _ positions: [FirePosition], order: [String]) {
         guard let controls, !positions.isEmpty else { return }
 
         let settled = delta > 0 && NSEvent.modifierFlags.contains(.option)
         controls.advance(steps: delta, settled: settled) {
             // Empty presentations have no places, so a step skips them.
-            let live = controls.liveContextID.flatMap { itemID in
-                controls.liveOccurrence.map { PlanSlideSteps.Place(itemID: itemID, occurrence: $0) }
-            }
             let places = positions.map { PlanSlideSteps.Place(itemID: $0.itemID, occurrence: $0.occurrence) }
-            guard let next = PlanSlideSteps.step(delta, from: live, in: places) else { return }
+            guard let next = PlanSlideSteps.step(
+                delta, from: controls.planStepStart(order: order), order: order, in: places)
+            else { return }
             let position = positions[next]
             controls.fire(
                 slide: position.slide, in: position.presentation,

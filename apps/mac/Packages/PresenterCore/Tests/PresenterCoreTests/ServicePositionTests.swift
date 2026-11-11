@@ -237,4 +237,37 @@ struct ServicePositionTests {
         #expect(LightingCueTable.sendsLightkeyCue([fire], lightkeyDeviceID: "lightkey", combo: lookup))
         #expect(!LightingCueTable.sendsLightkeyCue([loop], lightkeyDeviceID: "lightkey", combo: lookup))
     }
+
+    /// Song 1 on note 4 would go up on every Chorus too: the settings field
+    /// refuses reserved notes, the test note and another row's note.
+    @Test func aCueNoteMustBeFreeAndUnreserved() {
+        let table = LightingCueTable.defaults
+        let song1 = ServicePosition.song(1).key
+        #expect(LightingCueTable.noteProblem(62, for: song1, in: table) == nil, "its own note")
+        #expect(LightingCueTable.noteProblem(90, for: song1, in: table) == nil)
+        #expect(LightingCueTable.noteProblem(4, for: song1, in: table) == "4 is the Chorus section's note.")
+        #expect(LightingCueTable.noteProblem(40, for: song1, in: table) == "31–54 are left for the Lightkey Cue action.")
+        #expect(LightingCueTable.noteProblem(0, for: song1, in: table) != nil)
+        #expect(LightingCueTable.noteProblem(128, for: song1, in: table) != nil)
+        #expect(LightingCueTable.noteProblem(-1, for: song1, in: table) != nil)
+        #expect(LightingCueTable.noteProblem(60, for: song1, in: table) == "Walk-in already has 60.")
+        for section in LightingCueTable.sectionNotes {
+            #expect(LightingCueTable.noteProblem(section.note, for: song1, in: table) != nil)
+        }
+    }
+
+    /// Section names are spelled many ways; the lights shouldn't care.
+    @Test func sectionNotesIgnoreSpacesHyphensAndCase() {
+        for name in ["Pre-Chorus", "Pre Chorus", "PreChorus", "pre-chorus 2", "PRE CHORUS"] {
+            #expect(LightingCueTable.sectionNote(forName: name) == 3, "\(name)")
+        }
+        #expect(LightingCueTable.sectionNote(forName: "Chorus 2") == 4)
+        #expect(LightingCueTable.sectionNote(forName: "Verse1") == 2)
+        #expect(LightingCueTable.sectionNote(forName: "Instrumental") == 8)
+        #expect(LightingCueTable.sectionNote(forName: "Intro") == 1)
+        #expect(LightingCueTable.sectionNote(forName: "Interlude") == 7)
+        #expect(LightingCueTable.sectionNote(forName: "Ending") == 10)
+        #expect(LightingCueTable.sectionNote(forName: "Blank") == nil)
+        #expect(LightingCueTable.sectionNote(forName: "") == nil)
+    }
 }

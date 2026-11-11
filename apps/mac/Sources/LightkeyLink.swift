@@ -130,16 +130,10 @@ final class LightkeyLink {
     // MARK: Song sections
 
     /// Section notes: Lightkey learns each once, then follows every song.
-    static let sectionNotes: [(name: String, note: Int)] = [
-        ("Intro", 1), ("Verse", 2), ("Pre-Chorus", 3), ("Chorus", 4), ("Bridge", 5),
-        ("Tag", 6), ("Interlude", 7), ("Instrumental", 8), ("Outro", 9), ("Ending", 10),
-    ]
+    static let sectionNotes = LightingCueTable.sectionNotes
 
     static func note(forSection name: String) -> Int? {
-        let lowered = name.lowercased()
-        return sectionNotes
-            .sorted { $0.name.count > $1.name.count }
-            .first { lowered.hasPrefix($0.name.lowercased()) }?.note
+        LightingCueTable.sectionNote(forName: name)
     }
 
     func slideWentLive(_ slide: Slide, in presentation: Presentation) {
@@ -285,6 +279,9 @@ struct LightingCueTableForm: View {
     @Bindable private var link = LightkeyLink.shared
     @State private var addingCue = false
     @State private var newCueName = ""
+    /// Notes typed that weren't saved, by position key, with the reason.
+    /// The field shows red until a usable note goes in.
+    @State private var refused: [String: (note: Int, reason: String)] = [:]
 
     var body: some View {
         let table = ServiceLighting.table(model)
@@ -319,6 +316,12 @@ struct LightingCueTableForm: View {
                 Button("Use Defaults") { save(LightingCueTable.defaults) }
                     .disabled(table == LightingCueTable.defaults)
             }
+            ForEach(table.filter { refused[$0.position] != nil }, id: \.position) { row in
+                if let refusal = refused[row.position] {
+                    Text("\(ServicePosition(key: row.position)?.title ?? row.position): \(refusal.note) not saved. \(refusal.reason)")
+                        .font(.caption).foregroundStyle(.red)
+                }
+            }
             Text("Songs past the last song row use it. Press Send while a Lightkey cue is in MIDI learn. Notes go out on channel \(link.channel); 1–10 (song sections) and 31–54 (the Lightkey Cue action) are left for those.")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -336,14 +339,28 @@ struct LightingCueTableForm: View {
         let position = ServicePosition(key: row.position)
         GridRow {
             Text(position?.title ?? row.position)
+            // A note that's reserved or another row's would fire two scenes
+            // at once (Song 1 on 4 goes up on every Chorus), so it isn't
+            // saved: the field goes red with the reason under the table.
             TextField("Note", value: Binding(
-                get: { row.note },
-                set: { note in update(row.position, in: table) { $0.note = min(max(note, 0), 127) } }
+                get: { refused[row.position]?.note ?? row.note },
+                set: { note in
+                    if let reason = LightingCueTable.noteProblem(note, for: row.position, in: table) {
+                        refused[row.position] = (note, reason)
+                    } else {
+                        update(row.position, in: table) { $0.note = note }
+                    }
+                }
             ), format: .number.grouping(.never))
             // A grouped Form shows a text field's title above it, which put
             // "Note" over every row under the column's own heading.
             .labelsHidden()
             .textFieldStyle(.roundedBorder)
+            .overlay {
+                if refused[row.position] != nil {
+                    RoundedRectangle(cornerRadius: 5).strokeBorder(.red, lineWidth: 1.5)
+                }
+            }
             .frame(width: 52)
             Toggle("On", isOn: Binding(
                 get: { row.off != true },
@@ -402,6 +419,9 @@ struct LightingCueTableForm: View {
     }
 
     private func save(_ table: [LightingCue]) {
+        // Any change to the table (Use Defaults, a row removed, another
+        // note saved) shows the saved notes again.
+        refused = [:]
         model.updateSlideBuilding { $0.lightingCues = table }
     }
 }

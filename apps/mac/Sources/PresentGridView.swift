@@ -1705,8 +1705,13 @@ struct SlideGridBody: View {
         }
         let added = made.slides
         guard !added.isEmpty else { return !made.existingLowerThirds.isEmpty }
-        model.insertSlides(presentation.id, slides: added, at: anchor)
-        askLivestream(for: added)
+        // The new slides join the section beside them; when it repeats (a
+        // chorus sung three times) they'd show in every repeat, so ask first
+        // as a slide drag does.
+        confirmingRepeatedSectionEdit(sections: [SlideDropPlacement.sectionId(at: anchor, in: presentation)]) {
+            model.insertSlides(presentation.id, slides: added, at: anchor)
+            askLivestream(for: added)
+        }
         return true
     }
 
@@ -2659,7 +2664,13 @@ struct SongKeyChip: View {
 
     var body: some View {
         if let musicKey = presentation.musicKey {
-            transposeMenu(musicKey: musicKey)
+            // Run-only shows the key but can't change it: a transpose
+            // rewrites the band's chords on the stage display mid-service.
+            if runOnly {
+                chipLabel("Key: \(presentation.displayKey ?? musicKey)")
+            } else {
+                transposeMenu(musicKey: musicKey)
+            }
         } else if !runOnly, ChordMath.hasChords(in: presentation) {
             setKeyMenu
         }

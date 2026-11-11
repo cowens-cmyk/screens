@@ -640,7 +640,7 @@ struct RunOrderList: View {
                     .foregroundStyle(item.lightingCue == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
                     .layoutPriority(2)
-                    .help("Lightkey:\(position.title)" + (item.lightingCue == nil ? "" : " (chosen for this item)"))
+                    .help("Lightkey: \(position.title)" + (item.lightingCue == nil ? "" : " (chosen for this item)"))
             } else if item.lightingCue == ServicePosition.noneKey {
                 Image(systemName: "lightbulb.slash")
                     .font(.caption2)
