@@ -140,6 +140,7 @@ final class ConfidenceMonitorController {
         var pruned = false
         upgradeMessageLayoutIfUntouched()
         upgradeWorshipLayoutIfUntouched()
+        addNextSlideChordsToSavedLayouts()
         for (screenID, layoutID) in assignments where layoutID != StageLayouts.audienceID {
             if let layout = appModel.resident.confidenceLayouts.value(layoutID) {
                 layouts[screenID] = layout
@@ -206,6 +207,28 @@ final class ConfidenceMonitorController {
         appModel.updateConfidenceLayout(StageLayouts.worshipID) { layout in
             if let objects = ConfidenceLayoutTemplate.upgradedWorshipObjects(for: layout) {
                 layout.objects = objects
+            }
+        }
+    }
+
+    private var checkedNextChords = false
+
+    /// The next lines on the stage used to show no chords. A saved layout
+    /// whose current slide shows them gets them on its next slide too, once
+    /// a launch; a next-slide box with Chords switched off by hand is left
+    /// off. Runs after the Worship upgrade, so an untouched Worship copy has
+    /// already taken the new template.
+    private func addNextSlideChordsToSavedLayouts() {
+        let layouts = appModel.resident.confidenceLayouts.values
+        guard !checkedNextChords, !layouts.isEmpty else { return }
+        checkedNextChords = true
+        for layout in layouts where ConfidenceLayoutTemplate.showingNextSlideChords(for: layout) != nil {
+            DiagnosticsStore.shared.note("stage.nextChords.added", detail: layout.name)
+            appModel.updateConfidenceLayout(layout.id) { layout in
+                // Checked again on the document itself, in case it changed since.
+                if let objects = ConfidenceLayoutTemplate.showingNextSlideChords(for: layout) {
+                    layout.objects = objects
+                }
             }
         }
     }

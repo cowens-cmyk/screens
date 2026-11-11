@@ -187,3 +187,76 @@ private func frame(_ object: SlideObject) -> CGRect {
     #expect(ConfidenceLayoutTemplate.video.title == "Video")
     #expect(ConfidenceLayoutTemplate.allCases.contains(.video))
 }
+
+// MARK: Next slide chords
+
+@Test func theWorshipLayoutShowsChordsOnTheNextLinesAsOnTheCurrentSlide() throws {
+    let layout = ConfidenceLayoutTemplate.worship.make(name: "Stage — Worship")
+    let current = try #require(object(named: "Current Slide", in: layout))
+    let next = try #require(object(named: "Next Slide", in: layout))
+    #expect(next.textStyle?.showChords == true)
+    #expect(next.textStyle?.chordNotation == current.textStyle?.chordNotation)
+    #expect(next.textStyle?.chordColorHex == current.textStyle?.chordColorHex)
+}
+
+@Test func anUntouchedWorshipLayoutWithoutNextChordsTakesTheNewOne() throws {
+    var saved = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", nextChords: false)
+    saved.id = "screens.stage.worship"
+    #expect(saved.objects.first { $0.name == "Next Slide" }?.textStyle?.showChords == nil)
+    let stored = try JSONDecoder().decode(ConfidenceLayout.self, from: JSONEncoder().encode(saved))
+    let upgraded = try #require(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: stored))
+    #expect(upgraded.first { $0.name == "Next Slide" }?.textStyle?.showChords == true)
+    var fresh = saved
+    fresh.objects = upgraded
+    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: fresh) == nil, "once only")
+}
+
+@Test func aSavedLayoutWithChordsOnlyOnTheCurrentSlideGetsThemOnTheNextToo() throws {
+    // A Worship layout someone has moved a box in: not untouched, so the
+    // template upgrade leaves it, but the next lines still get their chords.
+    var saved = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", nextChords: false)
+    let index = try #require(saved.objects.firstIndex { $0.name == "Next Slide" })
+    saved.objects[index].y = (saved.objects[index].y ?? 0) + 6
+    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: saved) == nil)
+
+    let objects = try #require(ConfidenceLayoutTemplate.showingNextSlideChords(for: saved))
+    let current = try #require(objects.first { $0.name == "Current Slide" })
+    let next = try #require(objects.first { $0.name == "Next Slide" })
+    #expect(next.textStyle?.showChords == true)
+    #expect(next.textStyle?.chordNotation == .numbers)
+    #expect(next.textStyle?.chordColorHex == current.textStyle?.chordColorHex, "the template's grey stand-in gives way")
+    #expect(next.y == saved.objects[index].y, "nothing else about the box changes")
+
+    var done = saved
+    done.objects = objects
+    #expect(ConfidenceLayoutTemplate.showingNextSlideChords(for: done) == nil, "once only")
+
+    // A custom layout with a plain next box takes the current slide's look.
+    var custom = ConfidenceLayoutTemplate.classic.make(name: "Mine")
+    let currentBox = try #require(custom.objects.firstIndex { $0.textLink?.source == .currentSlide })
+    custom.objects[currentBox].textStyle?.showChords = true
+    custom.objects[currentBox].textStyle?.chordNotation = .chords
+    custom.objects[currentBox].textStyle?.chordColorHex = "#FFCC00FF"
+    let bare = try #require(ConfidenceLayoutTemplate.showingNextSlideChords(for: custom))
+    let customNext = try #require(bare.first { $0.textLink?.source == .nextSlide })
+    #expect(customNext.textStyle?.showChords == true)
+    #expect(customNext.textStyle?.chordNotation == .chords)
+    #expect(customNext.textStyle?.chordColorHex == "#FFCC00FF")
+}
+
+@Test func nextSlideChordsAreLeftAloneWhereTheyWereChosenOrCannotApply() throws {
+    // Nothing to follow: the current slide shows no chords.
+    let classic = ConfidenceLayoutTemplate.classic.make(name: "Classic")
+    #expect(ConfidenceLayoutTemplate.showingNextSlideChords(for: classic) == nil)
+
+    // Switched off by hand (false, not unset) stays off.
+    var off = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", nextChords: false)
+    let next = try #require(off.objects.firstIndex { $0.name == "Next Slide" })
+    off.objects[next].textStyle?.showChords = false
+    #expect(ConfidenceLayoutTemplate.showingNextSlideChords(for: off) == nil)
+
+    // A box that reads one named object of the next slide has no chords.
+    var named = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", nextChords: false)
+    named.objects[next].textLink?.sourceObjectName = "Title"
+    #expect(ConfidenceLayoutTemplate.showingNextSlideChords(for: named) == nil)
+}

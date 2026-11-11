@@ -202,3 +202,36 @@ private func chordedInfo(maxKeyed: Bool = true) -> ConfidenceInfo {
 
     #expect(chorded?.chords.map(\.symbol) == ["A", "D"])
 }
+
+// The stage's next lines carry their chords like the words being sung. A
+// next slide built the way the stage builds it (slideText) lands in the
+// Worship layout's Next Slide box as chord runs, drawn at the next text's size.
+@Test func theWorshipStageShowsTheNextSlidesChordsToo() throws {
+    let song = Presentation(
+        id: "p", name: "Song", presentationKind: .deck, themeId: "", slides: [],
+        musicKey: "G", displayKey: "G"
+    )
+    var nextLyrics = SlideObject(
+        id: "n", objectKind: .text, name: "Lyrics", text: "I once was lost, but now am found\nWas blind, but now I see"
+    )
+    nextLyrics.chords = [
+        ChordPlacement(line: 0, column: 0, symbol: "G"),
+        ChordPlacement(line: 1, column: 0, symbol: "C"),
+    ]
+    let info = ConfidenceInfo(
+        current: ConfidenceSceneBuilder.slideText(for: chordedSlide(), in: song),
+        next: ConfidenceSceneBuilder.slideText(for: Slide(id: "s2", name: "", objects: [nextLyrics]), in: song)
+    )
+    let layout = ConfidenceLayoutTemplate.worship.make(name: "Worship")
+    let scene = ConfidenceSceneBuilder.scene(layout: layout, info: info, at: fixedDate)
+    let texts: [StyledText] = (scene.layers.first { $0.kind == .slide }?.items ?? []).compactMap {
+        if case .text(let styled) = $0.content { return styled }
+        return nil
+    }
+    let current = try #require(texts.first { $0.string.hasPrefix("Amazing grace") })
+    let next = try #require(texts.first { $0.string.hasPrefix("I once was lost") })
+    #expect(current.chords.map(\.symbol) == ["1", "4"])
+    #expect(next.chords.map(\.symbol) == ["1", "4"], "the next slide's chords, in the same Nashville numbers")
+    #expect(next.chordColor == current.chordColor, "the same chord colour")
+    #expect(next.fontSize < current.fontSize, "chords are sized from the smaller text")
+}
