@@ -316,11 +316,20 @@ struct TopBarSoundCell: View {
 /// toolbar and title show normally.
 struct TopBarWindowChrome: NSViewRepresentable {
     static let toolbarID = NSToolbar.Identifier("screens-top-bar")
+    /// Hears when the window goes in and out of full screen.
+    var onFullScreen: (Bool) -> Void = { _ in }
 
     final class ChromeView: NSView {
+        var onFullScreen: (Bool) -> Void = { _ in }
         private weak var configured: NSWindow?
         private var toolbarWatch: NSKeyValueObservation?
         private var transparencyWatch: NSKeyValueObservation?
+        private var fullScreenWatches: [NSObjectProtocol] = []
+        /// In full screen macOS draws the toolbar in a window of its own,
+        /// opaque and above this one. The empty toolbar that centres the
+        /// traffic lights would cover the top bar there, so the window goes
+        /// without it until it leaves full screen.
+        private var inFullScreen = false
 
         /// The chrome view each window was last set up by. When SwiftUI
         /// rebuilds the workspace, the new view sets the window up before
@@ -341,11 +350,16 @@ struct TopBarWindowChrome: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titlebarSeparatorStyle = .none
             if !window.styleMask.contains(.fullSizeContentView) { window.styleMask.insert(.fullSizeContentView) }
-            installToolbar(window)
+            watchFullScreen(window)
+            if window.styleMask.contains(.fullScreen) { enterFullScreen(window) } else { installToolbar(window) }
             #if DEBUG
             // Screenshots of full screen without UI scripting: SCREENS_FULL_SCREEN=1.
             if ProcessInfo.processInfo.environment["SCREENS_FULL_SCREEN"] == "1", !window.styleMask.contains(.fullScreen) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { window.toggleFullScreen(nil) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    NSApp.activate()
+                    window.makeKeyAndOrderFront(nil)
+                    window.toggleFullScreen(nil)
+                }
             }
             #endif
             // SwiftUI may take its toolbar away when its own items change
@@ -353,7 +367,7 @@ struct TopBarWindowChrome: NSViewRepresentable {
             // shrinks and the traffic lights jump up off the bar's centre.
             toolbarWatch = window.observe(\.toolbar, options: [.new]) { [weak self] window, _ in
                 MainActor.assumeIsolated {
-                    guard window.toolbar == nil, self?.configured === window else { return }
+                    guard window.toolbar == nil, self?.configured === window, self?.inFullScreen == false else { return }
                     DispatchQueue.main.async { self?.installToolbar(window) }
                 }
             }
@@ -370,6 +384,38 @@ struct TopBarWindowChrome: NSViewRepresentable {
             }
         }
 
+        private func watchFullScreen(_ window: NSWindow) {
+            fullScreenWatches.forEach(NotificationCenter.default.removeObserver)
+            let center = NotificationCenter.default
+            fullScreenWatches = [
+                center.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.enterFullScreen(window) }
+                },
+                center.addObserver(forName: NSWindow.willExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.exitFullScreen(window) }
+                },
+            ]
+            #if DEBUG
+            fullScreenWatches.append(center.addObserver(forName: NSWindow.didEnterFullScreenNotification, object: window, queue: .main) { _ in
+                MainActor.assumeIsolated { TopBarWindowChrome.logFullScreen(window) }
+            })
+            #endif
+        }
+
+        private func enterFullScreen(_ window: NSWindow) {
+            guard configured === window else { return }
+            inFullScreen = true
+            window.toolbar = nil
+            onFullScreen(true)
+        }
+
+        private func exitFullScreen(_ window: NSWindow) {
+            guard configured === window else { return }
+            inFullScreen = false
+            installToolbar(window)
+            onFullScreen(false)
+        }
+
         private func installToolbar(_ window: NSWindow) {
             if window.toolbar == nil {
                 window.toolbar = NSToolbar(identifier: TopBarWindowChrome.toolbarID)
@@ -378,6 +424,8 @@ struct TopBarWindowChrome: NSViewRepresentable {
         }
 
         func restore() {
+            fullScreenWatches.forEach(NotificationCenter.default.removeObserver)
+            fullScreenWatches = []
             toolbarWatch?.invalidate()
             toolbarWatch = nil
             transparencyWatch?.invalidate()
@@ -394,8 +442,31 @@ struct TopBarWindowChrome: NSViewRepresentable {
         }
     }
 
-    func makeNSView(context: Context) -> ChromeView { ChromeView() }
-    func updateNSView(_ nsView: ChromeView, context: Context) {}
+    func makeNSView(context: Context) -> ChromeView {
+        let view = ChromeView()
+        view.onFullScreen = onFullScreen
+        return view
+    }
+    func updateNSView(_ nsView: ChromeView, context: Context) { nsView.onFullScreen = onFullScreen }
+
+    #if DEBUG
+    /// What full screen looks like without a screenshot: every window the
+    /// app has on screen, the main window's insets and where its top bar's
+    /// space is. SCREENS_FULL_SCREEN=1 enters full screen and logs this.
+    static func logFullScreen(_ window: NSWindow) {
+        guard ProcessInfo.processInfo.environment["SCREENS_FULL_SCREEN"] == "1" else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            var lines = ["full screen: screen \(window.screen?.frame ?? .zero) window \(window.frame) toolbar \(window.toolbar?.identifier ?? "none")"]
+            if let content = window.contentView {
+                lines.append("content \(content.frame) safeArea \(content.safeAreaInsets)")
+            }
+            for other in NSApp.windows where other.isVisible {
+                lines.append("window \(type(of: other)) level \(other.level.rawValue) frame \(other.frame) opaque \(other.isOpaque) alpha \(other.alphaValue) ignoresMouse \(other.ignoresMouseEvents) onScreen \(other.isOnActiveSpace)")
+            }
+            FileHandle.standardError.write(Data((lines.joined(separator: "\n") + "\n").utf8))
+        }
+    }
+    #endif
     static func dismantleNSView(_ nsView: ChromeView, coordinator: ()) { nsView.restore() }
 }
 

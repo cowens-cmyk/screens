@@ -37,6 +37,9 @@ struct PlanShell: View {
     @State private var presentFocusScroll = PresentFocusScroll()
     /// The bottom bar's room, measured: what fits beside the control bar.
     @State private var bottomBarWidth: CGFloat = 0
+    /// In full screen the window has no title bar for the top bar to sit in,
+    /// so the columns make room for it themselves.
+    @State private var isFullScreen = false
     /// The split view's own sidebar is Edit's; Present and Schedule start
     /// with it folded, so it doesn't flash open on launch.
     @State private var columns: NavigationSplitViewVisibility =
@@ -239,15 +242,15 @@ struct PlanShell: View {
     /// columns' content already starts below the title bar.
     private var workspace: some View {
         splitView
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if isFullScreen { Color.clear.frame(height: TopBarMetrics.height) }
+            }
             .overlay(alignment: .top) {
                 topBar
                     .ignoresSafeArea(.container, edges: .top)
             }
             .toolbar(removing: .title)
-            // Full screen keeps the title bar: the top bar is drawn in it, and
-            // left to auto-hide it went with the menu bar.
-            .windowToolbarFullScreenVisibility(.visible)
-            .background(TopBarWindowChrome())
+            .background(TopBarWindowChrome { isFullScreen = $0 })
             .overlay { TopBarSearchOverlay(search: search, namespace: searchSpace) }
             .onAppear { search.perform = { result, add in searchChose(result, add: add) } }
             // Simple Mode takes the window: a search left open would keep the keys.
