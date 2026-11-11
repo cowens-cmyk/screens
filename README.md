@@ -79,6 +79,10 @@ With Settings › Local API enabled, the app serves a REST and WebSocket API on 
 
 `apps/mac/Sources/MonitorsPanel.swift` has the Black switch at the bottom of the Screens panel: every audience screen and the livestream (opaque) go solid black, the stage is unchanged. See `docs/black-screen.md`.
 
+### Media Library
+
+`apps/mac/Sources/MediaLibraryView.swift` is the media bin. Its categories are folders at the top of the Media library, and Worship Backgrounds holds packs: folders inside it, made by dropping a Finder folder there. See `docs/media-library.md`.
+
 ### Assistant
 
 Window › Assistant (⇧⌘A) is a chat with Claude that answers questions about Screens and changes plans and slides through tools that run on the Mac (`apps/mac/Sources/Assistant`; the request building, streaming, tool schemas and event matching are tested in `PresenterCore/Sources/PresenterCore/Assistant`). It uses the Anthropic API key from Settings › Network & API › Assistant, the same one Sermon import uses, and Claude Opus 5.5 unless Sonnet 5.5 is chosen there. What it knows about the app comes from `apps/mac/Sources/Assistant/ScreensGuide.md`, which is bundled and loaded into its system prompt. When a feature changes, update `ScreensGuide.md` so the in-app assistant stays current.

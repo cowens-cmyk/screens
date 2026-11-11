@@ -11,6 +11,9 @@ public struct MediaImporter {
             case media(id: String, status: MediaFileStatus)
             case audio(id: String)
             case skipped(reason: String)
+            /// The same file is already there; only when the import was
+            /// asked to skip what it already has.
+            case duplicate
         }
         public let fileURL: URL
         public let outcome: Outcome
@@ -35,15 +38,22 @@ public struct MediaImporter {
 
     /// `progress` hears each file as it starts (how many are done, how
     /// many in all, and the file), so a long copy of videos shows where it is.
+    ///
+    /// Given `skippingHashes`, a picture or video whose contents match one of
+    /// them, or one already brought in by this import, comes back as
+    /// `.duplicate` instead of making a second item: dropping the same folder
+    /// on a background pack twice adds only what's new.
     public func importFiles(
         at urls: [URL], placement: LibraryHome.Placement = .unplaced,
+        skippingHashes: Set<String>? = nil,
         progress: ((_ done: Int, _ total: Int, _ file: URL) -> Void)? = nil
     ) async -> [Result] {
         var results: [Result] = []
+        var seen = skippingHashes
         let files = expandDirectories(urls)
         for (index, url) in files.enumerated() {
             progress?(index, files.count, url)
-            results.append(await importOne(url, placement: placement))
+            results.append(await importOne(url, placement: placement, seen: &seen))
         }
         return results
     }
@@ -62,20 +72,20 @@ public struct MediaImporter {
         }
     }
 
-    private func importOne(_ url: URL, placement: LibraryHome.Placement) async -> Result {
+    private func importOne(_ url: URL, placement: LibraryHome.Placement, seen: inout Set<String>?) async -> Result {
         guard FileManager.default.isReadableFile(atPath: url.path) else {
             return Result(fileURL: url, outcome: .skipped(reason: "unreadable file"))
         }
         let type = UTType(filenameExtension: url.pathExtension) ?? .data
         do {
             if type.conforms(to: .image) {
-                return Result(fileURL: url, outcome: try await importImage(url, placement: placement))
+                return Result(fileURL: url, outcome: try await importImage(url, placement: placement, seen: &seen))
             }
             if type.conforms(to: .audio) {
                 return Result(fileURL: url, outcome: try await importAudio(url, placement: placement))
             }
             if type.conforms(to: .movie) || type.conforms(to: .video) {
-                return Result(fileURL: url, outcome: try await importVideo(url, placement: placement))
+                return Result(fileURL: url, outcome: try await importVideo(url, placement: placement, seen: &seen))
             }
             return Result(fileURL: url, outcome: .skipped(reason: "not a media file (\(type.identifier))"))
         } catch {
@@ -83,13 +93,14 @@ public struct MediaImporter {
         }
     }
 
-    private func importImage(_ url: URL, placement: LibraryHome.Placement) async throws -> Result.Outcome {
+    private func importImage(_ url: URL, placement: LibraryHome.Placement, seen: inout Set<String>?) async throws -> Result.Outcome {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         else {
             return .skipped(reason: "unreadable image")
         }
         let hash = try await storeBlob(url)
+        if Self.alreadyHas(hash, seen: &seen) { return .duplicate }
         var item = MediaItem(
             id: UUID().uuidString,
             name: url.deletingPathExtension().lastPathComponent,
@@ -126,10 +137,11 @@ public struct MediaImporter {
         return .audio(id: item.id)
     }
 
-    private func importVideo(_ url: URL, placement: LibraryHome.Placement) async throws -> Result.Outcome {
+    private func importVideo(_ url: URL, placement: LibraryHome.Placement, seen: inout Set<String>?) async throws -> Result.Outcome {
         let asset = AVURLAsset(url: url)
         let probe = await Self.probeVideo(asset)
         let hash = try await storeBlob(url)
+        if Self.alreadyHas(hash, seen: &seen) { return .duplicate }
         var item = MediaItem(
             id: UUID().uuidString,
             name: url.deletingPathExtension().lastPathComponent,
@@ -148,6 +160,14 @@ public struct MediaImporter {
         item.folder = placement.folder(for: .media)
         _ = try await client.create(item, area: placement.area(for: .media)).value
         return .media(id: item.id, status: probe.status)
+    }
+
+    /// True when the import is skipping what it has and has this file;
+    /// otherwise notes it, so a second copy later in the same import is
+    /// caught too.
+    private static func alreadyHas(_ hash: String, seen: inout Set<String>?) -> Bool {
+        guard seen != nil else { return false }
+        return seen?.insert(hash).inserted == false
     }
 
     private func storeBlob(_ url: URL) async throws -> String {
