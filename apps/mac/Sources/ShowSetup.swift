@@ -1,9 +1,11 @@
 import Foundation
 import Observation
 import PresenterCore
+import SlideScene
 
 /// Which screen is which in the room: the audience screens, the livestream
-/// (keyed over the camera) and the stage display. The show view's monitors
+/// (keyed over the camera), the stage display and, where there are any,
+/// the side TVs. The show view's monitors
 /// follow these, and the livestream switch routes the stream screen.
 @MainActor
 @Observable
@@ -99,6 +101,37 @@ final class ShowSetup {
     var audienceTarget: String { didSet { save(audienceTarget, "show.audienceTarget") } }
     var streamTarget: String { didSet { save(streamTarget, "show.streamTarget"); changed() } }
     var stageTarget: String { didSet { save(stageTarget, "show.stageTarget") } }
+    var sideTVsTarget: String { didSet { save(sideTVsTarget, "show.sideTVsTarget"); sideTVsChanged() } }
+
+    /// A fourth screen for TVs beside the main screen: the room's slides with
+    /// a song's lyrics drawn larger. Off until a Mac is set up for it, so a
+    /// Mac without side TVs draws nothing extra.
+    var sideTVsOn: Bool {
+        didSet {
+            UserDefaults.standard.set(sideTVsOn, forKey: "show.sideTVs.on")
+            sideTVsChanged()
+        }
+    }
+
+    /// How many times the room's size the side TVs draw a song's lyrics.
+    var sideTVsLyricScale: Double {
+        didSet {
+            let clamped = Self.clampedLyricScale(sideTVsLyricScale)
+            if clamped != sideTVsLyricScale { sideTVsLyricScale = clamped; return }
+            UserDefaults.standard.set(sideTVsLyricScale, forKey: "show.sideTVs.lyricScale")
+            sideTVsChanged()
+        }
+    }
+
+    static func clampedLyricScale(_ value: Double) -> Double {
+        let range = SideScreenLyrics.scaleRange
+        guard value.isFinite else { return SideScreenLyrics.defaultScale }
+        return (min(max(value, range.lowerBound), range.upperBound) * 10).rounded() / 10
+    }
+
+    /// Called when the side TVs are turned on or off, moved or resized, so
+    /// their scene and its routing are made again.
+    var onSideTVsChange: (() -> Void)?
     var streamMode: StreamMode {
         didSet {
             UserDefaults.standard.set(streamMode.rawValue, forKey: "show.streamMode")
@@ -118,6 +151,10 @@ final class ShowSetup {
         audienceTarget = defaults.string(forKey: "show.audienceTarget") ?? ""
         streamTarget = defaults.string(forKey: "show.streamTarget") ?? ""
         stageTarget = defaults.string(forKey: "show.stageTarget") ?? ""
+        sideTVsTarget = defaults.string(forKey: "show.sideTVsTarget") ?? ""
+        sideTVsOn = defaults.bool(forKey: "show.sideTVs.on")
+        sideTVsLyricScale = Self.clampedLyricScale(
+            defaults.object(forKey: "show.sideTVs.lyricScale") as? Double ?? SideScreenLyrics.defaultScale)
         streamMode = defaults.string(forKey: "show.streamMode").flatMap(StreamMode.init(rawValue:)) ?? .auto
         stageMode = defaults.string(forKey: "show.stageMode").flatMap(StageMode.init(rawValue:)) ?? .worship
         stageFollowsItems = defaults.object(forKey: "show.stageFollowsItems") as? Bool ?? true
@@ -131,4 +168,11 @@ final class ShowSetup {
     }
 
     private func changed() { onChange?() }
+
+    /// The side TVs' scene comes from the live slide and their routing from
+    /// the stream router's table, so both are told.
+    private func sideTVsChanged() {
+        onSideTVsChange?()
+        onChange?()
+    }
 }

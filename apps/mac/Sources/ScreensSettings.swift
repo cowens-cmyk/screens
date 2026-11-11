@@ -2,10 +2,11 @@ import AppKit
 import CoreGraphics
 import OutputEngine
 import RenderEngine
+import SlideScene
 import SwiftUI
 
 /// Settings › Screens: the Mac's displays drawn where they sit, each one
-/// given to Audience, Livestream or Stage by dragging or picking; then each
+/// given to Audience, Livestream, Stage or Side TVs by dragging or picking; then each
 /// screen's own output, resolution and options; then NDI and DeckLink.
 /// Everything goes through ScreenOutput, the same logic the old Screen
 /// Configuration window used.
@@ -28,13 +29,16 @@ struct ScreensSettingsPane: View {
             } header: {
                 Text("Displays")
             } footer: {
-                Text("Drag Audience, Livestream or Stage onto a display, or click a display and choose below. A display shows one screen. Right-click a display to identify it.")
+                Text("Drag a screen onto a display, or click a display and choose below. A display shows one screen. Right-click a display to identify it.")
             }
             if let display = selectedDisplay {
                 SelectedDisplaySection(display: display, render: render)
             }
-            ForEach(ShowScreen.allCases) { role in
+            ForEach(ShowScreen.inUse) { role in
                 ScreenOutputSection(role: role, render: render)
+            }
+            if !ShowSetup.shared.sideTVsOn {
+                SideTVsOffSection(render: render)
             }
             NetworkOutputsSections(render: render)
         }
@@ -67,6 +71,7 @@ extension ShowScreen {
         case .audience: .blue
         case .livestream: .red
         case .stage: .orange
+        case .sideTVs: .teal
         }
     }
 }
@@ -95,7 +100,7 @@ struct DisplayArrangementView: View {
                 Text("Drag to a display:")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                ForEach(ShowScreen.allCases) { role in
+                ForEach(ShowScreen.inUse) { role in
                     RoleChip(role: role)
                         .draggable(role.rawValue) { RoleChip(role: role) }
                         .help("Drag onto a display to show \(role.name) there")
@@ -159,7 +164,7 @@ struct DisplayArrangementView: View {
         .contentShape(Rectangle())
         .onTapGesture { selection = display.uuid }
         .contextMenu {
-            ForEach(ShowScreen.allCases) { candidate in
+            ForEach(ShowScreen.inUse) { candidate in
                 Toggle(candidate.name, isOn: Binding(
                     get: { role == candidate },
                     set: { _ in ScreenRouting.assign(display: display.uuid, to: candidate, render: render) }))
@@ -320,7 +325,7 @@ private struct SelectedDisplaySection: View {
             )) {
                 Text("None").tag(ShowScreen?.none)
                 Divider()
-                ForEach(ShowScreen.allCases) { Text($0.name).tag(ShowScreen?.some($0)) }
+                ForEach(ShowScreen.inUse) { Text($0.name).tag(ShowScreen?.some($0)) }
             }
             .frame(maxWidth: 360)
             LabeledContent("Resolution") {
@@ -392,6 +397,7 @@ private struct ScreenOutputSection: View {
                 switch role {
                 case .livestream: livestreamOptions(output)
                 case .stage: stageOptions
+                case .sideTVs: sideTVsOptions(output)
                 case .audience: EmptyView()
                 }
             } header: {
@@ -402,6 +408,8 @@ private struct ScreenOutputSection: View {
             } footer: {
                 if role == .livestream {
                     Text(output.alphaCaption)
+                } else if role == .sideTVs {
+                    Text(SideTVsOffSection.caption)
                 }
             }
         }
@@ -480,6 +488,48 @@ private struct ScreenOutputSection: View {
         }
     }
 
+    /// How much larger a song's lyrics are, a second display for a second
+    /// TV, and the switch that takes the side TVs away again.
+    @ViewBuilder
+    private func sideTVsOptions(_ output: ScreenOutput) -> some View {
+        LabeledContent("Lyrics size") {
+            HStack(spacing: 8) {
+                Slider(
+                    value: $setup.sideTVsLyricScale,
+                    in: SideScreenLyrics.scaleRange, step: 0.1
+                )
+                .frame(maxWidth: 220)
+                Text(SideTVsOffSection.scaleText(setup.sideTVsLyricScale))
+                    .monospacedDigit()
+                    .frame(width: 40, alignment: .trailing)
+            }
+        }
+        .settingsAnchor("screens.sideTVs.size")
+        Picker("Second display", selection: Binding(
+            get: { output.mirrorDisplay ?? "" },
+            set: { output.setMirror($0.isEmpty ? nil : $0) }
+        )) {
+            Text("None").tag("")
+            ForEach(outputs.displays.filter { $0.uuid != output.display }) { display in
+                Text(display.isMain ? "\(display.name) (main display)" : display.name)
+                    .tag(display.uuid)
+            }
+            if let mirror = output.mirrorDisplay, !outputs.displays.contains(where: { $0.uuid == mirror }) {
+                Text("Second display (disconnected)").tag(mirror)
+            }
+        }
+        .frame(maxWidth: 360)
+        .disabled(output.display == nil)
+        .help(output.display == nil
+            ? "Put the side TVs on a display first."
+            : "For a second TV on its own cable. A TV fed from a splitter needs nothing here.")
+        Toggle("Use side TVs", isOn: Binding(
+            get: { setup.sideTVsOn },
+            set: { ShowScreens.setSideTVs($0, render: render) }
+        ))
+        .toggleStyle(.switch)
+    }
+
     @ViewBuilder
     private var stageOptions: some View {
         Picker("Shows", selection: $setup.stageMode) {
@@ -489,6 +539,39 @@ private struct ScreenOutputSection: View {
         .fixedSize()
         Toggle("Follow what's live", isOn: $setup.stageFollowsItems)
             .toggleStyle(.switch)
+    }
+}
+
+/// Side TVs while they're off: what they are and the switch that adds
+/// them. Off, there's no screen, so the Mac draws nothing for them.
+private struct SideTVsOffSection: View {
+    let render: RenderContext
+
+    static let caption = "Only songs change: their lyrics are drawn larger and shrink to fit, never smaller than on the audience screen. Everything else matches the audience screen."
+
+    static func scaleText(_ scale: Double) -> String {
+        String(format: "%.1f\u{D7}", scale)
+    }
+
+    var body: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { ShowSetup.shared.sideTVsOn },
+                set: { ShowScreens.setSideTVs($0, render: render) }
+            )) {
+                Text("Use side TVs")
+                Text(ShowScreen.sideTVs.summary)
+            }
+            .toggleStyle(.switch)
+            .settingsAnchor("screens.sideTVs")
+        } header: {
+            HStack(spacing: 6) {
+                Circle().fill(ShowScreen.sideTVs.tint).frame(width: 8, height: 8)
+                Text(ShowScreen.sideTVs.name)
+            }
+        } footer: {
+            Text(Self.caption)
+        }
     }
 }
 
@@ -513,7 +596,7 @@ private struct NetworkOutputsSections: View {
         Section {
             LabeledContent {
                 HStack(spacing: 6) {
-                    ForEach(ShowScreen.allCases) { role in
+                    ForEach(ShowScreen.inUse) { role in
                         roleToggle(role, isOn: ScreenOutput(role, render: render)?.ndiOn == true) { on in
                             ScreenOutput(role, render: render)?.choose(on ? "ndi" : "none")
                         }
@@ -537,7 +620,7 @@ private struct NetworkOutputsSections: View {
                 LabeledContent(device.name) {
                     HStack(spacing: 6) {
                         let carried = ScreenRouting.roles(onDeckLink: device.persistentID, render: render)
-                        ForEach(ShowScreen.allCases) { role in
+                        ForEach(ShowScreen.inUse) { role in
                             roleToggle(role, isOn: carried.contains(role)) { on in
                                 ScreenOutput(role, render: render)?.setDeckLink(device, on: on)
                             }

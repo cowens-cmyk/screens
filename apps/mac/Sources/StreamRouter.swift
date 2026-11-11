@@ -16,7 +16,8 @@ import SlideScene
 /// presentation's own Livestream theme, then its type's choice in Screens by
 /// Type, then the theme's pick for the slide's category, then the theme's
 /// lower-third theme, and otherwise the camera stays clear. Every other
-/// screen carries every layer.
+/// screen carries every layer; the side TVs carry the room's with a song's
+/// lyrics larger (SideScreenLyrics).
 @MainActor
 @Observable
 final class StreamRouter {
@@ -126,6 +127,13 @@ final class StreamRouter {
                 themeRouting[stream] = Self.imageKey
                 images[Self.imageKey] = mediaID
             }
+        }
+        // The side TVs read the room's scene with larger lyrics, which
+        // ServiceControls makes under this key while they're on. Every layer
+        // goes to them, as to the room.
+        let sideTVs = setup.sideTVsTarget
+        if setup.sideTVsOn, !sideTVs.isEmpty, sideTVs != stream {
+            themeRouting[sideTVs] = SideScreenLyrics.variantKey
         }
         outputs.setLayerRouting(routing)
         outputs.setSlideThemeRouting(themeRouting)

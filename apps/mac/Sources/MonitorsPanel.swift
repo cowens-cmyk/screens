@@ -5,8 +5,8 @@ import SlideScene
 import SwiftUI
 
 /// The show view's right column: a live preview of every screen Screens is
-/// driving — the room, the livestream and the stage first, then any other
-/// outputs. Each can be hidden from the column; all show by default, and
+/// driving — the room, the side TVs, the livestream and the stage first,
+/// then any other outputs. Each can be hidden from the column; all show by default, and
 /// the column scrolls when they don't fit. Clear All lives in the control
 /// bar over the slides, so it's there even when this is folded away.
 struct MonitorsPanel: View {
@@ -58,6 +58,7 @@ struct MonitorsPanel: View {
                                 .allowsHitTesting(false)
                         }
                     }
+                    if let sideTVsTarget, shows(sideTVsTarget) { sideTVsMonitor(sideTVsTarget) }
                     if shows(streamTarget) { streamMonitor }
                     if shows(stageTarget) { stageMonitor }
                     ForEach(otherScreens.filter { shows($0.id) }, id: \.id) { screen in
@@ -132,7 +133,7 @@ struct MonitorsPanel: View {
 
     /// One screen the column previews, for the folded strip.
     struct Entry: Identifiable {
-        enum Role { case audience, stream, stage, other }
+        enum Role { case audience, sideTVs, stream, stage, other }
         let id: String
         let title: String
         let target: String?
@@ -150,9 +151,10 @@ struct MonitorsPanel: View {
             list.append(Entry(id: title + (target ?? ""), title: title, target: target, role: role))
         }
         add("Audience", targets.audience, .audience)
+        if let sideTVs = targets.sideTVs { add(ShowScreen.sideTVs.name, sideTVs, .sideTVs) }
         add("Livestream", targets.stream, .stream)
         add("Stage", targets.stage, .stage)
-        let roles = Set([targets.audience, targets.stream, targets.stage].compactMap { $0 })
+        let roles = Set([targets.audience, targets.sideTVs, targets.stream, targets.stage].compactMap { $0 })
         for screen in PreviewTargets.outputScreens(render) where !roles.contains(screen.id) {
             add(screen.name, screen.id, .other)
         }
@@ -176,7 +178,7 @@ struct MonitorsPanel: View {
     }
 
     private var otherScreens: [(id: String, name: String)] {
-        let roles = Set([audienceTarget, streamTarget, stageTarget].compactMap { $0 })
+        let roles = Set([audienceTarget, sideTVsTarget, streamTarget, stageTarget].compactMap { $0 })
         return PreviewTargets.outputScreens(render).filter { !roles.contains($0.id) }
     }
 
@@ -186,6 +188,7 @@ struct MonitorsPanel: View {
         }
         var list: [(id: String, label: String)] = []
         if let audienceTarget { list.append((audienceTarget, "Audience — \(name(audienceTarget))")) }
+        if let sideTVsTarget { list.append((sideTVsTarget, ShowScreen.sideTVs.name)) }
         if let streamTarget { list.append((streamTarget, "Livestream — \(name(streamTarget))")) }
         if let stageTarget { list.append((stageTarget, "Stage — \(name(stageTarget))")) }
         list += otherScreens.map { ($0.id, $0.name) }
@@ -194,6 +197,7 @@ struct MonitorsPanel: View {
 
     private var allHidden: Bool {
         let shown = [audienceTarget, streamTarget, stageTarget].filter { shows($0) }.count
+            + [sideTVsTarget].compactMap { $0 }.filter { shows($0) }.count
             + otherScreens.filter { shows($0.id) }.count
         return shown == 0
     }
@@ -208,6 +212,7 @@ struct MonitorsPanel: View {
     private var stageTarget: String? { targets.stage }
     private var streamTarget: String? { targets.stream }
     private var audienceTarget: String? { targets.audience }
+    private var sideTVsTarget: String? { targets.sideTVs }
 
     // MARK: Monitors
 
@@ -291,6 +296,48 @@ struct MonitorsPanel: View {
             }
         }
         .screenCard(HopeStyle.amber)
+    }
+
+    /// The room's slides with a song's lyrics larger, and how much larger,
+    /// as a small menu like the other screens' modes.
+    private func sideTVsMonitor(_ target: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                ScreenLabel(title: ShowScreen.sideTVs.name, color: HopeStyle.teal)
+                Spacer()
+                Menu {
+                    Picker("Lyrics Size", selection: $setup.sideTVsLyricScale) {
+                        ForEach(Self.lyricScales(including: setup.sideTVsLyricScale), id: \.self) { scale in
+                            Text(Self.scaleTitle(scale)).tag(scale)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Text("Lyrics \(Self.scaleTitle(setup.sideTVsLyricScale))")
+                }
+                .menuStyle(.borderlessButton)
+                .controlSize(.small)
+                .fixedSize()
+                .help("How much larger the side TVs draw song lyrics than the audience screen. Other slides look the same.")
+            }
+            LiveSceneView(render: render, screenTargetID: target)
+                .frame(width: previewSize(target).width, height: previewSize(target).height)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(0.08)))
+        }
+        .screenCard(HopeStyle.teal)
+    }
+
+    /// The sizes the menu offers, with the one set in Settings when it's
+    /// between them.
+    static func lyricScales(including current: Double) -> [Double] {
+        let steps: [Double] = [1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.5]
+        return steps.contains(current) ? steps : (steps + [current]).sorted()
+    }
+
+    static func scaleTitle(_ scale: Double) -> String {
+        String(format: "%.1f\u{D7}", scale)
     }
 
     @ViewBuilder

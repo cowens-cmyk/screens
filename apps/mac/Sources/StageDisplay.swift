@@ -96,6 +96,8 @@ struct ShowTargets {
     var audience: String?
     var stream: String?
     var stage: String?
+    /// Only while the side TVs are turned on; never guessed from names.
+    var sideTVs: String?
 
     init(setup: ShowSetup, render: RenderContext) {
         let screens = PreviewTargets.screens(render)
@@ -117,10 +119,13 @@ struct ShowTargets {
         } else {
             stream = named(["stream", "live", "broadcast", "lower"])
         }
+        if setup.sideTVsOn, screens.contains(where: { $0.id == setup.sideTVsTarget }) {
+            sideTVs = setup.sideTVsTarget
+        }
         if screens.contains(where: { $0.id == setup.audienceTarget }) {
             audience = setup.audienceTarget
         } else {
-            let taken = Set([stage, stream].compactMap { $0 })
+            let taken = Set([stage, stream, sideTVs].compactMap { $0 })
             audience = named(["audience", "main", "front", "projector"])
                 ?? screens.first { !taken.contains($0.id) }?.id
         }

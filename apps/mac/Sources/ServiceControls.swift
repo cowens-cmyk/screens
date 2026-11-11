@@ -47,6 +47,7 @@ final class ServiceControls {
         }
 
         ShowScreens.ensure(render: render)
+        ShowSetup.shared.onSideTVsChange = { [weak self] in self?.apply() }
         NDIScreenOutputs.shared.restore(render: render)
         DeckLinkScreenOutputs.shared.restore(render: render)
         DeckLinkAutoSetup.shared.start()
@@ -1875,6 +1876,13 @@ final class ServiceControls {
                 return CGSize(width: width, height: height)
             }
             variants[key] = StreamLowerThirdImage.scene(replacingSlideOf: base, mediaID: mediaID, imageSize: size)
+        }
+        // The side TVs carry the room's scene with a song's lyrics larger,
+        // made from the same base each time so they never drift from it.
+        let setup = ShowSetup.shared
+        if setup.sideTVsOn {
+            variants[SideScreenLyrics.variantKey] = SideScreenLyrics.scene(
+                base, presentation: state.liveSlide?.presentation, scale: setup.sideTVsLyricScale)
         }
         render.setLiveScenes(base, variants: variants)
         syncScreenVideo()

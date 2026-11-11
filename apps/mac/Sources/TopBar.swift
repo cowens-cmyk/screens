@@ -503,7 +503,7 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
             }
             if fit != .tight {
                 TopBarGroup {
-                    ForEach(ShowScreen.allCases) { ScreenStatusCell(role: $0, render: render) }
+                    ForEach(ShowScreen.inUse) { ScreenStatusCell(role: $0, render: render) }
                 }
             }
             if let screens { TopBarGroup { toggleCell(screens) } }

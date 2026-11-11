@@ -3,10 +3,14 @@ import OutputEngine
 import RenderEngine
 import SwiftUI
 
-/// The three screens this app drives: what the room sees, what goes over
-/// the camera, and what the platform sees. There are no others.
+/// The screens this app drives: what the room sees, what goes over the
+/// camera, and what the platform sees, plus the side TVs for a room that
+/// has them. There are no others.
 enum ShowScreen: String, CaseIterable, Identifiable {
     case audience, livestream, stage
+    /// TVs beside the main screen: the room's slides with a song's lyrics
+    /// drawn larger. Only there when turned on in Settings › Screens.
+    case sideTVs
 
     var id: String { rawValue }
 
@@ -15,6 +19,7 @@ enum ShowScreen: String, CaseIterable, Identifiable {
         case .audience: "Audience"
         case .livestream: "Livestream"
         case .stage: "Stage"
+        case .sideTVs: "Side TVs"
         }
     }
 
@@ -25,7 +30,14 @@ enum ShowScreen: String, CaseIterable, Identifiable {
         case .audience: "The slides, media and alerts the room sees."
         case .livestream: "Laid over the camera: transparent, a lower third, or the full slide."
         case .stage: "Lyrics, the next slide, clock and timers for the platform."
+        case .sideTVs: "The audience slides with song lyrics drawn larger, for TVs beside the main screen."
         }
+    }
+
+    /// The screens this Mac drives: the side TVs only when turned on.
+    @MainActor
+    static var inUse: [ShowScreen] {
+        allCases.filter { $0 != .sideTVs || ShowSetup.shared.sideTVsOn }
     }
 
     @MainActor
@@ -34,6 +46,7 @@ enum ShowScreen: String, CaseIterable, Identifiable {
         case .audience: setup.audienceTarget
         case .livestream: setup.streamTarget
         case .stage: setup.stageTarget
+        case .sideTVs: setup.sideTVsTarget
         }
     }
 
@@ -43,6 +56,7 @@ enum ShowScreen: String, CaseIterable, Identifiable {
         case .audience: if setup.audienceTarget != id { setup.audienceTarget = id }
         case .livestream: if setup.streamTarget != id { setup.streamTarget = id }
         case .stage: if setup.stageTarget != id { setup.stageTarget = id }
+        case .sideTVs: if setup.sideTVsTarget != id { setup.sideTVsTarget = id }
         }
     }
 
@@ -62,27 +76,16 @@ enum ShowScreens {
     static func ensure(render: RenderContext) {
         let outputs = render.outputs
         var claimed: Set<UUID> = []
-        for role in ShowScreen.allCases {
-            let existing = adoptable(for: role, in: outputs, excluding: claimed)
-            let screen: PlaceholderScreen?
-            if let existing {
-                screen = existing.name == role.name
-                    ? existing
-                    : outputs.reconfigurePlaceholderScreen(
-                        id: existing.id, name: role.name, width: existing.width,
-                        height: existing.height, framesPerSecond: existing.framesPerSecond)
-            } else {
-                screen = outputs.addPlaceholderScreen(name: role.name, width: 1920, height: 1080)
-                DiagnosticsStore.shared.note("screens.created", detail: role.name)
-            }
-            guard let screen else { continue }
+        for role in ShowScreen.inUse {
+            guard let screen = make(role, in: outputs, excluding: claimed) else { continue }
             claimed.insert(screen.id)
-            outputs.setRole(role.role, forScreen: screen.id)
-            role.setTarget(screen.id.uuidString)
             // Slices, masks and keystone placement were edited in the old
             // Screen Configuration, which is gone; nothing should be left
-            // bending a screen that no one can see the setting for.
-            for slice in outputs.screenSlices[screen.id] ?? [] {
+            // bending a screen that no one can see the setting for. The side
+            // TVs' second display is a whole-picture copy set in Settings ›
+            // Screens, so it stays while it still has a display.
+            for slice in outputs.screenSlices[screen.id] ?? []
+            where role != .sideTVs || !ScreenOutput.isMirror(slice, outputs: outputs) {
                 outputs.removeSlice(id: slice.id)
             }
             if !outputs.masks(forScreen: screen.id).isEmpty {
@@ -97,6 +100,59 @@ enum ShowScreens {
         for extra in outputs.placeholderScreens where !claimed.contains(extra.id) {
             outputs.removePlaceholderScreen(id: extra.id)
             DiagnosticsStore.shared.note("screens.removedExtra", detail: extra.name)
+        }
+    }
+
+    /// The role's screen, adopted from what's there or made, with its role
+    /// and target set.
+    private static func make(
+        _ role: ShowScreen, in outputs: OutputManager, excluding claimed: Set<UUID>
+    ) -> PlaceholderScreen? {
+        let existing = adoptable(for: role, in: outputs, excluding: claimed)
+        let screen: PlaceholderScreen?
+        if let existing {
+            screen = existing.name == role.name
+                ? existing
+                : outputs.reconfigurePlaceholderScreen(
+                    id: existing.id, name: role.name, width: existing.width,
+                    height: existing.height, framesPerSecond: existing.framesPerSecond)
+        } else {
+            screen = outputs.addPlaceholderScreen(name: role.name, width: 1920, height: 1080)
+            DiagnosticsStore.shared.note("screens.created", detail: role.name)
+        }
+        guard let screen else { return nil }
+        outputs.setRole(role.role, forScreen: screen.id)
+        role.setTarget(screen.id.uuidString)
+        return screen
+    }
+
+    /// Turns the side TVs on or off while the app runs. Off takes the
+    /// screen away with everything carrying it (its displays, NDI and
+    /// DeckLink ports) so nothing keeps sending a screen that's gone and the
+    /// Mac stops drawing it.
+    static func setSideTVs(_ on: Bool, render: RenderContext) {
+        let setup = ShowSetup.shared
+        let outputs = render.outputs
+        if on {
+            guard ScreenOutput(.sideTVs, render: render) == nil else {
+                if !setup.sideTVsOn { setup.sideTVsOn = true }
+                return
+            }
+            let taken = Set(ShowScreen.allCases.filter { $0 != .sideTVs }
+                .compactMap { $0.screen(in: outputs)?.id })
+            guard make(.sideTVs, in: outputs, excluding: taken) != nil else { return }
+            setup.sideTVsOn = true
+            DiagnosticsStore.shared.note("screens.sideTVs", detail: "on")
+        } else {
+            if let output = ScreenOutput(.sideTVs, render: render) {
+                output.setMirror(nil)
+                NDIScreenOutputs.shared.disable(screenID: output.screen.id)
+                DeckLinkScreenOutputs.shared.disable(screenID: output.screen.id, render: render)
+                outputs.assignPlaceholderDevice(placeholderID: output.screen.id, displayUUID: nil)
+                outputs.removePlaceholderScreen(id: output.screen.id)
+            }
+            setup.sideTVsOn = false
+            DiagnosticsStore.shared.note("screens.sideTVs", detail: "off")
         }
     }
 
@@ -182,6 +238,14 @@ struct ScreenOutput {
 
     func choose(_ token: String) {
         guard token != current, token != Self.severalPortsToken else { return }
+        defer {
+            // The side TVs' second display copies the first, so it goes
+            // when the screen leaves its display, and a copy left on the
+            // display the screen just moved to has nothing left to show.
+            if role == .sideTVs {
+                if token.hasPrefix("display:") { pruneMirrors() } else { setMirror(nil) }
+            }
+        }
         if token.hasPrefix("decklink:"),
            let id = Int64(token.dropFirst("decklink:".count)),
            let device = catalog.devices.first(where: { $0.persistentID == id }) {
@@ -211,6 +275,43 @@ struct ScreenOutput {
         }
     }
 
+    // MARK: Second display
+
+    /// A whole-picture copy of a screen on a display: how the side TVs go to
+    /// a second display. The output windows draw it from the same scene as
+    /// the first, so both TVs change on the same frame.
+    static func isMirror(_ slice: OutputSliceState, outputs: OutputManager) -> Bool {
+        slice.sourceRect == Compositor.fullSourceRect && outputs.placeholderDevices[slice.id] != nil
+    }
+
+    /// The side TVs' second display, when they're on two.
+    var mirrorDisplay: DisplayUUID? {
+        (outputs.screenSlices[screen.id] ?? [])
+            .first { Self.isMirror($0, outputs: outputs) }
+            .flatMap { outputs.placeholderDevices[$0.id] }
+    }
+
+    /// Shows the side TVs on a second display as well, or (nil) only on
+    /// their first. Only while the first is a display: a copy of a screen
+    /// that goes out over NDI or DeckLink would stop its own picture.
+    func setMirror(_ wanted: DisplayUUID?) {
+        guard wanted != mirrorDisplay || (outputs.screenSlices[screen.id]?.count ?? 0) > 1 else { return }
+        for slice in outputs.screenSlices[screen.id] ?? [] {
+            outputs.removeSlice(id: slice.id)
+        }
+        guard let wanted, role == .sideTVs, display != nil, wanted != display,
+              let slice = outputs.addSlice(toScreen: screen.id, name: "\(role.name) 2")
+        else { return }
+        outputs.assignPlaceholderDevice(placeholderID: slice.id, displayUUID: wanted)
+    }
+
+    /// Drops copies whose display was given to something else.
+    private func pruneMirrors() {
+        for slice in outputs.screenSlices[screen.id] ?? [] where !Self.isMirror(slice, outputs: outputs) {
+            outputs.removeSlice(id: slice.id)
+        }
+    }
+
     var status: String? {
         if deckLinkBacking != nil {
             switch DeckLinkScreenOutputs.shared.status(for: screen.id) {
@@ -236,6 +337,9 @@ struct ScreenOutput {
            !outputs.displays.contains(where: { $0.uuid == backing }) {
             return "That display isn't connected. The screen comes back when it is."
         }
+        if let mirror = mirrorDisplay, !outputs.displays.contains(where: { $0.uuid == mirror }) {
+            return "The second display isn't connected. It comes back when it is."
+        }
         return nil
     }
 
@@ -245,6 +349,9 @@ struct ScreenOutput {
         if case .failed? = NDIScreenOutputs.shared.status(for: screen.id) { return true }
         if deckLinkBacking == nil, !ndiOn, let backing = outputs.placeholderDevices[screen.id],
            !outputs.displays.contains(where: { $0.uuid == backing }) {
+            return true
+        }
+        if let mirror = mirrorDisplay, !outputs.displays.contains(where: { $0.uuid == mirror }) {
             return true
         }
         return false
@@ -330,17 +437,26 @@ struct ScreenOutput {
 @MainActor
 enum ScreenRouting {
     static func role(on display: DisplayUUID, render: RenderContext) -> ShowScreen? {
-        ShowScreen.allCases.first { ScreenOutput($0, render: render)?.display == display }
+        ShowScreen.allCases.first { role in
+            guard let output = ScreenOutput(role, render: render) else { return false }
+            return output.display == display || output.mirrorDisplay == display
+        }
     }
 
     /// A display carries one screen. Giving it a screen moves that screen
     /// off wherever it was, and a screen the display had is left with no
-    /// output; None just takes the display's screen off it.
+    /// output; None just takes the display's screen off it (for the side
+    /// TVs' second display, just that copy).
     static func assign(display: DisplayUUID, to role: ShowScreen?, render: RenderContext) {
         if let role {
             ScreenOutput(role, render: render)?.choose("display:\(display)")
-        } else if let current = Self.role(on: display, render: render) {
-            ScreenOutput(current, render: render)?.choose("none")
+        } else if let current = Self.role(on: display, render: render),
+                  let output = ScreenOutput(current, render: render) {
+            if output.mirrorDisplay == display {
+                output.setMirror(nil)
+            } else {
+                output.choose("none")
+            }
         }
     }
 

@@ -77,7 +77,7 @@ enum SettingsIndex {
         SettingsEntry(
             id: "screens.arrangement", category: .screens,
             title: "Displays",
-            caption: "Drag Audience, Livestream or Stage onto a display, or click a display to choose.",
+            caption: "Drag Audience, Livestream, Stage or Side TVs onto a display, or click a display to choose.",
             keywords: "display arrangement monitor projector tv connected resolution refresh hz identify drag outputs screen configuration setup"),
         SettingsEntry(
             id: "screens.audience", category: .screens,
@@ -99,6 +99,16 @@ enum SettingsIndex {
             title: "Stage",
             caption: ShowScreen.stage.summary,
             keywords: "stage confidence monitor platform output display decklink ndi"),
+        SettingsEntry(
+            id: "screens.sideTVs", category: .screens,
+            title: "Side TVs",
+            caption: ShowScreen.sideTVs.summary,
+            keywords: "side tvs tv televisions lyrics larger bigger mirror second display hdmi splitter audience wall led"),
+        SettingsEntry(
+            id: "screens.sideTVs.size", category: .screens,
+            title: "Side TVs lyrics size",
+            caption: "How many times larger the side TVs draw a song's lyrics than the audience screen.",
+            keywords: "side tvs lyrics size scale larger bigger text font"),
         SettingsEntry(
             id: "screens.ndi", category: .screens,
             title: "Send over NDI",
