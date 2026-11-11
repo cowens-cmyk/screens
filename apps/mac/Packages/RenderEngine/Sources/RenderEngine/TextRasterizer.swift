@@ -127,6 +127,29 @@ public enum TextRasterizer {
         return !fitsFrame(probe, fontScale: scale, sceneFrame: inset)
     }
 
+    /// How many lines the text takes in a box this size: its own line
+    /// breaks plus every wrap, at the size it is drawn (shrunk first when it
+    /// auto-shrinks). Lines that run past the bottom of the box still count,
+    /// since the question is how many there are, not how many show. Chords
+    /// are left out: they sit above the words and don't move where the words
+    /// wrap. Nil for text that isn't laid out in lines (paths, tickers,
+    /// scrolling).
+    public static func wrappedLineCount(for text: StyledText, sceneFrame: CGSize) -> Int? {
+        guard text.pathData == nil, text.tickerSpeed == 0, text.scroll == nil else { return nil }
+        guard !text.string.isEmpty, sceneFrame.width > 0, sceneFrame.height > 0, text.fontSize > 0 else { return 0 }
+        var plain = text
+        plain.chords = []
+        plain.balancedLineInsets = []
+        let fontScale = fittedFontScale(for: plain, sceneFrame: sceneFrame)
+        let width = insetLayoutSize(for: plain, frame: sceneFrame).width
+        let attributed = attributedString(for: plain, fontScale: fontScale, pixelScale: 1)
+        let framesetter = CTFramesetterCreateWithAttributedString(attributed)
+        let path = CGPath(
+            rect: CGRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude / 2), transform: nil)
+        let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
+        return CFArrayGetCount(CTFrameGetLines(frame))
+    }
+
     private static let pagesCache = Locked<[FitKey: [String]]>([:])
 
     public static func pages(for text: StyledText, sceneFrame: CGSize) -> [String] {

@@ -30,10 +30,13 @@ extension ShepherdSync {
 
     static let importSongsKey = "shepherd.importSongs"
 
-    func importOptions(playingKey: String?, model: AppModel) -> ShepherdSongImport.Options {
-        ShepherdSongImport.Options(
-            themeId: model.slideBuilding.lyricsImportThemeId ?? "",
-            removePunctuation: LyricImportSettings.removePunctuation, playingKey: playingKey)
+    /// `themeId`: the theme the song will be shown in, when it isn't the
+    /// lyrics import theme (an update keeps the song's own theme).
+    func importOptions(playingKey: String?, model: AppModel, themeId: String? = nil) -> ShepherdSongImport.Options {
+        let theme = themeId.flatMap { $0.isEmpty ? nil : $0 } ?? model.slideBuilding.lyricsImportThemeId ?? ""
+        return ShepherdSongImport.Options(
+            themeId: theme, removePunctuation: LyricImportSettings.removePunctuation, playingKey: playingKey,
+            lineCount: SongSlideFit.lineCount(themeId: theme, model: model))
     }
 
     /// The song pass over these plans. Song details are fetched once per
@@ -52,6 +55,9 @@ extension ShepherdSync {
         var refreshed = Set<String>()
         var imported = 0, updated = 0, arranged = 0
         let client = client
+        // Songs are split to fit their theme's Lyrics box, so the themes
+        // have to be here before any is built.
+        await model.resident.ready([.theme])
 
         func detail(_ songID: String) async -> ShepherdClient.SongDetail? {
             if let cached = details[songID] { return cached }
@@ -186,7 +192,8 @@ extension ShepherdSync {
             return false
         case .update:
             guard let fresh = ShepherdSongImport.presentation(
-                song: detail, arrangement: arrangement, options: importOptions(playingKey: nil, model: model))
+                song: detail, arrangement: arrangement,
+                options: importOptions(playingKey: nil, model: model, themeId: presentation.themeId))
             else { return false }
             newerCharts[presentation.id] = nil
             model.updatePresentation(presentation.id) { current in
@@ -197,7 +204,8 @@ extension ShepherdSync {
             return true
         case .edited:
             let fresh = ShepherdSongImport.presentation(
-                song: detail, arrangement: arrangement, options: importOptions(playingKey: nil, model: model))
+                song: detail, arrangement: arrangement,
+                options: importOptions(playingKey: nil, model: model, themeId: presentation.themeId))
             newerCharts[presentation.id] = ShepherdNewerChart(
                 songID: detail.id, arrangementID: arrangement?.id,
                 summary: fresh.flatMap { ShepherdSongImport.changeSummary(from: presentation, to: $0) })
@@ -214,8 +222,10 @@ extension ShepherdSync {
         do {
             let detail = try await client.song(id: songID)
             let arrangement = ShepherdSongImport.trackedArrangement(of: detail, id: presentation.shepherdArrangementId)
+            await model.resident.ready([.theme])
             guard let fresh = ShepherdSongImport.presentation(
-                song: detail, arrangement: arrangement, options: importOptions(playingKey: nil, model: model))
+                song: detail, arrangement: arrangement,
+                options: importOptions(playingKey: nil, model: model, themeId: presentation.themeId))
             else { return "Shepherd has no lyrics or chord chart for this song." }
             let task = model.updatePresentation(presentationID) { current in
                 current = ShepherdSongImport.replacing(current, with: fresh)
@@ -236,8 +246,11 @@ extension ShepherdSync {
         _ presentationID: String, song: ShepherdClient.SongDetail, arrangement: ShepherdClient.SongArrangement?,
         playingKey: String?, model: AppModel
     ) async -> String? {
+        await model.resident.ready([.theme])
+        let themeId = (try? await model.client.loadValue(Presentation.self, id: presentationID))?.themeId
         guard let fresh = ShepherdSongImport.presentation(
-            song: song, arrangement: arrangement, options: importOptions(playingKey: playingKey, model: model))
+            song: song, arrangement: arrangement,
+            options: importOptions(playingKey: playingKey, model: model, themeId: themeId))
         else { return "Shepherd has no lyrics or chord chart for this song." }
         let task = model.updatePresentation(presentationID) { current in
             var updated = ShepherdSongImport.replacing(current, with: fresh)

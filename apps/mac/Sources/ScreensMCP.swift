@@ -223,12 +223,19 @@ final class ScreensMCP {
     private func buildSong(_ args: JSONValue) async throws -> MCPToolResult {
         let lines = args["lines_per_slide"]?.intValue
         let playing = Self.nonEmpty(args["playing_key"]?.stringValue)
-        var options = ShepherdSync.shared.importOptions(playingKey: playing, model: model)
+        // Slides are split to fit the theme the song is shown in: the one
+        // asked for, else the song's own when it replaces one, else the
+        // lyrics import theme.
+        await model.resident.ready([.theme])
+        var showingTheme: String?
         if let theme = Self.nonEmpty(args["theme_id"]?.stringValue) {
             await model.themesFilled([theme])
             guard model.theme(theme) != nil else { throw MCPToolError("No theme \(theme). list_themes gives the ids.") }
-            options.themeId = theme
+            showingTheme = theme
+        } else if let existingID = Self.nonEmpty(args["presentation_id"]?.stringValue) {
+            showingTheme = (try? await toolbox.presentation(existingID))?.themeId
         }
+        var options = ShepherdSync.shared.importOptions(playingKey: playing, model: model, themeId: showingTheme)
         if let lines { options.linesPerSlide = max(1, min(8, lines)) }
 
         var built: Presentation

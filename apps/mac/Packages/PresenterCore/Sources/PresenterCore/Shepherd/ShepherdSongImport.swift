@@ -13,18 +13,26 @@ import Foundation
 /// without asking.
 public enum ShepherdSongImport {
 
-    public struct Options: Sendable, Equatable {
+    public struct Options: Sendable {
         public var themeId: String
         public var linesPerSlide: Int
         public var removePunctuation: Bool
         /// The key the band plays in (the plan's), for the stage display.
         public var playingKey: String?
+        /// Measures lyrics in the theme they'll be shown in. With it, a
+        /// slide whose lines wrap past two on screen is split
+        /// (LyricSlideFit); without it, slides are cut by line count alone.
+        public var lineCount: LyricSlideFit.LineCount?
 
-        public init(themeId: String = "", linesPerSlide: Int = 2, removePunctuation: Bool = true, playingKey: String? = nil) {
+        public init(
+            themeId: String = "", linesPerSlide: Int = 2, removePunctuation: Bool = true, playingKey: String? = nil,
+            lineCount: LyricSlideFit.LineCount? = nil
+        ) {
             self.themeId = themeId
             self.linesPerSlide = linesPerSlide
             self.removePunctuation = removePunctuation
             self.playingKey = playingKey
+            self.lineCount = lineCount
         }
     }
 
@@ -149,6 +157,11 @@ public enum ShepherdSongImport {
         presentation.shepherdSongId = song.id
         presentation.shepherdArrangementId = arrangement?.id
         presentation.shepherdChartHash = chartHash(song: song, arrangement: arrangement)
+        // Split before the fingerprint is taken, so a fresh import and a
+        // song split later by Fit Song Slides fingerprint alike.
+        if let lineCount = options.lineCount {
+            presentation.slides = LyricSlideFit.fit(presentation, lineCount: lineCount).presentation.slides
+        }
         presentation.shepherdImportHash = fingerprint(presentation)
         return presentation
     }

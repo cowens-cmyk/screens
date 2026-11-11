@@ -70,7 +70,10 @@ struct AssistantRequestTests {
             }
         }
         let confirmed = Set(AssistantToolCatalog.all.filter(\.needsConfirmation).map(\.name))
-        #expect(confirmed == ["delete_slides", "remove_plan_item", "schedule_service", "apply_sunday_setup", "apply_lyric_fixes"])
+        #expect(confirmed == [
+            "delete_slides", "remove_plan_item", "schedule_service", "apply_sunday_setup", "apply_lyric_fixes",
+            "fit_song_slides",
+        ])
         // Builds a first message freely; replacing one waits for Approve.
         let sometimes = Set(AssistantToolCatalog.all.filter(\.confirmsWhenReplacing).map(\.name))
         #expect(sometimes == ["build_message_from_notes"])
