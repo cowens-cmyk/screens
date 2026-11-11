@@ -73,6 +73,8 @@ struct MediaLibraryView: View {
     /// in the page itself. A split view there would reach up under the
     /// window's toolbar and fold its sidebar away.
     var embedded = false
+    /// The header's measured width, which picks its full or narrow row.
+    @State private var headerWidth: CGFloat = 0
 
     @Environment(\.runOnly) private var runOnly
     @Environment(\.openWindow) private var openWindow
@@ -144,9 +146,11 @@ struct MediaLibraryView: View {
         Group {
             if embedded {
                 HStack(spacing: 0) {
+                    // Narrower when the drawer is, so the bin itself keeps
+                    // room for its header and tiles.
                     sidebar(media: media, audio: audio)
                         .scrollContentBackground(.hidden)
-                        .frame(width: 244)
+                        .frame(minWidth: 170, idealWidth: 244, maxWidth: 244)
                     Divider()
                     detail(entries: entries, browse: browse)
                 }
@@ -559,63 +563,106 @@ struct MediaLibraryView: View {
         .padding(10)
     }
 
+    /// The drawer can leave the bin narrower than the full header (a laptop
+    /// with the plan and inspector docked). Then the thumbnail slider goes,
+    /// search narrows and Import keeps only its icon, rather than the row
+    /// running past its edge and losing Import.
     private func header(count: Int, open: BackgroundPacks.Pack?) -> some View {
-        HStack(spacing: 12) {
-            if let open {
-                packBackButton
-                Text(open.name)
-                    .font(.headline)
-            } else {
-                Text(shown.title)
-                    .font(.headline)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                headerTitle(count: count, open: open)
+                Spacer()
+                searchField
+                    .frame(width: 200)
+                thumbnailSlider
+                importButton(open: open, compact: false)
             }
-            Text("\(count)")
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.tertiary)
-            Spacer()
-            HStack(spacing: 5) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                    .imageScale(.small)
-                TextField("Search", text: $searchText)
-                    .textFieldStyle(.plain)
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                            .imageScale(.small)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle.standard(CornerStandard.element))
-            .frame(width: 200)
-            HStack(spacing: 6) {
-                Image(systemName: "square.grid.3x3")
-                    .imageScale(.small)
-                    .foregroundStyle(.secondary)
-                Slider(value: $tileWidth, in: 120...320)
-                    .controlSize(.small)
-                    .frame(width: 110)
-                Image(systemName: "square.grid.2x2")
-                    .foregroundStyle(.secondary)
-            }
-            .help("Thumbnail size")
-            if !runOnly {
-                Button {
-                    presentImportPanel(pack: open?.name)
-                } label: {
-                    Label("Import…", systemImage: "square.and.arrow.down")
-                }
-                .disabled(model.isImporting)
+            HStack(spacing: 8) {
+                headerTitle(count: count, open: open)
+                Spacer(minLength: 4)
+                searchField
+                    .frame(minWidth: 70, maxWidth: 200)
+                importButton(open: open, compact: true)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+        // Chosen at the measured width, so the size probe and the real
+        // layout pick the same row.
+        .frame(width: headerWidth, alignment: .leading)
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { headerWidth = $0 }
+    }
+
+    @ViewBuilder
+    private func headerTitle(count: Int, open: BackgroundPacks.Pack?) -> some View {
+        if let open {
+            packBackButton
+            Text(open.name)
+                .font(.headline)
+                .lineLimit(1)
+        } else {
+            Text(shown.title)
+                .font(.headline)
+                .lineLimit(1)
+        }
+        Text("\(count)")
+            .font(.callout.monospacedDigit())
+            .foregroundStyle(.tertiary)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .imageScale(.small)
+            TextField("Search", text: $searchText)
+                .textFieldStyle(.plain)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .imageScale(.small)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle.standard(CornerStandard.element))
+    }
+
+    private var thumbnailSlider: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "square.grid.3x3")
+                .imageScale(.small)
+                .foregroundStyle(.secondary)
+            Slider(value: $tileWidth, in: 120...320)
+                .controlSize(.small)
+                .frame(width: 110)
+            Image(systemName: "square.grid.2x2")
+                .foregroundStyle(.secondary)
+        }
+        .help("Thumbnail size")
+    }
+
+    @ViewBuilder
+    private func importButton(open: BackgroundPacks.Pack?, compact: Bool) -> some View {
+        if !runOnly {
+            Button {
+                presentImportPanel(pack: open?.name)
+            } label: {
+                if compact {
+                    Label("Import…", systemImage: "square.and.arrow.down").labelStyle(.iconOnly)
+                } else {
+                    Label("Import…", systemImage: "square.and.arrow.down")
+                }
+            }
+            .help("Import…")
+            .disabled(model.isImporting)
+        }
     }
 
     private var emptyState: some View {

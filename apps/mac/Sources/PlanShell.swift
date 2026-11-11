@@ -32,6 +32,8 @@ struct PlanShell: View {
     /// scrolling page, in order; off, just the selected item's.
     @AppStorage(Self.wholePlanKey) private var showWholePlan = true
     @State private var itemID: String?
+    /// The slides area's height, which the media bin stays inside.
+    @State private var slidesAreaHeight: CGFloat?
     /// Whether the page has already scrolled to the selected item, so a
     /// selection that came from the page itself doesn't jump it.
     @State private var presentFocusScroll = PresentFocusScroll()
@@ -387,7 +389,8 @@ struct PlanShell: View {
             .frame(minWidth: 320, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
             // The media bin sits under the plan, which shrinks to make room
             // and stays where media can be dropped on it.
-            .safeAreaInset(edge: .bottom, spacing: 0) { MediaDrawer(model: model) }
+            .safeAreaInset(edge: .bottom, spacing: 0) { MediaDrawer(model: model, roomHeight: slidesAreaHeight) }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { slidesAreaHeight = $0 }
             // The page stays between the docked columns, so nothing on it
             // draws over their edges; above and below it still scrolls on
             // under the bubble and the control bar.
@@ -1599,8 +1602,9 @@ struct NewSongSheet: View {
     }
 }
 
-/// A video that couldn't play and was taken off the screens. It stays until
-/// someone dismisses it, so a look back at the booth screen still finds it.
+/// A video that couldn't play and was taken off the screens, or media whose
+/// file isn't on this Mac yet. It stays until someone dismisses it, so a
+/// look back at the booth screen still finds it.
 private struct MediaProblemBanner: View {
     let controls: ServiceControls
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1613,10 +1617,12 @@ private struct MediaProblemBanner: View {
                         .font(.system(size: 22))
                         .foregroundStyle(HopeStyle.amber)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Video can\u{2019}t play")
+                        Text(problem.fileMissing ? "File not on this Mac" : "Video can\u{2019}t play")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        Text("\u{201C}\(problem.name)\u{201D} couldn\u{2019}t play on this Mac and was taken off the screens.")
+                        Text(problem.fileMissing
+                             ? "\u{201C}\(problem.name)\u{201D} hasn\u{2019}t reached this Mac yet, so it can\u{2019}t be shown."
+                             : "\u{201C}\(problem.name)\u{201D} couldn\u{2019}t play on this Mac and was taken off the screens.")
                             .font(.system(size: 17, weight: .semibold))
                             .lineLimit(3)
                             .fixedSize(horizontal: false, vertical: true)

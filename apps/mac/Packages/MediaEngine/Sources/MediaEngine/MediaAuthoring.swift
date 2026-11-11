@@ -37,6 +37,7 @@ public enum MediaAuthoring {
         frameCount: Int,
         framesPerSecond: Int32 = 30,
         monoAudio: [Float]? = nil,
+        transform: CGAffineTransform = .identity,
         draw: @Sendable (CGContext, _ frameIndex: Int) -> Void
     ) async throws {
         try? FileManager.default.removeItem(at: url)
@@ -60,6 +61,8 @@ public enum MediaAuthoring {
 
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = false
+        // How a phone records portrait: landscape frames and a turn.
+        input.transform = transform
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: input,
             sourcePixelBufferAttributes: [

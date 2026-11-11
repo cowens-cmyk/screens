@@ -112,8 +112,8 @@ public struct MediaImporter {
             statusDetail: "",
             tags: [], favorite: false, collections: [], loops: false,
             inPoint: nil, outPoint: nil, durationSeconds: nil,
-            pixelWidth: properties[kCGImagePropertyPixelWidth] as? Int,
-            pixelHeight: properties[kCGImagePropertyPixelHeight] as? Int
+            pixelWidth: Self.uprightSize(properties).width,
+            pixelHeight: Self.uprightSize(properties).height
         )
         item.folder = placement.folder(for: .media)
         _ = try await client.create(item, area: placement.area(for: .media)).value
@@ -190,7 +190,12 @@ public struct MediaImporter {
             guard let track = try await asset.loadTracks(withMediaType: .video).first else {
                 return VideoProbe(status: .needsTranscode, detail: "no video track", duration: nil, width: nil, height: nil)
             }
-            let (size, descriptions) = try await track.load(.naturalSize, .formatDescriptions)
+            let (stored, descriptions, transform) = try await track.load(
+                .naturalSize, .formatDescriptions, .preferredTransform)
+            // A portrait phone video is stored landscape with a turn; its
+            // size is the size it shows at.
+            let turned = CGRect(origin: .zero, size: stored).applying(transform)
+            let size = CGSize(width: abs(turned.width), height: abs(turned.height))
             let duration = try await asset.load(.duration).seconds
             let codecs = descriptions.map(CMFormatDescriptionGetMediaSubType)
             let unplayable = codecs.filter { !playableCodecs.contains($0) }
@@ -221,14 +226,23 @@ public struct MediaImporter {
             else { return MediaDetails.Probe(status: .ready, detail: "unreadable image", duration: nil, width: nil, height: nil) }
             return MediaDetails.Probe(
                 status: .ready, detail: "", duration: nil,
-                width: properties[kCGImagePropertyPixelWidth] as? Int,
-                height: properties[kCGImagePropertyPixelHeight] as? Int)
+                width: uprightSize(properties).width,
+                height: uprightSize(properties).height)
         case .video:
             let video = await probeVideo(AVURLAsset(url: fileURL))
             return MediaDetails.Probe(
                 status: video.status, detail: video.detail, duration: video.duration,
                 width: video.width, height: video.height)
         }
+    }
+
+    /// A picture's size the right way up: EXIF orientations 5 to 8 (a
+    /// portrait phone photo) turn it a quarter, so width and height swap.
+    nonisolated static func uprightSize(_ properties: [CFString: Any]) -> (width: Int?, height: Int?) {
+        let width = properties[kCGImagePropertyPixelWidth] as? Int
+        let height = properties[kCGImagePropertyPixelHeight] as? Int
+        let orientation = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        return (5...8).contains(orientation) ? (height, width) : (width, height)
     }
 
     static func fourCC(_ code: CMVideoCodecType) -> String {

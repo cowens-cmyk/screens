@@ -98,9 +98,10 @@ final class MediaTransportController {
         refresh()
     }
 
+    /// Played to its end, not paused and scrubbed there: see
+    /// `MediaTransportState.hasPlayedOut(at:)`.
     static func isFinished(_ state: MediaTransportState, at date: Date) -> Bool {
-        !state.isPlaying && !state.isLooping && state.duration > 0
-            && state.position(at: date) >= state.duration - 0.05
+        state.hasPlayedOut(at: date)
     }
 
     func refresh(seeds newSeeds: [TransportSeed]? = nil) {
@@ -157,10 +158,13 @@ final class MediaTransportController {
                 candidates: rows.map(\.candidate), layer: layer
             ).flatMap({ candidate in rows.first { $0.id == candidate.mediaID } })
             else { continue }
+            // In real seconds: the stage counts down at 1x, so a clip at
+            // 2x has half its media time left to run.
+            let rate = target.state.wallClockRate
             wanted[layer.rawValue] = VideoCountdown(
                 name: target.name,
-                duration: target.state.duration,
-                position: target.state.position(at: now),
+                duration: target.state.duration / rate,
+                position: target.state.position(at: now) / rate,
                 anchoredAt: now,
                 isPlaying: target.state.isPlaying,
                 layer: layer

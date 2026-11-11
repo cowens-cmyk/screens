@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import ImageIO
 import Metal
 import RenderEngine
@@ -13,11 +14,33 @@ struct StillImage {
     static func load(url: URL, device: MTLDevice) throws -> StillImage {
         guard
             let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-            let image = CGImageSourceCreateImageAtIndex(
-                source, 0, [kCGImageSourceShouldCache: false] as CFDictionary
-            )
+            let image = uprightImage(from: source)
         else { throw MediaEngineError.imageDecodeFailed(url) }
         return try make(image: image, url: url, device: device)
+    }
+
+    /// The picture the right way up. A portrait iPhone photo is stored
+    /// landscape with an EXIF orientation saying how to turn it; the poster
+    /// and Finder honour it, so the screens must too. One already upright
+    /// is decoded as it is.
+    static func uprightImage(from source: CGImageSource) -> CGImage? {
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let orientation = (properties?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        guard orientation != 1,
+              let width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+              width > 0, height > 0
+        else {
+            return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary)
+        }
+        // A "thumbnail" at full size is ImageIO's way of applying the
+        // orientation while it decodes.
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(width, height),
+            kCGImageSourceShouldCache: false,
+        ] as CFDictionary)
     }
 
     static func make(image: CGImage, url: URL, device: MTLDevice) throws -> StillImage {

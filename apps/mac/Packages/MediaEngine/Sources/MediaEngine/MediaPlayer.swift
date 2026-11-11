@@ -15,6 +15,9 @@ final class MediaPlayer: @unchecked Sendable {
     private let loops: Bool
 
     private let needsInitialSeek: Locked<Bool>
+    /// Seeked by hand while paused, until it plays again: see
+    /// `MediaTransportState.parkedBySeek`.
+    private let parkedBySeek = Locked(false)
 
     private struct Guarded {
         var looper: AVPlayerLooper?
@@ -61,7 +64,8 @@ final class MediaPlayer: @unchecked Sendable {
             isPlaying: player.rate != 0,
             isLooping: loops,
             capturedAt: Date(),
-            rate: playRate
+            rate: playRate,
+            parkedBySeek: parkedBySeek.value
         )
     }
 
@@ -87,6 +91,9 @@ final class MediaPlayer: @unchecked Sendable {
         player.audioOutputDeviceUniqueID = audioDeviceUID
         player.actionAtItemEnd = loop ? .advance : .pause
         let item = AVPlayerItem(asset: media.asset)
+        // A portrait phone video turned upright; the looper's copies of
+        // the item carry it too.
+        item.videoComposition = media.videoComposition
 
         if let audioSink {
             VideoAudioTap.attach(
@@ -217,6 +224,7 @@ final class MediaPlayer: @unchecked Sendable {
     }
 
     func play() {
+        parkedBySeek.value = false
         ensureOutputs()
         if needsInitialSeek.withLock({ needed in
             defer { needed = false }
@@ -298,8 +306,15 @@ final class MediaPlayer: @unchecked Sendable {
     }
 
     func resume() {
+        parkedBySeek.value = false
         ensureOutputs()
         applyRate()
+    }
+
+    /// A seek from the transport: while paused it parks the video there.
+    func seekByHand(to seconds: Double, precise: Bool) {
+        if player.rate == 0 { parkedBySeek.value = true }
+        seek(to: seconds, precise: precise)
     }
 
     func seek(to seconds: Double, precise: Bool, completion: (@Sendable (Bool) -> Void)? = nil) {

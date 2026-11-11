@@ -158,6 +158,33 @@ public struct ShowState: Sendable, Equatable {
         directMediaFires.remove(layer)
     }
 
+    /// Media fired on its own that has played to its end (the countdown at
+    /// 0:00, an announcement video) comes down before a slide goes up:
+    /// filed as a background, it would otherwise hold its last frame behind
+    /// the next item's words. A slide that brings its own background to
+    /// that layer replaces it anyway; a slide's own background, and
+    /// anything still playing or looping, stays. `hasEnded` says whether a
+    /// cue's video has played out. Returns the layers cleared.
+    @discardableResult
+    public mutating func clearEndedMedia(
+        before slide: Slide, presentation: Presentation? = nil, arrangementId: String? = nil,
+        hasEnded: (CueMedia) -> Bool
+    ) -> [LayerKind] {
+        let backgroundLayer = SlideSceneBuilder.effectiveBackground(
+            slide: slide, presentation: presentation, arrangementId: arrangementId
+        ).map { SlideSceneBuilder.layerKind($0.layer) }
+        let ended = liveMedia
+            .filter { layer, cue in
+                layer != backgroundLayer && directMediaFires.contains(layer) && hasEnded(cue)
+            }
+            .map(\.key)
+        for layer in ended {
+            liveMedia[layer] = nil
+            directMediaFires.remove(layer)
+        }
+        return ended.sorted { $0.rawValue < $1.rawValue }
+    }
+
     private func sweepsOnSlideFire(_ cue: CueMedia, on layer: LayerKind) -> Bool {
         if cue.classification == nil, layer == .stillGraphics, directMediaFires.contains(layer) {
             true
