@@ -153,3 +153,23 @@ func realLibraryFilesRenderCleanly() throws {
     #expect(try #require(engine.position).elapsed > 0.4, "playing forward from the top")
     #expect(discontinuities(in: after) == 0)
 }
+
+/// Stop partway through a crossfade: both songs fade from where they are.
+/// The old song isn't cut and the new one doesn't jump to full.
+@Test func stopMidCrossfadeFadesBothSongs() async throws {
+    let first = try tone(seconds: 8, hertz: 440, rate: 44_100, name: "xstop-a")
+    let second = try tone(seconds: 8, hertz: 330, rate: 44_100, name: "xstop-b")
+    let engine = AudioEngine()
+    try engine.enableManualRenderingForTests()
+    try engine.play(url: first)
+    _ = try engine.renderOfflineForTests(frames: 24_000)
+    try engine.play(url: second, crossfade: 4)
+    // A little way in, the old song is still the louder.
+    try await Task.sleep(for: .milliseconds(600))
+    engine.stop(fade: 1.5)
+    let after = try engine.renderOfflineForTests(frames: 12_000)
+    let hertz = dominantHertz(in: after, first: 12_000)
+    #expect(abs(hertz - 440) < 30, "the outgoing song is still the louder (\(hertz) Hz)")
+    #expect(rms(in: after) > 0.1, "neither song was cut")
+}
+

@@ -34,6 +34,9 @@ public final class AudioEngine: @unchecked Sendable {
     private var hardwareEnabled = true
 
     private var transportPlaying = false
+    /// The active track's last sound played out under a pause's fade, so
+    /// its end wasn't passed on. Play then goes on to what comes next.
+    private var playedOutWhilePaused = false
     private var configObserver: (any NSObjectProtocol)?
 
     public var onTrackPlayedToEnd: (@Sendable () -> Void)?
@@ -114,7 +117,7 @@ public final class AudioEngine: @unchecked Sendable {
             } else if fadeIn > 0 {
                 incoming.player.volume = 0
                 incoming.player.play()
-                beginFade(deck: incoming, to: 1, duration: fadeIn)
+                beginFade(decks: [incoming], to: 1, duration: fadeIn)
             } else {
                 incoming.player.volume = 1
                 incoming.player.play()
@@ -124,27 +127,47 @@ public final class AudioEngine: @unchecked Sendable {
 
     public func pause(fade: TimeInterval = 0) {
         lock.withLock {
-
-            cancelRamp(resolving: true)
             transportPlaying = false
             let deck = decks[activeIndex]
             guard fade > 0, deck.player.isPlaying else {
+                cancelRamp(resolving: true)
                 deck.pause()
                 return
             }
-            beginFade(deck: deck, to: 0, duration: fade) { deck.pause() }
+            // Mid-crossfade both songs fade from where they are: settling
+            // the crossfade first would cut the old one off and jump the
+            // new one to full before the fade began.
+            let crossfading = rampKind == .crossfade
+            cancelRamp()
+            let outgoing = decks[1 - activeIndex]
+            if crossfading {
+                beginFade(decks: [deck, outgoing], to: 0, duration: fade) {
+                    deck.pause()
+                    outgoing.clear()
+                }
+            } else {
+                beginFade(decks: [deck], to: 0, duration: fade) { deck.pause() }
+            }
         }
     }
 
     public func resume(fade: TimeInterval = 0) {
         lock.withLock {
             cancelRamp(resolving: true)
+            if playedOutWhilePaused {
+                // Nothing is left to play of this track: carry on as its end
+                // would have.
+                playedOutWhilePaused = false
+                let ended = onTrackPlayedToEnd
+                DispatchQueue.global(qos: .userInitiated).async { ended?() }
+                return
+            }
             let deck = decks[activeIndex]
             guard deck.url != nil, (try? ensureRunning()) != nil else { return }
             transportPlaying = true
             deck.player.play()
             if fade > 0 {
-                beginFade(deck: deck, to: 1, duration: fade)
+                beginFade(decks: [deck], to: 1, duration: fade)
             } else {
                 deck.player.volume = 1
             }
@@ -154,20 +177,28 @@ public final class AudioEngine: @unchecked Sendable {
     public func stop(fade: TimeInterval = 0) {
         lock.withLock {
             transportPlaying = false
+            playedOutWhilePaused = false
             let deck = decks[activeIndex]
             guard fade > 0, deck.player.isPlaying else {
                 cancelRamp()
                 for each in decks { each.clear() }
                 return
             }
-            cancelRamp(resolving: true)
-            decks[1 - activeIndex].clear()
+            // Mid-crossfade both songs fade out from where they are, rather
+            // than the old one cutting off and the new one jumping to full.
+            let crossfading = rampKind == .crossfade
+            cancelRamp()
+            let outgoing = decks[1 - activeIndex]
+            if !crossfading { outgoing.clear() }
             // The closure holds the engine on purpose. Callers usually let go
             // of their player as soon as they stop it, and deinit would then
             // cut the sound before the fade ends. The timer drops the closure
             // when the fade finishes or is cancelled.
-            beginFade(deck: deck, to: 0, duration: fade) { [self] in
-                withExtendedLifetime(self) { deck.clear() }
+            beginFade(decks: crossfading ? [deck, outgoing] : [deck], to: 0, duration: fade) { [self] in
+                withExtendedLifetime(self) {
+                    deck.clear()
+                    if crossfading { outgoing.clear() }
+                }
             }
         }
     }
@@ -512,6 +543,7 @@ public final class AudioEngine: @unchecked Sendable {
         deck: AudioDeck, url: URL, from start: TimeInterval,
         windowStart: TimeInterval = 0, until end: TimeInterval? = nil
     ) throws {
+        playedOutWhilePaused = false
         try deck.load(url: url, from: start, windowStart: windowStart, until: end) {
             [weak self, weak deck] generation in
 
@@ -520,9 +552,15 @@ public final class AudioEngine: @unchecked Sendable {
                 let isCurrent = self.lock.withLock {
                     let current = deck.generation == generation
                         && self.decks[self.activeIndex] === deck
-
-                    if current { self.transportPlaying = false }
-                    return current
+                    // Paused in its last moments, the end still plays out
+                    // under the pause's fade. Passing that on would start
+                    // the next song right after Pause; Play does instead.
+                    let wasPlaying = self.transportPlaying
+                    if current {
+                        self.transportPlaying = false
+                        if !wasPlaying { self.playedOutWhilePaused = true }
+                    }
+                    return current && wasPlaying
                 }
                 if isCurrent { self.onTrackPlayedToEnd?() }
             }
@@ -557,11 +595,11 @@ public final class AudioEngine: @unchecked Sendable {
     }
 
     private func beginFade(
-        deck: AudioDeck, to target: Float, duration: TimeInterval,
+        decks: [AudioDeck], to target: Float, duration: TimeInterval,
         onDone: (@Sendable () -> Void)? = nil
     ) {
         let start = DispatchTime.now()
-        let from = deck.player.volume
+        let from = decks.map(\.player.volume)
         let timer = DispatchSource.makeTimerSource(queue: rampQueue)
         timer.schedule(deadline: .now(), repeating: 1.0 / 60.0)
         timer.setEventHandler { [weak self] in
@@ -570,7 +608,9 @@ public final class AudioEngine: @unchecked Sendable {
                 guard self.rampTimer === timer else { return }
                 let seconds = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e9
                 let progress = min(1, seconds / max(duration, 0.01))
-                deck.player.volume = from + (target - from) * Float(progress)
+                for (deck, from) in zip(decks, from) {
+                    deck.player.volume = from + (target - from) * Float(progress)
+                }
                 if progress >= 1 {
                     self.rampTimer = nil
                     self.rampKind = nil

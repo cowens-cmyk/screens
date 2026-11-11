@@ -126,3 +126,33 @@ func trimWindowCapsScheduleAndSurvivesSeek() async throws {
     #expect((engine.position?.elapsed ?? 0) >= 0.5)
     engine.stop()
 }
+
+/// Pause in a song's last moments: its end plays out under the pause's
+/// fade, and the next song mustn't start from that. Play goes on to it.
+/// (A track's end is heard only from a running output, not offline.)
+@Test(.enabled(if: hasAudioOutputDevice(), "No default audio output device"))
+func aSongThatEndsUnderPauseWaitsForPlay() async throws {
+    let url = try toneFile(seconds: 1, hertz: 440, name: "pause-end")
+    let engine = AudioEngine()
+    engine.masterVolume = 0
+    let ended = Flag()
+    engine.onTrackPlayedToEnd = { ended.raise() }
+    do {
+        try engine.play(url: url)
+    } catch {
+        return
+    }
+    try await Task.sleep(for: .milliseconds(300))
+    engine.pause(fade: 1.5)
+    try await Task.sleep(for: .milliseconds(1_800))
+    #expect(!ended.isRaised, "the end under a pause isn't passed on")
+
+    engine.resume(fade: 0)
+    let deadline = ContinuousClock.now + .seconds(2)
+    while !ended.isRaised, ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(ended.isRaised, "Play goes on to what comes next")
+    engine.stop()
+}
+

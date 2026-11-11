@@ -147,6 +147,15 @@ final class AudioDeck: @unchecked Sendable {
                 }
             }
         }
+        // Nothing left in flight and nothing more to read: the first read
+        // came back empty (a VBR MP3 whose estimated length put the start
+        // past its data, a file damaged after its header) or a later one
+        // failed. No buffer's completion will say the track ended, so say it
+        // here, or the track shows playing while the room hears silence and
+        // the playlist never moves on.
+        if scheduledToEnd, chunksInFlight == 0 {
+            onPlayedToEnd?(gen)
+        }
     }
 
     private func readChunk() -> (buffer: AVAudioPCMBuffer, isLast: Bool)? {
