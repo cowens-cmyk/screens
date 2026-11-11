@@ -75,7 +75,7 @@ extension AssistantToolbox {
         if let item = ServiceCountdown.item(in: plan) {
             countdown["item_id"] = .string(item.id)
             if let media = item.refId.isEmpty ? nil : model.media(item.refId) {
-                countdown["video"] = Self.video(id: media.id, name: media.name, seconds: media.durationSeconds)
+                countdown["video"] = Self.video(id: media.id, name: media.name, seconds: ServiceCountdown.videoSeconds(of: media))
             } else {
                 countdown["video"] = .null
             }
@@ -137,17 +137,16 @@ extension AssistantToolbox {
         }
 
         // Scheduling.
-        let videoSeconds = ServiceCountdown.item(in: plan).flatMap { model.media($0.refId)?.durationSeconds }
-        let length = (videoSeconds ?? 0) > 0 ? videoSeconds!.rounded(.up) : 300
+        let videoSeconds = model.countdownVideoSeconds(planID: plan.id)
         let scheduled = model.residentScheduleTriggers
             .filter { ServiceCountdown.isCountdownTrigger($0, planID: plan.id) }
-            .compactMap { ServiceCountdown.startDate(of: $0) }
+            .compactMap { ServiceCountdown.serviceTime(of: $0, videoSeconds: videoSeconds) }
             .sorted()
         let proposed = SundayPrep.proposedServiceTimes(
             planDate: plan.serviceDate, serviceDay: model.slideBuilding.serviceDay,
             shepherdTimes: plan.mxuPlanTimes ?? [], now: .now)
         var schedule: [String: AssistantJSON] = [
-            "scheduled_services": AssistantJSON(scheduled.map { Self.clock($0.addingTimeInterval(length)) }),
+            "scheduled_services": AssistantJSON(scheduled.map { Self.clock($0) }),
             "proposed_service_times": AssistantJSON(proposed.times),
             "this_mac_runs_service": .bool(ServiceStation.runsService),
         ]
@@ -391,7 +390,7 @@ extension AssistantToolbox {
         var parts: [String] = []
         if let series = changes.series { parts.append("Series: \(series.name)") }
         if let countdown = changes.countdown {
-            let length = countdown.media.durationSeconds.map { " (\(ScheduleServiceSheet.length($0)))" } ?? ""
+            let length = ServiceCountdown.videoSeconds(of: countdown.media).map { " (\(ScheduleServiceSheet.length($0)))" } ?? ""
             parts.append("Countdown video: \(countdown.media.name)\(length)")
         }
         if !changes.times.isEmpty {
@@ -427,12 +426,19 @@ extension AssistantToolbox {
         if let countdown = changes.countdown {
             let mediaID = countdown.media.id
             let change = countdown.change
+            let before = model.countdownVideoSeconds(planID: plan.id)
             model.updateService(plan.id) { plan in
                 if let change { ServiceCountdown.apply(change, to: &plan) }
                 guard let index = plan.items.firstIndex(where: { $0.isCountdown == true }) else { return }
                 // A countdown that came from Shepherd starts as a plain item.
                 plan.items[index].itemKind = .media
                 plan.items[index].refId = mediaID
+            }
+            // Countdowns already scheduled still end at their service times.
+            if changes.times.isEmpty {
+                model.rescheduleCountdowns(
+                    planID: plan.id, from: before,
+                    to: model.media(mediaID).flatMap(ServiceCountdown.videoSeconds(of:)))
             }
             done["countdown_video"] = .string(countdown.media.name)
             summary.append("countdown video")
@@ -730,7 +736,8 @@ extension AssistantToolbox {
         model.entries(of: .media).compactMap { entry in
             guard let media = model.media(entry.id), media.mediaKind == .video else { return nil }
             return SundayPrep.Video(
-                id: entry.id, name: entry.name, folder: entry.subkind, added: entry.updatedAt, seconds: media.durationSeconds)
+                id: entry.id, name: entry.name, folder: entry.subkind, added: entry.updatedAt,
+                seconds: ServiceCountdown.videoSeconds(of: media))
         }
     }
 

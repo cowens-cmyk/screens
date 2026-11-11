@@ -675,7 +675,8 @@ final class AssistantToolbox {
         guard !item.refId.isEmpty else {
             throw Failure("The countdown in \(plan.name) has no video yet. Ask the user to choose one with the Countdown button on the plan's first item.")
         }
-        return (item, model.media(item.refId)?.durationSeconds)
+        // As it plays (trimmed, at its play rate), so it ends at the service time.
+        return (item, model.countdownVideoSeconds(planID: plan.id))
     }
 
     private func backgroundCue(_ mediaID: String, behindText: Bool) throws -> CueMedia {

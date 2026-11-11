@@ -99,10 +99,9 @@ final class SermonTimerAutoReset {
                   calendar.isDate(start, inSameDayAs: now)
             else { return nil }
             let planID = String(notes.dropFirst(ServiceCountdown.triggerNotePrefix.count))
-            let video = model.resident.services.value(planID)
-                .flatMap(ServiceCountdown.item(in:))
-                .flatMap { $0.refId.isEmpty ? nil : model.media($0.refId)?.durationSeconds }
-            return .init(start: start, serviceTime: ServiceCountdown.serviceTime(start: start, videoSeconds: video))
+            let video = model.countdownVideoSeconds(planID: planID)
+            return .init(start: start, serviceTime: ServiceCountdown.serviceTime(of: trigger, videoSeconds: video, calendar: calendar)
+                ?? ServiceCountdown.serviceTime(start: start, videoSeconds: video))
         }
         return SermonTimerReset.services(
             on: now, planTimes: planTimes, scheduled: scheduled,
