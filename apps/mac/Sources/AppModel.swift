@@ -299,7 +299,10 @@ final class AppModel {
     init() {
         let located = Self.libraryRoot()
         let root = located.url
-        Self.startFreshOnce(libraryRoot: root)
+        // 0.4 once moved every library to the Trash to start over, guarded
+        // only by a preference. It's gone: by now it could only ever fire on
+        // a Mac whose preferences were reset or a library copied to a new
+        // Mac, and take the church's library, sync state and API keys with it.
         client = LibraryClient(rootURL: root)
 
         resident = ResidentLibrary(source: client.residentFillSource, epochs: kindVersions, fills: tableFills)
@@ -324,26 +327,6 @@ final class AppModel {
                 self?.libraryOpenError = error.localizedDescription
                 DiagnosticsStore.shared.note("library.openFailed", detail: "\(error)")
             }
-        }
-    }
-
-    /// v2: the plans-first rebuild starts every library over again.
-    private static let freshStartKey = "library.freshStart.v2"
-
-    /// Screens 0.4 starts every library over with only the basics: the old
-    /// library (starter packs, ProPresenter imports, everything) goes to the
-    /// Trash once, so it can still be recovered from there.
-    private static func startFreshOnce(libraryRoot root: URL) {
-        let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: freshStartKey) else { return }
-        defaults.set(true, forKey: freshStartKey)
-        guard FileManager.default.fileExists(atPath: root.path) else { return }
-        do {
-            var trashed: NSURL?
-            try FileManager.default.trashItem(at: root, resultingItemURL: &trashed)
-            DiagnosticsStore.shared.note("library.freshStart", detail: "old library moved to \(trashed?.path ?? "Trash")")
-        } catch {
-            DiagnosticsStore.shared.note("library.freshStart.failed", detail: "\(error)")
         }
     }
 
@@ -1252,16 +1235,28 @@ final class AppModel {
         }
     }
 
-    func addServiceItem(_ serviceID: String, refID: String) {
+    /// Adds a library item to a plan, at `index` (the end when nil or past
+    /// it). Returns the new item's id, or nil when the library item can't go
+    /// in a plan (a theme, an alert preset, a stage layout…), so a caller
+    /// doesn't go on to move an item that was never added.
+    @discardableResult
+    func addServiceItem(_ serviceID: String, refID: String, at index: Int? = nil) -> String? {
         guard let ref = libraryEntry(refID),
               let kind: ServiceItemKind = ref.kind == .presentation ? .presentation
                   : ref.kind == .media ? .media
                   : ref.kind == .audio ? .audio
                   : ref.kind == .playlist ? .playlist : nil
-        else { return }
+        else { return nil }
         let item = ServiceItem(id: UUID().uuidString, itemKind: kind, name: ref.name, refId: refID)
-        updateService(serviceID) { $0.items.append(item) }
+        updateService(serviceID) { service in
+            if let index, index < service.items.count {
+                service.items.insert(item, at: max(0, index))
+            } else {
+                service.items.append(item)
+            }
+        }
         markUsed(refID)
+        return item.id
     }
 
     func addServiceHeader(_ serviceID: String, name: String) {
