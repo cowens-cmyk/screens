@@ -2,11 +2,22 @@ import Foundation
 import Security
 
 enum SecretStore {
+    /// MXU_SKIP_KEYCHAIN=1 keeps a Debug copy (a test library, the Settings
+    /// layout probe) out of the keychain: the release app's keys answer a
+    /// differently signed copy with a password prompt that blocks the
+    /// window asking for them.
+    #if DEBUG || MXU_PERF_HOOKS
+    static let skipped = ProcessInfo.processInfo.environment["MXU_SKIP_KEYCHAIN"] == "1"
+    #else
+    static let skipped = false
+    #endif
+
     // Keys sync through iCloud Keychain once the app is signed with a provisioning
     // profile; until then, they stay on this Mac.
     /// `localOnly` keeps a key on this Mac: one that identifies the Mac
     /// itself must not follow the person to their other Macs.
     static func load(service: String, account: String, localOnly: Bool = false) -> String? {
+        guard !skipped else { return nil }
         for synchronizable in localOnly ? [false] : [true, false] {
             var query = keychainQuery(service: service, account: account, synchronizable: synchronizable)
             query[kSecReturnData as String] = true
@@ -22,6 +33,7 @@ enum SecretStore {
     }
 
     static func save(_ value: String, service: String, account: String, localOnly: Bool = false) {
+        guard !skipped else { return }
         let synced = keychainQuery(service: service, account: account, synchronizable: true)
         let local = keychainQuery(service: service, account: account, synchronizable: false)
         if localOnly {

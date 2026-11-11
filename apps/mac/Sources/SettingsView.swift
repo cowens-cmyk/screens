@@ -38,17 +38,27 @@ struct AppSettingsView: View {
         SettingsCategory(storedID: lastSection) ?? .general
     }
 
+    static let sidebarWidth: CGFloat = 216
+    /// Wide enough for the sidebar and a grouped form beside it, with
+    /// Integrations' tabs still a row of segments.
+    static let minimumWidth: CGFloat = 840
+
     var body: some View {
-        NavigationSplitView {
+        // The sections are the only way around Settings, so the sidebar
+        // can't be hidden: no toggle, and a fixed width the divider can't
+        // drag away. The toggle has to be removed from the sidebar column
+        // itself; removed from the split view it stayed, and its toolbar
+        // added a second bar under the title, an empty band over the sidebar.
+        NavigationSplitView(columnVisibility: .constant(.all)) {
             sidebar
-                .navigationSplitViewColumnWidth(min: 200, ideal: 216, max: 260)
+                .navigationSplitViewColumnWidth(Self.sidebarWidth)
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             detail
                 .navigationTitle(query.isEmpty ? category.title : "Search Results")
         }
         .searchable(text: $query, placement: .sidebar, prompt: "Search")
-        .toolbar(removing: .sidebarToggle)
-        .frame(minWidth: 800, idealWidth: 880, minHeight: 540, idealHeight: 660)
+        .frame(minWidth: Self.minimumWidth, idealWidth: 920, minHeight: 540, idealHeight: 660)
         .background(Color.basePlane)
         .environment(\.settingsHighlight, highlight)
         .preferredColorScheme((AppAppearance(rawValue: appearanceRaw) ?? .dark).colorScheme)
@@ -616,6 +626,82 @@ struct SettingsPageHeader: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 44)
+    }
+}
+
+/// A segmented picker for Settings: Integrations' tabs, the stage's mode.
+/// SwiftUI's segmented picker makes every segment as wide as the widest
+/// label, which put Integrations' seven tabs at over 830 points: wider than
+/// the pane, so the split view grew past the window on both sides. These
+/// segments are only as wide as their words, and when even that is too wide
+/// (larger text, say) they turn into a pop-up menu rather than push the
+/// pane out.
+struct SettingsSegments<Choice: Hashable>: View {
+    let choices: [Choice]
+    let title: (Choice) -> String
+    @Binding var selection: Choice
+    var alignment: Alignment = .center
+
+    /// The room the row has, measured, so the choice between segments and
+    /// the menu is made at one width in every layout pass (as in the slide
+    /// editor's toolbar) rather than flipping between them.
+    @State private var width: CGFloat = 0
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            FittedSegments(labels: choices.map(title), selected: selectedIndex)
+                .fixedSize()
+            Picker("", selection: $selection) {
+                ForEach(choices, id: \.self) { Text(title($0)).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+        }
+        .frame(width: width, alignment: alignment)
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: alignment)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+
+    private var selectedIndex: Binding<Int> {
+        Binding(
+            get: { choices.firstIndex(of: selection) ?? 0 },
+            set: { if choices.indices.contains($0) { selection = choices[$0] } }
+        )
+    }
+}
+
+/// A segmented control whose segments fit their labels.
+private struct FittedSegments: NSViewRepresentable {
+    let labels: [String]
+    @Binding var selected: Int
+
+    func makeNSView(context: Context) -> NSSegmentedControl {
+        let control = NSSegmentedControl(
+            labels: labels, trackingMode: .selectOne,
+            target: context.coordinator, action: #selector(Coordinator.changed(_:)))
+        control.segmentDistribution = .fit
+        control.setContentCompressionResistancePriority(.required, for: .horizontal)
+        control.setContentHuggingPriority(.required, for: .horizontal)
+        return control
+    }
+
+    func updateNSView(_ control: NSSegmentedControl, context: Context) {
+        context.coordinator.selected = $selected
+        if (0..<control.segmentCount).map({ control.label(forSegment: $0) ?? "" }) != labels {
+            control.segmentCount = labels.count
+            for (index, label) in labels.enumerated() { control.setLabel(label, forSegment: index) }
+            control.invalidateIntrinsicContentSize()
+        }
+        if control.selectedSegment != selected { control.selectedSegment = selected }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(selected: $selected) }
+
+    final class Coordinator: NSObject {
+        var selected: Binding<Int>
+        init(selected: Binding<Int>) { self.selected = selected }
+        @objc func changed(_ control: NSSegmentedControl) { selected.wrappedValue = control.selectedSegment }
     }
 }
 

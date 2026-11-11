@@ -148,6 +148,7 @@ extension ClaudeClient {
         static let account = "api-key"
 
         static func load() -> String? {
+            guard !SecretStore.skipped else { return nil }
             let query: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service, kSecAttrAccount as String: account,
@@ -160,6 +161,7 @@ extension ClaudeClient {
         }
 
         static func save(_ secret: String) {
+            guard !SecretStore.skipped else { return }
             let query: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service, kSecAttrAccount as String: account,

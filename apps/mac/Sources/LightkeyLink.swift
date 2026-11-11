@@ -340,6 +340,9 @@ struct LightingCueTableForm: View {
                 get: { row.note },
                 set: { note in update(row.position, in: table) { $0.note = min(max(note, 0), 127) } }
             ), format: .number.grouping(.never))
+            // A grouped Form shows a text field's title above it, which put
+            // "Note" over every row under the column's own heading.
+            .labelsHidden()
             .textFieldStyle(.roundedBorder)
             .frame(width: 52)
             Toggle("On", isOn: Binding(

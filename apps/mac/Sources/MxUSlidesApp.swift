@@ -160,6 +160,9 @@ struct MxUSlidesApp: App {
 
         PerfHooks.start(model: model)
         #endif
+        #if DEBUG
+        SettingsLayoutProbe.start()
+        #endif
         _renderContext = State(initialValue: render)
         _appModel = State(initialValue: model)
         ShareOpenQueue.model = model

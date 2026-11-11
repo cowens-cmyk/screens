@@ -55,12 +55,7 @@ struct StageSettingsPane: View {
         Form {
             Section {
                 SettingsRow("stage.mode") {
-                    Picker("", selection: $setup.stageMode) {
-                        ForEach(ShowSetup.StageMode.allCases) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
+                    SettingsSegments(choices: ShowSetup.StageMode.allCases, title: \.title, selection: $setup.stageMode, alignment: .trailing)
                 }
                 SettingsToggle("stage.follows", isOn: $setup.stageFollowsItems)
                 SettingsToggle("stage.videos", isOn: $setup.stageShowsVideos)

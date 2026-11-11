@@ -130,14 +130,10 @@ struct IntegrationsSettingsPane: View {
                 Divider()
                 MIDIDeviceDetail(id: midiDevice) { self.midiDevice = nil }
             } else {
-                Picker("", selection: $tab) {
-                    ForEach(IntegrationTab.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .padding(.top, 16)
-                .padding(.bottom, 4)
+                SettingsSegments(choices: IntegrationTab.allCases, title: \.title, selection: $tab)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 4)
                 content
                     .id(tab)
             }

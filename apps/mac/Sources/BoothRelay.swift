@@ -212,6 +212,7 @@ enum BoothTokenKeychain {
     }
 
     static func load() -> String? {
+        guard !SecretStore.skipped else { return nil }
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -222,6 +223,7 @@ enum BoothTokenKeychain {
     }
 
     static func save(_ secret: String) {
+        guard !SecretStore.skipped else { return }
         clear()
         var attributes = baseQuery
         attributes[kSecValueData as String] = Data(secret.utf8)
@@ -229,6 +231,7 @@ enum BoothTokenKeychain {
     }
 
     static func clear() {
+        guard !SecretStore.skipped else { return }
         SecItemDelete(baseQuery as CFDictionary)
     }
 }
