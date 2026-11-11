@@ -233,7 +233,7 @@ private func videoBox(_ layout: ConfidenceLayout = videoLayout) -> CGRect {
     let timer = try #require(drawn("Sermon Timer", of: videoLayout, in: scene))
     let clock = try #require(drawn("Clock", of: videoLayout, in: scene))
     #expect(timer.text.string == messageTimer.text.string, "the same time: it carries on, no reset")
-    #expect(timer.text.string == "20:27")
+    #expect(timer.text.string == "20:28", "1227.2 s left rounds up")
     #expect(clock.text.string == messageClock.text.string)
     #expect(timer.text.color == messageTimer.text.color, "the same green")
     #expect(timer.text.fontName == messageTimer.text.fontName)
@@ -249,7 +249,7 @@ private func videoBox(_ layout: ConfidenceLayout = videoLayout) -> CGRect {
     let later = StageScenes.scene(
         override: nil, source: .layout(sermon), video: messagePlan, info: info, at: at.addingTimeInterval(1),
         audience: { audienceWithVideo() })
-    #expect(try #require(drawn("Sermon Timer", of: videoLayout, in: later)).text.string == "20:26")
+    #expect(try #require(drawn("Sermon Timer", of: videoLayout, in: later)).text.string == "20:27")
 }
 
 @Test func overTimeTheSermonTimerStaysRedUnderTheVideo() throws {

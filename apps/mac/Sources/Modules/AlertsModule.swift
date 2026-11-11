@@ -141,6 +141,7 @@ struct AlertsModule: View {
     private func alertRow(_ preset: AlertPreset) -> some View {
         let expanded = expandedAlerts.contains(preset.id)
         let isLive = controls.state.liveAlert?.id == preset.id
+            || controls.state.liveStageAlert?.id == preset.id
 
         let tokens = AlertTokens.tokenNames(in: preset.message)
             .filter { !isTimerToken($0) }
@@ -230,7 +231,7 @@ struct AlertsModule: View {
                     .contentShape(Rectangle())
                     .onTapGesture {
                         if isLive {
-                            controls.dismissAlert()
+                            controls.dismissAlert(id: preset.id)
                         } else {
                             fire(preset)
                         }

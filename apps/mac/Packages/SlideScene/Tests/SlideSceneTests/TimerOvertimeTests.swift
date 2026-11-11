@@ -25,6 +25,18 @@ private func info(_ timer: TimerSnapshot) -> ConfidenceInfo {
     #expect(countdown(elapsed: 383, of: 300).displayString(at: now, format: nil, pattern: "mm:ss") == "-01:23")
 }
 
+@Test func countdownShowsZeroOnlyOnceTheTimeIsUp() {
+    #expect(countdown(elapsed: 299.1, of: 300).displayString(at: now) == "0:01",
+            "0.9 s left is not yet 0:00")
+    #expect(countdown(elapsed: 300, of: 300).displayString(at: now) == "0:00")
+    #expect(countdown(elapsed: 300.9, of: 300).displayString(at: now) == "0:00")
+    #expect(countdown(elapsed: 301, of: 300).displayString(at: now) == "-0:01")
+    #expect(countdown(elapsed: 299.1, of: 300).displayString(at: now, format: nil, pattern: "mm:ss") == "00:01")
+    #expect(countdown(elapsed: 299.1, of: 300).displayString(at: now, format: .abbreviated) == "1s")
+    #expect(TimerSnapshot(name: "Up", mode: .countUp, banked: 4.9).displayString(at: now) == "0:04",
+            "a count-up still shows whole seconds gone")
+}
+
 @Test func runningCountdownKeepsGoingNegative() {
     let started = now.addingTimeInterval(-70)
     let timer = TimerSnapshot(

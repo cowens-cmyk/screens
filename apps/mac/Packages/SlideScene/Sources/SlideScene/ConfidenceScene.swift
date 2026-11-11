@@ -204,12 +204,19 @@ public struct TimerSnapshot: Sendable, Equatable, Identifiable {
         Self.timecode(displayValue(at: date))
     }
 
+    /// Whole seconds to show. A countdown rounds up, as the video countdown
+    /// does, so 0:00 shows only once the time is up: rounding down showed
+    /// 0:00 a second early and held it for two. Past zero rounding up is
+    /// rounding toward zero, so 0:00 holds one second before -0:01.
     public func displayValue(at date: Date) -> TimeInterval {
-        value(at: date).rounded(.towardZero)
+        let value = value(at: date)
+        return mode == .countUp ? value.rounded(.towardZero) : value.rounded(.up)
     }
 
     public func displayString(at date: Date, format: TimerTextFormat?, pattern: String? = nil) -> String {
-        Self.text(value(at: date), format: format, pattern: pattern)
+        // A pattern with fractions shows them as they are.
+        let shown = pattern.map(TimerPattern.hasFraction) == true ? value(at: date) : displayValue(at: date)
+        return Self.text(shown, format: format, pattern: pattern)
     }
 
     public static func text(_ seconds: TimeInterval, format: TimerTextFormat?, pattern: String?) -> String {

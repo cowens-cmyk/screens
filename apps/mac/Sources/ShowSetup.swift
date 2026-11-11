@@ -50,6 +50,13 @@ final class ShowSetup {
     var stageMode: StageMode {
         didSet {
             UserDefaults.standard.set(stageMode.rawValue, forKey: "show.stageMode")
+            // Recorded here rather than in showsAudienceOnStage, so Audience
+            // Screen picked anywhere (Settings › Stage, an action) still
+            // knows the mode to go back to.
+            if stageMode == .mirror, oldValue != .mirror {
+                modeBeforeAudience = oldValue
+                UserDefaults.standard.set(oldValue.rawValue, forKey: "show.stageModeBeforeAudience")
+            }
             onStageChange?()
         }
     }
@@ -64,7 +71,6 @@ final class ShowSetup {
         get { stageMode == .mirror }
         set {
             if newValue, stageMode != .mirror {
-                modeBeforeAudience = stageMode
                 stageMode = .mirror
             } else if !newValue, stageMode == .mirror {
                 stageMode = modeBeforeAudience
@@ -157,6 +163,8 @@ final class ShowSetup {
             defaults.object(forKey: "show.sideTVs.lyricScale") as? Double ?? SideScreenLyrics.defaultScale)
         streamMode = defaults.string(forKey: "show.streamMode").flatMap(StreamMode.init(rawValue:)) ?? .auto
         stageMode = defaults.string(forKey: "show.stageMode").flatMap(StageMode.init(rawValue:)) ?? .worship
+        modeBeforeAudience = defaults.string(forKey: "show.stageModeBeforeAudience")
+            .flatMap(StageMode.init(rawValue:)).flatMap { $0 == .mirror ? nil : $0 } ?? .worship
         stageFollowsItems = defaults.object(forKey: "show.stageFollowsItems") as? Bool ?? true
         stageShowsVideos = defaults.object(forKey: "show.stageShowsVideos") as? Bool ?? true
         stageMessageDuration = StageMessageDuration(

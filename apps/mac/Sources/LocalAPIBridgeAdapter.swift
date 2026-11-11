@@ -145,7 +145,10 @@ final class AppAPIBridge: LocalAPIBridge {
             overlays: state.liveOverlays.map {
                 APIShowStatus.Overlay(id: $0.id, name: $0.name, layer: $0.layer)
             },
-            alert: state.liveAlert.map {
+            // One field for two slots (the audience's alert and the
+            // stage's own message): the remote shows the newer of the two.
+            alert: [state.liveAlert, state.liveStageAlert].compactMap { $0 }
+                .max { $0.firedAt < $1.firedAt }.map {
                 APIShowStatus.Alert(
                     id: $0.id, message: $0.message,
                     behavior: $0.behavior.rawValue, target: $0.target.rawValue,

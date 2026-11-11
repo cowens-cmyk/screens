@@ -535,11 +535,14 @@ public final class OutputManager {
         blackBox.value = black
     }
 
-    public func previewProvider(for targetID: String) -> @Sendable () -> RenderScene {
-        provider(for: targetID)
+    /// `ignoringBlack` is for a picture of a screen shown on the stage
+    /// (Audience Screen, Show on Stage Display): Black is for the room, and
+    /// the people on the platform keep seeing what is live underneath it.
+    public func previewProvider(for targetID: String, ignoringBlack: Bool = false) -> @Sendable () -> RenderScene {
+        provider(for: targetID, ignoringBlack: ignoringBlack)
     }
 
-    private func provider(for targetID: String) -> @Sendable () -> RenderScene {
+    private func provider(for targetID: String, ignoringBlack: Bool = false) -> @Sendable () -> RenderScene {
         let base = sceneProvider ?? { .empty }
         let confidence = confidenceSceneProvider
         let signage = signageSceneProvider
@@ -570,7 +573,7 @@ public final class OutputManager {
             // Black covers every screen but the stage's: the people on stage
             // still need their display, and signage is for the audience.
             let isStage = screenID.map { roles.value[$0] == .confidence } ?? false
-            if black.value, !isStage {
+            if black.value, !isStage, !ignoringBlack {
                 // The room scene's canvas, so the cover lines up with the slides.
                 return base().blackedOut()
             }

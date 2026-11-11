@@ -221,13 +221,13 @@ struct ServiceControlsPanel: View {
         case .timers:
             return controls.timers.timers.contains(where: \.isLive) ? .green : nil
         case .alerts:
-            return controls.state.liveAlert == nil ? nil : .orange
+            return controls.state.hasAlert ? .orange : nil
         case .combos:
 
             return nil
         case .confidence:
 
-            return controls.state.liveAlert?.showsOnConfidence == true ? .orange : nil
+            return controls.state.stageAlert == nil ? nil : .orange
         }
     }
 }

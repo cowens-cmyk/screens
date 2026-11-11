@@ -143,11 +143,11 @@ struct ConfidenceModule: View {
             HStack(spacing: 8) {
                 Button("Send", action: send)
                     .disabled(trimmedDraft.isEmpty)
-                Button("Clear") { controls.dismissAlert() }
-                    .disabled(!(controls.state.liveAlert?.showsOnConfidence ?? false))
+                Button("Clear") { controls.dismissStageMessage() }
+                    .disabled(controls.state.stageAlert == nil)
                 Spacer()
             }
-            if let live = controls.state.liveAlert, live.showsOnConfidence {
+            if let live = controls.state.stageAlert {
                 HStack(spacing: 4) {
                     Text("On stage: \(live.message)")
                         .font(.caption2)
