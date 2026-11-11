@@ -43,7 +43,15 @@ public struct PreparedMedia {
     public let frameDuration: Double
     public let naturalSize: CGSize
     public let hasAlpha: Bool
+    /// The video track's codec as a four-character code ("hvc1", "avc1").
+    public let codec: String
+    /// Whether this Mac decodes that codec in hardware. A 4K file it has
+    /// to decode in software may not keep up.
+    public let hardwareDecodes: Bool
     let asset: AVURLAsset
+    /// Loaded here, off the main thread, so starting the player doesn't
+    /// have to ask the asset for its tracks and wait.
+    let audioTrack: AVAssetTrack?
 
     var outputPixelBufferAttributes: [String: any Sendable] {
         var attributes: [String: any Sendable] = [
@@ -102,25 +110,39 @@ public final class MediaEngine: @unchecked Sendable {
         factory = try SurfaceFactory(device: device)
     }
 
+    /// Opens a video and checks it can be played here, so a file this Mac
+    /// can't decode is refused up front with a reason rather than handed
+    /// to a player that never shows a frame.
     public func prepare(url: URL) async throws -> PreparedMedia {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw MediaEngineError.noVideoTrack(url)
         }
-        let duration = try await asset.load(.duration).seconds
+        let audioTrack = try await asset.loadTracks(withMediaType: .audio).first
+        let (duration, assetPlayable) = try await asset.load(.duration, .isPlayable)
         let (naturalSize, minFrameDuration, descriptions) = try await track.load(
             .naturalSize, .minFrameDuration, .formatDescriptions
         )
+        let (decodable, trackPlayable) = try await track.load(.isDecodable, .isPlayable)
+        let subtype = descriptions.first.map(CMFormatDescriptionGetMediaSubType) ?? 0
+        let codec = Self.fourCC(subtype)
+        guard decodable, trackPlayable else {
+            throw MediaEngineError.cannotDecode(url, codec: codec)
+        }
+        guard assetPlayable else { throw MediaEngineError.notPlayable(url) }
         let frameDuration = minFrameDuration.isNumeric && minFrameDuration.seconds > 0
             ? minFrameDuration.seconds
             : 1.0 / 30.0
         return PreparedMedia(
             url: url,
-            duration: duration,
+            duration: duration.seconds,
             frameDuration: frameDuration,
             naturalSize: naturalSize,
             hasAlpha: descriptions.contains(where: Self.carriesAlpha),
-            asset: asset
+            codec: codec,
+            hardwareDecodes: PreparedMedia.hardwareDecodes(subtype),
+            asset: asset,
+            audioTrack: audioTrack
         )
     }
 
@@ -139,12 +161,9 @@ public final class MediaEngine: @unchecked Sendable {
         _ media: PreparedMedia, id: String, loop: Bool,
         options: PlaybackOptions = PlaybackOptions()
     ) {
-        let player = MediaPlayer(
-            media: media, loop: loop, factory: factory, audioDeviceUID: audioDeviceUID.value,
-            audioSink: videoAudioSink, audioDelay: videoAudioDelay, options: options
-        )
-        player.setAudioVolume(audioVolume.value)
+        let player = makePlayer(media, id: id, loop: loop, options: options)
         replacePlayer(player, for: id)
+        player.startWatching()
         stills.withLock { $0[id] = nil }
         contentChanged()
         player.play()
@@ -155,15 +174,63 @@ public final class MediaEngine: @unchecked Sendable {
         _ media: PreparedMedia, id: String, loop: Bool,
         options: PlaybackOptions = PlaybackOptions()
     ) async -> Bool {
-        let player = MediaPlayer(
-            media: media, loop: loop, factory: factory, audioDeviceUID: audioDeviceUID.value,
-            audioSink: videoAudioSink, audioDelay: videoAudioDelay, options: options
-        )
-        player.setAudioVolume(audioVolume.value)
+        let player = makePlayer(media, id: id, loop: loop, options: options)
         replacePlayer(player, for: id)
+        player.startWatching()
         stills.withLock { $0[id] = nil }
         contentChanged()
         return await player.preroll()
+    }
+
+    private func makePlayer(
+        _ media: PreparedMedia, id: String, loop: Bool, options: PlaybackOptions
+    ) -> MediaPlayer {
+        let player = MediaPlayer(
+            media: media, loop: loop, factory: factory, audioDeviceUID: audioDeviceUID.value,
+            audioSink: videoAudioSink, audioDelay: videoAudioDelay, options: options,
+            onProblem: { [weak self] player, problem in
+                self?.player(player, for: id, reported: problem)
+            }
+        )
+        player.setAudioVolume(audioVolume.value)
+        return player
+    }
+
+    /// Who hears about a video that fails or stalls, with the id it was
+    /// playing under. Called on whatever thread AVFoundation reported on.
+    public func setPlaybackProblemHandler(
+        _ handler: (@Sendable (_ id: String, _ problem: PlaybackProblem) -> Void)?
+    ) {
+        problemHandler.value = handler
+    }
+
+    private let problemHandler = Locked<(@Sendable (String, PlaybackProblem) -> Void)?>(nil)
+
+    /// A failed player comes off its id at once: left there, the screens
+    /// count it as a moving picture that's about to arrive, and its
+    /// transport says it's at 0 and paused, so nothing waiting on its end
+    /// ever moves on. A report from a player already replaced is old news.
+    private func player(_ player: MediaPlayer, for id: String, reported problem: PlaybackProblem) {
+        switch problem {
+        case .failed:
+            let removed = players.withLock { table -> Bool in
+                guard table[id] === player else { return false }
+                table[id] = nil
+                return true
+            }
+            guard removed else { return }
+            contentChanged()
+            DispatchQueue.global(qos: .utility).async { player.stop() }
+        case .stalled:
+            guard players.value[id] === player else { return }
+        }
+        problemHandler.value?(id, problem)
+    }
+
+    /// The player's state in a line, for the diagnostics log when a video
+    /// hasn't shown a picture: nil when nothing plays under `id`.
+    public func playbackDiagnostics(id: String) -> String? {
+        players.value[id]?.diagnostics
     }
 
     public func start(id: String) {

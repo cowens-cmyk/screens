@@ -114,12 +114,15 @@ final class VideoAudioTap {
         }
     }
 
+    /// `track` is the item's audio track, loaded ahead by `prepare`: asking
+    /// the asset here would block whichever thread starts the player (the
+    /// main one) until the asset had read its tracks.
     @discardableResult
     static func attach(
-        to item: AVPlayerItem, sink: Locked<Sink?>, delay: Locked<Double>,
+        to item: AVPlayerItem, track: AVAssetTrack?, sink: Locked<Sink?>, delay: Locked<Double>,
         fade: Locked<FadeOut?> = Locked(nil)
     ) -> Bool {
-        guard let track = item.asset.tracks(withMediaType: .audio).first else {
+        guard let track else {
             return false
         }
         let context = Context(sink: sink, delay: delay, fade: fade)

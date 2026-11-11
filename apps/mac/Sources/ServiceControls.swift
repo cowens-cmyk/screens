@@ -62,6 +62,9 @@ final class ServiceControls {
         VideoInputInventory.shared.onConnectedChanged = { [weak self] connected in
             self?.pushConnectedInputVisibility(connected)
         }
+        render.media.setPlaybackProblemHandler { [weak self] id, problem in
+            Task { @MainActor in self?.videoReported(problem, mediaID: id) }
+        }
         ensureSermonTimer()
     }
 
@@ -2092,21 +2095,34 @@ final class ServiceControls {
                 }
                 switch item.mediaKind {
                 case .video:
-                    if let prepared = try? await render.media.prepare(url: url),
-                       await self?.isLiveMedia(mediaID) == true {
-                        render.media.play(
-                            prepared, id: mediaID,
-                            loop: (wanted[mediaID] ?? nil) ?? item.playsLooping,
-
-                            options: PlaybackOptions(
-                                inPoint: item.inPoint, outPoint: item.outPoint,
-                                rate: item.playRate
-                            )
-                        )
+                    let prepared: PreparedMedia
+                    do {
+                        prepared = try await render.media.prepare(url: url)
+                    } catch {
+                        self?.videoCouldNotPlay(
+                            mediaID: mediaID, name: item.name, reason: MediaEngine.describe(error))
+                        continue
                     }
+                    guard self?.isLiveMedia(mediaID) == true else { continue }
+                    render.media.play(
+                        prepared, id: mediaID,
+                        loop: (wanted[mediaID] ?? nil) ?? item.playsLooping,
+
+                        options: PlaybackOptions(
+                            inPoint: item.inPoint, outPoint: item.outPoint,
+                            rate: item.playRate
+                        )
+                    )
+                    DiagnosticsStore.shared.note("media.play.start", detail: "\(item.name) — \(prepared.summary)")
+                    self?.watchFirstPicture(mediaID: mediaID, name: item.name)
                 case .image:
                     guard await self?.isLiveMedia(mediaID) == true else { continue }
-                    _ = try? await render.media.showStill(url: url, id: mediaID)
+                    do {
+                        _ = try await render.media.showStill(url: url, id: mediaID)
+                    } catch {
+                        DiagnosticsStore.shared.note(
+                            "media.still.failed", detail: "\(item.name) — \(MediaEngine.describe(error))")
+                    }
                 }
             }
 
@@ -2115,6 +2131,59 @@ final class ServiceControls {
     }
 
     private func isLiveMedia(_ id: String) -> Bool { liveMediaIDs.contains(id) }
+
+    // MARK: A video that can't play
+
+    /// The last video that couldn't play, for the banner over the show.
+    struct MediaProblem: Identifiable, Equatable {
+        let id = UUID()
+        let mediaID: String
+        let name: String
+    }
+
+    private(set) var mediaProblem: MediaProblem?
+
+    func dismissMediaProblem() { mediaProblem = nil }
+
+    /// The engine heard from AVFoundation about one of its videos.
+    private func videoReported(_ problem: PlaybackProblem, mediaID: String) {
+        let name = appModel.media(mediaID)?.name ?? mediaID
+        switch problem {
+        case .failed(let reason):
+            videoCouldNotPlay(mediaID: mediaID, name: name, reason: reason)
+        case .stalled:
+            let state = render.media.playbackDiagnostics(id: mediaID) ?? "no player"
+            DiagnosticsStore.shared.note("media.play.stalled", detail: "\(name) — \(state)")
+        }
+    }
+
+    /// A video that won't play comes off the screens rather than holding
+    /// them: left up, its layer waits for frames that never come, its plan
+    /// item stays live, and a countdown never moves the plan on. The
+    /// operator is told, and the reason goes to Diagnostics. The engine
+    /// has already let go of a player that failed; one that never opened
+    /// had none.
+    private func videoCouldNotPlay(mediaID: String, name: String, reason: String) {
+        DiagnosticsStore.shared.note("media.play.failed", detail: "\(name) — \(reason)")
+        guard isLiveMedia(mediaID) else { return }
+        let layers = state.liveMedia.filter { $0.value.mediaId == mediaID }.map(\.key)
+        for layer in layers { clear(layer: layer) }
+        mediaProblem = MediaProblem(mediaID: mediaID, name: name)
+    }
+
+    /// A video that has shown nothing a few seconds after it started is
+    /// written to Diagnostics with the player's state: the decoder falling
+    /// behind on a big file looks like this, and no error ever comes.
+    private func watchFirstPicture(mediaID: String, name: String) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, self.isLiveMedia(mediaID),
+                  !self.render.media.hasPicture(id: mediaID),
+                  let state = self.render.media.playbackDiagnostics(id: mediaID)
+            else { return }
+            DiagnosticsStore.shared.note("media.play.noPicture", detail: "\(name) — \(state)")
+        }
+    }
 
     private static func startLiveInput(id: String, render: RenderContext) {
         let parts = id.split(separator: ":", omittingEmptySubsequences: true)

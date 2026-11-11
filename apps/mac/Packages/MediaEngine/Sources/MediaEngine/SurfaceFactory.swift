@@ -10,6 +10,26 @@ public enum MediaEngineError: Error {
     case imageDecodeFailed(URL)
     case textureAllocationFailed(URL)
     case captureSetupFailed(String)
+    /// AVFoundation can open the file but says it can't play it here.
+    case notPlayable(URL)
+    /// The video track's codec (its four-character code) can't be decoded
+    /// on this Mac.
+    case cannotDecode(URL, codec: String)
+}
+
+extension MediaEngineError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .noMetalTextureCache: "No Metal texture cache"
+        case .noVideoTrack: "The file has no video track"
+        case .authoringFailed(let detail): "Authoring failed: \(detail)"
+        case .imageDecodeFailed: "The image couldn't be read"
+        case .textureAllocationFailed: "No memory for the image"
+        case .captureSetupFailed(let detail): "Capture failed: \(detail)"
+        case .notPlayable: "AVFoundation can't play this file"
+        case .cannotDecode(_, let codec): "This Mac can't decode its video (\(codec))"
+        }
+    }
 }
 
 final class SurfaceFactory: @unchecked Sendable {
