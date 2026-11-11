@@ -49,6 +49,11 @@ struct CloudSettingsForm: View {
                         Button("Unlink This Mac…") { confirmingUnlink = true }
                     }
                 } else {
+                    // Unlinked in the CMS clears the key, so this side shows;
+                    // say why the Mac stopped syncing.
+                    if sync.status == .unlinked {
+                        LabeledContent("Status") { status }
+                    }
                     Text("Link this Mac to keep its plans, songs, slides, themes and media the same as every other Mac at church. Make a code in the CMS under Screens › Link a Mac.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

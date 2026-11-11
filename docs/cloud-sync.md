@@ -73,7 +73,11 @@ single use, 15 minutes); Screens sends it with a name to
 `POST https://media.hopejc.org/api/screens/link` `{code, name}` and gets
 `{deviceId, token}`. The token is stored in the Keychain and only its SHA-256
 is kept by the CMS (`screens_devices`). Unlinking a Mac in the CMS revokes the
-token and closes its socket.
+token and closes its socket. The Mac then clears its key and drops its media
+transfer (which held the key), and Settings › Sync says "This Mac was
+unlinked in the CMS." above the link form; linking again starts a new
+transfer with the new key. A sync warning (a chunk that couldn't be applied,
+a refused push) shows until the next connection starts.
 
 ## The socket
 
@@ -141,6 +145,16 @@ whole history at a newer `seq`.
 
 A client applying a `reset` replaces its copy instead of merging; a
 `snapshot` or `changes` merges.
+
+### Deletes made offline
+
+Edits made while the socket is down are found again on reconnect
+(`cloudOwedKeys()`: documents whose heads the hub doesn't have). A delete
+leaves no document to find, so each one is written to `cloud-deletes.json`
+beside the library (`CloudPendingDeletes`) and stays there until the hub acks
+or refuses it. When the socket is down the app writes it there itself; when
+it is up the session does. On `caughtUp` the session sends every delete in
+the file. Joining the church library or unlinking clears the file.
 
 ### Echo
 

@@ -240,6 +240,45 @@ private func song(_ id: String, _ name: String, _ lyrics: [String]) -> Presentat
         #expect(try studio.song("amazing")?.slides[0].name == "Offline")
     }
 
+    @LibraryActor @Test func aDeleteMadeOfflineReachesTheOtherMacOnReconnect() async throws {
+        let (hub, studio, laptop, sessions) = try await joinedPair()
+        defer { [studio.root, laptop.root].forEach { try? FileManager.default.removeItem(at: $0) } }
+        let key = SyncLedger.Key(kind: .presentation, id: "amazing")
+        laptop.session.closed()
+        hub.disconnect("laptop")
+
+        // No session while the socket is down: the app writes the delete down.
+        try laptop.engine.delete(kind: .presentation, id: "amazing")
+        CloudPendingDeletes.add([key], libraryRoot: laptop.root)
+
+        let reopened = CloudSyncSession(engine: laptop.engine, token: "t", app: "test", send: hub.sender(for: "laptop"))
+        var both = sessions
+        both["laptop"] = reopened
+        try await reopened.opened()
+        try await hub.pump(both)
+        #expect(try studio.song("amazing") == nil)
+        #expect(hub.liveDocs == 0)
+        #expect(CloudPendingDeletes.load(libraryRoot: laptop.root).isEmpty, "cleared once the hub acknowledged it")
+    }
+
+    @LibraryActor @Test func aDeleteOnItsWayWhenTheSocketClosedIsSentByTheNextSession() async throws {
+        let (hub, studio, laptop, sessions) = try await joinedPair()
+        defer { [studio.root, laptop.root].forEach { try? FileManager.default.removeItem(at: $0) } }
+        try laptop.engine.delete(kind: .presentation, id: "amazing")
+        try await laptop.session.noteLocal(edited: [], deleted: [SyncLedger.Key(kind: .presentation, id: "amazing")])
+        // The socket closes before the hub hears it; the session is thrown away.
+        laptop.session.closed()
+        hub.disconnect("laptop")
+        #expect(try studio.song("amazing") != nil)
+
+        let reopened = CloudSyncSession(engine: laptop.engine, token: "t", app: "test", send: hub.sender(for: "laptop"))
+        var both = sessions
+        both["laptop"] = reopened
+        try await reopened.opened()
+        try await hub.pump(both)
+        #expect(try studio.song("amazing") == nil)
+    }
+
     @LibraryActor @Test func aSnapshotIsSentWhenTheHubAsks() async throws {
         let (hub, studio, _, sessions) = try await joinedPair()
         try await studio.session.receive(.wantSnapshot(kind: .presentation, id: "amazing"))

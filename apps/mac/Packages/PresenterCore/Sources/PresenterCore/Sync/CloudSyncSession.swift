@@ -28,6 +28,56 @@ public struct CloudSyncState: Codable, Equatable, Sendable {
     }
 }
 
+/// Documents deleted on this Mac whose delete the hub hasn't acknowledged,
+/// kept beside the library (not synced). A delete leaves nothing behind for
+/// `cloudOwedKeys()` to find, so without this list a delete made while the
+/// socket was down, or still on its way when it closed, never reached the
+/// other Macs. A file of its own, not part of CloudSyncState, because the
+/// app adds to it while no session is open, and a session saving its state
+/// would otherwise write over what was added.
+@LibraryActor public enum CloudPendingDeletes {
+    private struct Row: Codable, Hashable {
+        var kind: String
+        var id: String
+    }
+
+    public static func url(libraryRoot: URL) -> URL {
+        libraryRoot.appendingPathComponent("cloud-deletes.json")
+    }
+
+    public static func load(libraryRoot: URL) -> Set<SyncLedger.Key> {
+        guard let data = try? Data(contentsOf: url(libraryRoot: libraryRoot)),
+              let rows = try? JSONDecoder().decode([Row].self, from: data) else { return [] }
+        return Set(rows.compactMap { row in
+            DocumentKind(rawValue: row.kind).map { SyncLedger.Key(kind: $0, id: row.id) }
+        })
+    }
+
+    public static func add(_ keys: [SyncLedger.Key], libraryRoot: URL) {
+        let keys = keys.filter { LibraryEngine.syncsToCloud($0.kind) }
+        guard !keys.isEmpty else { return }
+        write(load(libraryRoot: libraryRoot).union(keys), libraryRoot: libraryRoot)
+    }
+
+    public static func remove(_ keys: [SyncLedger.Key], libraryRoot: URL) {
+        let current = load(libraryRoot: libraryRoot)
+        let left = current.subtracting(keys)
+        guard left.count != current.count else { return }
+        write(left, libraryRoot: libraryRoot)
+    }
+
+    public static func clear(libraryRoot: URL) {
+        try? FileManager.default.removeItem(at: url(libraryRoot: libraryRoot))
+    }
+
+    private static func write(_ keys: Set<SyncLedger.Key>, libraryRoot: URL) {
+        if keys.isEmpty { return clear(libraryRoot: libraryRoot) }
+        let rows = keys.map { Row(kind: $0.kind.rawValue, id: $0.id) }
+            .sorted { ($0.kind, $0.id) < ($1.kind, $1.id) }
+        try? JSONEncoder().encode(rows).write(to: url(libraryRoot: libraryRoot), options: .atomic)
+    }
+}
+
 /// One connection's worth of sync with the hub (docs/cloud-sync.md), apart
 /// from the socket: the transport hands it the hub's messages and sends what
 /// it returns. It applies the hub's chunks to the library, keeps a list of
@@ -129,6 +179,8 @@ public struct CloudSyncState: Codable, Equatable, Sendable {
             state.since = max(state.since, seq)
             try saveState()
             for key in try engine.cloudOwedKeys() { edited.insert(key) }
+            // Deletes made while no socket was open, or lost when it closed.
+            deleted.formUnion(CloudPendingDeletes.load(libraryRoot: engine.rootURL).subtracting(inFlight.values.map(\.key)))
             phase = .live
             try await flush()
         case .change(let item):
@@ -139,12 +191,14 @@ public struct CloudSyncState: Codable, Equatable, Sendable {
             guard let flight = inFlight.removeValue(forKey: ref) else { return }
             switch flight {
             case .push(let sent): try engine.cloudPushed(sent, seq: seq)
-            case .delete: break
+            case .delete(let key): CloudPendingDeletes.remove([key], libraryRoot: engine.rootURL)
             }
             report(.pushed(1))
             try await flush()
         case .error(let ref, let code, let message):
             let flight = ref.flatMap { inFlight.removeValue(forKey: $0) }
+            // A refused delete isn't tried again, here or after a reconnect.
+            if case .delete(let key) = flight { CloudPendingDeletes.remove([key], libraryRoot: engine.rootURL) }
             if code == "deleted", let key = flight?.key {
                 // Deleted on another Mac while it was being edited here: the
                 // delete wins, as it does on every other Mac.
@@ -187,6 +241,8 @@ public struct CloudSyncState: Codable, Equatable, Sendable {
         try engine.cloudClearSharedDocuments()
         edited = []
         deleted = []
+        // What this Mac deleted from its own library isn't the church's.
+        CloudPendingDeletes.clear(libraryRoot: engine.rootURL)
         state = CloudSyncState(since: 0, joined: true)
         try saveState()
         phase = .connecting
@@ -205,6 +261,11 @@ public struct CloudSyncState: Codable, Equatable, Sendable {
             edited.remove(key)
             deleted.insert(key)
         }
+        // Kept on disk until the hub acknowledges it, so a socket that closes
+        // first, or a quit, doesn't lose it.
+        CloudPendingDeletes.add(gone, libraryRoot: engine.rootURL)
+        let remade = keys.filter { LibraryEngine.syncsToCloud($0.kind) }
+        if !remade.isEmpty { CloudPendingDeletes.remove(remade, libraryRoot: engine.rootURL) }
         try await flush()
     }
 
@@ -279,6 +340,17 @@ extension LibraryClient {
 
     /// Unlinked: what the hub had is forgotten, so linking again starts fresh.
     public func forgetCloudHub() {
-        Task { @LibraryActor [engine] in _ = try? engine.cloudForgetHub() }
+        Task { @LibraryActor [engine] in
+            _ = try? engine.cloudForgetHub()
+            CloudPendingDeletes.clear(libraryRoot: engine.rootURL)
+        }
+    }
+
+    /// Shared documents deleted while no session is open: sent once one is
+    /// caught up.
+    public func noteCloudDeletesWhileOffline(_ keys: [SyncLedger.Key]) async {
+        await Task { @LibraryActor [engine] in
+            CloudPendingDeletes.add(keys, libraryRoot: engine.rootURL)
+        }.value
     }
 }

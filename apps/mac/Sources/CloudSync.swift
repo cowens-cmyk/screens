@@ -82,7 +82,14 @@ final class CloudSync {
             let route = SyncBatchRoute(batch)
             guard !route.edited.isEmpty || !route.deleted.isEmpty else { return }
             Task { @MainActor in
-                guard let session = CloudSync.shared.session else { return }
+                guard let session = CloudSync.shared.session else {
+                    // Edits are found again on reconnect (cloudOwedKeys);
+                    // a delete leaves nothing to find, so it's written down.
+                    if CloudSync.shared.isLinked, !route.deleted.isEmpty {
+                        await CloudSync.shared.model?.client.noteCloudDeletesWhileOffline(route.deleted)
+                    }
+                    return
+                }
                 await Self.note(session, edited: route.edited, deleted: route.deleted)
             }
         }
@@ -117,6 +124,10 @@ final class CloudSync {
                 return
             }
             SecretStore.save(token, service: Self.keychainService, account: Self.keychainAccount, localOnly: true)
+            // A transfer left from an earlier link would still send the old key.
+            retrier?.cancel()
+            retrier = nil
+            transfer = nil
             UserDefaults.standard.set(name, forKey: Self.deviceNameKey)
             deviceName = name
             connect()
@@ -250,6 +261,10 @@ final class CloudSync {
         }
         let client = model.client
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        // A warning from an earlier connection (a chunk that couldn't be
+        // applied, a push the hub refused) doesn't stay once sync starts
+        // over; one from this connection shows until the next.
+        problem = nil
         status = .connecting
         loop = Task { [weak self] in
             await self?.run(client: client, token: token, version: version)
@@ -321,8 +336,13 @@ final class CloudSync {
             loop = nil
             self.session = nil
             if socket.closeCode.rawValue == 4401 {
-                // Unlinked in the CMS: the key no longer works.
+                // Unlinked in the CMS: the key no longer works. The media
+                // transfer holds that key, so it goes too; linking again
+                // makes a new one with the new key.
                 SecretStore.save("", service: Self.keychainService, account: Self.keychainAccount, localOnly: true)
+                retrier?.cancel()
+                retrier = nil
+                transfer = nil
                 status = .unlinked
                 return
             }
