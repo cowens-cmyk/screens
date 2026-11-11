@@ -76,6 +76,42 @@ extension ShowScreen {
     }
 }
 
+extension ScreenRouting {
+    /// A screen on the display with the menu bar opens full screen over
+    /// Screens and Settings, and on a one-display Mac nothing is left in
+    /// sight to take it off with. So every way Settings › Screens puts a
+    /// screen on a display asks first when that display is the main one.
+    static func assignAsking(display: DisplayUUID, to role: ShowScreen?, render: RenderContext) {
+        guard let role else { return assign(display: display, to: nil, render: render) }
+        askingAboutMain(display: display, role: role, render: render) {
+            assign(display: display, to: role, render: render)
+        }
+    }
+
+    /// Runs `apply` at once unless it would newly put `role` on the main
+    /// display; then it runs only if the operator says yes.
+    static func askingAboutMain(
+        display uuid: DisplayUUID, role: ShowScreen, render: RenderContext,
+        apply: @escaping @MainActor () -> Void
+    ) {
+        let displays = render.outputs.displays
+        guard let display = displays.first(where: { $0.uuid == uuid }), display.isMain,
+              Self.role(on: uuid, render: render) != role
+        else { return apply() }
+        let message = displays.count <= 1
+            ? "This Mac has one display. \(role.name) will cover all of it, including Screens and Settings, until it is taken off."
+            : "\(display.name) has the menu bar. \(role.name) will cover Screens and Settings on it while it is live."
+        // After the drop, menu or picker has finished, so the alert isn't
+        // run inside it.
+        Task { @MainActor in
+            guard QuitConfirmation.ask(
+                title: "Show \(role.name) on the main display?", message: message, button: "Show Here")
+            else { return }
+            apply()
+        }
+    }
+}
+
 // MARK: - Arrangement
 
 /// The connected displays to scale, positioned as macOS arranges them, like
@@ -167,7 +203,7 @@ struct DisplayArrangementView: View {
             ForEach(ShowScreen.inUse) { candidate in
                 Toggle(candidate.name, isOn: Binding(
                     get: { role == candidate },
-                    set: { _ in ScreenRouting.assign(display: display.uuid, to: candidate, render: render) }))
+                    set: { _ in ScreenRouting.assignAsking(display: display.uuid, to: candidate, render: render) }))
             }
             Toggle("None", isOn: Binding(
                 get: { role == nil },
@@ -177,7 +213,7 @@ struct DisplayArrangementView: View {
         }
         .dropDestination(for: String.self) { items, _ in
             guard let dropped = items.first.flatMap(ShowScreen.init(rawValue:)) else { return false }
-            ScreenRouting.assign(display: display.uuid, to: dropped, render: render)
+            ScreenRouting.assignAsking(display: display.uuid, to: dropped, render: render)
             selection = display.uuid
             return true
         } isTargeted: { targeted in
@@ -321,7 +357,7 @@ private struct SelectedDisplaySection: View {
         Section {
             Picker("Shows", selection: Binding(
                 get: { role },
-                set: { ScreenRouting.assign(display: display.uuid, to: $0, render: render) }
+                set: { ScreenRouting.assignAsking(display: display.uuid, to: $0, render: render) }
             )) {
                 Text("None").tag(ShowScreen?.none)
                 Divider()
@@ -384,7 +420,12 @@ private struct ScreenOutputSection: View {
                 }
                 .padding(.vertical, 4)
                 .settingsAnchor("screens.\(role.rawValue)")
-                Picker("Output", selection: Binding(get: { output.current }, set: output.choose)) {
+                Picker("Output", selection: Binding(get: { output.current }, set: { token in
+                    guard token.hasPrefix("display:") else { return output.choose(token) }
+                    ScreenRouting.askingAboutMain(
+                        display: String(token.dropFirst("display:".count)), role: role, render: render
+                    ) { output.choose(token) }
+                })) {
                     outputChoices(output)
                 }
                 .frame(maxWidth: 360)
@@ -507,7 +548,12 @@ private struct ScreenOutputSection: View {
         .settingsAnchor("screens.sideTVs.size")
         Picker("Second display", selection: Binding(
             get: { output.mirrorDisplay ?? "" },
-            set: { output.setMirror($0.isEmpty ? nil : $0) }
+            set: { uuid in
+                guard !uuid.isEmpty else { return output.setMirror(nil) }
+                ScreenRouting.askingAboutMain(display: uuid, role: .sideTVs, render: render) {
+                    output.setMirror(uuid)
+                }
+            }
         )) {
             Text("None").tag("")
             ForEach(outputs.displays.filter { $0.uuid != output.display }) { display in

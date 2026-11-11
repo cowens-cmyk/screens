@@ -45,6 +45,8 @@ The **top bar** runs across the top of the window beside the traffic lights (see
 - **More** (…): **Schedule** (the Schedule mode, ⌘3), **Start Time…** (Schedule Service: when this plan's services start and when the countdown starts), **Song Search…** (⌘⇧L), **Sermon Points…** (⌘⇧P), **Import Sermon Notes…** (⌘⇧I), **Message & Series…**, **Edit Pre-Service Slides…**, **Bible Theme**, **Simple Mode…**, **Timers & Macros…**, **Lower Thirds…** (the livestream lower third for each type, see Livestream), **Screen Setup…**, **Edit Stage Display…**, **Edit Video Stage…**, **Assistant**.
 - **Audience**, **Livestream** and **Stage** (and **Side TVs** when it's on): a dot for each screen, green while its output (a display, a DeckLink port or NDI) is set up and sending, amber while it is starting or has a fault, grey when nothing carries it. Point at a dot for what it is doing; click it for Settings › Screens.
 - **Screens**: pin or fold the screens panel (⌃⌘R) in Present and Schedule.
+
+Tooltips name the keys bound in Settings › Keyboard, so a rebound shortcut shows its new key.
 - In narrower windows the bar folds so nothing overlaps: first its **Clear** goes (Clear All is also under the slides), then the screens' dots (the Screens panel shows the same).
 - The bar's empty space moves the window, and a double-click there does what a title bar double-click does.
 
@@ -59,10 +61,11 @@ Simple Mode is the volunteer view behind a passcode (the run-only lock). It repl
 - Beside the previews: **Back** and **Next**, a large red **Clear All** (⇧Esc), the sermon timer (click the time to set the minutes; −1, +1, start or pause, reset) and **Message to Stage**.
 - The toolbar has the plan menu (this week's plans and later) and **Exit Simple Mode**, which asks for the passcode. Simple Mode stays on after a relaunch.
 - Enter it from **View › Simple Mode…**, the **More** (…) menu, or Settings › General › **Simple Mode**. The first time sets the passcode.
+- **Check for Updates…** and **Present › Sermon Timer Resets at Service Start** are locked, like Settings. With no screens set up, the previews' place says so; screens are set up outside Simple Mode.
 
 ## Menu bar and shortcuts
 
-**Screens menu**: Settings… (⌘,), **Check for Updates…** (it reads **Update to Screens <version>…** once the automatic check finds one; the automatic check never puts up an alert, and nothing installs until someone chooses it).
+**Screens menu**: Settings… (⌘,), **Check for Updates…** (it reads **Update to Screens <version>…** once the automatic check finds one; the automatic check never puts up an alert, and nothing installs until someone chooses it). Choosing it always answers: the update, "Screens is up to date", or why it couldn't check. Locked in Simple Mode.
 
 **File**
 - **New Presentation** ⌘N, **New Slide…** ⌘⇧N, **New Service**, **New Theme**, **Add to Plan…** ⌥⌘N
@@ -78,7 +81,7 @@ Song Search, Point Slides, Import Lyrics and Import Sermon are run by the Librar
 
 **View**: **Present** ⌘1, **Edit** ⌘2, **Scheduler** ⌘3, **Show Whole Plan** (Present's one scrolling page; off shows one item at a time), **Edit Slides** ⌘4, **Edit Themes** ⌘5, **Edit Confidence** ⌘6, **Find in Library** ⌘F (opens the top bar's search), **Pin Plan / Fold Plan** ⌃⌘S, **Pin Screens / Fold Screens** ⌃⌘R. With an editor open: **Zoom In** ⌘+, **Zoom Out** ⌘−, **Zoom to Fit** ⌘0, **Actual Size** (⌘1 while the canvas has focus), **Zoom to Selection** ⌥⌘0.
 
-**Present**: **Clear Slides** F2, **Clear Media** F3, **Clear Alerts** F6, **Black Screen** F4, **Clear Layer** submenu (one entry per layer), **Clear All** F1, **Reset Sermon Timer** ⌃⌘0, **Sermon Timer Resets at Service Start** (on by default; kept per Mac).
+**Present**: **Clear Slides** F2, **Clear Media** F3, **Clear Alerts** F6, **Black Screen** F4, **Clear Layer** submenu (one entry per layer), **Clear All** F1, **Reset Sermon Timer** ⌃⌘0, **Sermon Timer Resets at Service Start** (on by default; kept per Mac; locked in Simple Mode). The clears and Black Screen work with any Screens window in front, Live Assist, Media Library and Settings included.
 
 **Quitting.** ⌘Q (or Screens › Quit) asks "Quit Screens?" first, since every screen goes dark; Return confirms and Esc cancels. The main window's red close button asks too. A shutdown, restart or log out, and an update, quit without asking.
 
@@ -473,7 +476,7 @@ These are Hope Church conventions, not special features.
 ## Screens and outputs
 
 **Settings › Screens** (also Window › Screen Configuration and More › Screen Setup…, which open it) sets up the screens in one place:
-- **Displays**: the Mac's connected displays drawn to scale where macOS arranges them, the main display with its menu bar. Each display shows which screen it carries (Audience, Livestream, Stage) with a small live preview, or Not used. Drag **Audience**, **Livestream** or **Stage** from the chips above onto a display, or drag one display's screen onto another to move it. Click a display to choose below: **Shows** (None, Audience, Livestream, Stage), its **Resolution** (pixels and refresh rate), and **Show Name on Display**, which puts the display's name and screen in large type on that display for a few seconds. Right-click a display for the same choices and **Identify**. A display shows one screen; giving it another moves that screen off wherever it was.
+- **Displays**: the Mac's connected displays drawn to scale where macOS arranges them, the main display with its menu bar. Each display shows which screen it carries (Audience, Livestream, Stage) with a small live preview, or Not used. Drag **Audience**, **Livestream** or **Stage** from the chips above onto a display, or drag one display's screen onto another to move it. Click a display to choose below: **Shows** (None, Audience, Livestream, Stage), its **Resolution** (pixels and refresh rate), and **Show Name on Display**, which puts the display's name and screen in large type on that display for a few seconds. Right-click a display for the same choices and **Identify**. A display shows one screen; giving it another moves that screen off wherever it was. Putting a screen on the main display (the one with the menu bar), by dragging, the right-click menu or a picker, asks first: it covers Screens and Settings there.
 - One section each for **Audience** (what the room sees), **Livestream** (laid over the camera) and **Stage** (lyrics, next slide, clock and timers), with a live preview, the status, **Output** (None, a connected display, a Blackmagic DeckLink port, or NDI) and **Resolution** (1080p or 4K). Livestream also has **Shows** (the Livestream switch) and **Alpha key (transparent)** (needs a DeckLink port; External or Internal when the port can do both). Over NDI the livestream carries its transparency by itself (Audience and Stage go as whole pictures). A display output, or a DeckLink port with Alpha key off, carries none: the switcher or streaming software can then only luma key it, which takes out black (a black lower-third bar vanishes) and leaves colors partly see-through. For a lower third that looks on the stream as it does in the editor, send the livestream over NDI or a DeckLink port with Alpha key on. Stage also has **Shows** (Worship, Message, Audience Screen) and **Follow what's live**.
 - **Side TVs** (off until **Use side TVs** is turned on, per Mac): for TVs beside the main screen, where the audience screen's small lyrics are hard to read. It shows the audience screen's slides, background, media and alerts, in step with it, but a song's lyrics (any Worship-type presentation) are drawn larger: **Lyrics size** 1.0–2.5× (1.6× to start). The lyrics box grows around its centre inside the picture's edges, shrinks to fit when it can't grow that far, never goes smaller than on the audience screen, and keeps each written line on one line, so two lines stay two lines. The theme's own pieces (a bar, the title or CCLI line) stay as the audience screen has them. Anything that isn't a song looks exactly like the audience screen. **Output** puts it on a display (or DeckLink or NDI) like the other screens; two TVs on a splitter need only that one display, and a second TV on its own cable is set in **Second display** (it shows the same picture). Turning it off takes the screen and its outputs away, and the Mac draws nothing for it.
 - **NDI**: **Send over NDI** with a button per screen, and **NDI network** (pin NDI to the wired production network).
@@ -509,7 +512,7 @@ Settings › Integrations › Remote & API: **Local API** on/off, **Port**, **Co
 ## Settings overview
 
 Open with ⌘,. The sidebar lists the sections; Settings opens on the last one used. The search field at the top of the sidebar finds any setting: click a result to go to it, and the row is highlighted for a moment. Sections:
-- **General**: **Show whole plan**, **Present layouts**, **Simple Mode** (the volunteer view behind a passcode; **Enter Simple Mode…**, **Change Passcode…**), and Service Day's **Run on this Mac**.
+- **General**: **Show whole plan**, **Present layouts** (the active layout's menu has **Opens in Simple Mode**: picking that layout enters Simple Mode), **Simple Mode** (the volunteer view behind a passcode; **Enter Simple Mode…**, **Change Passcode…**), and Service Day's **Run on this Mac**.
 - **Screens**: the displays and the Audience, Livestream, Stage and Side TVs outputs, NDI and Blackmagic DeckLink (see Screens and outputs).
 - **Livestream**: **Livestream shows** (the switch) and **Lower Thirds**.
 - **Stage**: **Stage shows**, **Follow what's live**, **Show videos on the stage**, **Confidence NEXT skips blank slides**, **Stage messages show for**, **Sermon Timer** (**Reset the sermon timer at each service's start**, kept per Mac, with the next reset time; it acts only on the Mac with Run on this Mac on), and **Presentation types**.
@@ -519,7 +522,7 @@ Open with ⌘,. The sidebar lists the sections; Settings opens on the last one u
 - **Media & Video**: video inputs and audio inputs.
 - **Integrations**, in five tabs: **Anthem**, **Lightkey & MIDI** (Lightkey, song sections, lighting cues, MIDI devices, MIDI input map), **Shepherd**, **Website** (hopejc.org events in the pre-service slideshow), **Remote & API** (the Local API, the phone remote's QR code, access keys, API reference).
 - **Assistant**: the **Anthropic API key**, the **Model** (Claude Opus 5.5, or Claude Sonnet 5.5 for faster answers), and **Sermon import** (current series theme, New Sermon Series…).
-- **Advanced**: **Check for updates automatically**, **Check Now**, **Diagnostics** (Show in Finder), and **Measure panel motion** (off by default: each time the plan or the screens panel opens, folds, pins or unpins, the diagnostics log gets a "shell.motion" line with the frames drawn, how many came late and the longest gap).
+- **Advanced**: **Check for updates automatically**, **Check Now** (reads **Downloading…** while an update installs), **Install <version>…** once an update is found, **Diagnostics** (Show in Finder), and **Measure panel motion** (off by default: each time the plan or the screens panel opens, folds, pins or unpins, the diagnostics log gets a "shell.motion" line with the frames drawn, how many came late and the longest gap).
 - **Keyboard**: open with ⌥K.
 
 ## The Assistant window

@@ -126,7 +126,8 @@ struct MonitorsPanel: View {
             if let onPin {
                 PanelHeaderButton(
                     symbol: pinned ? "pin.fill" : "pin", tint: pinned ? HopeStyle.blue : nil,
-                    help: pinned ? "Fold the screens back to the strip (⌃⌘R)" : "Keep the screens open beside the slides (⌃⌘R)",
+                    help: (pinned ? "Fold the screens back to the strip" : "Keep the screens open beside the slides")
+                        + KeyMapStore.shared.map.helpKeys(for: .toggleRightPanels),
                     action: onPin)
             }
         }

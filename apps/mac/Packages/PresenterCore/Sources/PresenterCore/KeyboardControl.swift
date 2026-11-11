@@ -344,6 +344,17 @@ public struct KeyCommandMap: Codable, Equatable, Sendable {
         return entry.map { [$0] } ?? []
     }
 
+    /// A command's keys as help text names them, " (⌃⌘S)" or
+    /// " (→, Space or ⏎)", and "" when nothing is bound. Tooltips built
+    /// from this follow Settings › Keyboard instead of naming a key that
+    /// may no longer do it.
+    public func helpKeys(for command: KeyCommand) -> String {
+        let keys = chords(for: command).map(\.display)
+        guard let last = keys.last else { return "" }
+        let list = keys.count == 1 ? last : keys.dropLast().joined(separator: ", ") + " or " + last
+        return " (\(list))"
+    }
+
     public func isCustomized(_ command: KeyCommand) -> Bool {
         chords[command.rawValue] != nil
     }

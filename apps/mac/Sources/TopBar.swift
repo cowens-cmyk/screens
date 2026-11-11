@@ -1,5 +1,6 @@
 import AppKit
 import AudioEngine
+import PresenterCore
 import RenderEngine
 import SwiftUI
 
@@ -544,8 +545,8 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
             TopBarSearchButton(open: searchOpen, namespace: namespace, action: onSearch)
             if let plan { TopBarGroup { toggleCell(plan) } }
             TopBarGroup {
-                modeCell(.present, title: "Present", symbol: "play.rectangle", help: "Present (⌘1)")
-                modeCell(.edit, title: "Edit", symbol: "square.3.layers.3d", help: "Edit: slides, layers and zoom (⌘2)")
+                modeCell(.present, title: "Present", symbol: "play.rectangle", help: "Present" + KeyMapStore.shared.map.helpKeys(for: .modePresent))
+                modeCell(.edit, title: "Edit", symbol: "square.3.layers.3d", help: "Edit: slides, layers and zoom" + KeyMapStore.shared.map.helpKeys(for: .modeEdit))
                 themeCell
             }
             TopBarGroup { bibleCell }
