@@ -1449,6 +1449,12 @@ struct LibraryCommands: Commands {
             }
             .disabled(model == nil || runOnly)
             Divider()
+            // Songs made before imports split long slides by themselves.
+            Button("Fit Song Slides to Two Lines…") {
+                if let model { Task { await SongSlideFit.runFromMenu(model: model) } }
+            }
+            .disabled(model == nil || runOnly)
+            Divider()
             Button("Export Library Backup…") { exportBackup() }
                 .disabled(model == nil || runOnly)
             Button("Import Library Backup…") { importBackup() }

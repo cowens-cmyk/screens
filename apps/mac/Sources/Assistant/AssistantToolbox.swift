@@ -83,6 +83,7 @@ final class AssistantToolbox {
         case "apply_sunday_setup": try await applySundaySetup(input)
         case "check_song_lyrics": try await checkSongLyrics(input)
         case "apply_lyric_fixes": try await applyLyricFixes(input)
+        case "fit_song_slides": try await fitSongSlides(input)
         default: throw Failure("There is no tool named \(name).")
         }
     }
@@ -125,6 +126,8 @@ final class AssistantToolbox {
             return try await sundaySetupConfirmation(input)
         case "apply_lyric_fixes":
             return try await lyricFixesConfirmation(input)
+        case "fit_song_slides":
+            return try await songFitConfirmation(input)
         default:
             return ("Run \(name)?", "")
         }

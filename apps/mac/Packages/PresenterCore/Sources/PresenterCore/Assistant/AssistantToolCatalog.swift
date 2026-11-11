@@ -377,5 +377,17 @@ public enum AssistantToolCatalog {
                 "include_capitalization": boolean("Also take the lyrics' capitals. Default false: only words change."),
             ], required: ["presentation_id", "slide_ids"]),
             needsConfirmation: true),
+        AssistantToolSpec(
+            name: "fit_song_slides",
+            description: "Splits song slides whose words take more than two lines in their theme's Lyrics box (a long "
+                + "lyric line wraps) into slides of one or two lines, each with the same section label, so no song "
+                + "slide shows more than two lines. Chords stay on their words. Songs imported from Shepherd are "
+                + "already split this way; this is for songs made before that. Give presentation_id for one song, or "
+                + "nothing for every song in the library. The user sees how many slides in how many songs will "
+                + "change and must approve.",
+            schema: object([
+                "presentation_id": string("One song presentation id. Leave out for every song in the library."),
+            ]),
+            needsConfirmation: true),
     ]
 }

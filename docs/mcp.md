@@ -81,6 +81,11 @@ asks the user and calls again with `confirm: true`. `build_message_from_outline`
 does the same when it would replace a message with slides or change the
 plan's series.
 
+`fit_song_slides` is one of these: it splits song slides that take more than
+two lines in their theme, for one song or the whole library, and its first
+answer says how many slides in how many songs would change. See
+`song-slides.md`.
+
 ## Code
 
 - `apps/mac/Packages/LocalAPI/Sources/LocalAPI/MCPServer.swift`: the protocol
