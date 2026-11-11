@@ -484,7 +484,7 @@ struct PlanShell: View {
             }
             .buttonStyle(.plain)
             .focusEffectDisabled()
-            .help("The plan. Point at it to look, click to keep it open (⌃⌘S).")
+            .help("The plan. Point at it to look, click to keep it open\(KeyMapStore.shared.map.helpKeys(for: .toggleSidebar)).")
             .popover(isPresented: addShown(.bubble), arrowEdge: .bottom) { addPopover }
         } open: {
             planPanelContent(pinned: planBox.isPinned)
@@ -505,7 +505,8 @@ struct PlanShell: View {
     /// does, then Add to Plan and the pin. The text starts where the list's
     /// rows do, and both buttons sit centred on the same line.
     private func planPanelHeader(pinned: Bool) -> some View {
-        let help = pinned ? "Fold the plan to a bubble (⌃⌘S)" : "Keep the plan open beside the slides (⌃⌘S)"
+        let help = (pinned ? "Fold the plan to a bubble" : "Keep the plan open beside the slides")
+            + KeyMapStore.shared.map.helpKeys(for: .toggleSidebar)
         return HStack(spacing: 8) {
             Button { clickPanel(.plans) } label: { planHandle }
                 .buttonStyle(.plain)
@@ -552,7 +553,7 @@ struct PlanShell: View {
             }
             .buttonStyle(.plain)
             .focusEffectDisabled()
-            .help("The screens. Point at them to look, click to keep them open (⌃⌘R).")
+            .help("The screens. Point at them to look, click to keep them open\(KeyMapStore.shared.map.helpKeys(for: .toggleRightPanels)).")
         } open: {
             screensColumn(render, pinned: screensBox.isPinned)
         }
@@ -1005,7 +1006,8 @@ struct PlanShell: View {
         let pinned = planBox.isPinned
         return TopBarToggle(
             title: "Plan", systemImage: "sidebar.left", on: pinned,
-            help: pinned ? "Fold the plan to a bubble (⌃⌘S)" : "Keep the plan open beside the slides (⌃⌘S)"
+            help: (pinned ? "Fold the plan to a bubble" : "Keep the plan open beside the slides")
+                + KeyMapStore.shared.map.helpKeys(for: .toggleSidebar)
         ) { togglePanel(.plans) }
     }
 
@@ -1014,7 +1016,8 @@ struct PlanShell: View {
         let pinned = screensBox.isPinned
         return TopBarToggle(
             title: "Screens", systemImage: "sidebar.right", on: pinned,
-            help: pinned ? "Fold the screens to the strip (⌃⌘R)" : "Keep the screens open beside the slides (⌃⌘R)"
+            help: (pinned ? "Fold the screens to the strip" : "Keep the screens open beside the slides")
+                + KeyMapStore.shared.map.helpKeys(for: .toggleRightPanels)
         ) { togglePanel(.screens) }
     }
 

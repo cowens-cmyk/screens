@@ -25,6 +25,21 @@ enum SlideTransitionDefault {
     }
 }
 
+/// A room default's duration as the controls show and store it.
+enum TransitionDuration {
+    /// A stored 0 is a real choice (the slides cut), not a missing value:
+    /// RenderContext reads it the same way, so the controls must too.
+    static func load(_ key: String, fallback: Double) -> Double {
+        rounded(UserDefaults.standard.object(forKey: key) as? Double ?? fallback)
+    }
+
+    /// Stepping by 0.1 adds up to drift like 2.8e-17, which the label
+    /// printed as "2.8e-17s". Hundredths are as fine as the controls go.
+    static func rounded(_ value: Double) -> Double {
+        max(0, (value * 100).rounded() / 100)
+    }
+}
+
 struct TransitionChip: View {
     let glyph: GlyphKind
     let kindKey: String
@@ -135,15 +150,14 @@ struct TransitionChip: View {
         Binding(
             get: { duration },
             set: { v in
-                duration = v
-                UserDefaults.standard.set(v, forKey: durationKey)
+                duration = TransitionDuration.rounded(v)
+                UserDefaults.standard.set(duration, forKey: durationKey)
             }
         )
     }
 
     private func reload() {
         kindRaw = UserDefaults.standard.string(forKey: kindKey) ?? fallbackKind
-        let stored = UserDefaults.standard.double(forKey: durationKey)
-        duration = stored > 0 ? stored : fallbackDuration
+        duration = TransitionDuration.load(durationKey, fallback: fallbackDuration)
     }
 }

@@ -247,4 +247,17 @@ final class KeyboardControlTests: XCTestCase {
 
         XCTAssertNil(targets.values.first { $0.contains("blank") })
     }
+
+    /// Tooltips name the keys Settings › Keyboard has bound, not the
+    /// defaults they were written with.
+    func testHelpKeysFollowTheMap() {
+        var map = KeyCommandMap()
+        XCTAssertEqual(map.helpKeys(for: .toggleSidebar), " (⌃⌘S)")
+        XCTAssertEqual(map.helpKeys(for: .nextSlide), " (→, Space or ⏎)")
+        XCTAssertEqual(map.helpKeys(for: .goToSlide), "")
+        map.setChord(KeyChord("p", command: true, option: true), for: .toggleSidebar)
+        XCTAssertEqual(map.helpKeys(for: .toggleSidebar), " (⌥⌘P)")
+        map.setChord(nil, for: .modePresent)
+        XCTAssertEqual(map.helpKeys(for: .modePresent), "")
+    }
 }

@@ -228,10 +228,13 @@ struct AdvancedSettingsPane: View {
                         Text(updater.currentVersion)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
-                        Button(updater.isWorking ? "Checking…" : "Check Now") {
+                        Button(updater.isInstalling ? "Downloading…" : updater.isWorking ? "Checking…" : "Check Now") {
                             Task { await updater.check(userInitiated: true) }
                         }
                         .disabled(updater.isWorking)
+                        if let release = updater.available, !updater.isWorking {
+                            Button("Install \(release.version)…") { updater.promptToInstall() }
+                        }
                     }
                 }
                 if let status = updater.status {

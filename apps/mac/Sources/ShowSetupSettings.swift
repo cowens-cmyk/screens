@@ -120,7 +120,7 @@ private struct SermonTimerResetSection: View {
 
     private var footer: String {
         guard controls.sermonTimerResetsAtServiceStart else {
-            return "Off on this Mac. Present › Reset Sermon Timer (⌃⌘0) still sets it back by hand."
+            return "Off on this Mac. Present › Reset Sermon Timer\(KeyMapStore.shared.map.helpKeys(for: .resetSermonTimer)) still sets it back by hand."
         }
         guard runsService else {
             return "This Mac doesn't run the service (Settings › General › Run on this Mac), so another Mac resets it."

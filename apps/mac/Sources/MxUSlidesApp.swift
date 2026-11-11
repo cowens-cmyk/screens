@@ -100,6 +100,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Screens › Check for Updates. Updating quits Screens without the quit
+/// prompt, so Simple Mode locks it: a volunteer can't take every screen
+/// down mid-service from the menu.
+struct UpdateCommands: Commands {
+    @AppStorage(PresentLayoutController.lockedKey) private var runOnly = false
+
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            // A newer version found by the automatic check shows here
+            // instead of in an alert.
+            Button(AppUpdater.shared.available.map { "Update to Screens \($0.version)…" } ?? "Check for Updates…") {
+                Task { await AppUpdater.shared.check(userInitiated: true) }
+            }
+            .disabled(runOnly)
+        }
+    }
+}
+
 @main
 struct MxUSlidesApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -304,15 +322,9 @@ struct MxUSlidesApp: App {
             LibraryCommands()
             EditorCommands(journal: appModel?.moveUndo)
             ViewCommands()
-            PresentCommands()
+            PresentCommands(fallback: controls)
             HelpCommands(model: appModel, showWelcome: $showWelcome, showFeedback: $showFeedback)
-            CommandGroup(after: .appInfo) {
-                // A newer version found by the automatic check shows here
-                // instead of in an alert.
-                Button(AppUpdater.shared.available.map { "Update to Screens \($0.version)…" } ?? "Check for Updates…") {
-                    Task { await AppUpdater.shared.check(userInitiated: true) }
-                }
-            }
+            UpdateCommands()
         }
 
         Settings {

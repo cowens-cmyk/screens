@@ -40,7 +40,7 @@ struct PresentControlBar: View {
                 .buttonStyle(.glass)
                 .buttonBorderShape(.circle)
                 .tint(nil)
-                .help("Back (←)")
+                .help("Back" + KeyMapStore.shared.map.helpKeys(for: .previousSlide))
 
                 Button {
                     nextTaps += 1
@@ -52,7 +52,7 @@ struct PresentControlBar: View {
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.capsule)
                 .tint(HopeStyle.blue)
-                .help("Next (→ or Space)")
+                .help("Next" + KeyMapStore.shared.map.helpKeys(for: .nextSlide))
 
                 Button { clearTaps += 1; controls.clearAll() } label: {
                     Image(systemName: "xmark").font(.title3.weight(.semibold)).frame(width: 30, height: 30)

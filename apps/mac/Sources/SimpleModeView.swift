@@ -167,7 +167,7 @@ private struct SimpleScreensBand: View {
                 SimpleScreenPreview(render: render, controls: controls, screen: screen, width: previewWidth)
             }
             if screens.isEmpty {
-                Text("No screens are set up. Settings › Screens.")
+                Text("No screens are set up. They are set up outside Simple Mode.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(width: 240, height: 120)
@@ -206,7 +206,7 @@ private struct SimpleScreensBand: View {
                         .frame(maxWidth: .infinity, minHeight: 30)
                 }
                 .buttonStyle(.bordered)
-                .help("Previous slide (←)")
+                .help("Previous slide" + KeyMapStore.shared.map.helpKeys(for: .previousSlide))
                 Button { step(1) } label: {
                     HStack(spacing: 6) {
                         Text("Next")
@@ -217,7 +217,7 @@ private struct SimpleScreensBand: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(HopeStyle.blue)
-                .help("Next slide (→ or Space)")
+                .help("Next slide" + KeyMapStore.shared.map.helpKeys(for: .nextSlide))
             }
             Button { controls.clearAll() } label: {
                 Label("Clear All", systemImage: "xmark.circle.fill")

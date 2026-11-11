@@ -37,6 +37,8 @@ final class AppUpdater {
     private(set) var available: Release?
     private(set) var status: String?
     private(set) var isWorking = false
+    /// Downloading and swapping in a release, as opposed to checking.
+    private(set) var isInstalling = false
     private var timer: Timer?
 
     var currentVersion: String {
@@ -93,14 +95,24 @@ final class AppUpdater {
         } catch {
             status = "Couldn't check for updates: \(error.localizedDescription)"
         }
-        if userInitiated, available != nil { promptToInstall() }
+        // Asked for from the menu or Settings: the answer is always shown,
+        // so the menu item doesn't look like it did nothing.
+        if userInitiated, available != nil { promptToInstall() } else if userInitiated { reportCheck() }
+    }
+
+    private func reportCheck() {
+        guard let status else { return }
+        let alert = NSAlert()
+        alert.messageText = status
+        alert.runModal()
     }
 
     static func isNewer(_ candidate: String, than current: String) -> Bool {
         candidate.compare(current, options: .numeric) == .orderedDescending
     }
 
-    private func promptToInstall() {
+    /// Settings' Install button: the same alert the menu item puts up.
+    func promptToInstall() {
         guard let available else { return }
         let alert = NSAlert()
         alert.messageText = "Screens \(available.version) is available"
@@ -116,7 +128,8 @@ final class AppUpdater {
 
     func install(_ release: Release) async {
         isWorking = true
-        defer { isWorking = false }
+        isInstalling = true
+        defer { isWorking = false; isInstalling = false }
         status = "Downloading \(release.version)…"
         do {
             let (downloaded, _) = try await URLSession.shared.download(from: release.dmgURL)

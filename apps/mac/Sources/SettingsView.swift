@@ -749,7 +749,7 @@ struct PresentLayoutMenuControl: View {
                     showingRename = true
                 }
 
-                Picker("Run-Only Layout", selection: Binding(
+                Picker("Opens in Simple Mode", selection: Binding(
                     get: { active.runOnly },
                     set: { layout.setLayoutRunOnly(id: active.id, $0) }
                 )) {
@@ -868,8 +868,7 @@ struct DefaultTransitionControl: View {
         controls
             .onAppear {
                 kindRaw = UserDefaults.standard.string(forKey: kindKey) ?? fallbackKind
-                let stored = UserDefaults.standard.double(forKey: durationKey)
-                duration = stored > 0 ? stored : fallbackDuration
+                duration = TransitionDuration.load(durationKey, fallback: fallbackDuration)
             }
 
     }
@@ -888,8 +887,8 @@ struct DefaultTransitionControl: View {
         Binding(
             get: { duration },
             set: { v in
-                duration = v
-                UserDefaults.standard.set(v, forKey: durationKey)
+                duration = TransitionDuration.rounded(v)
+                UserDefaults.standard.set(duration, forKey: durationKey)
             }
         )
     }
