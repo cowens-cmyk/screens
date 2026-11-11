@@ -23,11 +23,14 @@ import Foundation
 /// 5. A video that plays once: a media item with `mediaKind` video that
 ///    doesn't loop, or a presentation whose every slide's `background` is
 ///    such a video (a slide: its own background): "Video time left".
-/// 6. Type (`presentation.category`, a song with none counts as Worship):
+/// 6. `item.isWalkout`, or the presentation is
+///    `slideBuildingSettings.serviceDay.walkoutPresentationId`: "Before
+///    service" (the countdown to the next service).
+/// 7. Type (`presentation.category`, a song with none counts as Worship):
 ///    Sermon "Message timer", Worship "Lyrics + chords".
-/// 7. The plan's last presentation item, not a Sermon: "Before service"
+/// 8. The plan's last presentation item, not a Sermon: "Before service"
 ///    (its last slide puts the stage there).
-/// 8. Otherwise "No change".
+/// 9. Otherwise "No change".
 ///
 /// Livestream, assuming the operator's switch is on Lower Third (the
 /// usual), first match wins:
@@ -150,6 +153,10 @@ public enum StageStreamTags {
             }
         }
         if videoOnly(slide: slide, presentation: presentation, library: library) { return videoTimeLeft }
+        let walkoutID = library.settings?.serviceDay?.walkoutPresentationId
+        if item.isWalkout == true || (walkoutID?.isEmpty == false && presentation.id == walkoutID) {
+            return beforeService
+        }
         let category = PresentationTypes.category(of: presentation)
         if category == PresentationTypes.sermon { return messageTimer }
         if category == PresentationTypes.worship { return lyrics }

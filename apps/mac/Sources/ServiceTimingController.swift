@@ -98,6 +98,7 @@ final class ServiceTimingController {
             _ = controls?.media.rowsVersion
             _ = controls?.liveContextID
             _ = controls?.nextService
+            _ = controls?.stageServiceTime
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, gen == self.generation else { return }
@@ -128,7 +129,8 @@ final class ServiceTimingController {
         result += videoTimers(now: now)
         let next = controls?.nextService
         result.append(ServiceTrackingTimers.until(.untilCountdown, next?.resetAt, now: now))
-        result.append(ServiceTrackingTimers.until(.untilService, next?.time, now: now))
+        result.append(ServiceTrackingTimers.until(
+            .untilService, controls?.stageServiceTime, now: now, holdsAtZero: true))
         return result
     }
 

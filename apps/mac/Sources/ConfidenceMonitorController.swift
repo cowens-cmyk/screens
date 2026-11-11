@@ -140,6 +140,7 @@ final class ConfidenceMonitorController {
         var pruned = false
         upgradeMessageLayoutIfUntouched()
         upgradeWorshipLayoutIfUntouched()
+        upgradePreServiceLayoutIfUntouched()
         addNextSlideChordsToSavedLayouts()
         for (screenID, layoutID) in assignments where layoutID != StageLayouts.audienceID {
             if let layout = appModel.resident.confidenceLayouts.value(layoutID) {
@@ -248,6 +249,26 @@ final class ConfidenceMonitorController {
         appModel.updateConfidenceLayout(StageLayouts.messageID) { layout in
             // Checked again on the document itself, in case it changed since.
             if let objects = ConfidenceLayoutTemplate.upgradedSermonObjects(for: layout) {
+                layout.objects = objects
+            }
+        }
+    }
+
+    private var checkedPreServiceLayout = false
+
+    /// The Before Service layout got a new design (one big countdown to the
+    /// service's start, the clock when there's none). A saved copy still
+    /// exactly as the old template made it takes the new design once; one
+    /// anybody has changed is left as it is.
+    private func upgradePreServiceLayoutIfUntouched() {
+        guard !checkedPreServiceLayout,
+              let layout = appModel.resident.confidenceLayouts.value(StageLayouts.preServiceID)
+        else { return }
+        checkedPreServiceLayout = true
+        guard ConfidenceLayoutTemplate.upgradedPreServiceObjects(for: layout) != nil else { return }
+        DiagnosticsStore.shared.note("stage.preServiceLayout.upgraded", detail: layout.name)
+        appModel.updateConfidenceLayout(StageLayouts.preServiceID) { layout in
+            if let objects = ConfidenceLayoutTemplate.upgradedPreServiceObjects(for: layout) {
                 layout.objects = objects
             }
         }

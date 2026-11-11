@@ -83,7 +83,7 @@ public enum ServiceTrackingTimers {
         case (.video, .remaining): "Counts down the video playing for the current item."
         case (.video, .elapsed): "Counts up from the start of the video playing for the current item."
         case (.untilCountdown, _): "Counts down to the next service's countdown (to the service time when it has no countdown), from the plan's times, Schedule Service or the Service Day setup."
-        case (.untilService, _): "Counts down to the next service's start time."
+        case (.untilService, _): "Counts down to the next service's start time, and holds at 0:00 for a few minutes after it. Stopped when no service is left today."
         }
     }
 
@@ -116,9 +116,21 @@ public enum ServiceTrackingTimers {
     /// A countdown to a moment: running toward `date`, idle once it's past.
     /// It holds at 0:00 rather than counting on in red, because the snapshot
     /// is only rebuilt when the next service moves on, seconds or minutes
-    /// after the moment itself.
-    public static func until(_ subject: Subject, _ date: Date?, now: Date) -> TimerSnapshot {
-        guard let date, date > now else { return idle(subject, .remaining) }
+    /// after the moment itself. With `holdsAtZero`, a moment that has just
+    /// passed stays running at 0:00 instead of going idle: the caller
+    /// (ServiceStartClock) stops passing it once the hold is over, and idle
+    /// then means there is nothing to count to.
+    public static func until(
+        _ subject: Subject, _ date: Date?, now: Date, holdsAtZero: Bool = false
+    ) -> TimerSnapshot {
+        guard let date else { return idle(subject, .remaining) }
+        guard date > now else {
+            guard holdsAtZero else { return idle(subject, .remaining) }
+            return TimerSnapshot(
+                id: id(subject, .remaining), name: name(subject, .remaining), mode: .countdown,
+                isRunning: true, runningSince: now, banked: 0, durationSeconds: 0,
+                warnings: [], keepsCountingAfterZero: false)
+        }
         let seconds = date.timeIntervalSince(now)
         return TimerSnapshot(
             id: id(subject, .remaining), name: name(subject, .remaining), mode: .countdown,
