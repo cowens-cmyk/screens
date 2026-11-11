@@ -52,12 +52,7 @@ struct CountdownVideoMenu: View {
     /// countdown at zero whatever the video is set to do elsewhere.
     private func choose(_ mediaID: String) {
         let itemID = item.id
-        model.updateService(planID) { plan in
-            guard let index = plan.items.firstIndex(where: { $0.id == itemID }) else { return }
-            // A countdown that came from Shepherd starts as a plain item.
-            plan.items[index].itemKind = .media
-            plan.items[index].refId = mediaID
-        }
+        model.updateService(planID) { _ = ServiceCountdown.setVideo(mediaID, onItem: itemID, in: &$0) }
     }
 }
 
@@ -234,5 +229,23 @@ struct ScheduleServiceSheet: View {
                 start: row.countdown, serviceTime: row.service))
         }
         dismiss()
+    }
+}
+
+extension AppModel {
+    /// Whether a drag from the media bin (a bare library id) is a video the
+    /// countdown item can take.
+    func isCountdownVideoDrop(_ payload: String?, on item: ServiceItem) -> Bool {
+        guard item.isCountdown == true, let payload else { return false }
+        return media(payload)?.mediaKind == .video
+    }
+
+    /// A video dropped on the countdown item, in the plan or its card,
+    /// becomes its video, the same as choosing it from the film menu.
+    func dropCountdownVideo(_ payload: String?, on item: ServiceItem, planID: String) -> Bool {
+        guard let payload, isCountdownVideoDrop(payload, on: item) else { return false }
+        let itemID = item.id
+        updateService(planID) { _ = ServiceCountdown.setVideo(payload, onItem: itemID, in: &$0) }
+        return true
     }
 }

@@ -1019,6 +1019,10 @@ struct ServiceContinuousView: View {
                 }
 
                 .contextMenu { mediaQuickMenu(item) }
+                // A countdown takes a video dropped from the media bin.
+                .dropDestination(for: String.self) { payloads, _ in
+                    !runOnly && model.dropCountdownVideo(payloads.first, on: item, planID: serviceID)
+                }
 
                 .id("mediaTileMenu|\(item.id)|\(media == nil)")
                 // Named like a slide tile: the countdown with its length,
@@ -1211,6 +1215,10 @@ extension ServiceContinuousView {
         .contentShape(Rectangle())
         .contextMenu {
             if !runOnly { SongLyricsMenuItems(model: model, serviceID: serviceID, item: item) }
+        }
+        // A countdown from Shepherd takes a video dropped from the media bin.
+        .dropDestination(for: String.self) { payloads, _ in
+            !runOnly && model.dropCountdownVideo(payloads.first, on: item, planID: serviceID)
         }
 
         .padding(.bottom, 12)

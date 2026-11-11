@@ -92,8 +92,8 @@ struct SlideLabelTests {
         let verse = Slide(id: "a", name: "", objects: [text("Lyrics", "Amazing grace\nhow sweet the sound")], sectionId: "v1")
         let chorus = Slide(id: "b", name: "", objects: [text("Lyrics", "  My chains are gone  ")], sectionId: "ch")
         let song = deck(kind: .song, sections: sections, slides: [verse, chorus])
-        #expect(SlideLabels.label(for: verse, at: 0, in: song) == SlideLabel(title: "Verse 1", detail: "Amazing grace"))
-        #expect(SlideLabels.label(for: chorus, at: 1, in: song) == SlideLabel(title: "Chorus", detail: "My chains are gone"))
+        #expect(SlideLabels.label(for: verse, at: 0, in: song) == SlideLabel(title: "Verse 1"))
+        #expect(SlideLabels.label(for: chorus, at: 1, in: song) == SlideLabel(title: "Chorus"))
     }
 
     // MARK: Message notes

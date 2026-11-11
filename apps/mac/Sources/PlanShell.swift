@@ -238,6 +238,9 @@ struct PlanShell: View {
                     .ignoresSafeArea(.container, edges: .top)
             }
             .toolbar(removing: .title)
+            // Full screen keeps the title bar: the top bar is drawn in it, and
+            // left to auto-hide it went with the menu bar.
+            .windowToolbarFullScreenVisibility(.visible)
             .background(TopBarWindowChrome())
             .overlay { TopBarSearchOverlay(search: search, namespace: searchSpace) }
             .onAppear { search.perform = { result, add in searchChose(result, add: add) } }

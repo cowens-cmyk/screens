@@ -38,10 +38,11 @@ public enum SlideLabels {
         let ownName = meaningfulName(slide, mediaName: mediaName, hasText: !text.isEmpty)
         let group = sectionName(slide, in: presentation)
 
-        // A song's slides are its groups; a slide's own name, where a deck
+        // A song's slides are its groups, and the label is only the group:
+        // the words are on the tile already. A slide's own name, where a deck
         // gives one, says more than the group it sits in.
         if presentation.presentationKind == .song, let group {
-            return SlideLabel(title: group, detail: text)
+            return SlideLabel(title: group)
         }
         // A name that is only the background's file name ("Motion 15.mp4")
         // says less than the group the slide sits in.

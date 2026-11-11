@@ -60,6 +60,20 @@ public enum ServiceCountdown {
         return .insert(countdown)
     }
 
+    /// Makes a video the countdown item's: from its menu, or dropped on it
+    /// from the media bin. A countdown that came from Shepherd starts as a
+    /// plain item and becomes a media one. False when the item isn't the
+    /// plan's countdown.
+    @discardableResult
+    public static func setVideo(_ mediaID: String, onItem itemID: String, in service: inout Service) -> Bool {
+        guard !mediaID.isEmpty,
+              let index = service.items.firstIndex(where: { $0.id == itemID && $0.isCountdown == true })
+        else { return false }
+        service.items[index].itemKind = .media
+        service.items[index].refId = mediaID
+        return true
+    }
+
     /// Applies a change to the plan as it stands now: false when there's
     /// nothing left to do (it has a countdown by now, or the item is gone).
     @discardableResult

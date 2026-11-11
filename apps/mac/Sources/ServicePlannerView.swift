@@ -531,7 +531,9 @@ struct RunOrderList: View {
         )
         .dropDestination(for: String.self) { payloads, _ in
 
-            if !runOnly, let comboID = payloads.first.flatMap(comboID(in:)) {
+            if !runOnly, model.isCountdownVideoDrop(payloads.first, on: item) {
+                return model.dropCountdownVideo(payloads.first, on: item, planID: serviceID)
+            } else if !runOnly, let comboID = payloads.first.flatMap(comboID(in:)) {
                 return addMacro(comboID, to: item)
             } else if !runOnly, item.itemKind == .presentation,
                let dragged = payloads.first.flatMap(SlideBulkEdit.draggedSlide(in:)) {
@@ -547,6 +549,7 @@ struct RunOrderList: View {
             let slideDrag = dragged.flatMap(SlideBulkEdit.draggedSlide(in:))
             let accepts = (item.itemKind == .presentation && slideDrag.map { $0.presentationID != item.refId } == true)
                 || (!runOnly && dragged.flatMap(comboID(in:)) != nil)
+                || (!runOnly && model.isCountdownVideoDrop(dragged, on: item))
             if over, accepts {
                 dropTargetItemID = item.id
             } else if !over, dropTargetItemID == item.id {

@@ -342,6 +342,12 @@ struct TopBarWindowChrome: NSViewRepresentable {
             window.titlebarSeparatorStyle = .none
             if !window.styleMask.contains(.fullSizeContentView) { window.styleMask.insert(.fullSizeContentView) }
             installToolbar(window)
+            #if DEBUG
+            // Screenshots of full screen without UI scripting: SCREENS_FULL_SCREEN=1.
+            if ProcessInfo.processInfo.environment["SCREENS_FULL_SCREEN"] == "1", !window.styleMask.contains(.fullScreen) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { window.toggleFullScreen(nil) }
+            }
+            #endif
             // SwiftUI may take its toolbar away when its own items change
             // (the split view's, between modes); without one the title bar
             // shrinks and the traffic lights jump up off the bar's centre.

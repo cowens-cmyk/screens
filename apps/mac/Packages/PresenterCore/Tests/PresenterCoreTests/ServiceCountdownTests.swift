@@ -24,6 +24,20 @@ struct ServiceCountdownTests {
             == date("2026-10-25T10:25:00"))
     }
 
+    @Test func aDroppedVideoBecomesTheCountdowns() {
+        var countdown = ServiceItem(id: "c", itemKind: .info, name: "COUNTDOWN", refId: "")
+        countdown.isCountdown = true
+        let song = ServiceItem(id: "s", itemKind: .presentation, name: "Song", refId: "p")
+        var plan = Service(id: "plan", name: "Sunday", serviceDate: "2026-10-25", items: [countdown, song])
+        #expect(ServiceCountdown.setVideo("video", onItem: "c", in: &plan))
+        #expect(plan.items[0].itemKind == .media && plan.items[0].refId == "video")
+        // Only the countdown takes one.
+        #expect(!ServiceCountdown.setVideo("video", onItem: "s", in: &plan))
+        #expect(plan.items[1].refId == "p")
+        #expect(!ServiceCountdown.setVideo("", onItem: "c", in: &plan))
+        #expect(plan.items[0].refId == "video")
+    }
+
     @Test func plansGetACountdownFirstOnce() {
         let song = ServiceItem(id: "s", itemKind: .presentation, name: "Song", refId: "p")
         let plan = Service(id: "plan", name: "Sunday", serviceDate: "2026-10-25", items: [song])
