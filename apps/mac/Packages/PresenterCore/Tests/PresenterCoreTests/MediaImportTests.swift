@@ -182,4 +182,17 @@ struct MediaImportTests {
         #expect(try await client.loadValue(AudioItem.self, id: audio.id).folder == LibraryHome.needsSorted)
         #expect(snapshot.area(kind: .media, id: image.id) == .team && snapshot.area(kind: .audio, id: audio.id) == .team)
     }
+
+    /// A portrait phone photo is stored 4032×3024 with orientation 6; it
+    /// shows, and is recorded, 3024×4032.
+    @Test func aPortraitPhotosSizeIsUpright() {
+        let stored: [CFString: Any] = [kCGImagePropertyPixelWidth: 4032, kCGImagePropertyPixelHeight: 3024]
+        var portrait = stored
+        portrait[kCGImagePropertyOrientation] = NSNumber(value: 6)
+        #expect(MediaImporter.uprightSize(stored) == (4032, 3024))
+        #expect(MediaImporter.uprightSize(portrait) == (3024, 4032))
+        var upsideDown = stored
+        upsideDown[kCGImagePropertyOrientation] = NSNumber(value: 3)
+        #expect(MediaImporter.uprightSize(upsideDown) == (4032, 3024))
+    }
 }

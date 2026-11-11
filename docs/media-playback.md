@@ -27,6 +27,45 @@ move to the next item, a video's end action) ever fired.
 
 A stall is only logged: AVFoundation may recover on its own.
 
+## A file that isn't on this Mac
+
+Media imported on another Mac may not have reached this one yet
+(`AppModel.isMediaFileMissing`). Firing it puts nothing up, so
+`ServiceControls` sets `mediaProblem` with `fileMissing` and the banner reads
+"File not on this Mac" instead of "Video can't play". `fireServiceItem`
+returns `.unresolvable` for such an item, so a scheduled countdown is logged
+as a miss rather than counted as fired, the remote's Next and Previous and
+an auto-advance chain skip to the next item that can play.
+
+## Turned videos and photos
+
+A portrait iPhone video is stored landscape with a 90° `preferredTransform`,
+and a portrait photo with an EXIF orientation. `AVPlayerItemVideoOutput`
+hands over frames as stored, so `prepare` builds an `AVVideoComposition`
+from the asset when the track's transform turns or flips it (not when it
+only moves it, and not for alpha videos), and `MediaPlayer` sets it on the
+item; `naturalSize` is the turned size. Stills with an orientation other
+than 1 are decoded through ImageIO's thumbnail path at full size with the
+transform applied. Import records the turned width and height.
+
+## When a video has ended
+
+`MediaTransportState.hasPlayedOut(at:)` is what "finished" means everywhere
+(the plan's move on, end actions, the stage): stopped at its end, not
+looping, and not `parkedBySeek`. A seek from the transport while paused
+parks the video (seeking clamps a frame short of the end, inside the end
+threshold); playing again clears it. So scrubbing a paused countdown to its
+last frame doesn't move the plan on.
+
+A video fired on its own (not a slide's background) that has played out is
+taken down when the next slide goes up (`ShowState.clearEndedMedia`), unless
+that slide brings its own background to the same layer. Imports are
+Background videos and play on the looping layer, which slides didn't sweep,
+so the countdown's 0:00 frame used to stay behind the welcome slide.
+
+Times left (the transport strip's "left", the stage's video countdown and
+the Local API's) are in real seconds: media time divided by the play rate.
+
 ## Breadcrumbs
 
 Written with `DiagnosticsStore.shared.note`, collected by Help › Report a

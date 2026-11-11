@@ -115,4 +115,56 @@ struct ServiceCountdownTests {
         #expect(!ServiceCountdown.isCountdownTrigger(trigger, planID: "other"))
         #expect(ScheduleMath.nextDue(for: trigger.conditions[0], after: date("2026-10-25T09:00:00"), calendar: calendar) == start)
     }
+
+    @Test func theCountdownRunsAsTheVideoPlays() {
+        var video = MediaItem(
+            id: "v", name: "Countdown", mediaKind: .video, classification: .background, fileHash: "",
+            fileName: "c.mov", fileStatus: .ready, statusDetail: "", tags: [], favorite: false,
+            collections: [], loops: false, durationSeconds: 308)
+        #expect(ServiceCountdown.videoSeconds(of: video) == 308)
+        // Eight seconds of black trimmed off the end.
+        video.outPoint = 300
+        #expect(ServiceCountdown.videoSeconds(of: video) == 300)
+        video.inPoint = 10
+        video.playRate = 2
+        #expect(ServiceCountdown.videoSeconds(of: video) == 145)
+        // A window shorter than a frame plays the whole file, as PlaybackOptions does.
+        video.inPoint = 300
+        video.playRate = nil
+        #expect(ServiceCountdown.videoSeconds(of: video) == 308)
+        video.mediaKind = .image
+        #expect(ServiceCountdown.videoSeconds(of: video) == nil)
+    }
+
+    @Test func aScheduledCountdownKnowsItsServiceTime() {
+        let service = date("2026-10-25T10:30:00")
+        let trigger = ServiceCountdown.trigger(
+            planID: "plan", planName: "Sunday 9:00 AM", countdownItemID: "cd",
+            start: date("2026-10-25T10:24:40"), serviceTime: service, calendar: calendar)
+        // The start was moved by hand; the service time stays 10:30.
+        #expect(ServiceCountdown.serviceTime(of: trigger, videoSeconds: 300, calendar: calendar) == service)
+        var renamed = trigger
+        renamed.name = "Sunday countdown"
+        #expect(ServiceCountdown.serviceTime(of: renamed, videoSeconds: 300, calendar: calendar)
+            == date("2026-10-25T10:29:40"))
+        let evening = ServiceCountdown.trigger(
+            planID: "plan", planName: "Night", countdownItemID: "cd",
+            start: date("2026-10-25T17:55:00"), serviceTime: date("2026-10-25T18:00:00"), calendar: calendar)
+        #expect(ServiceCountdown.serviceTime(of: evening, videoSeconds: nil, calendar: calendar)
+            == date("2026-10-25T18:00:00"))
+    }
+
+    @Test func aNewVideoMovesTheScheduledCountdown() {
+        var trigger = ServiceCountdown.trigger(
+            planID: "plan", planName: "Sunday", countdownItemID: "cd",
+            start: date("2026-10-25T10:25:00"), serviceTime: date("2026-10-25T10:30:00"), calendar: calendar)
+        // Scheduled for a 5:00 video, then a 5:30 one is chosen.
+        #expect(ServiceCountdown.reschedule(&trigger, fromVideoSeconds: 300, toVideoSeconds: 330, calendar: calendar))
+        #expect(trigger.conditions[0].date == "2026-10-25T10:24:30")
+        // A start set five seconds early by hand keeps those five seconds.
+        trigger.conditions[0].date = "2026-10-25T10:24:25"
+        #expect(ServiceCountdown.reschedule(&trigger, fromVideoSeconds: 330, toVideoSeconds: nil, calendar: calendar))
+        #expect(trigger.conditions[0].date == "2026-10-25T10:24:55")
+        #expect(!ServiceCountdown.reschedule(&trigger, fromVideoSeconds: 300, toVideoSeconds: 300, calendar: calendar))
+    }
 }

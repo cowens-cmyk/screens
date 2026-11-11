@@ -204,6 +204,14 @@ final class ServiceControls {
             render.nextLiveTransitions[.slide] = own
         }
         let mediaBefore = state.liveMedia
+        // The countdown at 0:00, or another video fired on its own that has
+        // played out, comes down rather than sit frozen behind this slide's
+        // words. It goes with the slide's transition, as below.
+        let now = Date()
+        state.clearEndedMedia(before: slide, presentation: presentation, arrangementId: arrangementId) { cue in
+            guard let transport = render.media.transport(id: cue.mediaId) else { return false }
+            return !transport.isLooping && MediaTransportController.isFinished(transport, at: now)
+        }
         state.fire(
             slide: slide, presentation: presentation,
             theme: theme, arrangementId: arrangementId,
@@ -565,7 +573,8 @@ final class ServiceControls {
 
                 let remaining = (transport.duration - transport.position(at: now))
                     / max(transport.rate, 0.01)
-                ended = MediaAutoAdvance.shouldPreFire(
+                // Scrubbed near the end while paused isn't the video ending.
+                ended = !transport.parkedBySeek && MediaAutoAdvance.shouldPreFire(
                     remainingWallClock: remaining, delay: advance.delaySeconds
                 )
             } else {
@@ -666,6 +675,14 @@ final class ServiceControls {
             return .fired
         case .media:
             guard let media = appModel.media(item.refId) else { return .unresolvable }
+            // A file that hasn't reached this Mac can't play. Calling it
+            // fired would leave a scheduled countdown or an auto-advance
+            // waiting on a video that never starts; the operator is told
+            // and the caller can skip it.
+            guard !appModel.isMediaFileMissing(media) else {
+                mediaFileMissing(media)
+                return .unresolvable
+            }
             fire(mediaItem: media, context: .serviceItem(id: item.id))
             return .fired
         default:
@@ -744,7 +761,8 @@ final class ServiceControls {
 
                 let remaining = (transport.duration - transport.position(at: now))
                     / max(transport.rate, 0.01)
-                ended = MediaAutoAdvance.shouldPreFire(
+                // Scrubbed near the end while paused isn't the video ending.
+                ended = !transport.parkedBySeek && MediaAutoAdvance.shouldPreFire(
                     remainingWallClock: remaining, delay: advance.delaySeconds
                 )
             } else {
@@ -828,7 +846,7 @@ final class ServiceControls {
         let layer = SlideSceneBuilder.layerKind(CueMedia.dropped(for: mediaItem).layer)
 
         guard !appModel.isMediaFileMissing(mediaItem) else {
-            DiagnosticsStore.shared.note("media.fire.missingFile", detail: mediaItem.name)
+            mediaFileMissing(mediaItem)
             return layer
         }
 
@@ -2198,11 +2216,22 @@ final class ServiceControls {
         let id = UUID()
         let mediaID: String
         let name: String
+        /// Its file isn't on this Mac (not synced yet), rather than a
+        /// file AVFoundation refused.
+        var fileMissing = false
     }
 
     private(set) var mediaProblem: MediaProblem?
 
     func dismissMediaProblem() { mediaProblem = nil }
+
+    /// Media whose file isn't on this Mac was asked for. Nothing goes on
+    /// the screens, so without the banner the operator would see nothing
+    /// happen and not know why.
+    private func mediaFileMissing(_ item: MediaItem) {
+        DiagnosticsStore.shared.note("media.fire.missingFile", detail: item.name)
+        mediaProblem = MediaProblem(mediaID: item.id, name: item.name, fileMissing: true)
+    }
 
     /// The engine heard from AVFoundation about one of its videos.
     private func videoReported(_ problem: PlaybackProblem, mediaID: String) {

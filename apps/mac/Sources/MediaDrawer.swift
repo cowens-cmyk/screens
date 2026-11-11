@@ -7,6 +7,8 @@ import SwiftUI
 /// (Esc is left alone: it's the operator's to map.)
 struct MediaDrawer: View {
     let model: AppModel
+    /// The height of the area the bin rises into, once known.
+    var roomHeight: CGFloat?
     @AppStorage(Self.openKey) private var open = false
     @AppStorage("mediaBin.height") private var height = 320.0
     @State private var dragStartHeight: Double?
@@ -33,11 +35,28 @@ struct MediaDrawer: View {
                 Divider()
                 MediaLibraryView(model: model, embedded: true)
             }
-            .frame(height: height)
+            .frame(height: shownHeight)
             .background(.regularMaterial)
             .overlay(alignment: .top) { Divider() }
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
+    }
+
+    /// The saved height, kept inside the room there is now. A height dragged
+    /// out on a big display would otherwise run past the top of a smaller
+    /// window, taking the handle and the chevron with it. The saved height
+    /// is left alone, so a bigger window gets it back.
+    private var shownHeight: Double {
+        min(max(height, Self.minHeight), Self.maxHeight(room: roomHeight))
+    }
+
+    static let minHeight = 180.0
+
+    /// Tallest the bin may be: some of the plan stays in view above it, and
+    /// in a very short window it never goes past the top.
+    static func maxHeight(room: CGFloat?) -> Double {
+        guard let room, room > 0 else { return (NSScreen.main?.visibleFrame.height ?? 900) * 0.75 }
+        return max(min(minHeight, Double(room)), Double(room) - 100)
     }
 
     /// Dragged up or down to make the bin taller or shorter.
@@ -54,10 +73,9 @@ struct MediaDrawer: View {
             .gesture(
                 DragGesture(coordinateSpace: .global)
                     .onChanged { value in
-                        let start = dragStartHeight ?? height
+                        let start = dragStartHeight ?? shownHeight
                         dragStartHeight = start
-                        let screen = NSScreen.main?.visibleFrame.height ?? 900
-                        height = min(max(start - value.translation.height, 180), screen * 0.75)
+                        height = min(max(start - value.translation.height, Self.minHeight), Self.maxHeight(room: roomHeight))
                     }
                     .onEnded { _ in dragStartHeight = nil }
             )

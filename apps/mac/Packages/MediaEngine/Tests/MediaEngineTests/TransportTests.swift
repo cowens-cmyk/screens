@@ -90,6 +90,54 @@ final class TransportTests: XCTestCase {
         XCTAssertEqual(junk.position(at: anchor), 10, accuracy: 0.0001, "out-of-range position must clamp")
     }
 
+    /// Played to the end counts as finished; paused and scrubbed to the
+    /// last frame doesn't, until it plays again.
+    func testScrubbedToTheEndIsNotPlayedOut() {
+        let anchor = Date(timeIntervalSinceReferenceDate: 1000)
+        let ended = MediaTransportState(
+            duration: 10, position: 10, isPlaying: false, isLooping: false, capturedAt: anchor)
+        XCTAssertTrue(ended.hasPlayedOut(at: anchor))
+        // Seek clamps a frame short of the end: within the end threshold.
+        var scrubbed = MediaTransportState(
+            duration: 10, position: 9.96, isPlaying: false, isLooping: false, capturedAt: anchor,
+            parkedBySeek: true)
+        XCTAssertFalse(scrubbed.hasPlayedOut(at: anchor))
+        scrubbed.parkedBySeek = false
+        XCTAssertTrue(scrubbed.hasPlayedOut(at: anchor))
+    }
+
+    /// The time left is real time: a minute of media at 2x runs out in 30 s.
+    func testWallClockRemainingFollowsThePlayRate() {
+        let anchor = Date(timeIntervalSinceReferenceDate: 1000)
+        let fast = MediaTransportState(
+            duration: 60, position: 0, isPlaying: true, isLooping: false, capturedAt: anchor, rate: 2)
+        XCTAssertEqual(fast.wallClockRemaining(at: anchor), 30, accuracy: 0.0001)
+        XCTAssertEqual(fast.wallClockRemaining(at: anchor + 10), 20, accuracy: 0.0001)
+        let slow = MediaTransportState(
+            duration: 60, position: 30, isPlaying: false, isLooping: false, capturedAt: anchor, rate: 0.5)
+        XCTAssertEqual(slow.wallClockRemaining(at: anchor), 60, accuracy: 0.0001)
+    }
+
+    func testAHandSeekWhilePausedParksTheVideo() async throws {
+        let engine = try MediaEngine(device: device)
+        let media = try await engine.prepare(url: makeClip(name: "parked", seconds: 2))
+        engine.play(media, id: "v", loop: false)
+        try await pull(engine, id: "v") { (engine.stats(for: "v")?.framesDisplayed ?? 0) > 2 }
+        XCTAssertEqual(engine.transport(id: "v")?.parkedBySeek, false)
+        engine.pause(id: "v")
+        engine.seek(id: "v", to: 10, precise: true)
+        try await pull(engine, id: "v", timeout: 5) {
+            (engine.transport(id: "v")?.position ?? 0) > media.duration - 0.1
+        }
+        let parked = try XCTUnwrap(engine.transport(id: "v"))
+        XCTAssertTrue(parked.parkedBySeek)
+        XCTAssertFalse(parked.hasPlayedOut(at: Date()), "scrubbed to the end isn't played out")
+        engine.resume(id: "v")
+        try await pull(engine, id: "v", timeout: 5) { engine.transport(id: "v")?.hasPlayedOut(at: Date()) == true }
+        XCTAssertEqual(engine.transport(id: "v")?.hasPlayedOut(at: Date()), true, "played on, it ends")
+        engine.stopAll()
+    }
+
     func testEngineTransportReflectsPauseAndSeek() async throws {
         let engine = try MediaEngine(device: device)
         let media = try await engine.prepare(url: makeClip(name: "engine", seconds: 4))

@@ -123,4 +123,39 @@ final class StillImageTests: XCTestCase {
         } catch MediaEngineError.imageDecodeFailed { }
         XCTAssertNil(engine.surface(for: "still", hostTime: CACurrentMediaTime()))
     }
+
+    /// A portrait iPhone photo: stored 64×40 with EXIF orientation 6 (turn
+    /// 90° clockwise to view). Red is on the stored left, so upright it's
+    /// on top.
+    func testPortraitPhotoIsShownUpright() async throws {
+        let width = 64, height = 40
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ))
+        context.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width / 2, height: height))
+        let image = try XCTUnwrap(context.makeImage())
+        let url = tempDir.appendingPathComponent("portrait.jpg")
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(
+            url as CFURL, UTType.jpeg.identifier as CFString, 1, nil
+        ))
+        CGImageDestinationAddImage(destination, image, [kCGImagePropertyOrientation: 6] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        let engine = try MediaEngine(device: device)
+        let size = try await engine.showStill(url: url, id: "still")
+        XCTAssertEqual(size, CGSize(width: 40, height: 64))
+        guard case .bgra(let texture, _, _)? = engine.surface(for: "still", hostTime: 0) else {
+            return XCTFail("no .bgra surface")
+        }
+        XCTAssertEqual(texture.width, 40)
+        XCTAssertEqual(texture.height, 64)
+        XCTAssertGreaterThan(bgraPixel(of: texture, x: 20, y: 10)[2], 200, "top should be red")
+        XCTAssertLessThan(bgraPixel(of: texture, x: 20, y: 54)[2], 60, "bottom should be black")
+    }
 }

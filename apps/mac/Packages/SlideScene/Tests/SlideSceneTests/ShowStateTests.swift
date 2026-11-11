@@ -535,3 +535,36 @@ private func slideLayerStrings(_ scene: RenderScene) -> [String] {
     #expect(show.hasLinkedText)
     #expect(!show.hasTimeVaryingLinkedText, "next-slide text changes on fire, not per second")
 }
+
+@Test func anEndedCountdownComesDownWithTheNextSlide() {
+    let welcome = presentation([slide("welcome")])
+    var show = ShowState()
+    // Imports are backgrounds, so the countdown plays on the looping layer.
+    show.fire(media: cue("countdown", classification: .background), on: .loopingVideos)
+    // Still playing: it stays.
+    #expect(show.clearEndedMedia(before: welcome.slides[0], presentation: welcome) { _ in false }.isEmpty)
+    #expect(show.liveMedia[.loopingVideos]?.mediaId == "countdown")
+    // At 0:00 it comes down before the welcome slide goes up.
+    #expect(show.clearEndedMedia(before: welcome.slides[0], presentation: welcome) { $0.mediaId == "countdown" }
+        == [.loopingVideos])
+    show.fire(slide: welcome.slides[0], presentation: welcome)
+    #expect(show.liveMedia[.loopingVideos] == nil)
+}
+
+@Test func aSlidesOwnBackgroundIsNotTakenDownForEnding() {
+    // A background that plays once and holds belongs to its song.
+    let song = presentation([slide("a", background: cue("sunrise", loops: false)), slide("b")])
+    var show = ShowState()
+    show.fire(slide: song.slides[0], presentation: song)
+    #expect(show.clearEndedMedia(before: song.slides[1], presentation: song) { _ in true }.isEmpty)
+    #expect(show.liveMedia[.loopingVideos]?.mediaId == "sunrise")
+
+    // One the next slide replaces is left to the slide.
+    let next = presentation([slide("c", background: cue("ocean"))])
+    var other = ShowState()
+    other.fire(media: cue("countdown", classification: .background), on: .loopingVideos)
+    #expect(other.clearEndedMedia(before: next.slides[0], presentation: next) { _ in true }.isEmpty)
+    other.fire(slide: next.slides[0], presentation: next)
+    #expect(other.liveMedia[.loopingVideos]?.mediaId == "ocean")
+}
+

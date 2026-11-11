@@ -51,8 +51,7 @@ struct CountdownVideoMenu: View {
     /// The video itself is left as it is: the plan moves on from its
     /// countdown at zero whatever the video is set to do elsewhere.
     private func choose(_ mediaID: String) {
-        let itemID = item.id
-        model.updateService(planID) { _ = ServiceCountdown.setVideo(mediaID, onItem: itemID, in: &$0) }
+        model.setCountdownVideo(mediaID, itemID: item.id, planID: planID)
     }
 }
 
@@ -77,9 +76,8 @@ struct ScheduleServiceSheet: View {
 
     private var plan: Service? { model.resident.services.value(planID) }
     private var countdownItem: ServiceItem? { plan.flatMap(ServiceCountdown.item(in:)) }
-    private var videoSeconds: Double? {
-        countdownItem.flatMap { $0.refId.isEmpty ? nil : model.media($0.refId)?.durationSeconds }
-    }
+    /// As it plays: trimmed to its in and out points, at its play rate.
+    private var videoSeconds: Double? { model.countdownVideoSeconds(planID: planID) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -129,6 +127,13 @@ struct ScheduleServiceSheet: View {
                     }
                 }
             }
+            // A video picked from the film menu above, or trimmed meanwhile,
+            // has another length: starts not set by hand follow it.
+            .onChange(of: videoSeconds) { _, seconds in
+                for index in times.indices where !times[index].countdownChanged {
+                    times[index].countdown = ServiceCountdown.start(serviceTime: times[index].service, videoSeconds: seconds)
+                }
+            }
 
             Button("Add Service Time", systemImage: "plus") {
                 let last = times.last?.service ?? defaultTime()
@@ -174,10 +179,19 @@ struct ScheduleServiceSheet: View {
         }
     }
 
+    /// Where the video really ends, which a start moved by hand can put
+    /// before or after the service time.
     private func caption(_ row: Row) -> String {
-        let seconds = row.service.timeIntervalSince(row.countdown)
-        guard seconds > 0 else { return "The countdown starts after the service time." }
-        return "The countdown runs \(Self.length(seconds)) and ends at \(row.service.formatted(date: .omitted, time: .shortened))."
+        guard row.service > row.countdown else { return "The countdown starts after the service time." }
+        guard let seconds = videoSeconds, seconds > 0 else {
+            return "The countdown runs \(Self.length(row.service.timeIntervalSince(row.countdown))) and ends at \(row.service.formatted(date: .omitted, time: .shortened))."
+        }
+        let end = row.countdown.addingTimeInterval(seconds.rounded(.up))
+        let off = Int(end.timeIntervalSince(row.service).rounded())
+        let endText = end.formatted(.dateTime.hour().minute().second())
+        if off == 0 { return "The video runs \(Self.length(seconds)) and ends at \(endText)." }
+        let side = off < 0 ? "before" : "after"
+        return "The video runs \(Self.length(seconds)) and ends at \(endText), \(Self.length(Double(abs(off)))) \(side) the service time."
     }
 
     static func length(_ seconds: Double) -> String {
@@ -190,13 +204,24 @@ struct ScheduleServiceSheet: View {
     /// What's scheduled already; else Shepherd's service times; else 10:30
     /// on the plan's date.
     private func load() {
+        let seconds = videoSeconds
         let existing = model.residentScheduleTriggers
             .filter { ServiceCountdown.isCountdownTrigger($0, planID: planID) }
-            .compactMap { ServiceCountdown.startDate(of: $0) }
-            .sorted()
+            .compactMap { trigger -> (start: Date, service: Date)? in
+                guard let start = ServiceCountdown.startDate(of: trigger),
+                      let service = ServiceCountdown.serviceTime(of: trigger, videoSeconds: seconds)
+                else { return nil }
+                return (start, service)
+            }
+            .sorted { $0.start < $1.start }
         if !existing.isEmpty {
-            let length = (videoSeconds ?? 0) > 0 ? videoSeconds!.rounded(.up) : 300
-            times = existing.map { Row(service: $0.addingTimeInterval(length), countdown: $0, countdownChanged: true) }
+            // A start that is the video's length before its service time
+            // still follows the service time; only one moved by hand stays.
+            times = existing.map { pair in
+                let fitted = ServiceCountdown.start(serviceTime: pair.service, videoSeconds: videoSeconds)
+                return Row(service: pair.service, countdown: pair.start,
+                           countdownChanged: abs(pair.start.timeIntervalSince(fitted)) >= 0.5)
+            }
             return
         }
         let formatter = ISO8601DateFormatter()
@@ -244,9 +269,43 @@ extension AppModel {
     /// becomes its video, the same as choosing it from the film menu.
     func dropCountdownVideo(_ payload: String?, on item: ServiceItem, planID: String) -> Bool {
         guard let payload, isCountdownVideoDrop(payload, on: item) else { return false }
-        let itemID = item.id
-        updateService(planID) { _ = ServiceCountdown.setVideo(payload, onItem: itemID, in: &$0) }
+        setCountdownVideo(payload, itemID: item.id, planID: planID)
         return true
+    }
+
+    /// How long the plan's countdown video runs on the screens (trimmed, at
+    /// its play rate); nil without one.
+    func countdownVideoSeconds(planID: String) -> Double? {
+        guard let item = resident.services.value(planID).flatMap(ServiceCountdown.item(in:)),
+              !item.refId.isEmpty
+        else { return nil }
+        return media(item.refId).flatMap(ServiceCountdown.videoSeconds(of:))
+    }
+
+    /// Gives the plan's countdown a new video. Countdowns already scheduled
+    /// move with its length, so they still end at their service times
+    /// rather than at the old video's.
+    func setCountdownVideo(_ mediaID: String, itemID: String, planID: String) {
+        guard let plan = resident.services.value(planID),
+              ServiceCountdown.item(in: plan)?.id == itemID
+        else {
+            updateService(planID) { _ = ServiceCountdown.setVideo(mediaID, onItem: itemID, in: &$0) }
+            return
+        }
+        let before = countdownVideoSeconds(planID: planID)
+        updateService(planID) { _ = ServiceCountdown.setVideo(mediaID, onItem: itemID, in: &$0) }
+        rescheduleCountdowns(planID: planID, from: before, to: media(mediaID).flatMap(ServiceCountdown.videoSeconds(of:)))
+    }
+
+    /// Moves the plan's countdowns still to come for a video that runs
+    /// `new` seconds instead of `old`. One already running is left alone.
+    func rescheduleCountdowns(planID: String, from old: Double?, to new: Double?) {
+        let now = Date()
+        for trigger in residentScheduleTriggers
+        where trigger.archived != true && ServiceCountdown.isCountdownTrigger(trigger, planID: planID) {
+            guard let start = ServiceCountdown.startDate(of: trigger), start > now else { continue }
+            updateScheduleTrigger(trigger.id) { _ = ServiceCountdown.reschedule(&$0, fromVideoSeconds: old, toVideoSeconds: new) }
+        }
     }
 
     /// Whether files dragged from the Finder hold a video for the countdown.
@@ -264,7 +323,7 @@ extension AppModel {
             viewing: LibraryHome.Viewed(kind: .media, area: .team, path: ServiceCountdown.folder))
         Task { @MainActor in
             guard let mediaID = await importFiles([file], placement: placement).first else { return }
-            updateService(planID) { _ = ServiceCountdown.setVideo(mediaID, onItem: itemID, in: &$0) }
+            setCountdownVideo(mediaID, itemID: itemID, planID: planID)
         }
         return true
     }

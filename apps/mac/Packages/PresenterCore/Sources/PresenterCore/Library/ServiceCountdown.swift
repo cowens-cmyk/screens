@@ -157,11 +157,70 @@ public enum ServiceCountdown {
         trigger.notes == triggerNotePrefix + planID
     }
 
-    /// The service time a countdown trigger was made for, from its start and
-    /// the countdown's length.
+    /// When a countdown trigger starts the countdown.
     public static func startDate(of trigger: ScheduleTrigger, calendar: Calendar = .current) -> Date? {
         trigger.conditions.first { $0.kind == .oneTime }?.date
             .flatMap { ScheduleMath.parseLocalDate($0, calendar: calendar) }
+    }
+
+    /// How long a countdown video runs on the screens: from its in point to
+    /// its out point at its play rate, the same window MediaEngine's
+    /// PlaybackOptions plays. The file's full length would end the countdown
+    /// early when the end is trimmed. Nil when the length isn't known.
+    public static func videoSeconds(of media: MediaItem) -> Double? {
+        guard media.mediaKind == .video, let duration = media.durationSeconds, duration > 0 else { return nil }
+        // Mirrors PlaybackOptions.resolved: rate kept within 0.25...4, and a
+        // window shorter than a frame plays the whole file.
+        let rate = min(max(media.playRate ?? 1, 0.25), 4)
+        var start = min(max(media.inPoint ?? 0, 0), duration)
+        var end = min(max(media.outPoint ?? duration, 0), duration)
+        if end - start < 0.05 {
+            start = 0
+            end = duration
+        }
+        return (end - start) / rate
+    }
+
+    /// The service time a countdown trigger was made for. The trigger's
+    /// name carries it ("Sunday 10:30 AM Countdown"), so a start moved by
+    /// hand doesn't move the service time; a renamed trigger falls back to
+    /// its start plus the video's length.
+    public static func serviceTime(
+        of trigger: ScheduleTrigger, videoSeconds: Double?, calendar: Calendar = .current
+    ) -> Date? {
+        guard let start = startDate(of: trigger, calendar: calendar) else { return nil }
+        let fallback = serviceTime(start: start, videoSeconds: videoSeconds)
+        let suffix = " Countdown"
+        guard trigger.name.hasSuffix(suffix) else { return fallback }
+        let words = trigger.name.dropLast(suffix.count).split(separator: " ")
+        guard words.count >= 2, let meridiem = words.last, meridiem == "AM" || meridiem == "PM" else { return fallback }
+        let clock = words[words.count - 2].split(separator: ":")
+        guard clock.count == 2, let h = Int(clock[0]), let minute = Int(clock[1]),
+              (1...12).contains(h), (0..<60).contains(minute)
+        else { return fallback }
+        let hour = h % 12 + (meridiem == "PM" ? 12 : 0)
+        // The countdown runs minutes before its service, never hours.
+        guard let named = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: start),
+              named > start, named.timeIntervalSince(start) <= 2 * 3600
+        else { return fallback }
+        return named
+    }
+
+    /// A scheduled countdown moved for a new video length, so it still ends
+    /// at the same service time. A start changed by hand keeps its offset.
+    /// False when the trigger has no start or nothing changes.
+    @discardableResult
+    public static func reschedule(
+        _ trigger: inout ScheduleTrigger, fromVideoSeconds old: Double?, toVideoSeconds new: Double?,
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let index = trigger.conditions.firstIndex(where: { $0.kind == .oneTime }),
+              let start = startDate(of: trigger, calendar: calendar)
+        else { return false }
+        let moved = self.start(serviceTime: serviceTime(start: start, videoSeconds: old), videoSeconds: new)
+        guard moved != start else { return false }
+        trigger.conditions[index].date = localStamp(moved, calendar: calendar)
+        return true
     }
 
     /// "2026-10-25T10:24:50", the scheduler's local date form.

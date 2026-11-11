@@ -52,6 +52,10 @@ public struct PreparedMedia {
     /// Loaded here, off the main thread, so starting the player doesn't
     /// have to ask the asset for its tracks and wait.
     let audioTrack: AVAssetTrack?
+    /// Turns a portrait phone video upright. The video output hands over
+    /// frames as they are stored, without the track's rotation; nil when
+    /// the track has none.
+    var videoComposition: AVVideoComposition? = nil
 
     var outputPixelBufferAttributes: [String: any Sendable] {
         var attributes: [String: any Sendable] = [
@@ -120,9 +124,10 @@ public final class MediaEngine: @unchecked Sendable {
         }
         let audioTrack = try await asset.loadTracks(withMediaType: .audio).first
         let (duration, assetPlayable) = try await asset.load(.duration, .isPlayable)
-        let (naturalSize, minFrameDuration, descriptions) = try await track.load(
+        let (storedSize, minFrameDuration, descriptions) = try await track.load(
             .naturalSize, .minFrameDuration, .formatDescriptions
         )
+        let preferredTransform = try await track.load(.preferredTransform)
         let (decodable, trackPlayable) = try await track.load(.isDecodable, .isPlayable)
         let subtype = descriptions.first.map(CMFormatDescriptionGetMediaSubType) ?? 0
         let codec = Self.fourCC(subtype)
@@ -133,17 +138,38 @@ public final class MediaEngine: @unchecked Sendable {
         let frameDuration = minFrameDuration.isNumeric && minFrameDuration.seconds > 0
             ? minFrameDuration.seconds
             : 1.0 / 30.0
+        let hasAlpha = descriptions.contains(where: Self.carriesAlpha)
+        // An iPhone held upright records landscape frames and a 90° turn
+        // to show them with. A composition built from the asset applies
+        // that turn, as the library's hover preview does. Only a turn or
+        // flip gets one; everything else plays as it always has.
+        var naturalSize = storedSize
+        var composition: AVVideoComposition?
+        if Self.turns(preferredTransform), !hasAlpha {
+            composition = try? await AVVideoComposition.videoComposition(withPropertiesOf: asset)
+            if composition != nil {
+                let turned = CGRect(origin: .zero, size: storedSize).applying(preferredTransform)
+                naturalSize = CGSize(width: abs(turned.width), height: abs(turned.height))
+            }
+        }
         return PreparedMedia(
             url: url,
             duration: duration.seconds,
             frameDuration: frameDuration,
             naturalSize: naturalSize,
-            hasAlpha: descriptions.contains(where: Self.carriesAlpha),
+            hasAlpha: hasAlpha,
             codec: codec,
             hardwareDecodes: PreparedMedia.hardwareDecodes(subtype),
             asset: asset,
-            audioTrack: audioTrack
+            audioTrack: audioTrack,
+            videoComposition: composition
         )
+    }
+
+    /// Whether a track's transform rotates or flips its frames, rather than
+    /// leaving them as they are (or only moving them).
+    static func turns(_ transform: CGAffineTransform) -> Bool {
+        transform.b != 0 || transform.c != 0 || transform.a < 0 || transform.d < 0
     }
 
     private static func carriesAlpha(_ description: CMFormatDescription) -> Bool {
@@ -306,7 +332,7 @@ public final class MediaEngine: @unchecked Sendable {
     }
 
     public func seek(id: String, to seconds: Double, precise: Bool) {
-        players.value[id]?.seek(to: seconds, precise: precise)
+        players.value[id]?.seekByHand(to: seconds, precise: precise)
     }
 
     public func transport(id: String) -> MediaTransportState? {

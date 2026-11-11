@@ -147,7 +147,7 @@ struct MediaTransportStrip: View {
 
                 TimelineView(.animation(minimumInterval: 1, paused: !target.state.isPlaying)) { context in
                     VStack(spacing: 1) {
-                        Text(ScrubBar.timecode(target.state.remaining(at: context.date)) + " left")
+                        Text(ScrubBar.timecode(target.state.wallClockRemaining(at: context.date)) + " left")
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)
                         nameCaption(target)
@@ -258,7 +258,7 @@ struct MediaTransportStrip: View {
                             get: { media.pinnedID == row.id },
                             set: { _ in media.pin(row.id) }
                         )) {
-                            Text("\(row.name)  ·  \(ScrubBar.timecode(row.state.remaining(at: now))) left")
+                            Text("\(row.name)  ·  \(ScrubBar.timecode(row.state.wallClockRemaining(at: now))) left")
                         }
                     }
                 }

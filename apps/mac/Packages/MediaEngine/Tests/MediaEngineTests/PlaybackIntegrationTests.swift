@@ -170,4 +170,53 @@ final class PlaybackIntegrationTests: XCTestCase {
         XCTAssertNil(engine.surface(for: "x", hostTime: CACurrentMediaTime()))
         XCTAssertTrue(engine.playingIDs.isEmpty)
     }
+
+    /// A portrait iPhone video: 320×180 frames stored with a 90° clockwise
+    /// turn. The screens must get it upright, 180×320, the stored left side
+    /// on top, looping or not.
+    func testPortraitPhoneVideoPlaysUpright() async throws {
+        let url = tempDir.appendingPathComponent("portrait.mov")
+        try await MediaAuthoring.writeMovie(
+            to: url, codec: .h264, size: CGSize(width: 320, height: 180), frameCount: 30,
+            transform: CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 180, ty: 0)
+        ) { context, _ in
+            context.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 320, height: 180))
+            context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 160, height: 180))
+        }
+        let engine = try MediaEngine(device: device)
+        let media = try await engine.prepare(url: url)
+        XCTAssertEqual(media.naturalSize, CGSize(width: 180, height: 320))
+        XCTAssertNotNil(media.videoComposition)
+        defer { engine.stopAll() }
+
+        for loop in [false, true] {
+            let id = loop ? "looping" : "once"
+            engine.play(media, id: id, loop: loop)
+            let deadline = Date(timeIntervalSinceNow: 5)
+            var luma: MTLTexture?
+            while Date() < deadline, luma == nil {
+                if case .ycbcrBiplanar(let texture, _, _, _)? = engine.surface(for: id, hostTime: CACurrentMediaTime()) {
+                    luma = texture
+                } else if case .bgra(let texture, _, _)? = engine.surface(for: id, hostTime: CACurrentMediaTime()) {
+                    luma = texture
+                }
+                try await Task.sleep(for: .milliseconds(16))
+            }
+            let texture = try XCTUnwrap(luma, "no frame (loop: \(loop))")
+            XCTAssertEqual(texture.width, 180, "loop: \(loop)")
+            XCTAssertEqual(texture.height, 320, "loop: \(loop)")
+            engine.stop(id: id)
+        }
+    }
+
+    func testAnUprightVideoGetsNoComposition() async throws {
+        let engine = try MediaEngine(device: device)
+        let media = try await engine.prepare(url: makeOneSecondLoop())
+        XCTAssertNil(media.videoComposition)
+        XCTAssertEqual(media.naturalSize, CGSize(width: 320, height: 180))
+        XCTAssertFalse(MediaEngine.turns(CGAffineTransform(translationX: 0, y: 10)))
+        XCTAssertTrue(MediaEngine.turns(CGAffineTransform(rotationAngle: .pi)))
+    }
 }

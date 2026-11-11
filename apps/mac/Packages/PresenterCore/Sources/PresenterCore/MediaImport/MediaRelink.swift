@@ -23,8 +23,8 @@ public enum MediaRelink {
             return Probe(
                 mediaKind: .image, fileStatus: .ready, statusDetail: "",
                 durationSeconds: nil,
-                pixelWidth: properties[kCGImagePropertyPixelWidth] as? Int,
-                pixelHeight: properties[kCGImagePropertyPixelHeight] as? Int
+                pixelWidth: MediaImporter.uprightSize(properties).width,
+                pixelHeight: MediaImporter.uprightSize(properties).height
             )
         }
         if type.conforms(to: .movie) || type.conforms(to: .video) {
