@@ -524,6 +524,17 @@ public final class OutputManager {
 
     public var variantSceneProvider: (@Sendable (String) -> RenderScene?)?
 
+    /// Whether every non-stage screen shows solid black. Read from the render
+    /// threads, so it lives in a box as well.
+    public private(set) var isBlack = false
+    private let blackBox = Locked<Bool>(false)
+
+    public func setBlack(_ black: Bool) {
+        guard isBlack != black else { return }
+        isBlack = black
+        blackBox.value = black
+    }
+
     public func previewProvider(for targetID: String) -> @Sendable () -> RenderScene {
         provider(for: targetID)
     }
@@ -536,6 +547,7 @@ public final class OutputManager {
         let routing = layerRouting
         let themeRouting = slideThemeRouting
         let roles = roleBox
+        let black = blackBox
 
         let screenID = UUID(uuidString: targetID).map { sliceInfo(for: $0)?.screenID ?? $0 }
         let routingKey = screenID?.uuidString ?? targetID
@@ -553,6 +565,14 @@ public final class OutputManager {
             }
             if let screenID, let syncTest, syncTests.value.contains(screenID) {
                 return syncTest
+            }
+
+            // Black covers every screen but the stage's: the people on stage
+            // still need their display, and signage is for the audience.
+            let isStage = screenID.map { roles.value[$0] == .confidence } ?? false
+            if black.value, !isStage {
+                // The room scene's canvas, so the cover lines up with the slides.
+                return base().blackedOut()
             }
 
             if let screenID, let signage, let scene = signage(screenID) {

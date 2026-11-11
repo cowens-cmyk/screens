@@ -76,6 +76,10 @@ struct MonitorsPanel: View {
             }
             .scrollContentBackground(.hidden)
             .animation(HopeMotion.ui(reduced: reduceMotion), value: hiddenList)
+            if let controls {
+                Divider()
+                BlackBar(controls: controls)
+            }
         }
 
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
@@ -396,6 +400,53 @@ struct MonitorsPanel: View {
                 .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The column's bottom bar: the Black switch. Every audience screen and the
+/// livestream go solid black (the livestream opaque, not clear) while the
+/// stage keeps its display. It's a live control like Clear All, so run-only
+/// volunteers have it too. Lit red while on, because a black room can look
+/// like a fault from the back.
+struct BlackBar: View {
+    let controls: ServiceControls
+    private let keys = KeyMapStore.shared
+
+    var body: some View {
+        let on = controls.isBlack
+        let key = keys.map.chords(for: .toggleBlack).first?.display
+        Button {
+            controls.toggleBlack()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: on ? "square.fill" : "square")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(on ? "Black on" : "Black")
+                    .font(.callout.weight(.semibold))
+                if let key {
+                    Text(key)
+                        .font(.caption)
+                        .foregroundStyle(on ? Color.white.opacity(0.8) : Color.secondary)
+                }
+            }
+            .foregroundStyle(on ? Color.white : Color.primary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 30)
+            .background(
+                on ? HopeStyle.live : Color.primary.opacity(0.07),
+                in: RoundedRectangle.standard(CornerStandard.element))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .help(on
+            ? "Bring the screens back"
+            : "Every audience screen and the livestream go solid black. The stage keeps its display. Click again, or fire anything, to bring them back.")
+        .accessibilityLabel("Black screen")
+        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityAddTraits(.isToggle)
     }
 }
 

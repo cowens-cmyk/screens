@@ -12,6 +12,9 @@ by one keyer (default ME 1 Key 1; DSK 1 is set up the same way). With
   video);
 - **off** once the screen has been clear for 1.5 s (`ATEMKeyFollower.offDelay`).
 
+The Black switch (`docs/black-screen.md`) puts an opaque black item on the
+Livestream screen, so it counts as full screen and the keyer goes on air.
+
 Both cuts happen while the key signal is clear, so what the stream sees is
 the slide's own fade, not a cut. Full-screen graphics go through the same
 keyer: a full slide's key is solid, so it covers the camera. Nothing switches

@@ -77,6 +77,8 @@ With Settings › Local API enabled, the app serves a REST and WebSocket API on 
 
 `apps/mac/Sources/ATEMLink.swift` puts the livestream graphics on and off air on the ATEM switcher: it cuts the keyer carrying the Livestream screen's Fill and Key on when that screen shows something and off once it's clear. Off on each Mac until turned on in Settings › Integrations › ATEM. See `docs/atem.md`.
 
+`apps/mac/Sources/MonitorsPanel.swift` has the Black switch at the bottom of the Screens panel: every audience screen and the livestream (opaque) go solid black, the stage is unchanged. See `docs/black-screen.md`.
+
 ### Assistant
 
 Window › Assistant (⇧⌘A) is a chat with Claude that answers questions about Screens and changes plans and slides through tools that run on the Mac (`apps/mac/Sources/Assistant`; the request building, streaming, tool schemas and event matching are tested in `PresenterCore/Sources/PresenterCore/Assistant`). It uses the Anthropic API key from Settings › Network & API › Assistant, the same one Sermon import uses, and Claude Opus 5.5 unless Sonnet 5.5 is chosen there. What it knows about the app comes from `apps/mac/Sources/Assistant/ScreensGuide.md`, which is bundled and loaded into its system prompt. When a feature changes, update `ScreensGuide.md` so the in-app assistant stays current.
