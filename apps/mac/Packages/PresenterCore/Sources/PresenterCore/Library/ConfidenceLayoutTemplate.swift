@@ -69,10 +69,12 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     /// there is no next slide. The words being sung are large, bold and
     /// orange, top-left, so the first line always starts in the same place,
     /// with the chords (Nashville numbers) over them. The next slide's first
-    /// lines are grey under them. Along the bottom, three slate boxes: the
-    /// clock with seconds, the song, and its key, where a stage message
-    /// replaces them.
-    static func worship(name: String) -> ConfidenceLayout {
+    /// lines are grey under them, with their chords too, as the current
+    /// slide has them. Along the bottom, three slate boxes: the clock with
+    /// seconds, the song, and its key, where a stage message replaces them.
+    /// `nextChords: false` is the design before the next lines had chords,
+    /// kept only to recognise untouched copies of it.
+    static func worship(name: String, nextChords: Bool = true) -> ConfidenceLayout {
         // The column's two blocks: beside the words, and beside the next lines.
         let column: (x: Double, width: Double) = (30, 110)
         let currentBlock: (y: Double, height: Double) = (40, 460)
@@ -100,18 +102,19 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         current.textStyle?.chordNotation = .numbers
         // White, since gold chords over orange words were hard to tell apart.
         current.textStyle?.chordColorHex = white
-        // The next lines are a glance ahead; chords there were too small to
-        // read and crowded the words.
+        // The next lines carry their chords like the words being sung, so
+        // the band can see the change coming. They are drawn at the same
+        // proportion of the (smaller) text, and the box shrinks them to fit.
         var next = linked("Next Slide", .nextSlide,
                           x: words.x, y: 520, width: words.width, height: 350,
                           size: 80, color: worshipNextGray, alignment: .left, shrink: true, minSize: 44,
-                          maxLines: 3)
+                          chords: nextChords, maxLines: 3)
         next.textStyle?.fontName = "HelveticaNeue-Bold"
         next.textStyle?.verticalAlignment = .top
         next.textStyle?.keepLinesWhole = true
         next.textStyle?.balancedWrap = true
         next.textStyle?.chordNotation = .numbers
-        next.textStyle?.chordColorHex = captionGray
+        next.textStyle?.chordColorHex = nextChords ? white : captionGray
 
         // The bottom bar: three boxes, the words centred in each.
         let bar: (y: Double, height: Double) = (945, 110)
@@ -263,12 +266,46 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     /// gets the new design's objects; one anybody has touched is left alone.
     public static func upgradedWorshipObjects(for layout: ConfidenceLayout) -> [SlideObject]? {
         let earlier = [
+            worship(name: layout.name, nextChords: false),
             legacyWorship(name: layout.name),
             previousWorship(name: layout.name, centered: true),
             previousWorship(name: layout.name),
         ]
         guard earlier.contains(where: { isUntouched(layout, comparedWith: $0) }) else { return nil }
         return worship(name: layout.name).objects
+    }
+
+    /// A saved stage layout whose current slide shows chords but whose next
+    /// slide does not gets them on the next slide too, in the current
+    /// slide's notation and colour; nil when there is nothing to change.
+    /// Only a next-slide box that never had Chords switched either way
+    /// (the setting unset) is touched, so one someone turned off stays off.
+    /// A box showing one named object's text has no chords to show.
+    public static func showingNextSlideChords(for layout: ConfidenceLayout) -> [SlideObject]? {
+        func isWholeSlide(_ object: SlideObject, _ source: TextSourceKind) -> Bool {
+            object.objectKind == .text && object.textLink?.source == source
+                && (object.textLink?.sourceObjectName ?? "").isEmpty
+        }
+        guard let current = layout.objects.first(where: {
+            isWholeSlide($0, .currentSlide) && $0.textStyle?.showChords == true
+        }) else { return nil }
+        var changed = false
+        let objects = layout.objects.map { object -> SlideObject in
+            guard isWholeSlide(object, .nextSlide), object.textStyle?.showChords == nil else { return object }
+            var object = object
+            var style = object.textStyle ?? TextStyle()
+            style.showChords = true
+            if style.chordNotation == nil { style.chordNotation = current.textStyle?.chordNotation }
+            // The old Worship template's grey chord colour is the stand-in
+            // for "not chosen"; the words being sung have the real one.
+            if style.chordColorHex == nil || style.chordColorHex == captionGray {
+                style.chordColorHex = current.textStyle?.chordColorHex
+            }
+            object.textStyle = style
+            changed = true
+            return object
+        }
+        return changed ? objects : nil
     }
 
     /// The name of the box in the Video layout where the video plays. The
