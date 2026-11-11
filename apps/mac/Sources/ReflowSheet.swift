@@ -10,7 +10,7 @@ struct ReflowSheet: View {
 
     var body: some View {
 
-        let parsed = Reflow.parse(text, linesPerSlide: linesPerSlide)
+        let parsed = model.reflowParse(text: text, linesPerSlide: linesPerSlide)
         VStack(spacing: 0) {
             HStack {
                 Text("Reflow")
@@ -44,7 +44,7 @@ struct ReflowSheet: View {
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(parsed.sections.allSatisfy(\.slides.isEmpty))
+                .disabled(!parsed.sections.contains { $0.slides.contains { !$0.isEmpty } })
             }
             .padding(10)
         }

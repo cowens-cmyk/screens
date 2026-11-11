@@ -13,6 +13,11 @@ import Foundation
 ///   Shepherd: when the sequence (or the name) changes there, it changes
 ///   here. Its id is fixed by the Shepherd arrangement, so every Mac writes
 ///   the same one and a second Mac finds nothing to do.
+/// - Once someone changes sync's arrangement by hand (its order or name, in
+///   any order editor), it is marked as edited (`editedTag`) and sync stops
+///   rewriting it, but still points the plan item at it: the change the
+///   worship leader asked for is what plays. Deleting it lets sync make
+///   Shepherd's again.
 /// - An arrangement made by hand is never rewritten. When one already has
 ///   Shepherd's name, it is used as is if it already plays Shepherd's
 ///   order; otherwise sync's is named "<name> (Shepherd)".
@@ -173,7 +178,9 @@ public enum ShepherdArrangementSync {
         return Mapping(sectionIds: ids, missing: missing)
     }
 
-    private static func opensOnBlank(_ presentation: Presentation) -> Bool {
+    /// The song's first section is a blank to open on: "Blank", or an
+    /// intro with no words.
+    public static func opensOnBlank(_ presentation: Presentation) -> Bool {
         guard let opener = presentation.sections?.first else { return false }
         if opener.name.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Blank") == .orderedSame { return true }
         guard Reflow.isIntro(opener.name) else { return false }
@@ -342,6 +349,25 @@ public enum ShepherdArrangementSync {
         arrangement?.id ?? "song"
     }
 
+    /// What `shepherdArrangementId` holds once someone has changed sync's
+    /// arrangement for `tag` by hand: still Shepherd's arrangement for the
+    /// plan, but no longer one sync rewrites.
+    public static func editedTag(_ tag: String) -> String {
+        editedPrefix + tag
+    }
+
+    private static let editedPrefix = "edited:"
+
+    /// `after` (an arrangement as an operator just changed it) marked as
+    /// edited when it was one sync keeps in Shepherd's order. Anything else
+    /// comes back as it is.
+    public static func editedByHand(_ after: Arrangement, before: Arrangement) -> Arrangement {
+        guard after != before, let tag = before.shepherdArrangementId, !tag.hasPrefix(editedPrefix) else { return after }
+        var marked = after
+        marked.shepherdArrangementId = editedTag(tag)
+        return marked
+    }
+
     /// Made by sync for this Shepherd arrangement: tagged, or (before the
     /// tag) under the fixed id an import or an earlier sync gave it.
     static func isSyncs(_ arrangement: Arrangement, tag: String) -> Bool {
@@ -381,6 +407,11 @@ public enum ShepherdArrangementSync {
         var seen = Set<String>()
         for item in existing where seen.insert(item.id).inserted { arrangements.append(item) }
         var changed = arrangements.count != existing.count
+
+        // Sync's arrangement as an operator changed it: it plays as they left it.
+        if let edited = arrangements.first(where: { $0.shepherdArrangementId == editedTag(tag) }) {
+            return Outcome(arrangements: changed ? arrangements : nil, arrangementId: edited.id, warnings: warnings)
+        }
 
         if let index = arrangements.firstIndex(where: { isSyncs($0, tag: tag) }) {
             var own = arrangements[index]

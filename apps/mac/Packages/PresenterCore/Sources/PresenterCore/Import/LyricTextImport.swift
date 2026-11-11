@@ -80,6 +80,30 @@ public enum LyricTextImporter {
         )
     }
 
+    /// Whether a lyrics file that turned up in Downloads is the song asked
+    /// for, so an unrelated .txt (a setlist, notes) isn't taken for it. The
+    /// CCLI number decides when both have one; otherwise the file's title
+    /// or its file name has to be the song's title, contain it ("Amazing
+    /// Grace (My Chains Are Gone)" for "Amazing Grace"), or be the start of
+    /// it (the other way round).
+    public static func isSong(_ text: String, fileName: String, title: String, ccli: Int?) -> Bool {
+        let normalized = normalize(text)
+        if let ccli, let number = normalized.ccli?.songNumber { return number == ccli }
+        let wanted = titleKey(title)
+        guard !wanted.isEmpty else { return false }
+        let name = (fileName as NSString).deletingPathExtension
+        return [normalized.title, name].compactMap { $0 }.map(titleKey).contains { candidate in
+            candidate.contains(wanted) || (candidate.count >= 6 && wanted.hasPrefix(candidate))
+        }
+    }
+
+    /// Letters and digits only, lowercased: "Amazing-Grace_(My Chains)"
+    /// and "amazing grace my chains" read alike.
+    private static func titleKey(_ title: String) -> String {
+        String(title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .lowercased().filter { $0.isLetter || $0.isNumber })
+    }
+
     public static func normalize(_ text: String) -> Normalized {
         let unified = text
             .replacingOccurrences(of: "\r\n", with: "\n")

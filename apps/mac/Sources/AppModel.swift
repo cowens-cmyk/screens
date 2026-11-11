@@ -1532,15 +1532,16 @@ final class AppModel {
         withDeck(presentationID) { deck in
             let oldText = deck?.slides.first { $0.id == slideID }?
                 .objects.first { $0.id == objectID }?.text
+            // Chords and styles move with their words, as on the canvas.
             self.updateSlide(presentationID: presentationID, slideID: slideID, undoLabel: nil) { slide in
                 if let object = slide.objects.firstIndex(where: { $0.id == objectID }) {
-                    slide.objects[object].text = text
+                    slide.objects[object].replaceText(with: text)
                 }
             }
             if let oldText, oldText != text {
                 let apply = self.slideFieldRestore(presentationID, slideID: slideID) { value, slide in
                     if let object = slide.objects.firstIndex(where: { $0.id == objectID }) {
-                        slide.objects[object].text = value
+                        slide.objects[object].replaceText(with: value)
                     }
                 }
                 self.moveUndo.registerEdit(
@@ -1742,7 +1743,11 @@ final class AppModel {
         updatePresentation(presentationID) { presentation in
             guard let index = presentation.arrangements?.firstIndex(where: { $0.id == arrangementID })
             else { return }
+            let before = presentation.arrangements![index]
             mutate(&presentation.arrangements![index])
+            // A change made here to Shepherd's order stops sync putting it back.
+            presentation.arrangements![index] = ShepherdArrangementSync.editedByHand(
+                presentation.arrangements![index], before: before)
         }
     }
 
