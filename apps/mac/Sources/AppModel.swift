@@ -2937,19 +2937,24 @@ final class AppModel {
         lastImportSummary = summary
     }
 
+    /// `skippingHashes` leaves out pictures and videos already there (see
+    /// MediaImporter); a background pack passes its own files' hashes.
     @discardableResult
-    func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil) async -> [String] {
+    func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil, skippingHashes: Set<String>? = nil) async -> [String] {
         if urls.contains(where: { Self.documentImportExtensions.contains($0.pathExtension.lowercased()) }) {
             let split = await importDocuments(from: urls)
             noteLibraryWideMutation()
-            return split.rest.isEmpty ? [] : await importFiles(split.rest, placement: placement)
+            return split.rest.isEmpty
+                ? [] : await importFiles(split.rest, placement: placement, skippingHashes: skippingHashes)
         }
         isImporting = true
         defer {
             isImporting = false
             mediaImportProgress = nil
         }
-        let results = await importer?.importFiles(at: urls, placement: placement ?? newPlacement) { done, total, file in
+        let results = await importer?.importFiles(
+            at: urls, placement: placement ?? newPlacement, skippingHashes: skippingHashes
+        ) { done, total, file in
             self.mediaImportProgress = MediaImportProgress(done: done, total: total, fileName: file.lastPathComponent)
         } ?? []
         let flagged = results.filter {
@@ -2958,8 +2963,10 @@ final class AppModel {
         let skipped = results.filter {
             if case .skipped = $0.outcome { return true } else { return false }
         }.count
-        var summary = "Imported \(results.count - skipped) of \(results.count) files"
+        let duplicates = results.filter { $0.outcome == .duplicate }.count
+        var summary = "Imported \(results.count - skipped - duplicates) of \(results.count) files"
         if flagged > 0 { summary += " — \(flagged) flagged for transcode" }
+        if duplicates > 0 { summary += " — \(duplicates) already there" }
         if skipped > 0 { summary += " — \(skipped) skipped" }
         lastImportSummary = summary
         noteMutation(.media)

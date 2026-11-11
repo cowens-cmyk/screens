@@ -60,6 +60,9 @@ struct WhenItEndsMenu: View {
 /// it, or onto a slide to make it the background; drop files on a category
 /// to import them there.
 ///
+/// Worship Backgrounds also holds packs: a folder dragged in from Finder
+/// becomes one tile, named after the folder, that opens to its backgrounds.
+///
 /// Given `picking`, the same browser picks pictures and videos for new
 /// slides (Add Slide › From Media Library…): click to pick, double-click to
 /// add one, and nothing is renamed, moved or dragged from it.
@@ -88,6 +91,14 @@ struct MediaLibraryView: View {
     @State private var deleteUsedCount = 0
     @State private var settingsTarget: MediaSettingsTarget?
     @State private var picked: [String] = []
+    /// The Worship Backgrounds pack being looked at, by name; nil at the top.
+    @State private var openPackName: String?
+    @State private var packRenameTarget: BackgroundPacks.Pack?
+    @State private var packRenameText = ""
+    @State private var packDeleteTarget: BackgroundPacks.Pack?
+    @State private var packDeleteUsedCount = 0
+    @State private var newPackTarget: LibraryIndex.Entry?
+    @State private var newPackText = ""
 
     /// All Media or one category; stored by name so the window opens where
     /// it was left.
@@ -128,7 +139,8 @@ struct MediaLibraryView: View {
     var body: some View {
         let media = model.entries(in: .media)
         let audio = model.entries(in: .audio)
-        let entries = searched(members(of: shown, media: media, audio: audio))
+        let browse = browsing(members(of: shown, media: media, audio: audio))
+        let entries = browse.entries
         Group {
             if embedded {
                 HStack(spacing: 0) {
@@ -136,16 +148,16 @@ struct MediaLibraryView: View {
                         .scrollContentBackground(.hidden)
                         .frame(width: 244)
                     Divider()
-                    detail(entries: entries)
+                    detail(entries: entries, browse: browse)
                 }
             } else {
                 NavigationSplitView {
                     sidebar(media: media, audio: audio)
                         .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 280)
                 } detail: {
-                    detail(entries: entries)
+                    detail(entries: entries, browse: browse)
                         .navigationTitle("Media Library")
-                        .navigationSubtitle(shown.title)
+                        .navigationSubtitle(browse.open.map { "\(shown.title) \u{203A} \($0.name)" } ?? shown.title)
                 }
                 .frame(minWidth: 720, minHeight: 440)
             }
@@ -187,6 +199,49 @@ struct MediaLibraryView: View {
         .sheet(item: $settingsTarget) { target in
             MediaSettingsSheet(model: model, mediaID: target.id)
         }
+        .alert("Rename Pack", isPresented: Binding(get: { packRenameTarget != nil }, set: { if !$0 { packRenameTarget = nil } })) {
+            TextField("Name", text: $packRenameText)
+            Button("Rename") {
+                if let packRenameTarget { renamePack(packRenameTarget, to: packRenameText) }
+                packRenameTarget = nil
+            }
+            Button("Cancel", role: .cancel) { packRenameTarget = nil }
+        } message: {
+            Text("A pack with the same name joins this one.")
+        }
+        .alert("New Pack", isPresented: Binding(get: { newPackTarget != nil }, set: { if !$0 { newPackTarget = nil } })) {
+            TextField("Name", text: $newPackText)
+            Button("Create") {
+                if let newPackTarget { makePack(named: newPackText, with: newPackTarget) }
+                newPackTarget = nil
+            }
+            Button("Cancel", role: .cancel) { newPackTarget = nil }
+        }
+        .confirmationDialog(
+            "Delete the \u{201C}\(packDeleteTarget?.name ?? "")\u{201D} pack?",
+            isPresented: Binding(get: { packDeleteTarget != nil }, set: { if !$0 { packDeleteTarget = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let pack = packDeleteTarget {
+                Button("Keep the Backgrounds") {
+                    model.deletePack(pack, deletingBackgrounds: false)
+                    if openPackName.map({ $0.caseInsensitiveCompare(pack.name) == .orderedSame }) == true { openPackName = nil }
+                    packDeleteTarget = nil
+                }
+                Button(pack.memberIDs.count == 1 ? "Delete the Background" : "Delete \(pack.memberIDs.count) Backgrounds", role: .destructive) {
+                    model.deletePack(pack, deletingBackgrounds: true)
+                    if openPackName.map({ $0.caseInsensitiveCompare(pack.name) == .orderedSame }) == true { openPackName = nil }
+                    packDeleteTarget = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { packDeleteTarget = nil }
+        } message: {
+            if packDeleteUsedCount > 0 {
+                Text("Kept, the backgrounds move to Worship Backgrounds. Deleted, they can't be brought back, and the \(packDeleteUsedCount) place\(packDeleteUsedCount == 1 ? "" : "s") using them show a missing-media warning.")
+            } else {
+                Text("Kept, the backgrounds move to Worship Backgrounds. Deleted, they can't be brought back.")
+            }
+        }
     }
 
     // MARK: Categories
@@ -210,6 +265,7 @@ struct MediaLibraryView: View {
         Button {
             shownRaw = row.rawValue
             selectedID = nil
+            openPackName = nil
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: glyph)
@@ -298,11 +354,152 @@ struct MediaLibraryView: View {
         }
     }
 
+    // MARK: Packs
+
+    /// What the grid shows: in Worship Backgrounds, the packs and then the
+    /// backgrounds in no pack, or the backgrounds in the open pack. A search
+    /// at the top reaches into the packs too, so a background is found
+    /// wherever it's kept.
+    struct Browse {
+        var packs: [BackgroundPacks.Pack] = []
+        var open: BackgroundPacks.Pack?
+        var entries: [LibraryIndex.Entry]
+        /// Every pack, for right-click › Move to Pack: listed once per
+        /// pass, not once per tile.
+        var allPacks: [BackgroundPacks.Pack] = []
+    }
+
+    private func browsing(_ members: [LibraryIndex.Entry]) -> Browse {
+        guard shown == .category(.worshipBackgrounds) else {
+            let packs = shown == .all ? model.backgroundPacks(members).packs : []
+            return Browse(entries: searched(members), allPacks: packs)
+        }
+        let grouped = model.backgroundPacks(members)
+        if let name = openPackName, let pack = grouped.pack(named: name) {
+            let inPack = Set(pack.memberIDs)
+            return Browse(open: pack, entries: searched(members.filter { inPack.contains($0.id) }), allPacks: grouped.packs)
+        }
+        let query = searchText.trimmingCharacters(in: .whitespaces)
+        if !query.isEmpty {
+            return Browse(
+                packs: grouped.packs.filter { $0.name.localizedCaseInsensitiveContains(query) },
+                entries: searched(members), allPacks: grouped.packs)
+        }
+        let loose = Set(grouped.loose)
+        return Browse(
+            packs: grouped.packs, entries: searched(members.filter { loose.contains($0.id) }), allPacks: grouped.packs)
+    }
+
+    /// Back to the top of Worship Backgrounds. A tile dropped here leaves
+    /// its pack.
+    private var packBackButton: some View {
+        Button {
+            openPackName = nil
+            selectedID = nil
+        } label: {
+            Label(MediaLibraryCategory.worshipBackgrounds.title, systemImage: "chevron.left")
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    dropTarget == "packBack" ? Color.accentColor.opacity(0.35) : .clear,
+                    in: RoundedRectangle.standard(CornerStandard.element))
+        }
+        .buttonStyle(.borderless)
+        .help("Back to all worship backgrounds")
+        .onDrop(of: [.fileURL, .plainText], delegate: MediaLibraryDropDelegate(
+            enabled: !runOnly,
+            targeted: { on in
+                if on { dropTarget = "packBack" } else if dropTarget == "packBack" { dropTarget = nil }
+            },
+            files: { urls in Task { await importFiles(urls, into: .category(.worshipBackgrounds)) } },
+            entryID: { id in file(id, into: .category(.worshipBackgrounds)) }))
+    }
+
+    /// One pack: a click opens it. Tiles dropped on it join it; files and
+    /// folders dropped on it are imported into it.
+    @ViewBuilder
+    private func packTile(_ pack: BackgroundPacks.Pack) -> some View {
+        let base = BackgroundPackTile(model: model, pack: pack, targeted: dropTarget == "pack:" + pack.id)
+            .onTapGesture {
+                openPackName = pack.name
+                selectedID = nil
+            }
+            .onDrop(of: [.fileURL, .plainText], delegate: MediaLibraryDropDelegate(
+                enabled: !runOnly && picking == nil,
+                targeted: { on in
+                    let key = "pack:" + pack.id
+                    if on { dropTarget = key } else if dropTarget == key { dropTarget = nil }
+                },
+                files: { urls in Task { await model.importIntoPack(urls, pack: pack.name) } },
+                entryID: { id in file(id, into: .category(.worshipBackgrounds), pack: pack.name) }))
+        if picking == nil {
+            base.contextMenu { packTileMenu(pack) }
+        } else {
+            base
+        }
+    }
+
+    @ViewBuilder
+    private func packTileMenu(_ pack: BackgroundPacks.Pack) -> some View {
+        Button("Open") { openPackName = pack.name }
+        if !runOnly {
+            Divider()
+            Button("Rename Pack…") {
+                packRenameText = pack.name
+                packRenameTarget = pack
+            }
+            Button("Delete Pack…", role: .destructive) { requestPackDelete(pack) }
+        }
+    }
+
+    /// Right-click › Move to Pack on a worship background.
+    @ViewBuilder
+    private func packMenu(for entry: LibraryIndex.Entry, packs: [BackgroundPacks.Pack]) -> some View {
+        let current = BackgroundPacks.pack(ofFolder: entry.subkind)
+        Menu("Move to Pack") {
+            Button("No Pack") { model.moveToPack([entry], pack: nil) }
+                .disabled(current == nil)
+            if !packs.isEmpty {
+                Divider()
+                ForEach(packs) { pack in
+                    Button(pack.name) { model.moveToPack([entry], pack: pack.name) }
+                        .disabled(current.map { $0.caseInsensitiveCompare(pack.name) == .orderedSame } ?? false)
+                }
+            }
+            Divider()
+            Button("New Pack…") {
+                newPackText = ""
+                newPackTarget = entry
+            }
+        }
+    }
+
+    private func requestPackDelete(_ pack: BackgroundPacks.Pack) {
+        Task {
+            packDeleteUsedCount = await model.mediaReferenceDocumentCount(of: Set(pack.memberIDs))
+            packDeleteTarget = pack
+        }
+    }
+
+    private func renamePack(_ pack: BackgroundPacks.Pack, to name: String) {
+        let existing = model.backgroundPacks(model.entries(in: .media)).packs
+            .filter { $0.id != pack.id }.map(\.name)
+        guard let clean = BackgroundPacks.packName(forFolderNamed: name, existing: existing) else { return }
+        model.renamePack(pack, to: clean)
+        if openPackName.map({ $0.caseInsensitiveCompare(pack.name) == .orderedSame }) == true { openPackName = clean }
+    }
+
+    private func makePack(named name: String, with entry: LibraryIndex.Entry) {
+        let existing = model.backgroundPacks(model.entries(in: .media)).packs.map(\.name)
+        guard let clean = BackgroundPacks.packName(forFolderNamed: name, existing: existing) else { return }
+        model.moveToPack([entry], pack: clean)
+    }
+
     // MARK: Grid
 
-    private func detail(entries: [LibraryIndex.Entry]) -> some View {
+    private func detail(entries: [LibraryIndex.Entry], browse: Browse) -> some View {
         VStack(spacing: 0) {
-            header(count: entries.count)
+            header(count: entries.count + browse.packs.count, open: browse.open)
             if let progress = model.mediaImportProgress {
                 importBar(progress)
             }
@@ -312,14 +509,17 @@ struct MediaLibraryView: View {
                     columns: [GridItem(.adaptive(minimum: tileWidth, maximum: tileWidth * 1.4), spacing: 14)],
                     spacing: 16
                 ) {
+                    ForEach(browse.packs) { pack in
+                        packTile(pack)
+                    }
                     ForEach(entries) { entry in
-                        tile(entry)
+                        tile(entry, packs: browse.allPacks)
                     }
                 }
                 .padding(16)
             }
             .overlay {
-                if entries.isEmpty { emptyState }
+                if entries.isEmpty, browse.packs.isEmpty { emptyState }
             }
             .background(dropTarget == "grid" ? Color.accentColor.opacity(0.08) : .clear)
             .onDrop(of: [.fileURL, .plainText], delegate: MediaLibraryDropDelegate(
@@ -327,8 +527,8 @@ struct MediaLibraryView: View {
                 targeted: { on in
                     if on { dropTarget = "grid" } else if dropTarget == "grid" { dropTarget = nil }
                 },
-                files: { urls in Task { await importFiles(urls, into: shown) } },
-                entryID: { id in file(id, into: shown) }))
+                files: { urls in Task { await importFiles(urls, into: shown, pack: browse.open?.name) } },
+                entryID: { id in file(id, into: shown, pack: browse.open?.name, leavesPack: false) }))
             if let picking {
                 Divider()
                 pickBar(picking)
@@ -359,10 +559,16 @@ struct MediaLibraryView: View {
         .padding(10)
     }
 
-    private func header(count: Int) -> some View {
+    private func header(count: Int, open: BackgroundPacks.Pack?) -> some View {
         HStack(spacing: 12) {
-            Text(shown.title)
-                .font(.headline)
+            if let open {
+                packBackButton
+                Text(open.name)
+                    .font(.headline)
+            } else {
+                Text(shown.title)
+                    .font(.headline)
+            }
             Text("\(count)")
                 .font(.callout.monospacedDigit())
                 .foregroundStyle(.tertiary)
@@ -401,7 +607,7 @@ struct MediaLibraryView: View {
             .help("Thumbnail size")
             if !runOnly {
                 Button {
-                    presentImportPanel()
+                    presentImportPanel(pack: open?.name)
                 } label: {
                     Label("Import…", systemImage: "square.and.arrow.down")
                 }
@@ -423,7 +629,7 @@ struct MediaLibraryView: View {
             }
         } actions: {
             if searchText.isEmpty, !runOnly {
-                Button("Import…") { presentImportPanel() }
+                Button("Import…") { presentImportPanel(pack: nil) }
             }
         }
     }
@@ -435,7 +641,7 @@ struct MediaLibraryView: View {
     private var emptyInvite: String {
         switch shown {
         case .all: "Drop videos, images or music here, or use Import."
-        case .category(.worshipBackgrounds): "Drop worship backgrounds here. They loop while they're up."
+        case .category(.worshipBackgrounds): "Drop worship backgrounds here. They loop while they're up. A folder becomes a pack."
         case .category(.countdowns): "Drop countdown videos here. The plan's countdown is chosen from these."
         case .category(.videos): "Drop videos here. They play once."
         case .category(.sermonSlides): "Drop sermon slide images here. A PDF or Keynote file becomes a presentation."
@@ -446,7 +652,7 @@ struct MediaLibraryView: View {
     }
 
     @ViewBuilder
-    private func tile(_ entry: LibraryIndex.Entry) -> some View {
+    private func tile(_ entry: LibraryIndex.Entry, packs: [BackgroundPacks.Pack]) -> some View {
         let order = picked.firstIndex(of: entry.id)
         let base = MediaLibraryTile(
             model: model, entry: entry,
@@ -480,14 +686,14 @@ struct MediaLibraryView: View {
                 .onTapGesture { selectedID = entry.id }
                 // Dropped on the plan or a slide it changes them, so not in Run-Only.
                 .draggablePayload(runOnly ? nil : entry.id)
-                .contextMenu { menu(entry) }
+                .contextMenu { menu(entry, packs: packs) }
         }
     }
 
     // MARK: Right-click
 
     @ViewBuilder
-    private func menu(_ entry: LibraryIndex.Entry) -> some View {
+    private func menu(_ entry: LibraryIndex.Entry, packs: [BackgroundPacks.Pack]) -> some View {
         let item = entry.kind == .media ? model.media(entry.id) : nil
         if !runOnly {
             Button("Add to Plan") { model.addToCurrentService(entry) }
@@ -518,6 +724,9 @@ struct MediaLibraryView: View {
                             .disabled(category == current)
                     }
                 }
+                if current == .worshipBackgrounds {
+                    packMenu(for: entry, packs: packs)
+                }
             }
         }
         Button("Show in Finder") {
@@ -541,12 +750,26 @@ struct MediaLibraryView: View {
     // MARK: Filing and importing
 
     /// A tile dropped on a category moves there; Audio holds only music.
-    private func file(_ id: String, into row: Shown) -> Bool {
+    /// Dropped on Worship Backgrounds in the side list it leaves its pack;
+    /// dropped on an open pack's grid it joins the pack. Let go over the
+    /// grid it came from, it stays where it is.
+    private func file(_ id: String, into row: Shown, pack: String? = nil, leavesPack: Bool = true) -> Bool {
         guard case .category(let category) = row, let folder = category.folder,
-              let entry = model.indexEntry(id), entry.kind == .media,
-              MediaLibraryCategory.containing(folder: entry.subkind) != category
+              let entry = model.indexEntry(id), entry.kind == .media
         else { return false }
-        model.moveToFolder(entry, folder: folder)
+        let current = MediaLibraryCategory.containing(folder: entry.subkind)
+        if category == .worshipBackgrounds, current == .worshipBackgrounds {
+            let from = BackgroundPacks.pack(ofFolder: entry.subkind)
+            guard from?.lowercased() != pack?.lowercased(), pack != nil || leavesPack else { return false }
+            model.moveToPack([entry], pack: pack)
+            return true
+        }
+        guard current != category else { return false }
+        if category == .worshipBackgrounds {
+            model.moveToPack([entry], pack: pack)
+        } else {
+            model.moveToFolder(entry, folder: folder)
+        }
         return true
     }
 
@@ -554,8 +777,23 @@ struct MediaLibraryView: View {
     /// each goes where it belongs: videos to Videos, pictures to Images,
     /// music to Audio. PDFs and Keynote decks become presentations, as they
     /// do anywhere else.
-    private func importFiles(_ urls: [URL], into row: Shown) async {
+    ///
+    /// On Worship Backgrounds each Finder folder becomes a pack named after
+    /// it; with a pack open, what's dropped on the grid goes into the pack.
+    private func importFiles(_ urls: [URL], into row: Shown, pack: String? = nil) async {
         switch row {
+        case .category(.worshipBackgrounds):
+            if let pack {
+                await model.importIntoPack(urls, pack: pack)
+                return
+            }
+            let split = BackgroundPackImport.split(urls)
+            if !split.files.isEmpty {
+                await model.importFiles(split.files, placement: Self.placement(.worshipBackgrounds))
+            }
+            if !split.folders.isEmpty {
+                await model.importBackgroundPacks(split.folders)
+            }
         case .category(let category):
             await model.importFiles(urls, placement: Self.placement(category))
         case .all:
@@ -579,7 +817,7 @@ struct MediaLibraryView: View {
         .drive(viewing: LibraryHome.Viewed(kind: .media, area: .team, path: category.folder ?? ""))
     }
 
-    private func presentImportPanel() {
+    private func presentImportPanel(pack: String?) {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
@@ -589,7 +827,7 @@ struct MediaLibraryView: View {
         panel.begin { response in
             guard response == .OK else { return }
             let urls = panel.urls
-            Task { @MainActor in await importFiles(urls, into: target) }
+            Task { @MainActor in await importFiles(urls, into: target, pack: pack) }
         }
     }
 }
@@ -599,6 +837,73 @@ struct MediaLibraryPicking {
     /// The picked media ids, in the order they were picked.
     let add: ([String]) -> Void
     let cancel: () -> Void
+}
+
+/// A pack's tile: four of its backgrounds in a grid, or the first one when
+/// it has fewer, with how many it holds.
+private struct BackgroundPackTile: View {
+    let model: AppModel
+    let pack: BackgroundPacks.Pack
+    let targeted: Bool
+
+    var body: some View {
+        let shown = Array(pack.memberIDs.prefix(4))
+        VStack(alignment: .leading, spacing: 5) {
+            ZStack {
+                Color.black
+                if shown.count == 4 {
+                    Grid(horizontalSpacing: 1, verticalSpacing: 1) {
+                        GridRow {
+                            poster(shown[0])
+                            poster(shown[1])
+                        }
+                        GridRow {
+                            poster(shown[2])
+                            poster(shown[3])
+                        }
+                    }
+                } else if let first = shown.first {
+                    poster(first)
+                }
+            }
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .clipShape(RoundedRectangle.standard(CornerStandard.element))
+            .overlay(alignment: .bottomTrailing) {
+                Label("\(pack.memberIDs.count)", systemImage: "square.stack.fill")
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .padding(5)
+            }
+            .overlay {
+                RoundedRectangle.standard(CornerStandard.element)
+                    .strokeBorder(
+                        targeted ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.4),
+                        lineWidth: targeted ? 2 : 1)
+            }
+            HStack(spacing: 6) {
+                Image(systemName: "folder")
+                    .foregroundStyle(.secondary)
+                Text(pack.name)
+                    .font(.callout)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text("\(pack.memberIDs.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .contentShape(Rectangle())
+        .help("Pack of \(pack.memberIDs.count) background\(pack.memberIDs.count == 1 ? "" : "s"). Click to open.")
+    }
+
+    private func poster(_ id: String) -> some View {
+        Color.black
+            .overlay { PosterImage(model: model, mediaId: id) }
+            .clipped()
+    }
 }
 
 /// One tile: the poster (a muted preview while the pointer rests on a
