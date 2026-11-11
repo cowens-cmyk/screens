@@ -248,4 +248,24 @@ extension AppModel {
         updateService(planID) { _ = ServiceCountdown.setVideo(payload, onItem: itemID, in: &$0) }
         return true
     }
+
+    /// Whether files dragged from the Finder hold a video for the countdown.
+    func isCountdownVideoFileDrop(_ urls: [URL], on item: ServiceItem) -> Bool {
+        item.isCountdown == true && ServiceCountdown.videoFile(in: urls) != nil
+    }
+
+    /// A video dragged from the Finder onto the countdown is imported into
+    /// Media › Countdowns, where the film menu looks for them, then becomes
+    /// the countdown's video. True once the import has started.
+    func dropCountdownVideoFile(_ urls: [URL], on item: ServiceItem, planID: String) -> Bool {
+        guard item.isCountdown == true, let file = ServiceCountdown.videoFile(in: urls) else { return false }
+        let itemID = item.id
+        let placement = LibraryHome.Placement.drive(
+            viewing: LibraryHome.Viewed(kind: .media, area: .team, path: ServiceCountdown.folder))
+        Task { @MainActor in
+            guard let mediaID = await importFiles([file], placement: placement).first else { return }
+            updateService(planID) { _ = ServiceCountdown.setVideo(mediaID, onItem: itemID, in: &$0) }
+        }
+        return true
+    }
 }

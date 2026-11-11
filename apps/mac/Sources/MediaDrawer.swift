@@ -19,7 +19,7 @@ struct MediaDrawer: View {
                 handle
                 HStack(spacing: 8) {
                     Text("Media").font(.headline)
-                    Text("Drag onto a slide, a song or the plan")
+                    Text("Drag onto or between slides, a song or the plan")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button { withAnimation(.easeOut(duration: 0.2)) { open = false } } label: {

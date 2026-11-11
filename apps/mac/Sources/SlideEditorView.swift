@@ -2,6 +2,7 @@ import PresenterCore
 import RenderEngine
 import SlideScene
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SlideEditorView: View {
     let appModel: AppModel
@@ -363,7 +364,20 @@ struct SlideEditorView: View {
                         .tag(slide.id)
                 }
             }
-            .onInsert(of: [.plainText, .text]) { index, providers in
+            .onInsert(of: [.plainText, .text, .fileURL]) { index, providers in
+                guard !runOnly else { return }
+                // Pictures and videos from the Finder, between rows or past
+                // the last: imported, then a slide each there.
+                if providers.contains(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) {
+                    let beforeID = insertionSlideID(rows, index: index)
+                    Task { @MainActor in
+                        let urls = await droppedFileURLs(providers)
+                        guard !urls.isEmpty else { return }
+                        let imported = await appModel.importFiles(await MediaSlides.withLowerThirds(urls))
+                        _ = model.insertMediaSlides(mediaIDs: imported, beforeSlideID: beforeID)
+                    }
+                    return
+                }
                 for provider in providers {
                     _ = provider.loadObject(ofClass: NSString.self) { object, _ in
                         guard let payload = object as? String else { return }
@@ -495,13 +509,17 @@ struct SlideEditorView: View {
             return
         }
 
-        let beforeID: String?
-        switch anchor {
-        case .slide(let slide): beforeID = slide.id
-        case .header: beforeID = firstSlideID(rows, from: index)
-        case nil: beforeID = nil
+        _ = model.insertMediaSlide(mediaID: payload, beforeSlideID: insertionSlideID(rows, index: index))
+    }
+
+    /// The slide new slides go before for a place between the list's rows;
+    /// nil past the last.
+    private func insertionSlideID(_ rows: [SlideListRow], index: Int) -> String? {
+        switch rows.indices.contains(index) ? rows[index] : nil {
+        case .slide(let slide): slide.id
+        case .header: firstSlideID(rows, from: index)
+        case nil: nil
         }
-        _ = model.insertMediaSlide(mediaID: payload, beforeSlideID: beforeID)
     }
 
     private func firstSlideID(_ rows: [SlideListRow], from index: Int) -> String? {

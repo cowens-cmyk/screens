@@ -74,6 +74,12 @@ public enum ServiceCountdown {
         return true
     }
 
+    /// The video among files dragged from the Finder onto the countdown: the
+    /// first one, since the countdown plays one. Nil when none is a video.
+    public static func videoFile(in urls: [URL]) -> URL? {
+        urls.first { !$0.hasDirectoryPath && MediaLibraryCategory.forImportedFile($0) == .videos }
+    }
+
     /// Applies a change to the plan as it stands now: false when there's
     /// nothing left to do (it has a countdown by now, or the item is gone).
     @discardableResult
