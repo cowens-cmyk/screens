@@ -608,7 +608,7 @@ struct ServiceContinuousView: View {
             cardHeader(item) {
                 // One count for the whole item instead of a triangle on every tile.
                 PresentationIssuesBadge(
-                    model: model, presentation: presentation,
+                    model: model, serviceID: serviceID, itemID: item.id, presentation: presentation,
                     arrangementId: item.arrangementId, slides: slides,
                     orderNotes: item.mxuArrangementWarnings ?? [])
                 CardSlidePosition(controls: controls, itemID: item.id, slideCount: slides.count)
@@ -1837,6 +1837,8 @@ private struct StuckHeaderBackdrop: View {
 /// its header rather than a triangle on every tile. Clicking it lists them.
 private struct PresentationIssuesBadge: View {
     let model: AppModel
+    let serviceID: String
+    let itemID: String
     let presentation: Presentation
     let arrangementId: String?
     let slides: [Slide]
@@ -1846,6 +1848,9 @@ private struct PresentationIssuesBadge: View {
 
     @State private var clippedSlideIDs: Set<String> = []
     @State private var listing = false
+    @State private var fixing = false
+    @State private var fixError: String?
+    @Environment(\.runOnly) private var runOnly
 
     private struct Issue: Identifiable {
         let id: String
@@ -1955,9 +1960,85 @@ private struct PresentationIssuesBadge: View {
                 : "Fix text or add the missing section in Edit. Locate missing media from the Library.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            let blankNames = blankFixableNames
+            if !blankNames.isEmpty, !runOnly {
+                Button(fixing ? "Adding…" : "Add \(Self.joined(blankNames))") { addBlankSections(blankNames) }
+                    .disabled(fixing)
+                    .help("Adds an empty slide for each, in Shepherd's order, and clears these warnings")
+                if let fixError {
+                    Text(fixError).font(.caption).foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .padding(12)
         .frame(width: 320, alignment: .leading)
+    }
+
+    /// The parts Shepherd's arrangement has that are normally wordless
+    /// (a vamp, an outro, an ending): an empty slide holds their place.
+    private var blankFixableNames: [String] {
+        ShepherdArrangementSync.blankFixableNames(
+            in: orderNotes.compactMap(ShepherdArrangementSync.missingName(fromWarning:)))
+    }
+
+    /// "Vamp", "Vamp and Outro", "Vamp, Outro and Ending".
+    private static func joined(_ names: [String]) -> String {
+        guard let last = names.last, names.count > 1 else { return names.first ?? "" }
+        return names.dropLast().joined(separator: ", ") + " and " + last
+    }
+
+    /// Gives the song a blank slide for each, puts it where Shepherd's
+    /// arrangement sings it, and drops those warnings from the item (they
+    /// otherwise stay until the next sync).
+    private func addBlankSections(_ names: [String]) {
+        guard !fixing else { return }
+        fixing = true
+        fixError = nil
+        let presentationID = presentation.id
+        let serviceID = serviceID, itemID = itemID, arrangementId = arrangementId
+        Task {
+            let item = (try? model.service(serviceID))?.items.first { $0.id == itemID }
+            // Shepherd's order, so the new parts land where it sings them;
+            // without it they go on the end of the arrangement.
+            var sequence: [String]?
+            var tag: String?
+            if let songID = item?.mxuSourceSongId, !songID.isEmpty, ShepherdSync.shared.isConfigured,
+               let detail = try? await ShepherdSync.shared.client.song(id: songID) {
+                let planned = ShepherdSongMatch.arrangement(
+                    in: detail, id: item?.mxuSourceArrangementId, name: item?.mxuArrangementName)
+                let order = ShepherdSongMatch.sequence(of: detail, arrangement: planned)
+                sequence = order.isEmpty ? nil : order
+                tag = ShepherdArrangementSync.tag(planned)
+            }
+            let sequenceNow = sequence, tagNow = tag
+            defer { fixing = false }
+            guard let current = model.presentation(presentationID) else { return }
+            let fix = ShepherdArrangementSync.addBlankSections(
+                current, missing: names, sequence: sequenceNow, arrangementId: arrangementId, shepherdTag: tagNow)
+            guard !fix.resolved.isEmpty else { return }
+            do {
+                if !fix.added.isEmpty {
+                    // Worked out again as the write lands, on the song as it
+                    // is then: an edit made meanwhile counts.
+                    let task = model.updatePresentation(presentationID) { song in
+                        song = ShepherdArrangementSync.addBlankSections(
+                            song, missing: names, sequence: sequenceNow, arrangementId: arrangementId,
+                            shepherdTag: tagNow).presentation
+                    }
+                    _ = try await task.value
+                }
+                let done = Set(fix.resolved.map { ShepherdArrangementSync.warning(missing: $0) })
+                model.updateService(serviceID) { service in
+                    guard let index = service.items.firstIndex(where: { $0.id == itemID }),
+                          service.items[index].refId == presentationID else { return }
+                    let left = (service.items[index].mxuArrangementWarnings ?? []).filter { !done.contains($0) }
+                    service.items[index].mxuArrangementWarnings = left.isEmpty ? nil : left
+                }
+            } catch {
+                fixError = error.localizedDescription
+            }
+        }
     }
 }
 

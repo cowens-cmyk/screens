@@ -272,4 +272,159 @@ struct ShepherdArrangementSyncTests {
         #expect(pick("shepherd-a1", "shepherd-a1", "shepherd-a2", anthem: true) == nil)
         #expect(pick(nil, nil, nil) == nil)
     }
+
+    // MARK: Adding the parts a song lacks
+
+    private let sequenceWithVamp = ["V1", "C", "Vamp", "C", "Bridge", "Outro", "Ending"]
+
+    @Test func warningsReadBackToTheirNames() {
+        for name in ["Vamp", "Bridge 2", "Pre-Chorus", "Outro"] {
+            #expect(ShepherdArrangementSync.missingName(fromWarning: ShepherdArrangementSync.warning(missing: name)) == name)
+        }
+        #expect(ShepherdArrangementSync.missingName(
+            fromWarning: "Shepherd's arrangement can't be used: this song's slides aren't in sections") == nil)
+        #expect(ShepherdArrangementSync.missingName(fromWarning: "Text doesn't fit") == nil)
+        #expect(ShepherdArrangementSync.missingName(fromWarning: "Shepherd's arrangement has Vamp; this song has no Outro") == nil)
+    }
+
+    @Test func onlyWordlessPartsTakeABlank() {
+        let names = ["Vamp", "Outro", "Ending", "Breakdown", "Interlude", "Bridge 2", "Tag", "Verse 3", "Pre-Chorus", "Chorus 2", "Refrain", "Vamp"]
+        #expect(ShepherdArrangementSync.blankFixableNames(in: names) == ["Vamp", "Outro", "Ending", "Breakdown", "Interlude"])
+    }
+
+    @Test func blankSectionsAreAddedAndNoLongerMissing() throws {
+        let shepherd = ShepherdClient.SongArrangement(id: "a1", name: "Default", sequence: sequenceWithVamp)
+        let song = librarySong(sections: ["Verse 1", "Chorus", "Bridge"])
+        let outcome = ShepherdArrangementSync.reconcile(song, song: shepherdSong([shepherd]), arrangement: shepherd)
+        #expect(outcome.warnings.compactMap(ShepherdArrangementSync.missingName(fromWarning:)) == ["Vamp", "Outro", "Ending"])
+        let before = applying(outcome, to: song)
+
+        let fix = ShepherdArrangementSync.addBlankSections(
+            before, missing: ["Vamp", "Outro", "Ending"], sequence: sequenceWithVamp, arrangementId: "shepherd-a1",
+            shepherdTag: "a1")
+        #expect(fix.added == ["Vamp", "Outro", "Ending"] && fix.resolved == fix.added)
+        let after = fix.presentation
+        #expect(after.sections?.map(\.name) == ["Verse 1", "Chorus", "Bridge", "Vamp", "Outro", "Ending"])
+        for name in fix.added {
+            let section = try #require(after.sections?.first { $0.name == name })
+            let slides = after.slides.filter { $0.sectionId == section.id }
+            #expect(slides.count == 1)
+            #expect(slides[0].objects.isEmpty && slides[0].name.isEmpty)
+            #expect(slides[0].themeSlideName == "Lyrics" && slides[0].unthemed == nil)
+        }
+        #expect(after.slides.count == before.slides.count + 3)
+        #expect(ShepherdArrangementSync.mapping(sequence: sequenceWithVamp, onto: after).missing.isEmpty)
+
+        // Shepherd's order, with the new parts where it sings them.
+        let order = try #require(after.arrangements?.first { $0.id == "shepherd-a1" })
+        #expect(names(order.sectionIds, in: after) == ["Verse 1", "Chorus", "Vamp", "Chorus", "Bridge", "Outro", "Ending"])
+        // The next sync finds nothing left to say, and the same order.
+        let again = ShepherdArrangementSync.reconcile(after, song: shepherdSong([shepherd]), arrangement: shepherd)
+        #expect(again.warnings.isEmpty)
+        #expect(again.arrangements == nil || again.arrangements?.first { $0.id == "shepherd-a1" }?.sectionIds == order.sectionIds)
+    }
+
+    @Test func aSecondRunChangesNothing() {
+        let shepherd = ShepherdClient.SongArrangement(id: "a1", name: "Default", sequence: sequenceWithVamp)
+        let song = librarySong(sections: ["Verse 1", "Chorus", "Bridge"])
+        let start = applying(ShepherdArrangementSync.reconcile(song, song: shepherdSong([shepherd]), arrangement: shepherd), to: song)
+        let first = ShepherdArrangementSync.addBlankSections(
+            start, missing: ["Vamp", "Outro", "Ending"], sequence: sequenceWithVamp, arrangementId: "shepherd-a1", shepherdTag: "a1")
+        let second = ShepherdArrangementSync.addBlankSections(
+            first.presentation, missing: ["Vamp", "Outro", "Ending"], sequence: sequenceWithVamp,
+            arrangementId: "shepherd-a1", shepherdTag: "a1")
+        #expect(second.presentation == first.presentation)
+        #expect(second.added.isEmpty)
+        #expect(second.resolved == ["Vamp", "Outro", "Ending"], "their warnings can still be cleared")
+    }
+
+    @Test func lyricPartsAreLeftForTheEditor() {
+        let song = librarySong(sections: ["Verse 1", "Chorus"])
+        let fix = ShepherdArrangementSync.addBlankSections(
+            song, missing: ["Bridge 2", "Tag", "Verse 2", "Vamp"], sequence: ["V1", "C", "Bridge 2", "Tag", "V2", "Vamp"],
+            arrangementId: nil)
+        #expect(fix.added == ["Vamp"] && fix.resolved == ["Vamp"])
+        #expect(fix.presentation.sections?.map(\.name) == ["Verse 1", "Chorus", "Vamp"])
+
+        let none = ShepherdArrangementSync.addBlankSections(song, missing: ["Bridge 2", "Tag"], sequence: nil, arrangementId: nil)
+        #expect(none.presentation == song && none.added.isEmpty && none.resolved.isEmpty)
+    }
+
+    @Test func aHandMadeArrangementOnlyGetsTheNewPartsOnItsEnd() throws {
+        let mine = Arrangement(id: "mine", name: "Mine", sectionIds: ["s2", "s0", "s2"])
+        let other = Arrangement(id: "other", name: "Other", sectionIds: ["s0"])
+        let song = librarySong(
+            sections: ["Verse 1", "Verse 2", "Chorus"], arrangements: [mine, other], defaultArrangementId: "other")
+        let fix = ShepherdArrangementSync.addBlankSections(
+            song, missing: ["Vamp", "Outro"], sequence: ["V1", "Vamp", "C", "Outro"], arrangementId: "mine")
+        let after = fix.presentation
+        let used = try #require(after.arrangements?.first { $0.id == "mine" })
+        #expect(names(used.sectionIds, in: after) == ["Chorus", "Verse 1", "Chorus", "Vamp", "Outro"])
+        #expect(after.arrangements?.first { $0.id == "other" } == other, "not the one in use: untouched")
+
+        // No pick: the default is the one in use.
+        let byDefault = ShepherdArrangementSync.addBlankSections(
+            song, missing: ["Vamp"], sequence: nil, arrangementId: nil).presentation
+        #expect(names(byDefault.arrangements?.first { $0.id == "other" }?.sectionIds ?? [], in: byDefault) == ["Verse 1", "Vamp"])
+        #expect(byDefault.arrangements?.first { $0.id == "mine" } == mine)
+    }
+
+    @Test func withoutShepherdsOrderTheNewPartsGoOnTheEnd() throws {
+        let shepherd = ShepherdClient.SongArrangement(id: "a1", name: "Default", sequence: sequenceWithVamp)
+        let song = librarySong(sections: ["Verse 1", "Chorus", "Bridge"])
+        let start = applying(ShepherdArrangementSync.reconcile(song, song: shepherdSong([shepherd]), arrangement: shepherd), to: song)
+        let fix = ShepherdArrangementSync.addBlankSections(
+            start, missing: ["Ending", "Vamp"], sequence: nil, arrangementId: "shepherd-a1", shepherdTag: "a1")
+        let order = try #require(fix.presentation.arrangements?.first { $0.id == "shepherd-a1" })
+        #expect(names(order.sectionIds, in: fix.presentation) == ["Verse 1", "Chorus", "Chorus", "Bridge", "Ending", "Vamp"])
+
+        // Shepherd can't be reached at all: the arrangement in use still gets them.
+        let blind = ShepherdArrangementSync.addBlankSections(
+            start, missing: ["Vamp"], sequence: nil, arrangementId: "shepherd-a1").presentation
+        #expect(names(blind.arrangements?.first { $0.id == "shepherd-a1" }?.sectionIds ?? [], in: blind)
+            == ["Verse 1", "Chorus", "Chorus", "Bridge", "Vamp"])
+    }
+
+    @Test func anOperatorsOrderInAShepherdArrangementIsNotReshuffled() throws {
+        // The arrangement was changed by hand after sync: what is there stays
+        // in its order, and the new part goes on the end.
+        let tracked = Arrangement(
+            id: "shepherd-a1", name: "Default", sectionIds: ["s2", "s0"], shepherdArrangementId: "a1")
+        let song = librarySong(sections: ["Verse 1", "Chorus", "Bridge"], arrangements: [tracked], defaultArrangementId: "shepherd-a1")
+        let fix = ShepherdArrangementSync.addBlankSections(
+            song, missing: ["Vamp"], sequence: ["V1", "C", "Bridge", "Vamp"], arrangementId: "shepherd-a1", shepherdTag: "a1")
+        let order = try #require(fix.presentation.arrangements?.first)
+        #expect(names(order.sectionIds, in: fix.presentation) == ["Bridge", "Verse 1", "Vamp"])
+    }
+
+    @Test func aSongStillAsImportedKeepsFollowingShepherd() throws {
+        let chart = "Verse 1\n[C]Amazing grace\n\nChorus\n[G]My chains are gone"
+        let sequence = ["Verse 1", "Chorus", "Vamp", "Chorus", "Outro"]
+        let arrangement = ShepherdClient.SongArrangement(id: "a1", name: "Default", sequence: sequence)
+        let detail = ShepherdClient.SongDetail(
+            id: "song-1", title: "Grace", arrangements: [arrangement], chordChart: chart, defaultArrangementId: "a1")
+        let imported = try #require(ShepherdSongImport.presentation(song: detail, arrangement: arrangement))
+        let hash = ShepherdSongImport.chartHash(song: detail, arrangement: arrangement)
+        #expect(ShepherdSongImport.decision(for: imported, chartHash: hash) == .upToDate)
+
+        let outcome = ShepherdArrangementSync.reconcile(imported, song: detail, arrangement: arrangement)
+        #expect(outcome.warnings.compactMap(ShepherdArrangementSync.missingName(fromWarning:)) == ["Vamp", "Outro"])
+        let fix = ShepherdArrangementSync.addBlankSections(
+            imported, missing: ["Vamp", "Outro"], sequence: sequence, arrangementId: nil, shepherdTag: "a1")
+        let after = fix.presentation
+        #expect(names(after.arrangements?.first?.sectionIds ?? [], in: after) == ["Intro", "Verse 1", "Chorus", "Vamp", "Chorus", "Outro"], "it still opens on its blank")
+        #expect(after.shepherdImportHash == ShepherdSongImport.fingerprint(after))
+        #expect(after.shepherdImportHash != imported.shepherdImportHash)
+        #expect(ShepherdArrangementSync.reconcile(after, song: detail, arrangement: arrangement).warnings.isEmpty)
+        // A later change in Shepherd still updates it instead of asking.
+        #expect(ShepherdSongImport.decision(for: after, chartHash: "newer") == .update)
+
+        // A song edited by hand first stays "edited".
+        var edited = imported
+        edited.slides[1].objects[0].text += " changed"
+        let kept = ShepherdArrangementSync.addBlankSections(
+            edited, missing: ["Vamp"], sequence: sequence, arrangementId: nil, shepherdTag: "a1").presentation
+        #expect(kept.shepherdImportHash == imported.shepherdImportHash)
+        #expect(ShepherdSongImport.decision(for: kept, chartHash: "newer") == .edited)
+    }
 }
