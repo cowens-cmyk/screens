@@ -104,7 +104,8 @@ final class LocalAPIController {
     init(
         appModel: AppModel, controls: ServiceControls,
         render: RenderContext,
-        scheduler: SchedulerController? = nil
+        scheduler: SchedulerController? = nil,
+        router: ActionRouter? = nil
     ) {
         self.appModel = appModel
         self.bridge = AppAPIBridge(
@@ -112,7 +113,9 @@ final class LocalAPIController {
             render: render,
             scheduler: scheduler
         )
-        self.mcp = ScreensMCP(model: appModel, router: nil)
+        // The router, so MCP changes to the live slide (a lower third, a
+        // stage layout) reach the stream and stage at once.
+        self.mcp = ScreensMCP(model: appModel, router: router)
         self.tokens = APITokenStore(
             fileURL: appModel.client.rootURL
                 .appendingPathComponent("local-api-tokens.json"),

@@ -149,7 +149,7 @@ final class AssistantToolbox {
         await model.resident.ready([.service])
         let today = Self.today
         let includePast = input["include_past"]?.bool ?? false
-        let limit = input["limit"]?.int ?? 12
+        let limit = max(0, input["limit"]?.int ?? 12)
         var plans = model.entries(of: .service).compactMap { (try? model.mainService($0.id)) }
             .filter { $0.isTemplate != true }
         if !includePast { plans = plans.filter { String($0.serviceDate.prefix(10)) >= today } }
@@ -259,7 +259,7 @@ final class AssistantToolbox {
     private func listPresentations(_ input: AssistantJSON) async throws -> (AssistantJSON, String?) {
         let query = input["query"]?.string.map(Self.squash) ?? ""
         let category = input["category"]?.string?.trimmingCharacters(in: .whitespaces) ?? ""
-        let limit = input["limit"]?.int ?? 40
+        let limit = max(0, input["limit"]?.int ?? 40)
         var entries = model.entries(of: .presentation)
         if !query.isEmpty {
             entries = entries.filter { Self.squash($0.name + " " + $0.subkind).contains(query) }
@@ -336,7 +336,7 @@ final class AssistantToolbox {
         await model.resident.ready([.media])
         let query = input["query"]?.string.map(Self.squash) ?? ""
         let kind = input["kind"]?.string.flatMap(MediaKind.init(rawValue:))
-        let limit = input["limit"]?.int ?? 40
+        let limit = max(0, input["limit"]?.int ?? 40)
         let items = model.resident.media.values
             .filter { kind == nil || $0.mediaKind == kind }
             .filter { query.isEmpty || Self.squash($0.name + " " + ($0.folder ?? "")).contains(query) }
@@ -752,7 +752,7 @@ final class AssistantToolbox {
     }
 
     private static func seconds(_ value: Double) -> String {
-        value.rounded() == value ? "\(Int(value)) seconds" : "\(value) seconds"
+        value.rounded() == value && abs(value) < 1e15 ? "\(Int(value)) seconds" : "\(value) seconds"
     }
 
     func count(_ n: Int, _ noun: String, _ plural: String? = nil) -> String {

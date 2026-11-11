@@ -195,7 +195,8 @@ struct MxUSlidesApp: App {
             let api = LocalAPIController(
                 appModel: model, controls: controls,
                 render: render,
-                scheduler: schedulerController
+                scheduler: schedulerController,
+                router: router
             )
             _localAPI = State(initialValue: api)
             BoothRelay.shared.attach(model: model, controls: controls, render: render, bridge: api.bridge)

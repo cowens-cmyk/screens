@@ -804,13 +804,10 @@ final class AppAPIBridge: LocalAPIBridge {
         guard appModel.entry(refId) != nil else {
             throw APIError.notFound("No library item '\(refId)'.")
         }
-        appModel.addServiceItem(serviceId, refID: refId)
-        if let index {
-            appModel.updateService(serviceId) { service in
-                guard let last = service.items.indices.last, index < last else { return }
-                let item = service.items.removeLast()
-                service.items.insert(item, at: max(0, index))
-            }
+        // Placed in the same write that adds it: moving "the last item"
+        // afterwards moved the plan's closing item when nothing was added.
+        guard appModel.addServiceItem(serviceId, refID: refId, at: index) != nil else {
+            throw APIError.badRequest("'\(refId)' can't go in a plan. Presentations, media, audio and playlists can.")
         }
         controls.refreshNextSlide()
     }

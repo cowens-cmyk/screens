@@ -16,12 +16,16 @@ import PresenterCore
 final class ScreensMCP {
     private let model: AppModel
     private let toolbox: AssistantToolbox
+    /// Lets a change to a live slide (its lower third, its stage layout)
+    /// show at once, as it does from the in-app Assistant.
+    private weak var router: ActionRouter?
     /// Files Claude handed over with attach_file, by path, as the
     /// Assistant's attachment ids.
     private var attachedPaths: [String: [String]] = [:]
 
     init(model: AppModel, router: ActionRouter?) {
         self.model = model
+        self.router = router
         self.toolbox = AssistantToolbox(model: model, router: router)
     }
 
@@ -93,37 +97,40 @@ final class ScreensMCP {
             scope: scope, readOnly: scope == .view
         ) { [weak self] arguments in
             guard let self else { throw MCPToolError("Screens is closing.") }
-            return try await self.runAssistant(name, arguments: arguments,
-                                               needsConfirmation: spec.needsConfirmation,
-                                               confirmsWhenReplacing: spec.confirmsWhenReplacing)
+            return try await self.runAssistant(spec, arguments: arguments)
         }
     }
 
-    private func runAssistant(
-        _ name: String, arguments: JSONValue, needsConfirmation: Bool, confirmsWhenReplacing: Bool
-    ) async throws -> MCPToolResult {
+    private func runAssistant(_ spec: AssistantToolSpec, arguments: JSONValue) async throws -> MCPToolResult {
+        let name = spec.name
         var input = try Self.assistant(arguments)
         let confirmed = input["confirm"]?.bool == true
         if case .object(var fields) = input {
             fields["confirm"] = nil
             input = .object(fields)
         }
-        if !confirmed {
-            var ask: (title: String, detail: String)?
-            do {
-                if needsConfirmation {
-                    ask = try await toolbox.confirmation(for: name, input: input)
-                } else if confirmsWhenReplacing {
-                    ask = try await toolbox.replacingConfirmation(for: name, input: input)
-                }
-            } catch let failure as AssistantToolbox.Failure {
-                throw MCPToolError(failure.message)
+        // Checked as the in-app Assistant checks it: the tools trust their
+        // schema's bounds (a negative limit would stop the app).
+        if let problem = AssistantToolInput.validate(input, against: spec.schema) {
+            throw MCPToolError("Invalid input: \(problem).")
+        }
+        // The confirmation runs even with confirm true: some calls are
+        // refused there and nowhere else (deleting every slide, removing a
+        // plan item Shepherd would put back).
+        var ask: (title: String, detail: String)?
+        do {
+            if spec.needsConfirmation {
+                ask = try await toolbox.confirmation(for: name, input: input)
+            } else if spec.confirmsWhenReplacing {
+                ask = try await toolbox.replacingConfirmation(for: name, input: input)
             }
-            if let ask {
-                return MCPToolResult(
-                    text: "Nothing changed yet. Ask the user: \(ask.title)\n\(ask.detail)\n\nIf they say yes, call \(name) again with the same input and confirm true.",
-                    structured: ["needs_confirmation": true, "title": .string(ask.title), "detail": .string(ask.detail)])
-            }
+        } catch let failure as AssistantToolbox.Failure {
+            throw MCPToolError(failure.message)
+        }
+        if let ask, !confirmed {
+            return MCPToolResult(
+                text: "Nothing changed yet. Ask the user: \(ask.title)\n\(ask.detail)\n\nIf they say yes, call \(name) again with the same input and confirm true.",
+                structured: ["needs_confirmation": true, "title": .string(ask.title), "detail": .string(ask.detail)])
         }
         let outcome = await toolbox.run(name, input: input)
         let structured = (try? AssistantJSON.parse(outcome.content)).flatMap { value -> JSONValue? in
@@ -337,7 +344,8 @@ final class ScreensMCP {
             name: "set_song_sequence", title: "Set a song's sequence",
             description: "Sets the order a song is sung in, from section names (\"Chorus x2\" repeats; a blank opener is "
                 + "kept first). Makes or updates an order with this name on the song. With plan_id and item_id only that "
-                + "plan item plays it; otherwise it becomes the song's default order. Tracks (Anthem) follow the order, "
+                + "plan item plays it (other plan items keep their order; the answer gives the order's name); otherwise it "
+                + "becomes the song's default order. Tracks (Anthem) follow the order, "
                 + "so match the band's sequence.",
             inputSchema: Self.object([
                 "presentation_id": Self.string("The song."),
@@ -356,10 +364,23 @@ final class ScreensMCP {
             guard !mapping.sectionIds.isEmpty else {
                 throw MCPToolError("None of that matches \(song.name)'s sections: \(Self.sectionNames(song)).")
             }
-            let name = Self.nonEmpty(arguments["name"]?.stringValue) ?? "Sequence"
-            let orderID = song.arrangements?.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.id ?? UUID().uuidString
             let planID = Self.nonEmpty(arguments["plan_id"]?.stringValue)
             let itemID = Self.nonEmpty(arguments["item_id"]?.stringValue)
+            // The plan item is checked before the song is touched, so a call
+            // that fails leaves the song as it was.
+            var target: (plan: Service, item: ServiceItem)?
+            if let planID, let itemID {
+                let plan = try await self.toolbox.service(planID)
+                let item = try self.toolbox.planItem(itemID, in: plan)
+                guard item.refId == id else { throw MCPToolError("\(item.name) doesn't play \(song.name).") }
+                target = (plan, item)
+            }
+            let choice = SongSequenceOrder.choose(
+                name: Self.nonEmpty(arguments["name"]?.stringValue) ?? "Sequence", in: song,
+                forItem: target != nil, itemPlays: target?.item.arrangementId)
+            let orderID = choice.id
+            let name = choice.name
+            let forItem = target != nil
             let sectionIDs = mapping.sectionIds
             _ = try await self.model.updatePresentation(id) { deck in
                 var orders = deck.arrangements ?? []
@@ -369,15 +390,12 @@ final class ScreensMCP {
                     orders.append(Arrangement(id: orderID, name: name, sectionIds: sectionIDs))
                 }
                 deck.arrangements = orders
-                if planID == nil || itemID == nil { deck.defaultArrangementId = orderID }
+                if !forItem { deck.defaultArrangementId = orderID }
             }.value
             var note = "Default order of \(song.name)."
-            if let planID, let itemID {
-                let plan = try await self.toolbox.service(planID)
-                let item = try self.toolbox.planItem(itemID, in: plan)
-                guard item.refId == id else { throw MCPToolError("\(item.name) doesn't play \(song.name).") }
-                self.model.setServiceItemArrangement(planID, itemID: itemID, arrangementID: orderID)
-                note = "\(item.name) in \(plan.name) plays it."
+            if let target {
+                self.model.setServiceItemArrangement(target.plan.id, itemID: target.item.id, arrangementID: orderID)
+                note = "\(target.item.name) in \(target.plan.name) plays it."
             }
             var result: [String: JSONValue] = ["arrangement_id": .string(orderID), "name": .string(name), "note": .string(note)]
             if !mapping.missing.isEmpty {
@@ -532,6 +550,11 @@ final class ScreensMCP {
                     if let layout, !deckWide { deck.slides[index].stageLayoutId = layout.isEmpty ? nil : layout }
                 }
             }.value
+            // As the slide's right-click menu does: a live slide's stage
+            // follows at once instead of on its next fire.
+            if let layout, !deckWide {
+                self.router?.noteStageLayout(layout.isEmpty ? nil : layout, forSlides: Set(targets))
+            }
             let what = mode.map { "Stage display: \($0.replacingOccurrences(of: "_", with: " "))" } ?? "Stage layout set"
             return MCPToolResult(text: "\(what) on \(targets.count) slide\(targets.count == 1 ? "" : "s") of \(deck.name).")
         }

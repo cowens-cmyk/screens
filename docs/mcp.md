@@ -60,7 +60,7 @@ Every tool the in-app Assistant has (`AssistantToolCatalog`), run by the same
 | Tool | What it does |
 | --- | --- |
 | `build_song` | A song from a ChordPro chart, chords over lyrics or plain lyrics with section labels, or from a Shepherd song id; built by `ShepherdSongImport.presentation`, so the slides, chords, key and stage key match a Shepherd import. `sequence` becomes the song's default order. `presentation_id` rebuilds a song in place (`ShepherdSongImport.replacing`); `plan_id`/`item_id` put it on a plan item. A song built from a pasted chart has no Shepherd link, so plan sync never refreshes it. |
-| `set_song_sequence` | An order from section names (`ShepherdArrangementSync.mapping`: "Chorus x2", the blank opener). The song's default, or one plan item's. |
+| `set_song_sequence` | An order from section names (`ShepherdArrangementSync.mapping`: "Chorus x2", the blank opener). The song's default, or one plan item's. For a plan item it never rewrites the song's default order or another item's: it updates an order with that name only when the item already plays it, otherwise it makes a new one ("Sequence 2" when the name is taken; `SongSequenceOrder`). The plan item is checked before the song changes. |
 | `build_message_from_outline` | The message from an outline Claude read: `SermonSlides.build` with the verses looked up, `SermonMessage.place` into the plan with the series theme. Without a plan, a Sermon deck on its own. |
 | `attach_file` | A PDF or picture on this Mac as Assistant attachment ids, for `build_message_from_notes` and `import_announcement_cards`. |
 | `import_media` | Pictures and videos into Media (`AppModel.importFiles`), for backgrounds and lower-third pictures. |
@@ -80,6 +80,15 @@ here. Without it, nothing changes and the answer says what would; Claude
 asks the user and calls again with `confirm: true`. `build_message_from_outline`
 does the same when it would replace a message with slides or change the
 plan's series.
+
+Every Assistant tool's input is checked against its schema first
+(`AssistantToolInput.validate`, as in the app), and the confirmation step
+runs even with `confirm: true`: some refusals live only there (deleting every
+slide of a presentation, removing a plan item Shepherd would put back).
+
+The Local API's MCP server (and the CMS relay, which shares it) has the
+app's `ActionRouter`, so `set_slide_livestream` and a slide-level
+`set_stage_display` layout show at once on a slide that is live.
 
 `fit_song_slides` is one of these: it splits song slides that take more than
 two lines in their theme, for one song or the whole library, and its first

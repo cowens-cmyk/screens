@@ -202,7 +202,9 @@ extension JSONValue {
     public var intValue: Int? {
         switch self {
         case .integer(let value): value
-        case .number(let value) where value.rounded() == value: Int(value)
+        // Int(exactly:): a fraction or a number past Int's range is no
+        // whole number, where Int(_:) would stop the app.
+        case .number(let value): Int(exactly: value)
         case .string(let value): Int(value)
         default: nil
         }

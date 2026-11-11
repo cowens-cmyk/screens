@@ -19,6 +19,13 @@ import Testing
         return (response.status, body)
     }
 
+    @Test func aNumberTooBigForIntIsNoWholeNumber() throws {
+        let huge = try JSONDecoder().decode(JSONValue.self, from: Data("1e300".utf8))
+        #expect(huge.intValue == nil)
+        #expect(JSONValue.number(2.5).intValue == nil)
+        #expect(JSONValue.number(4).intValue == 4)
+    }
+
     @Test func initializeAgreesOnAVersionItKnows() async throws {
         let (_, known) = try await call(["jsonrpc": "2.0", "id": 1, "method": "initialize",
                                          "params": ["protocolVersion": "2025-06-18", "capabilities": [:], "clientInfo": ["name": "t", "version": "1"]]])
