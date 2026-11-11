@@ -33,6 +33,8 @@ struct ServiceContinuousView: View {
 
     @State private var mediaMenuState = MediaCueMenuState()
     @State private var playlistDropTarget: PlaylistDropTarget?
+    /// The countdown being dragged over with a video it can take.
+    @State private var countdownDropItemID: String?
 
     @State private var viewportHeight: CGFloat = 0
 
@@ -1019,10 +1021,9 @@ struct ServiceContinuousView: View {
                 }
 
                 .contextMenu { mediaQuickMenu(item) }
-                // A countdown takes a video dropped from the media bin.
-                .dropDestination(for: String.self) { payloads, _ in
-                    !runOnly && model.dropCountdownVideo(payloads.first, on: item, planID: serviceID)
-                }
+                // A countdown takes a video dropped from the media bin or the Finder.
+                .onDrop(of: [.plainText, .fileURL], delegate: countdownDrop(item))
+                .overlay { countdownDropRing(item, shape: tileShape) }
 
                 .id("mediaTileMenu|\(item.id)|\(media == nil)")
                 // Named like a slide tile: the countdown with its length,
@@ -1177,6 +1178,31 @@ private struct PillDropDelegate: DropDelegate {
 
 extension ServiceContinuousView {
 
+    /// The countdown takes a video from the media bin (its id) or from the
+    /// Finder (imported into Media › Countdowns first). Locked in run-only.
+    func countdownDrop(_ item: ServiceItem) -> PayloadDropDelegate {
+        PayloadDropDelegate(
+            enabled: !runOnly && item.isCountdown == true,
+            accepts: { payload in
+                payload.files.isEmpty
+                    ? model.isCountdownVideoDrop(payload.text, on: item)
+                    : model.isCountdownVideoFileDrop(payload.files, on: item)
+            },
+            targeted: { on in
+                if on { countdownDropItemID = item.id } else if countdownDropItemID == item.id { countdownDropItemID = nil }
+            },
+            performText: { !runOnly && model.dropCountdownVideo($0, on: item, planID: serviceID) },
+            performFiles: { !runOnly && model.dropCountdownVideoFile($0, on: item, planID: serviceID) }
+        )
+    }
+
+    @ViewBuilder
+    func countdownDropRing(_ item: ServiceItem, shape: some InsettableShape) -> some View {
+        if countdownDropItemID == item.id {
+            shape.strokeBorder(Color(nsColor: .controlAccentColor).opacity(0.9), lineWidth: 2)
+        }
+    }
+
     func unlinkedCard(_ item: ServiceItem) -> some View {
         HStack(spacing: 8) {
             ItemKindBadge(kind: HopeStyle.kind(of: item, presentation: nil))
@@ -1216,10 +1242,10 @@ extension ServiceContinuousView {
         .contextMenu {
             if !runOnly { SongLyricsMenuItems(model: model, serviceID: serviceID, item: item) }
         }
-        // A countdown from Shepherd takes a video dropped from the media bin.
-        .dropDestination(for: String.self) { payloads, _ in
-            !runOnly && model.dropCountdownVideo(payloads.first, on: item, planID: serviceID)
-        }
+        // A countdown from Shepherd takes a video dropped from the media bin
+        // or the Finder.
+        .onDrop(of: [.plainText, .fileURL], delegate: countdownDrop(item))
+        .overlay { countdownDropRing(item, shape: RoundedRectangle.standard(CornerStandard.element)) }
 
         .padding(.bottom, 12)
 

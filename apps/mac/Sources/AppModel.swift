@@ -1682,6 +1682,17 @@ final class AppModel {
         }
     }
 
+    /// Slides put beside the slide a drop landed next to (before or after
+    /// it), or at the end of an empty presentation.
+    func insertSlides(_ presentationID: String, slides: [Slide], at anchor: SlideDropPlacement.Anchor) {
+        DropLatency.awaitingPaint = Set(slides.map(\.id))
+        updatePresentation(presentationID, value: { SlideDropPlacement.insert(slides, at: anchor, in: &$0) }) { document in
+            var next = document.value
+            SlideDropPlacement.insert(slides, at: anchor, in: &next)
+            try Self.commitSlideInsert(slides.map(\.id), next: next, on: document)
+        }
+    }
+
     @LibraryActor private static func commitSlideInsert(
         _ slideIDs: [String], next: Presentation, on document: TypedDocument<Presentation>
     ) throws {

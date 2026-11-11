@@ -462,6 +462,30 @@ struct RunOrderList: View {
         Button("Remove from Service", role: .destructive) { requestRemoval(ids) }
     }
 
+    /// What a row does with a dragged id: the countdown takes a video, any
+    /// item a macro, a presentation a slide from another one.
+    private func rowDrop(_ payload: String?, on item: ServiceItem) -> Bool {
+        if !runOnly, model.isCountdownVideoDrop(payload, on: item) {
+            return model.dropCountdownVideo(payload, on: item, planID: serviceID)
+        } else if !runOnly, let comboID = payload.flatMap(comboID(in:)) {
+            return addMacro(comboID, to: item)
+        } else if !runOnly, item.itemKind == .presentation,
+           let dragged = payload.flatMap(SlideBulkEdit.draggedSlide(in:)) {
+            return model.copySlide(
+                dragged.slideID, from: dragged.presentationID,
+                to: item.refId, beforeSlideID: nil)
+        } else {
+            return false
+        }
+    }
+
+    private func rowAccepts(_ dragged: String?, item: ServiceItem) -> Bool {
+        let slideDrag = dragged.flatMap(SlideBulkEdit.draggedSlide(in:))
+        return (item.itemKind == .presentation && slideDrag.map { $0.presentationID != item.refId } == true)
+            || (!runOnly && dragged.flatMap(comboID(in:)) != nil)
+            || (!runOnly && model.isCountdownVideoDrop(dragged, on: item))
+    }
+
     @ViewBuilder
     private func itemRow(
         _ item: ServiceItem, order: [String], changed: Bool,
@@ -529,33 +553,21 @@ struct RunOrderList: View {
                 .padding(-4)
                 .opacity(dropTargetItemID == item.id ? 1 : 0)
         )
-        .dropDestination(for: String.self) { payloads, _ in
-
-            if !runOnly, model.isCountdownVideoDrop(payloads.first, on: item) {
-                return model.dropCountdownVideo(payloads.first, on: item, planID: serviceID)
-            } else if !runOnly, let comboID = payloads.first.flatMap(comboID(in:)) {
-                return addMacro(comboID, to: item)
-            } else if !runOnly, item.itemKind == .presentation,
-               let dragged = payloads.first.flatMap(SlideBulkEdit.draggedSlide(in:)) {
-                return model.copySlide(
-                    dragged.slideID, from: dragged.presentationID,
-                    to: item.refId, beforeSlideID: nil)
-            } else {
-                return false
+        .modifier(PlanRowDrop(
+            runOnly: runOnly,
+            isCountdown: item.isCountdown == true,
+            accepts: { rowAccepts($0, item: item) },
+            perform: { rowDrop($0, on: item) },
+            acceptsFiles: { !runOnly && model.isCountdownVideoFileDrop($0, on: item) },
+            performFiles: { !runOnly && model.dropCountdownVideoFile($0, on: item, planID: serviceID) },
+            targeted: { over in
+                if over {
+                    dropTargetItemID = item.id
+                } else if dropTargetItemID == item.id {
+                    dropTargetItemID = nil
+                }
             }
-        } isTargeted: { over in
-
-            let dragged = NSPasteboard(name: .drag).string(forType: .string)
-            let slideDrag = dragged.flatMap(SlideBulkEdit.draggedSlide(in:))
-            let accepts = (item.itemKind == .presentation && slideDrag.map { $0.presentationID != item.refId } == true)
-                || (!runOnly && dragged.flatMap(comboID(in:)) != nil)
-                || (!runOnly && model.isCountdownVideoDrop(dragged, on: item))
-            if over, accepts {
-                dropTargetItemID = item.id
-            } else if !over, dropTargetItemID == item.id {
-                dropTargetItemID = nil
-            }
-        }
+        ))
         .contextMenu {
             let batch = ListMultiSelect.batch(clicked: item.id, selection: selection, order: order)
             if !runOnly, batch.count > 1 {
@@ -1442,5 +1454,38 @@ struct NativeSelectionHidden: NSViewRepresentable {
 
     func updateNSView(_ nsView: Finder, context: Context) {
         nsView.schedule()
+    }
+}
+
+/// A plan row's drop. Every row takes a dragged id (a macro, a slide, the
+/// countdown's video) and is outlined while it would take it. The countdown's
+/// row also takes a video file from the Finder, which a String drop can't
+/// carry, so it reads the drag pasteboard instead.
+private struct PlanRowDrop: ViewModifier {
+    let runOnly: Bool
+    let isCountdown: Bool
+    let accepts: (String?) -> Bool
+    let perform: (String?) -> Bool
+    let acceptsFiles: ([URL]) -> Bool
+    let performFiles: ([URL]) -> Bool
+    let targeted: (Bool) -> Void
+
+    func body(content: Content) -> some View {
+        if isCountdown {
+            content.onDrop(of: [.plainText, .fileURL], delegate: PayloadDropDelegate(
+                enabled: !runOnly,
+                accepts: { $0.files.isEmpty ? accepts($0.text) : acceptsFiles($0.files) },
+                targeted: targeted,
+                performText: { !runOnly && perform($0) },
+                performFiles: { !runOnly && performFiles($0) }
+            ))
+        } else {
+            content.dropDestination(for: String.self) { payloads, _ in
+                perform(payloads.first)
+            } isTargeted: { over in
+                // Read off the drag itself: isTargeted doesn't say what's coming.
+                targeted(over && accepts(NSPasteboard(name: .drag).string(forType: .string)))
+            }
+        }
     }
 }

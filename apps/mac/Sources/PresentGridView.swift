@@ -566,6 +566,9 @@ struct SlideGridBody: View {
 
     @State private var backgroundDropIndex: Int?
 
+    /// Where a drop in the space around the tiles would land.
+    @State private var gapDropTarget: SlideDropPlacement.Target?
+
     @State private var mediaActionTarget: MediaActionTarget?
 
     @State private var actionEditorSlide: Slide?
@@ -649,7 +652,9 @@ struct SlideGridBody: View {
                 .gesture(marqueeGesture)
             let aspect = SlideGridMetrics.tileAspect(for: presentation)
             let cell = self.cell
-            if buildsRowsNearView {
+            if presentation.slides.isEmpty {
+                emptyDeckArea(aspect: aspect, cell: cell)
+            } else if buildsRowsNearView {
                 tileRows(aspect: aspect, cell: cell)
             } else {
                 LazyVGrid(columns: SlideGridMetrics.columns(across: slidesAcross, cellWidth: cell?.width), alignment: .leading, spacing: SlideGridMetrics.spacing) {
@@ -676,6 +681,18 @@ struct SlideGridBody: View {
             pageMarquee: pageMarquee, contextID: contextID, onBox: selectUnder, onOtherOwner: clearSelection))
 
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
+        // The gaps between tiles, under a row and past the last slide take
+        // pictures, videos and slides too; the tiles' own drops come first.
+        // The grid sits at this frame's top left, so a drop's point is in the
+        // tiles' own space.
+        .onDrop(of: [.plainText, .fileURL], delegate: GridGapDropDelegate(
+            enabled: !runOnly && !slides.isEmpty,
+            target: { SlideDropPlacement.target(among: tileFrames, at: $0) },
+            accepts: { gapAccepts($0) },
+            show: { place in if gapDropTarget != place { gapDropTarget = place } },
+            performText: { payload, place in !runOnly && dropText(payload, at: place) },
+            performFiles: { urls, place in if !runOnly { insertMediaFiles(urls, at: place) } }
+        ))
         .background {
             GeometryReader { proxy in
 
@@ -731,7 +748,7 @@ struct SlideGridBody: View {
         }
         .sheet(item: $mediaSlideTarget) { target in
             MediaSlidePickerSheet(model: model) { mediaIDs in
-                _ = insertMediaSlides(mediaIDs: mediaIDs, beforeIndex: target.beforeIndex)
+                _ = insertMediaSlides(mediaIDs: mediaIDs, at: .before(target.beforeIndex))
             }
         }
         .sheet(item: $applyThemeTarget) { target in
@@ -1479,10 +1496,19 @@ struct SlideGridBody: View {
                 dropTargetAfterIndex = nil
                 backgroundDropIndex = nil
                 return !runOnly && dropSlide(payload, after: slide)
-            }
+            },
+            mediaAfter: { payload in
+                dropTargetAfterIndex = nil
+                return !runOnly && dropText(payload, at: .after(index))
+            },
+            filesAfter: { urls in
+                dropTargetAfterIndex = nil
+                if !runOnly { insertMediaFiles(urls, at: .after(index)) }
+            },
+            goesBeside: { model.media($0) != nil }
         ))
         .overlay(alignment: .leading) {
-            if dropTargetIndex == index {
+            if dropTargetIndex == index || gapDropTarget == .before(index) {
                 Capsule()
                     .fill(Color.accentColor)
                     .frame(width: 3)
@@ -1491,7 +1517,7 @@ struct SlideGridBody: View {
             }
         }
         .overlay(alignment: .trailing) {
-            if dropTargetAfterIndex == index {
+            if dropTargetAfterIndex == index || gapDropTarget == .after(index) {
                 Capsule()
                     .fill(Color.accentColor)
                     .frame(width: 3)
@@ -1533,18 +1559,20 @@ struct SlideGridBody: View {
         DiagnosticsStore.shared.note(
             "grid.drop.text",
             detail: "insert=\(insertZone) kind=\(resolved?.kind.rawValue ?? "unresolved") payload=\(payload.prefix(40))")
-        if !insertZone, let entry = resolved, entry.kind == .actionCombo {
+        // Beside a slide, a picture or video becomes a new slide; anything
+        // else near the edge does what it does on the slide.
+        if insertZone, model.media(payload) != nil {
+            return insertMediaSlides(mediaIDs: [payload], at: .before(index))
+        }
+        if let entry = resolved, entry.kind == .actionCombo {
             appendSlideAction(
                 SlideAction(id: UUID().uuidString, kind: .fireCombo, comboId: entry.id),
                 to: slide)
             return true
         }
 
-        if !insertZone, payload.hasPrefix("pltrk::") {
+        if payload.hasPrefix("pltrk::") {
             return false
-        }
-        if insertZone {
-            return insertMediaSlide(mediaID: payload, beforeIndex: index)
         }
         return model.setSlideBackground(
             presentationID: presentation.id, slideID: slide.id, mediaID: payload)
@@ -1607,41 +1635,111 @@ struct SlideGridBody: View {
         dropTargetIndex = nil
         backgroundDropIndex = nil
         guard !runOnly, !urls.isEmpty else { return }
+        if insertZone {
+            insertMediaFiles(urls, at: .before(index))
+            return
+        }
         let slideID = slide.id
         Task { @MainActor in
-
-            let imported = await model.importFiles(insertZone ? await MediaSlides.withLowerThirds(urls) : urls)
-            guard let first = imported.first else { return }
-            if insertZone {
-                // Every file dropped between slides becomes a slide, so a
-                // folder of announcements lands in one go.
-                _ = insertMediaSlides(mediaIDs: imported, beforeIndex: index)
-            } else {
-                _ = model.setSlideBackground(
-                    presentationID: presentation.id, slideID: slideID, mediaID: first)
-            }
+            guard let first = await model.importFiles(urls).first else { return }
+            _ = model.setSlideBackground(
+                presentationID: presentation.id, slideID: slideID, mediaID: first)
         }
     }
 
-    private func insertMediaSlide(mediaID: String, beforeIndex index: Int) -> Bool {
-        insertMediaSlides(mediaIDs: [mediaID], beforeIndex: index)
+    /// Files from the Finder dropped between slides: imported into the
+    /// media library, then every picture and video becomes a slide there, so
+    /// a folder of announcements lands in one go.
+    private func insertMediaFiles(_ urls: [URL], at place: SlideDropPlacement.Target) {
+        guard !runOnly, !urls.isEmpty else { return }
+        // Named by the slide beside it now: the import can take a while, and
+        // the grid may change under it.
+        let anchor = SlideDropPlacement.anchor(for: place, in: slides.map(\.id))
+        Task { @MainActor in
+            let imported = await model.importFiles(await MediaSlides.withLowerThirds(urls))
+            guard let anchor, !imported.isEmpty else { return }
+            _ = insertMediaSlides(mediaIDs: imported, anchor: anchor)
+        }
     }
 
-    /// New slides from pictures or videos, then the livestream question
-    /// for them.
-    private func insertMediaSlides(mediaIDs: [String], beforeIndex index: Int) -> Bool {
-        let anchorSection = slides.indices.contains(index) ? slides[index].sectionId : nil
-        let afterID = index > 0 && slides.indices.contains(index - 1)
-            ? slides[index - 1].id : nil
-        let made = MediaSlides.make(mediaIDs, model: model, sectionId: anchorSection, existing: presentation.slides)
+    /// A library id or a slide dropped beside a tile or in the space around
+    /// them: a picture or video becomes a new slide there, a slide moves or
+    /// is copied there.
+    private func dropText(_ payload: String, at place: SlideDropPlacement.Target) -> Bool {
+        guard !runOnly else { return false }
+        if SlideBulkEdit.draggedSlide(in: payload) != nil {
+            switch place {
+            case .before(let index) where slides.indices.contains(index):
+                return dropSlide(payload, before: slides[index])
+            case .after(let index) where slides.indices.contains(index):
+                return dropSlide(payload, after: slides[index])
+            default:
+                return false
+            }
+        }
+        guard !payload.contains("::"), model.media(payload) != nil else { return false }
+        return insertMediaSlides(mediaIDs: [payload], at: place)
+    }
+
+    /// What the space around the tiles takes: pictures and videos from the
+    /// media bin or the Finder, and slides.
+    private func gapAccepts(_ payload: DraggedPayload) -> Bool {
+        if !payload.files.isEmpty { return payload.files.contains(where: MediaSlideBuilder.makesSlides) }
+        guard let text = payload.text else { return false }
+        if SlideBulkEdit.draggedSlide(in: text) != nil { return true }
+        return !text.contains("::") && model.media(text) != nil
+    }
+
+    /// New slides from pictures or videos at a place in the grid, then the
+    /// livestream question for them.
+    private func insertMediaSlides(mediaIDs: [String], at place: SlideDropPlacement.Target) -> Bool {
+        guard let anchor = SlideDropPlacement.anchor(for: place, in: slides.map(\.id)) else { return false }
+        return insertMediaSlides(mediaIDs: mediaIDs, anchor: anchor)
+    }
+
+    private func insertMediaSlides(mediaIDs: [String], anchor: SlideDropPlacement.Anchor) -> Bool {
+        guard !runOnly else { return false }
+        let made = MediaSlides.make(mediaIDs, model: model, existing: presentation.slides)
         for (slideID, lowerThird) in made.existingLowerThirds {
             setStreamDesign(.lowerThirdImage(lowerThird), of: [slideID])
         }
         let added = made.slides
         guard !added.isEmpty else { return !made.existingLowerThirds.isEmpty }
-        model.insertSlides(presentation.id, slides: added, afterSlideID: afterID)
+        model.insertSlides(presentation.id, slides: added, at: anchor)
         askLivestream(for: added)
         return true
+    }
+
+    /// A presentation with no slides in the grid: one tile-sized space to
+    /// drop its first slide into, with the "+" choices, as the plan page
+    /// shows for one.
+    private func emptyDeckArea(aspect: CGFloat, cell: CGSize?) -> some View {
+        VStack(spacing: SlideGridMetrics.labelGap) {
+            EmptySlidesDropArea(
+                aspect: aspect,
+                locked: runOnly,
+                choices: AddSlideChoices(
+                    fromTheme: { newSlideTarget = NewSlideTarget(after: nil, startsWithThemes: true) },
+                    fromMedia: {
+                        mediaSlideTarget = MediaSlideTarget(presentationID: presentation.id, afterSlideID: nil)
+                    },
+                    blank: { insertNewSlide(.blank, after: nil) }
+                ),
+                dropText: { payload in
+                    if let dragged = SlideBulkEdit.draggedSlide(in: payload) {
+                        return !runOnly && dragged.presentationID != presentation.id
+                            && model.presentationExists(dragged.presentationID)
+                            && model.copySlide(dragged.slideID, from: dragged.presentationID, to: presentation.id)
+                    }
+                    return dropText(payload, at: .before(0))
+                },
+                dropFiles: { urls in insertMediaFiles(urls, at: .before(0)) },
+                breadcrumb: "present.emptyGridDrop",
+                roundedCorners: roundedCorners
+            )
+            Color.clear.frame(height: SlideGridMetrics.labelHeight)
+        }
+        .frame(width: cell?.width ?? 240)
     }
 
     private func askLivestream(for added: [Slide]) {
