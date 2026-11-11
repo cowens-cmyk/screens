@@ -208,7 +208,7 @@ public enum ShepherdSongImport {
 
     /// `existing` with Shepherd's new words, chords and order. It keeps its
     /// id, name, theme, folder, display key, section colors and backgrounds,
-    /// slide backgrounds and actions where the slide is still there, and
+    /// slide ids, backgrounds and actions where the slide is still there, and
     /// every arrangement that isn't the Shepherd one (Anthem's and the
     /// operator's), so services and Anthem keep working.
     public static func replacing(_ existing: Presentation, with fresh: Presentation) -> Presentation {
@@ -250,6 +250,9 @@ public enum ShepherdSongImport {
             let place = "\(section)#\(counts[section, default: 0])"
             counts[section, default: 0] += 1
             if let old = oldByPlace[place] {
+                // The same id too, so a song that is live (or a cue on one
+                // of its slides) still finds the slide in its place.
+                slide.id = old.id
                 slide.background = old.background
                 slide.backgroundFill = old.backgroundFill
                 slide.themeId = old.themeId

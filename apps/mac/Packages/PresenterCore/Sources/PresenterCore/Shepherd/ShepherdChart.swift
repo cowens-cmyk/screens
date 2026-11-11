@@ -162,8 +162,21 @@ public struct ShepherdChart: Equatable, Sendable {
 
     /// Section indexes for an arrangement's sequence ("Verse 1", "Chorus",
     /// …); names that match no section are skipped. Nil when none match.
+    ///
+    /// Names are read the way plan sync reads them
+    /// (`ShepherdArrangementSync.label`), so an import and a later sync agree
+    /// on the order: short names ("Ch", "Br", "TA") and repeats ("C (2x)",
+    /// "Chorus x2") count, and a verse the chart doesn't have ("Verse 3") is
+    /// skipped rather than shown as Verse 1's words. A wordless part played
+    /// twice is still one blank.
     public func order(for sequence: [String]) -> [Int]? {
-        let order = sequence.compactMap { sectionIndex(named: $0) }
+        let labels = sections.map { ShepherdArrangementSync.label($0.name)?.label }
+        var order: [Int] = []
+        for name in sequence {
+            guard let (wanted, repeats) = ShepherdArrangementSync.label(name),
+                  let index = ShepherdArrangementSync.sectionIndex(for: wanted, in: labels) else { continue }
+            order += Array(repeating: index, count: wanted.isWordless ? 1 : repeats)
+        }
         return order.isEmpty ? nil : order
     }
 

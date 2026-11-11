@@ -49,6 +49,8 @@ final class ShepherdSync {
     private(set) var connectedApp: String?
 
     private weak var model: AppModel?
+    /// What is on screen, so a song that is live isn't rebuilt under it.
+    weak var controls: ServiceControls?
     private var timer: Timer?
 
     var isConfigured: Bool { !apiKey.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -64,8 +66,9 @@ final class ShepherdSync {
         importSongs = defaults.object(forKey: Self.importSongsKey) as? Bool ?? true
     }
 
-    func attach(_ model: AppModel) {
+    func attach(_ model: AppModel, controls: ServiceControls? = nil) {
         self.model = model
+        self.controls = controls
         scheduleTimer()
         if autoSync, isConfigured {
             model.whenLibraryReady { Task { await self.sync() } }

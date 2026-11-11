@@ -161,12 +161,24 @@ final class LyricsFetcher {
         watch?.cancel()
         let started = Date()
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        let ccli = (try? model.service(planID))?.items.first { $0.id == itemID }?.mxuCcliNumber
         watch = Task { [weak self] in
+            // Files that turned up but are another song or no song: passed
+            // over, and not read again.
+            var passed = Set<URL>()
             while !Task.isCancelled, Date().timeIntervalSince(started) < 600 {
                 try? await Task.sleep(for: .seconds(2))
-                guard let file = Self.newestLyricsFile(in: downloads, since: started),
-                      let text = Self.read(file)
-                else { continue }
+                var found: (file: URL, text: String)?
+                for file in Self.lyricsFiles(in: downloads, since: started) where !passed.contains(file) {
+                    // One that can't be read yet is tried again next time.
+                    guard let text = Self.read(file) else { continue }
+                    if LyricTextImporter.isSong(text, fileName: file.lastPathComponent, title: title, ccli: ccli) {
+                        found = (file, text)
+                        break
+                    }
+                    passed.insert(file)
+                }
+                guard let (file, text) = found else { continue }
                 guard let self else { return }
                 if Self.linkedPresentation(itemID, planID: planID, model: model) != nil {
                     self.finish("“\(title)” already has slides")
@@ -177,11 +189,12 @@ final class LyricsFetcher {
                 self.finish("Imported “\(title)” from \(file.lastPathComponent)")
                 return
             }
-            if !Task.isCancelled { self?.finish("No lyrics file arrived in Downloads.") }
+            if !Task.isCancelled { self?.finish("No lyrics file for “\(title)” arrived in Downloads.") }
         }
     }
 
-    nonisolated static func newestLyricsFile(in folder: URL, since: Date) -> URL? {
+    /// Lyrics files in `folder` made or changed after `since`, newest first.
+    nonisolated static func lyricsFiles(in folder: URL, since: Date) -> [URL] {
         let keys: [URLResourceKey] = [.creationDateKey, .contentModificationDateKey, .isRegularFileKey]
         let files = (try? FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
@@ -192,7 +205,8 @@ final class LyricsFetcher {
                 let date = max(values?.creationDate ?? .distantPast, values?.contentModificationDate ?? .distantPast)
                 return date > since ? (url, date) : nil
             }
-            .max { $0.1 < $1.1 }?.0
+            .sorted { $0.1 > $1.1 }
+            .map(\.0)
     }
 
     // MARK: Files dropped on the plan

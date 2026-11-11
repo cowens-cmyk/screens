@@ -1900,17 +1900,10 @@ final class SlideEditorModel {
         guard !isThemeEditor, !trimmed.isEmpty,
               let start = presentation.slides.firstIndex(where: { $0.id == slideID })
         else { return }
-        let previous = presentation.slides[start].sectionId
         let section = PresentationSection(id: UUID().uuidString, name: trimmed)
-        updateDocument { presentation in
-            presentation.sections = (presentation.sections ?? []) + [section]
-            var index = start
-            repeat {
-                presentation.slides[index].sectionId = section.id
-                index += 1
-            } while index < presentation.slides.count
-                && presentation.slides[index].sectionId == previous
-        }
+        // The orders that sing the old section sing the new one after it,
+        // so the moved slides don't drop out of the song.
+        updateDocument { SongSections.split(&$0, at: start, into: section) }
     }
 
     func renameSection(_ id: String, to name: String) {
@@ -1923,17 +1916,8 @@ final class SlideEditorModel {
     }
 
     func deleteSection(_ id: String) {
-        updateDocument { presentation in
-            presentation.sections?.removeAll { $0.id == id }
-            for index in presentation.slides.indices
-            where presentation.slides[index].sectionId == id {
-                presentation.slides[index].sectionId = nil
-            }
-            guard presentation.arrangements != nil else { return }
-            for index in presentation.arrangements!.indices {
-                presentation.arrangements![index].sectionIds.removeAll { $0 == id }
-            }
-        }
+        // The slides join the section above, so the orders still sing them.
+        updateDocument { SongSections.delete(&$0, sectionId: id) }
     }
 
     var arrangements: [Arrangement] { presentation.arrangements ?? [] }
@@ -1966,7 +1950,11 @@ final class SlideEditorModel {
     func updateArrangement(_ id: String, _ mutate: (inout Arrangement) -> Void) {
         updateDocument { presentation in
             guard let index = presentation.arrangements?.firstIndex(where: { $0.id == id }) else { return }
+            let before = presentation.arrangements![index]
             mutate(&presentation.arrangements![index])
+            // A change made here to Shepherd's order stops sync putting it back.
+            presentation.arrangements![index] = ShepherdArrangementSync.editedByHand(
+                presentation.arrangements![index], before: before)
         }
     }
 
@@ -1984,7 +1972,9 @@ final class SlideEditorModel {
             let stanzas = group.slides
                 .compactMap { slide in slide.objects.first { $0.objectKind == .text }?.text }
                 .filter { !$0.isEmpty }
-            guard !stanzas.isEmpty else { return nil }
+            // A section with no words (an intro, an instrumental) is its
+            // label alone, so Reflow keeps it as a blank slide.
+            guard !stanzas.isEmpty else { return group.section?.name }
             let body = stanzas.joined(separator: "\n\n")
             guard let section = group.section else { return body }
             return "\(section.name)\n\(body)"
@@ -1992,9 +1982,17 @@ final class SlideEditorModel {
         .joined(separator: "\n\n")
     }
 
+    /// Reflow's text read for this song: its section names are labels, and
+    /// its blank opener and wordless sections stay.
+    func reflowParse(text: String, linesPerSlide: Int) -> Reflow.ParseResult {
+        Reflow.parse(text, linesPerSlide: linesPerSlide, song: presentation)
+    }
+
     func applyReflow(text: String, linesPerSlide: Int) {
         guard !isThemeEditor else { return }
-        let built = Reflow.build(from: text, linesPerSlide: linesPerSlide)
+        let parsed = reflowParse(text: text, linesPerSlide: linesPerSlide)
+        guard parsed.sections.contains(where: { $0.slides.contains { !$0.isEmpty } }) else { return }
+        let built = Reflow.build(parsed)
         guard !built.slides.isEmpty else { return }
         selectedObjectIDs = []
         previewFrames = [:]
@@ -2703,7 +2701,8 @@ final class SlideEditorModel {
               let objectIndex = presentation.slides[slideIndex].objects
                   .firstIndex(where: { $0.id == objectID })
         else { return }
-        updateObject(slideIndex: slideIndex, objectIndex: objectIndex) { $0.text = text }
+        // Chords and styles move with their words, as on the canvas.
+        updateObject(slideIndex: slideIndex, objectIndex: objectIndex) { $0.replaceText(with: text) }
     }
 
     private func updateObject(slideIndex: Int, objectIndex: Int, _ mutate: (inout SlideObject) -> Void) {

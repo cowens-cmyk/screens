@@ -234,13 +234,25 @@ final class ScreensMCP {
         // asked for, else the song's own when it replaces one, else the
         // lyrics import theme.
         await model.resident.ready([.theme])
+        // The song this rebuilds, when it rebuilds one.
+        var rebuilding: Presentation?
+        if let existingID = Self.nonEmpty(args["presentation_id"]?.stringValue) {
+            rebuilding = try? await toolbox.presentation(existingID)
+        }
         var showingTheme: String?
         if let theme = Self.nonEmpty(args["theme_id"]?.stringValue) {
             await model.themesFilled([theme])
             guard model.theme(theme) != nil else { throw MCPToolError("No theme \(theme). list_themes gives the ids.") }
             showingTheme = theme
-        } else if let existingID = Self.nonEmpty(args["presentation_id"]?.stringValue) {
-            showingTheme = (try? await toolbox.presentation(existingID))?.themeId
+        } else if let rebuilding {
+            showingTheme = rebuilding.themeId
+        }
+        // A rebuild keeps the order it made last time (same name, not
+        // Shepherd's) rather than adding another "Chart" or "Sequence".
+        func orderID(named name: String) -> String {
+            rebuilding?.arrangements?.first {
+                $0.shepherdArrangementId == nil && $0.name.caseInsensitiveCompare(name) == .orderedSame
+            }?.id ?? UUID().uuidString
         }
         var options = ShepherdSync.shared.importOptions(playingKey: playing, model: model, themeId: showingTheme)
         if let lines { options.linesPerSlide = max(1, min(8, lines)) }
@@ -277,7 +289,7 @@ final class ScreensMCP {
             made.shepherdChartHash = nil
             made.shepherdImportHash = nil
             if var order = made.arrangements?.first {
-                order.id = UUID().uuidString
+                order.id = orderID(named: "Chart")
                 order.name = "Chart"
                 order.shepherdArrangementId = nil
                 made.arrangements = [order]
@@ -293,7 +305,7 @@ final class ScreensMCP {
                 throw MCPToolError("None of the sequence matches the song's sections: \(Self.sectionNames(built)).")
             }
             warnings += mapping.missing.map { "No section \"\($0)\" (sections: \(Self.sectionNames(built)))." }
-            let order = Arrangement(id: UUID().uuidString, name: "Sequence", sectionIds: mapping.sectionIds)
+            let order = Arrangement(id: orderID(named: "Sequence"), name: "Sequence", sectionIds: mapping.sectionIds)
             built.arrangements = [order] + (built.arrangements ?? [])
             built.defaultArrangementId = order.id
         }

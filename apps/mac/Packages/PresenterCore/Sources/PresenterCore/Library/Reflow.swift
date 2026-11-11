@@ -200,6 +200,21 @@ public enum Reflow {
         return result
     }
 
+    /// Reflow of a song that is already built. Its own section names count
+    /// as labels, so a heading an import accepts ("Final Chorus", "Verse
+    /// 1b", "Solo") starts a section here too instead of going on screen as
+    /// a lyric. A label with no words under it is one blank slide, as an
+    /// import makes it, so an instrumental keeps its place in the song's
+    /// orders. A song that opens on a blank still does.
+    public static func parse(_ text: String, linesPerSlide: Int, song: Presentation) -> ParseResult {
+        var parsed = parse(text, linesPerSlide: linesPerSlide, extraLabels: (song.sections ?? []).map(\.name))
+        if ShepherdArrangementSync.opensOnBlank(song) { parsed = parsed.openingOnBlank() }
+        for index in parsed.sections.indices where parsed.sections[index].slides.isEmpty {
+            parsed.sections[index].slides = [""]
+        }
+        return parsed
+    }
+
     private static func chunk(stanzas: [[String]], perSlide: Int) -> [String] {
         stanzas.flatMap { stanza in
             stride(from: 0, to: stanza.count, by: perSlide).map { start in

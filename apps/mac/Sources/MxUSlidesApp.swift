@@ -218,7 +218,7 @@ struct MxUSlidesApp: App {
             WindowBridge.advance = { [weak keyIn] steps in
                 keyIn?.perform(steps > 0 ? .nextSlide : .previousSlide)
             }
-            ShepherdSync.shared.attach(model)
+            ShepherdSync.shared.attach(model, controls: controls)
             PlanTimeBridge.shared.start(model)
             SermonTimerAutoReset.shared.start(model: model, controls: controls)
             WebsiteEventSync.shared.start(model: model, controls: controls)

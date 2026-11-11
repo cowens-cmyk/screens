@@ -191,6 +191,10 @@ extension ShepherdSync {
             newerCharts[presentation.id] = nil
             return false
         case .update:
+            // Not while the song is on screen: its slides would change under
+            // the live position and the next advance could skip or repeat a
+            // line. The next sync after it's off updates it.
+            if controls?.livePresentationID == presentation.id { return false }
             guard let fresh = ShepherdSongImport.presentation(
                 song: detail, arrangement: arrangement,
                 options: importOptions(playingKey: nil, model: model, themeId: presentation.themeId))

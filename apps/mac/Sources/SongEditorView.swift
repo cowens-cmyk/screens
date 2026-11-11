@@ -24,16 +24,29 @@ struct SongEditorView: View {
     /// The stored slides the cards were made from, to tell when the song
     /// changed underneath unsaved cards (an undo, a Shepherd update).
     @State private var base: [Slide] = []
+    /// The title and key as loaded (or last saved), so only a field the
+    /// operator changed is written back over the song.
+    @State private var baseTitle = ""
+    @State private var baseKey = ""
     @State private var changedUnderneath = false
 
     private var presentation: Presentation? { model.presentation(presentationID) }
     private var sections: [PresentationSection] { presentation?.sections ?? [] }
     private var unsaved: Bool { loaded && cards != saved }
-    private var detailsChanged: Bool {
-        guard loaded, let presentation else { return false }
+    private var detailsChanged: Bool { loaded && (editedTitle != nil || editedKey != nil) }
+    /// The title, when the operator changed it.
+    private var editedTitle: String? {
         let title = title.trimmingCharacters(in: .whitespaces)
-        return (!title.isEmpty && title != presentation.name)
-            || key.trimmingCharacters(in: .whitespaces) != (presentation.musicKey ?? "")
+        return !title.isEmpty && title != baseTitle ? title : nil
+    }
+    /// The key, when the operator changed it ("" takes it off).
+    private var editedKey: String? {
+        let key = key.trimmingCharacters(in: .whitespaces)
+        return key != baseKey ? key : nil
+    }
+    /// The stored slides changed since the cards were made from them.
+    private var storedChanged: Bool {
+        presentation.map { $0.slides != base } ?? false
     }
 
     var body: some View {
@@ -56,16 +69,28 @@ struct SongEditorView: View {
         // The song changed in the library (an undo, a Shepherd update):
         // cards with nothing typed into them show the new slides.
         .onChange(of: presentation?.slides) { _, _ in
-            if loaded, !unsaved, let presentation { loadCards(presentation) }
+            if loaded, !unsaved, let presentation {
+                loadCards(presentation)
+                if !detailsChanged { loadDetails(presentation) }
+            }
         }
         .onChange(of: cards) { _, _ in registerPending() }
         .onChange(of: title) { _, _ in registerPending() }
         .onChange(of: key) { _, _ in registerPending() }
         // Every other editor saves as you type, so leaving this one (the
         // Slide Editor, another item, Present) saves too rather than
-        // dropping the cards.
+        // dropping the cards. When the song's slides changed meanwhile (a
+        // Shepherd update, another Mac) the cards are kept aside instead, and
+        // opening the song here again asks which to keep.
         .onDisappear {
-            if unsaved { commitSlides() } else if detailsChanged { saveDetails() }
+            if unsaved, storedChanged {
+                SongEditorPending.keepAside(presentationID, cards: cards, base: base)
+                if detailsChanged { saveDetails() }
+            } else if unsaved {
+                commitSlides(onlyOver: base)
+            } else if detailsChanged {
+                saveDetails()
+            }
             SongEditorPending.clear(presentationID)
         }
         .confirmationDialog("This song's slides changed while you were editing.",
@@ -255,9 +280,22 @@ struct SongEditorView: View {
 
     private func load() {
         guard let presentation else { return }
+        loadDetails(presentation)
+        loadCards(presentation)
+        // Cards kept aside when this song was left with the slides changed
+        // under them: back in the editor, and the operator picks.
+        if let kept = SongEditorPending.takeKeptAside(presentationID) {
+            cards = kept.cards
+            base = kept.base
+            if presentation.slides != kept.base { changedUnderneath = true }
+        }
+    }
+
+    private func loadDetails(_ presentation: Presentation) {
         title = presentation.name
         key = presentation.musicKey ?? ""
-        loadCards(presentation)
+        baseTitle = title
+        baseKey = key
     }
 
     private func loadCards(_ presentation: Presentation) {
@@ -282,43 +320,55 @@ struct SongEditorView: View {
     }
 
     private func saveDetails() {
-        Self.write(nil, title: title, key: key, to: presentationID, model: model)
+        Self.write(nil, base: nil, title: editedTitle, key: editedKey, to: presentationID, model: model)
+        detailsSaved()
+    }
+
+    private func detailsSaved() {
+        if let editedTitle { baseTitle = editedTitle }
+        if let editedKey { baseKey = editedKey }
     }
 
     /// Save Slides: the cards go over the stored song, unless the song's
     /// slides changed since the cards were made from them; then the
     /// operator picks which to keep.
     private func saveSlides() {
-        if unsaved, let stored = presentation?.slides, stored != base {
+        if unsaved, storedChanged {
             changedUnderneath = true
             return
         }
         commitSlides()
     }
 
-    /// The cards become the song's slides, sections and order.
-    private func commitSlides() {
-        guard let built = Self.write(cards, title: title, key: key, to: presentationID, model: model)?.song
+    /// The cards become the song's slides, sections and order (Save Slides,
+    /// and Save My Slides when the operator chose theirs). With `onlyOver`,
+    /// only while the stored slides are still those.
+    private func commitSlides(onlyOver expected: [Slide]? = nil) {
+        guard let built = Self.write(
+            cards, base: expected, title: editedTitle, key: editedKey, to: presentationID, model: model)?.song
         else { return }
+        detailsSaved()
         base = built.slides
         cards = SongSlides.cards(from: built)
         saved = cards
         sequence = Self.order(of: built)
     }
 
-    /// Writes the cards (when given), title and key over the stored song.
+    /// Writes the cards (when given), title and key (when given) over the
+    /// stored song. With `base`, the cards are written only while the
+    /// stored slides are still the ones they were made from.
     @discardableResult
     private static func write(
-        _ cards: [SongSlides.Card]?, title: String, key: String, to id: String, model: AppModel
+        _ cards: [SongSlides.Card]?, base: [Slide]?, title: String?, key: String?, to id: String, model: AppModel
     ) -> (task: Task<LibraryBatch, any Error>, song: Presentation)? {
         guard var song = model.presentation(id) else { return nil }
         if let cards { SongSlides.apply(cards, to: &song) }
         let built = song
-        let title = title.trimmingCharacters(in: .whitespaces)
-        let key = key.trimmingCharacters(in: .whitespaces)
         let withSlides = cards != nil
         let task = model.updatePresentation(id) { current in
-            if withSlides {
+            // Checked again as the write lands: newer slides win over cards
+            // made from older ones.
+            if withSlides, base == nil || current.slides == base {
                 current.slides = built.slides
                 current.sections = built.sections
                 current.arrangements = built.arrangements
@@ -326,8 +376,8 @@ struct SongEditorView: View {
                 current.reflowSource = built.reflowSource
                 current.chordProSource = built.chordProSource
             }
-            if !title.isEmpty { current.name = title }
-            current.musicKey = key.isEmpty ? nil : key
+            if let title, !title.isEmpty { current.name = title }
+            if let key { current.musicKey = key.isEmpty ? nil : key }
         }
         return (task, built)
     }
@@ -339,9 +389,13 @@ struct SongEditorView: View {
             SongEditorPending.clear(presentationID)
             return
         }
+        // Quitting can't ask, so cards made from slides that have changed
+        // since are not written over them.
         let cards: [SongSlides.Card]? = unsaved ? cards : nil
-        let (title, key, id, model) = (title, key, presentationID, model)
-        SongEditorPending.pending = (id, { Self.write(cards, title: title, key: key, to: id, model: model)?.task })
+        let (base, title, key, id, model) = (base, editedTitle, editedKey, presentationID, model)
+        SongEditorPending.pending = (id, {
+            Self.write(cards, base: base, title: title, key: key, to: id, model: model)?.task
+        })
     }
 
     private func saveSequence() {
@@ -491,6 +545,18 @@ enum SongEditorPending {
 
     static func clear(_ id: String) {
         if pending?.id == id { pending = nil }
+    }
+
+    /// Cards left unsaved on a song whose slides changed under them, by
+    /// song id, until the song is opened in the editor again.
+    private static var keptAside: [String: (cards: [SongSlides.Card], base: [Slide])] = [:]
+
+    static func keepAside(_ id: String, cards: [SongSlides.Card], base: [Slide]) {
+        keptAside[id] = (cards, base)
+    }
+
+    static func takeKeptAside(_ id: String) -> (cards: [SongSlides.Card], base: [Slide])? {
+        keptAside.removeValue(forKey: id)
     }
 
     /// Saves them; returns the write to wait for, if there was one.
