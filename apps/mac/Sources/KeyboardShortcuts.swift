@@ -204,6 +204,7 @@ final class KeyInController {
         .videoPlayPause, .videoGoToBeginning, .openKeyboardSettings,
         .resetSermonTimer,
         .clearAll, .clearSlides, .clearMedia, .clearAlerts,
+        .toggleBlack,
     ]
 
     private func handle(_ event: NSEvent) -> Bool {
@@ -325,6 +326,7 @@ final class KeyInController {
         case .clearSlides: controls.clear(function: .slides)
         case .clearMedia: controls.clear(function: .media)
         case .clearAlerts: controls.clear(function: .alerts)
+        case .toggleBlack: controls.toggleBlack()
         default: break
         }
     }

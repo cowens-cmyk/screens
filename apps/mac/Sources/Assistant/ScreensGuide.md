@@ -32,7 +32,7 @@ The **top bar** runs across the top of the window beside the traffic lights (see
 - **Edit**: the editor for the selected plan item or library item, with the plans and library in the window's sidebar. The sidebar folds away while something is open; the screens and the control bar don't show.
 - **Schedule**: the Scheduler board.
 
-**Screens panel contents.** Live previews of every screen: **Audience**, **Livestream** (with a checkerboard where the stream is transparent), **Stage**, then any other screen Screens sends a picture to. The Mac's own monitors that show the app (not an output) aren't listed. The eye menu in the column header chooses which previews show (**Show All** brings them all back); the folded strip leaves the hidden ones out too. The Audience card's edge lights briefly when the live slide changes. The Livestream card has a menu to switch the livestream mode. The Stage card has a menu for the stage mode and **Edit Stage Display…**, the sermon timer controls, and a **Message to stage** field with **Send**. **Clear All** is in the control bar over the slides.
+**Screens panel contents.** Live previews of every screen: **Audience**, **Livestream** (with a checkerboard where the stream is transparent), **Stage**, then any other screen Screens sends a picture to. The Mac's own monitors that show the app (not an output) aren't listed. The eye menu in the column header chooses which previews show (**Show All** brings them all back); the folded strip leaves the hidden ones out too. The Audience card's edge lights briefly when the live slide changes. The Livestream card has a menu to switch the livestream mode. The Stage card has a menu for the stage mode and **Edit Stage Display…**, the sermon timer controls, and a **Message to stage** field with **Send**. **Clear All** is in the control bar over the slides. The bar at the bottom of the panel has **Black** (F4): every audience screen and the Livestream go solid black (the Livestream opaque, not clear), while the Stage keeps its display. It lights red while on. Click it again, or put up any slide, media, overlay or audience alert, or use Clear All, to bring the screens back; what was live comes back as it was. Run Only keeps it.
 
 **Top bar.** One slim bar across the top, laid out like ProPresenter's: a round **Search** button, then rounded groups of buttons, each icon with a small label under it. Point at any button for what it does and its shortcut. From the left:
 - **Search** (also ⌘F, Find in Library): see Search below.
@@ -77,7 +77,7 @@ Song Search, Point Slides, Import Lyrics and Import Sermon are run by the Librar
 
 **View**: **Present** ⌘1, **Edit** ⌘2, **Scheduler** ⌘3, **Show Whole Plan** (Present's one scrolling page; off shows one item at a time), **Edit Slides** ⌘4, **Edit Themes** ⌘5, **Edit Confidence** ⌘6, **Find in Library** ⌘F (opens the top bar's search), **Pin Plan / Fold Plan** ⌃⌘S, **Pin Screens / Fold Screens** ⌃⌘R. With an editor open: **Zoom In** ⌘+, **Zoom Out** ⌘−, **Zoom to Fit** ⌘0, **Actual Size** (⌘1 while the canvas has focus), **Zoom to Selection** ⌥⌘0.
 
-**Present**: **Clear Slides** F2, **Clear Media** F3, **Clear Alerts** F6, **Clear Layer** submenu (one entry per layer), **Clear All** F1, **Reset Sermon Timer** ⌃⌘0, **Sermon Timer Resets at Service Start** (on by default; kept per Mac).
+**Present**: **Clear Slides** F2, **Clear Media** F3, **Clear Alerts** F6, **Black Screen** F4, **Clear Layer** submenu (one entry per layer), **Clear All** F1, **Reset Sermon Timer** ⌃⌘0, **Sermon Timer Resets at Service Start** (on by default; kept per Mac).
 
 **Quitting.** ⌘Q (or Screens › Quit) asks "Quit Screens?" first, since every screen goes dark; Return confirms and Esc cancels. The main window's red close button asks too. A shutdown, restart or log out, and an update, quit without asking.
 
@@ -89,7 +89,7 @@ Song Search, Point Slides, Import Lyrics and Import Sermon are run by the Librar
 - Next slide: Right arrow, Space or Return. Previous slide: Left arrow.
 - Go to a slide: type its number, then Return. A "Go to slide" box shows the number; Escape cancels.
 - Single letters are group hot keys: they jump the live song to a section (press again for the next repeat).
-- F1 Clear All, F2 Clear Slides, F3 Clear Media, F6 Clear Alerts. On a laptop the F-keys may need fn.
+- F1 Clear All, F2 Clear Slides, F3 Clear Media, F4 Black Screen, F6 Clear Alerts. On a laptop the F-keys may need fn.
 - ⌥K opens the Keyboard settings page, where every shortcut can be changed, macros can be given keys, and group hot keys are listed. Next/Previous Service Item and video Play/Pause have no key by default.
 
 ## Plans
@@ -436,7 +436,7 @@ Default transitions: Settings › Slides & Themes › **Media transition** and *
 
 **Slide actions** (right-click › Add Action) run when the slide fires: Livestream, Stage Display, Microphone, Lightkey Cue, Clear, Fire Media…, Fire Presentation, Alert, Live Input, Stage Layout, Timer (Start, Pause, Reset, Set To), Macro, MIDI Out.
 
-**Clearing**: Present menu or F-keys (Clear All F1, Clear Slides F2, Clear Media F3, Clear Alerts F6), **Clear Layer** for one layer, or the **Clear All** button in the control bar at the bottom of the slides (⇧Esc).
+**Clearing**: Present menu or F-keys (Clear All F1, Clear Slides F2, Clear Media F3, Clear Alerts F6), **Clear Layer** for one layer, or the **Clear All** button in the control bar at the bottom of the slides (⇧Esc). **Black** (F4, or the bar at the bottom of the Screens panel) covers the audience screens and the Livestream in solid black without clearing anything.
 
 ## Slide editing
 

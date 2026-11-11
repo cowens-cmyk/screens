@@ -124,6 +124,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
     case clearSlides
     case clearMedia
     case clearAlerts
+    case toggleBlack
     case videoPlayPause
     case videoGoToBeginning
     case newPresentation
@@ -154,6 +155,9 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .clearSlides: [KeyChord("f2")]
         case .clearMedia: [KeyChord("f3")]
         case .clearAlerts: [KeyChord("f6")]
+        // Next to the clears it sits with: F4 was free, F5 is left open for
+        // another.
+        case .toggleBlack: [KeyChord("f4")]
         case .videoPlayPause: []
         case .videoGoToBeginning: []
         case .newPresentation: [KeyChord("n", command: true)]
@@ -179,7 +183,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
              .nextServiceItem, .previousServiceItem, .resetSermonTimer:
             .showControl
         case .clearAll, .clearSlides, .clearMedia,
-             .clearAlerts:
+             .clearAlerts, .toggleBlack:
             .clears
         case .videoPlayPause, .videoGoToBeginning:
             .video
@@ -200,7 +204,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
              .nextServiceItem, .previousServiceItem, .resetSermonTimer, .videoPlayPause,
              .videoGoToBeginning,
              .clearAll, .clearSlides, .clearMedia,
-             .clearAlerts:
+             .clearAlerts, .toggleBlack:
             .present
         case .boldSelection, .italicSelection, .underlineSelection:
             .editor
@@ -216,7 +220,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .nextSlide, .previousSlide, .goToSlide,
              .nextServiceItem, .previousServiceItem, .resetSermonTimer,
              .clearAll, .clearSlides, .clearMedia,
-             .clearAlerts,
+             .clearAlerts, .toggleBlack,
              .videoPlayPause, .videoGoToBeginning,
              .modePresent, .toggleSidebar, .toggleRightPanels,
              .openKeyboardSettings:
@@ -248,6 +252,7 @@ public enum KeyCommand: String, Codable, CaseIterable, Sendable {
         case .clearSlides: "Clear Slides"
         case .clearMedia: "Clear Media"
         case .clearAlerts: "Clear Alerts"
+        case .toggleBlack: "Black Screen"
         case .videoPlayPause: "Play/Pause Video"
         case .videoGoToBeginning: "Video to Beginning"
         case .newPresentation: "New Presentation"

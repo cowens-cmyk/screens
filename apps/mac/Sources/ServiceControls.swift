@@ -1607,6 +1607,18 @@ final class ServiceControls {
         syncFlashClock()
     }
 
+    /// Black is on: the audience screens and the livestream show solid black
+    /// over what's live. See ShowState.isBlack for what ends it.
+    var isBlack: Bool { state.isBlack }
+
+    func setBlack(_ on: Bool) {
+        guard state.isBlack != on else { return }
+        state.setBlack(on)
+        apply()
+    }
+
+    func toggleBlack() { setBlack(!state.isBlack) }
+
     func hasContent(function: ShowFunction) -> Bool {
         switch function {
         case .slides: state.liveSlide != nil
@@ -1848,6 +1860,10 @@ final class ServiceControls {
         if state.pageTurn != pageTurn {
             state.pageTurn = pageTurn
         }
+
+        // Every fire and Clear All can end Black, so it's read back here
+        // rather than at each of them.
+        render.outputs.setBlack(state.isBlack)
 
         pushConfidence()
         let now = Date()

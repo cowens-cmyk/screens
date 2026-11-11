@@ -14,6 +14,11 @@ struct PresentCommands: Commands {
                 .keyboardShortcut(command: .clearMedia)
             Button("Clear Alerts") { controls?.clear(function: .alerts) }
                 .keyboardShortcut(command: .clearAlerts)
+            Toggle("Black Screen", isOn: Binding(
+                get: { controls?.isBlack ?? false },
+                set: { controls?.setBlack($0) }))
+                .keyboardShortcut(command: .toggleBlack)
+                .disabled(controls == nil)
             Divider()
             Menu("Clear Layer") {
 

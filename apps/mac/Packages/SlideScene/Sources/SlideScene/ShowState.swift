@@ -91,6 +91,20 @@ public struct ShowState: Sendable, Equatable {
     public private(set) var overlayDismissAt: [String: Double] = [:]
     public private(set) var alertDismissAt: Double?
 
+    /// Every audience screen and the livestream show solid black over whatever
+    /// is live, which keeps playing underneath. Not part of what's cleared:
+    /// the switch ends when something new goes up (any fire below, a build
+    /// step) or on Clear All, and the stage display is never affected.
+    public private(set) var isBlack = false
+
+    public mutating func setBlack(_ on: Bool) {
+        isBlack = on
+    }
+
+    public mutating func toggleBlack() {
+        isBlack.toggle()
+    }
+
     public init() {}
 
     public mutating func fire(
@@ -101,6 +115,7 @@ public struct ShowState: Sendable, Equatable {
         atHostTime: Double = 0,
         arrivesSettled: Bool = false
     ) {
+        isBlack = false
         if let outgoing = liveSlide, outgoing.slide.id != slide.id {
             lastSlide = outgoing
 
@@ -161,12 +176,14 @@ public struct ShowState: Sendable, Equatable {
     }
 
     public mutating func fire(media: CueMedia, on layer: LayerKind) {
+        isBlack = false
         if liveMedia[layer]?.mediaId == media.mediaId { return }
         liveMedia[layer] = media
         directMediaFires.insert(layer)
     }
 
     public mutating func fire(overlay: Overlay, atHostTime: Double = 0) {
+        isBlack = false
         if let index = liveOverlays.firstIndex(where: { $0.id == overlay.id }) {
             liveOverlays[index] = overlay
         } else {
@@ -203,6 +220,8 @@ public struct ShowState: Sendable, Equatable {
     }
 
     public mutating func fire(alert: CueAlert, atHostTime: Double = 0) {
+        // A message to the stage alone is no reason to bring the room back.
+        if alert.showsOnAudience { isBlack = false }
         liveAlert = alert
         alertFiredAtHostTime = atHostTime
         alertDismissAt = nil
@@ -252,10 +271,12 @@ public struct ShowState: Sendable, Equatable {
         guard liveSlide != nil, slideDismissAt == nil else { return false }
         if slideAdvanceClicks.count < slideClickCount {
             slideAdvanceClicks.append(atHostTime)
+            isBlack = false
             return true
         }
         if slideHasExitGroup, slideExitAt == nil {
             slideExitAt = atHostTime
+            isBlack = false
             return true
         }
         return false
@@ -264,10 +285,12 @@ public struct ShowState: Sendable, Equatable {
     public mutating func unadvanceStep() -> Bool {
         if slideExitAt != nil {
             slideExitAt = nil
+            isBlack = false
             return true
         }
         guard !slideAdvanceClicks.isEmpty else { return false }
         slideAdvanceClicks.removeLast()
+        isBlack = false
         return true
     }
 
@@ -560,6 +583,8 @@ public struct ShowState: Sendable, Equatable {
     }
 
     public mutating func clearAll(includingAudio: Bool = true, protecting: Set<LayerKind> = []) {
+        // Clear All is the way back to a clean show, so it ends Black too.
+        isBlack = false
         guard !protecting.isEmpty else {
             for function in ShowFunction.allCases {
                 if function == .audio && !includingAudio { continue }
