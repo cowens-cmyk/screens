@@ -66,7 +66,21 @@ public struct ShowState: Sendable, Equatable {
 
     public private(set) var liveAudio: [CueAudio] = []
 
+    /// The alert the audience sees (target Audience or Both).
     public private(set) var liveAlert: CueAlert?
+
+    /// A message to the stage alone. It has its own slot so that sending
+    /// one doesn't take down an alert the room is reading (a nursery
+    /// number), and its time running out doesn't take that alert with it.
+    public private(set) var liveStageAlert: CueAlert?
+
+    /// What the stage display shows: the stage's own message, else an
+    /// alert sent to both rooms.
+    public var stageAlert: CueAlert? {
+        liveStageAlert ?? liveAlert.flatMap { $0.showsOnConfidence ? $0 : nil }
+    }
+
+    public var hasAlert: Bool { liveAlert != nil || liveStageAlert != nil }
 
     public private(set) var directMediaFires: Set<LayerKind> = []
 
@@ -222,9 +236,27 @@ public struct ShowState: Sendable, Equatable {
     public mutating func fire(alert: CueAlert, atHostTime: Double = 0) {
         // A message to the stage alone is no reason to bring the room back.
         if alert.showsOnAudience { isBlack = false }
+        guard alert.showsOnAudience else {
+            liveStageAlert = alert
+            return
+        }
         liveAlert = alert
         alertFiredAtHostTime = atHostTime
         alertDismissAt = nil
+        // One sent to both rooms is the newest word on the stage as well.
+        // One for the audience alone leaves the stage's message be.
+        if alert.showsOnConfidence { liveStageAlert = nil }
+    }
+
+    /// Takes down the stage's own message and nothing the audience sees.
+    public mutating func clearStageAlert() {
+        liveStageAlert = nil
+    }
+
+    /// Takes down the audience's alert (with its exit, if it has one) and
+    /// leaves the stage's own message.
+    public mutating func clearAudienceAlert(atHostTime: Double? = nil) {
+        clearAlert(atHostTime: atHostTime)
     }
 
     public var slideThemeOverrides: [Theme] = []
@@ -554,7 +586,9 @@ public struct ShowState: Sendable, Equatable {
                 dismissOverlay(id: overlay.id, atHostTime: atHostTime)
             }
         case .audio: liveAudio = [] 
-        case .alerts: clearAlert(atHostTime: atHostTime)
+        case .alerts:
+            liveStageAlert = nil
+            clearAlert(atHostTime: atHostTime)
         case .signage:
 
             break
@@ -575,6 +609,9 @@ public struct ShowState: Sendable, Equatable {
         for overlay in liveOverlays
         where (overlay.layer.flatMap(LayerKind.init(rawValue:)) ?? .overlays) == layer {
             dismissOverlay(id: overlay.id, atHostTime: atHostTime)
+        }
+        if let alert = liveStageAlert, (alert.layer ?? .alerts) == layer {
+            liveStageAlert = nil
         }
         if let alert = liveAlert, (alert.layer ?? .alerts) == layer {
             clearAlert(atHostTime: atHostTime)

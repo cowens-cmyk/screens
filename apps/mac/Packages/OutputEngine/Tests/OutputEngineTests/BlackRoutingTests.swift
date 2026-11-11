@@ -65,6 +65,18 @@ final class BlackRoutingTests: XCTestCase {
         XCTAssertFalse(isOpaqueBlack(shown))
     }
 
+    func testTheAudiencePictureOnTheStageIsNotBlackedOut() throws {
+        let outputs = try makeManager()
+        let audience = UUID()
+        outputs.sceneProvider = { slideScene() }
+        outputs.setBlack(true)
+        // Audience Screen on the stage mirrors the room's scene; Black is for
+        // the room, so the stage still gets the slide.
+        let mirrored = outputs.previewProvider(for: audience.uuidString, ignoringBlack: true)
+        XCTAssertEqual(mirrored(), slideScene())
+        XCTAssertTrue(isOpaqueBlack(outputs.previewProvider(for: audience.uuidString)()))
+    }
+
     func testBlackCoversSignageToo() throws {
         let outputs = try makeManager()
         let lobby = UUID()

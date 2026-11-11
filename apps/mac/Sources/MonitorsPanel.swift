@@ -370,7 +370,7 @@ struct MonitorsPanel: View {
                     .pickerStyle(.menu)
                     .controlSize(.small)
                     .fixedSize()
-                    .help("Auto: slides whose theme has a livestream lower third show in it; everything else leaves the camera clear. Full Screen: the room's screen, edge to edge. Off: nothing over the camera.")
+                    .help("Lower Third: slides whose theme has a livestream lower third show in it; everything else leaves the camera clear. Full Screen: the room's screen, edge to edge. Transparent: nothing over the camera.")
                 }
             }
             if let streamTarget {
@@ -556,8 +556,7 @@ struct StageMessageField: View {
     @State private var draft = ""
 
     private var onStage: CueAlert? {
-        guard let live = controls.state.liveAlert, live.showsOnConfidence else { return nil }
-        return live
+        controls.state.stageAlert
     }
 
     var body: some View {
@@ -581,7 +580,7 @@ struct StageMessageField: View {
                         .truncationMode(.tail)
                     Spacer(minLength: 4)
                     StageMessageCountdown(alert: onStage)
-                    Button("Clear") { controls.dismissAlert() }
+                    Button("Clear") { controls.dismissStageMessage() }
                         .controlSize(.small)
                         .buttonStyle(.borderless)
                 }

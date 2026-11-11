@@ -20,28 +20,67 @@ private func items(in scene: RenderScene, layer: LayerKind) -> [RenderItem] {
     var show = ShowState()
     show.fire(alert: CueAlert(message: "Mic is muted", behavior: .flash))
     show.fire(alert: CueAlert(message: "Slow down", behavior: .persist))
-    #expect(show.liveAlert?.message == "Slow down", "one alert at a time — firing replaces")
+    #expect(show.stageAlert?.message == "Slow down", "one stage message at a time — firing replaces")
+}
+
+@Test func aStageMessageLeavesTheAudienceAlertUp() {
+    var show = ShowState()
+    show.fire(alert: CueAlert(message: "Nursery 12", behavior: .persist, target: .audience))
+    show.fire(alert: CueAlert(message: "Wrap up", behavior: .persist, target: .confidence))
+    #expect(show.liveAlert?.message == "Nursery 12")
+    #expect(show.stageAlert?.message == "Wrap up")
+    #expect(!items(in: show.scene(), layer: .alerts).isEmpty, "the room still reads the nursery number")
+
+    show.clearStageAlert()
+    #expect(show.liveAlert?.message == "Nursery 12", "the stage message timing out leaves the room's alert")
+    #expect(show.stageAlert == nil)
+}
+
+@Test func anAudienceAlertLeavesTheStageMessageUp() {
+    var show = ShowState()
+    show.fire(alert: CueAlert(message: "Wrap up", behavior: .persist, target: .confidence))
+    show.fire(alert: CueAlert(message: "Nursery 12", behavior: .persist, target: .audience))
+    #expect(show.stageAlert?.message == "Wrap up")
+    show.clearAudienceAlert()
+    #expect(show.liveAlert == nil)
+    #expect(show.stageAlert?.message == "Wrap up")
+}
+
+@Test func anAlertForBothRoomsTakesOverTheStage() {
+    var show = ShowState()
+    show.fire(alert: CueAlert(message: "Wrap up", behavior: .persist, target: .confidence))
+    show.fire(alert: CueAlert(message: "Fire drill", behavior: .persist, target: .both))
+    #expect(show.stageAlert?.message == "Fire drill")
+    #expect(show.liveStageAlert == nil)
+}
+
+@Test func clearingAlertsTakesDownBothSlots() {
+    var show = ShowState()
+    show.fire(alert: CueAlert(message: "Nursery 12", behavior: .persist, target: .audience))
+    show.fire(alert: CueAlert(message: "Wrap up", behavior: .persist, target: .confidence))
+    show.clear(function: .alerts)
+    #expect(!show.hasAlert)
 }
 
 @Test func clearFunctionAlertsSweepsTheAlert() {
     var show = ShowState()
     show.fire(alert: CueAlert(message: "x", behavior: .persist))
     show.clear(function: .alerts)
-    #expect(show.liveAlert == nil)
+    #expect(!show.hasAlert)
 }
 
 @Test func clearLayerAlertsSweepsTheAlert() {
     var show = ShowState()
     show.fire(alert: CueAlert(message: "x", behavior: .persist))
     show.clear(layer: .alerts)
-    #expect(show.liveAlert == nil)
+    #expect(!show.hasAlert)
 }
 
 @Test func clearAllIncludesAlerts() {
     var show = ShowState()
     show.fire(alert: CueAlert(message: "x", behavior: .flash))
     show.clearAll()
-    #expect(show.liveAlert == nil)
+    #expect(!show.hasAlert)
 }
 
 @Test func alertPersistsAcrossSlideAdvances() {
@@ -49,7 +88,7 @@ private func items(in scene: RenderScene, layer: LayerKind) -> [RenderItem] {
     var show = ShowState()
     show.fire(alert: CueAlert(message: "x", behavior: .persist))
     show.fire(slide: lyricSlide("a", "verse"), presentation: nil)
-    #expect(show.liveAlert != nil)
+    #expect(show.hasAlert)
 }
 
 @Test func confidenceAlertNeverReachesTheProgramScene() {

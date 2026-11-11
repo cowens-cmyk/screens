@@ -89,7 +89,7 @@ private func live() -> ShowState {
     var show = live()
     show.fire(alert: CueAlert(message: "Wrap up", behavior: .persist, target: .confidence))
     #expect(show.isBlack, "the stage is never blacked out, and typing to it mustn't bring the room back")
-    #expect(show.liveAlert?.message == "Wrap up")
+    #expect(show.stageAlert?.message == "Wrap up")
 }
 
 @Test func firingAnOverlayOrAlertEndsBlack() {

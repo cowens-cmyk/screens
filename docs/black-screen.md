@@ -16,7 +16,9 @@ solid black while it is on; the stage display is untouched.
   really goes black at the switcher, not just in Screens.
 - Stage screens (role Confidence): unchanged. A screen's own test pattern and
   sync test still win, since they are set up on purpose. Signage on an
-  audience screen is covered too.
+  audience screen is covered too. With the stage on Audience Screen (or a
+  slide's Show on Stage Display), the stage keeps showing the room's slides
+  and video under the cover.
 - Previews (the Audience and Livestream cards, the folded strip, the booth
   board's picture of the room) show what the screen shows, so they go black.
 
@@ -30,6 +32,11 @@ Any of these, because the operator is putting something on the screens:
 - **Clear All** (button, ⇧Esc, F1, the Local API's and phone remote's clear,
   macros);
 - the switch again.
+
+Firing something cuts from black to it, with no transition: the transition
+engines still hold what was blacked out, and a dissolve would show it on
+its way out. `ServiceControls.apply()` sets every layer's next transition to
+a cut and takes the cover off only after the new scenes are pushed.
 
 These leave it on: Clear Slides / Media / Alerts / one layer, firing music, a
 message to the stage alone, and editing the live slide.
@@ -45,7 +52,9 @@ It is not saved: a relaunch starts with it off.
   hands it to `OutputManager.setBlack` on every pass, so a fire that ends
   Black reaches the outputs without each fire path knowing.
 - `OutputManager.provider(for:)` swaps the scene for `RenderScene.blackedOut()`
-  (RenderEngine) for every screen whose role isn't Confidence. It is a drawn
+  (RenderEngine) for every screen whose role isn't Confidence. The stage
+  plan's picture of the audience screen asks for
+  `previewProvider(for:ignoringBlack: true)`, so it skips the cover. It is a drawn
   full-canvas item, not the scene background: the livestream output clears to
   transparent and skips the background.
 - `BlackBar` in `MonitorsPanel.swift` is the button. It is not gated for

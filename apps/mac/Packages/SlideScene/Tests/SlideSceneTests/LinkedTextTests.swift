@@ -198,7 +198,7 @@ private func link(_ source: TextSourceKind) -> TextLink { TextLink(source: sourc
     let pattern = TextLink(source: .timer, timerId: "event", timerFormat: .words, timerPattern: "m:ss.f")
     #expect(LinkedText.resolve(pattern, info: info, at: fixedDate) == "17:26.4")
     let empty = TextLink(source: .timer, timerId: "event", timerFormat: .abbreviated, timerPattern: "")
-    #expect(LinkedText.resolve(empty, info: info, at: fixedDate) == "17m 26s", "empty = the format read")
+    #expect(LinkedText.resolve(empty, info: info, at: fixedDate) == "17m 27s", "empty = the format read, whole seconds rounded up")
     let video = TextLink(source: .videoCountdown, showsVideoName: false, timerPattern: "S")
     #expect(LinkedText.resolve(video, info: info, at: fixedDate) == "90")
 }

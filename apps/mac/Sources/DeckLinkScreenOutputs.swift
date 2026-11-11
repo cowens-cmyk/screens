@@ -414,6 +414,12 @@ final class DeckLinkDeviceCatalog {
         connection.resume()
         guard let proxy = connection.remoteObjectProxyWithErrorHandler({ @Sendable _ in
             connection.invalidate()
+            // No reply is coming (the helper crashed, or was killed when a
+            // port wedged): the next catalog refresh has to be free to ask
+            // again, or this port's modes stay missing until a relaunch.
+            Task { @MainActor [weak self] in
+                self?.modesFetchInFlight.remove(devicePersistentID)
+            }
         }) as? DeckLinkHelperProtocol else {
             connection.invalidate()
             modesFetchInFlight.remove(devicePersistentID)

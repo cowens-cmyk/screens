@@ -16,6 +16,10 @@ follows items on and no own stage layout on the presentation:
   Day's walkout presentation put up on its own;
 - the plan's last presentation on its last slide (not a sermon).
 
+It runs before the presentation type's actions (`presentationDidGoLive`):
+taking the stage off Before Service changes the mode, which clears each
+screen's layout, so a type's Set Stage Layout has to come after it.
+
 The countdown video is neither: it is a video that plays once, so the Video
 layout shows over the stage's mode while it plays (its time left is the time to
 the service). The stage tags (`docs/stage-stream-tags.md`) say the same.

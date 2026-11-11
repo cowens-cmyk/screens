@@ -179,8 +179,10 @@ final class ConfidenceMonitorController {
             modeLayout = layout
             source = .layout(layout)
         }
+        // Not blacked out: Black leaves the stage its display, and the stage
+        // video picture is taken from this scene too.
         let audience = ShowTargets.mirrorSource(setup: setup, render: render)
-            .map { render.outputs.previewProvider(for: $0) }
+            .map { render.outputs.previewProvider(for: $0, ignoringBlack: true) }
         let mirrored = Set(assignments.filter { $0.value == StageLayouts.audienceID }.keys)
         let video = setup.stageShowsVideos ? StageVideoPlan(
             layout: appModel.resident.confidenceLayouts.value(StageLayouts.videoID)

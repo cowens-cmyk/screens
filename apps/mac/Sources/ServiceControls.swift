@@ -183,17 +183,21 @@ final class ServiceControls {
         let deckWasLive = livePresentationID == presentation.id
         if !deckWasLive {
             applyScreenDefaults(for: presentation)
-            actionRouter?.presentationDidGoLive(presentation)
         }
+        // The stage's mode is settled before the type's actions run: a mode
+        // change clears each screen's layout, and coming out of Before
+        // Service after them would wipe a Set Stage Layout they just made.
         followBeforeService(
             slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID,
             occurrence: occurrence)
+        if !deckWasLive {
+            actionRouter?.presentationDidGoLive(presentation)
+        }
         // A slide that advanced by itself while a video plays once on the
         // screens (a looping slideshow the video went up over) isn't anyone
         // taking over: the video keeps the livestream, and its plan keeps
         // its move to the next item when it ends.
         let underVideo = autoAdvanced && screenVideoID.map(isMediaLive) == true
-        actionRouter?.noteLiveTheme(theme, slide: slide, contextID: contextID, wentLive: !underVideo)
 
         let own = RenderContext.sceneTransition(from: slide.transition)
         if let own {
@@ -221,6 +225,10 @@ final class ServiceControls {
 
         serviceTracking?.noteItemFired(serviceItemID: contextID)
         refreshNextSlide()
+        // After the fire, not before: a new livestream design starts its
+        // picture from what is live when the stream switches to it, and
+        // that must be this slide, not the one it replaces.
+        actionRouter?.noteLiveTheme(theme, slide: slide, contextID: contextID, wentLive: !underVideo)
         apply()
 
         for object in slide.objects.map(SlideObjectNormalization.normalized) {
@@ -1425,6 +1433,12 @@ final class ServiceControls {
     }
 
     private(set) var alertVisible = true
+
+    /// The flash beat is shared by both alert slots, so one that holds
+    /// steady stays up while the other one flashes.
+    private var audienceAlertVisible: Bool {
+        alertVisible || state.liveAlert?.behavior != .flash
+    }
     private var flashClock: Timer?
 
     func fireAlert(
@@ -1507,6 +1521,35 @@ final class ServiceControls {
         clear(function: .alerts)
     }
 
+    /// Takes down one alert by id, whichever slot holds it, and leaves the
+    /// other: tapping a live alert in the Alerts panel.
+    func dismissAlert(id: String) {
+        if state.liveStageAlert?.id == id {
+            dismissStageMessage()
+        } else if state.liveAlert?.id == id {
+            pendingAlertTheme?.cancel()
+            pendingAlertTheme = nil
+            state.clearAudienceAlert(atHostTime: CACurrentMediaTime())
+            apply()
+            syncFlashClock()
+        }
+    }
+
+    /// The stage panels' Clear: takes down the stage's own message and
+    /// leaves an alert the room is reading. With no stage message, what the
+    /// stage shows is an alert sent to both rooms, and that one goes.
+    func dismissStageMessage() {
+        guard state.liveStageAlert != nil else {
+            dismissAlert()
+            return
+        }
+        alertExpiry?.cancel()
+        alertExpiry = nil
+        state.clearStageAlert()
+        apply()
+        syncFlashClock()
+    }
+
     private var alertExpiry: Task<Void, Never>?
 
     /// Takes a timed stage message down when its time is up. The stage
@@ -1514,19 +1557,22 @@ final class ServiceControls {
     /// controls, the readouts and the remote to match. It clears only the
     /// message it was set for: anything sent or cleared since wins.
     private func scheduleAlertExpiry(for alert: CueAlert) {
+        // An alert without a time (one the audience sees) leaves a stage
+        // message's countdown running: the two are on screen side by side.
+        guard let expiresAt = alert.expiresAt else { return }
         alertExpiry?.cancel()
         alertExpiry = nil
-        guard let expiresAt = alert.expiresAt else { return }
         alertExpiry = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(max(0, expiresAt.timeIntervalSinceNow)))
             guard !Task.isCancelled, let self,
-                  let live = self.state.liveAlert,
+                  let live = self.state.liveStageAlert,
                   live.id == alert.id, live.firedAt == alert.firedAt
             else { return }
             self.alertExpiry = nil
             // Not dismissAlert(): Clear's path also settles a slide that is
-            // waiting to land, and running out of time mustn't drop one.
-            self.state.clear(function: .alerts, atHostTime: CACurrentMediaTime())
+            // waiting to land, and running out of time mustn't drop one, nor
+            // the alert the audience is reading.
+            self.state.clearStageAlert()
             self.apply()
             self.syncFlashClock()
         }
@@ -1534,6 +1580,7 @@ final class ServiceControls {
 
     private func syncFlashClock() {
         let needsClock = state.liveAlert?.behavior == .flash
+            || state.liveStageAlert?.behavior == .flash
         if needsClock, flashClock == nil {
             let clock = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated {
@@ -1635,7 +1682,7 @@ final class ServiceControls {
         case .media: !state.liveMedia.isEmpty
         case .overlays: !state.liveOverlays.isEmpty
         case .audio: !state.liveAudio.isEmpty
-        case .alerts: state.liveAlert != nil
+        case .alerts: state.hasAlert
         case .signage: false
         }
     }
@@ -1650,7 +1697,7 @@ final class ServiceControls {
         case .overlays:
             !state.liveOverlays.isEmpty
         case .alerts:
-            state.liveAlert != nil
+            state.hasAlert
         }
     }
 
@@ -1873,12 +1920,24 @@ final class ServiceControls {
 
         // Every fire and Clear All can end Black, so it's read back here
         // rather than at each of them.
-        render.outputs.setBlack(state.isBlack)
+        let endsBlack = render.outputs.isBlack && !state.isBlack
+        if endsBlack {
+            // What was blacked out mustn't come back on its way out: the
+            // engines still hold it, and a dissolve to what was just fired
+            // would show it for the length of the transition. The room cuts
+            // from black to the new picture instead, and the cover comes off
+            // only once the engines hold it, below.
+            for layer in LayerKind.allCases {
+                render.nextLiveTransitions[layer] = .cut
+            }
+        } else {
+            render.outputs.setBlack(state.isBlack)
+        }
 
         pushConfidence()
         let now = Date()
         let base = state.scene(
-            alertVisible: alertVisible,
+            alertVisible: audienceAlertVisible,
             linkedText: render.confidenceInfo, at: now
         )
 
@@ -1887,7 +1946,7 @@ final class ServiceControls {
         var variants: [String: RenderScene] = [:]
         for (themeID, theme) in slideThemeOverrides {
             variants[themeID] = state.scene(
-                alertVisible: alertVisible,
+                alertVisible: audienceAlertVisible,
                 linkedText: render.confidenceInfo,
                 slideThemeOverride: theme, at: now
             )
@@ -1910,6 +1969,7 @@ final class ServiceControls {
                 base, presentation: state.liveSlide?.presentation, scale: setup.sideTVsLyricScale)
         }
         render.setLiveScenes(base, variants: variants)
+        if endsBlack { render.outputs.setBlack(false) }
         syncScreenVideo()
         syncMedia()
         syncLinkedTextClock()
@@ -1936,10 +1996,9 @@ final class ServiceControls {
 
     private func syncLinkedTextClock() {
 
-        let alertTicks = state.liveAlert.map {
-            LinkedText.alertMessageHasTimerToken(
-                $0.message, timers: render.confidenceInfo.timers)
-        } ?? false
+        let alertTicks = [state.liveAlert, state.liveStageAlert].contains {
+            $0.map { LinkedText.alertMessageHasTimerToken($0.message, timers: render.confidenceInfo.timers) } ?? false
+        }
         let interval = state.linkedTextTickInterval(
             slideThemeOverrides: Array(slideThemeOverrides.values)
         ) ?? (alertTicks ? 1.0 : nil)
@@ -1995,8 +2054,8 @@ final class ServiceControls {
         info.nextItemName = nextItemName
 
         info.currentPresentationName = state.liveSlide?.presentation?.name
-        info.alert = state.liveAlert
-        info.alertVisible = alertVisible
+        info.alert = state.stageAlert
+        info.alertVisible = alertVisible || state.stageAlert?.behavior != .flash
         render.confidenceInfo = info
     }
 
