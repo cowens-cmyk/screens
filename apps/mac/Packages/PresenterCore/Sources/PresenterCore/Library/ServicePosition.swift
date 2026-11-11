@@ -247,6 +247,43 @@ public enum LightingCueTable {
         }
     }
 
+    /// Why `note` can't be the note of `position`'s row, or nil when it
+    /// can. 0 is the note Send Test sends for MIDI learn, the reserved
+    /// notes belong to the song sections and the Lightkey Cue action, and a
+    /// note another row has would fire both scenes.
+    public static func noteProblem(_ note: Int, for position: String, in table: [LightingCue]) -> String? {
+        if note == 0 { return "0 is the test note." }
+        if note < 0 || note > 127 { return "Notes go from 1 to 127." }
+        if let section = sectionNotes.first(where: { $0.note == note }) {
+            return "\(note) is the \(section.name) section's note."
+        }
+        if let range = reservedNotes.first(where: { $0.contains(note) }) {
+            return "\(range.lowerBound)–\(range.upperBound) are left for the Lightkey Cue action."
+        }
+        if let other = table.first(where: { $0.position != position && $0.note == note }) {
+            return "\(ServicePosition(key: other.position)?.title ?? other.position) already has \(note)."
+        }
+        return nil
+    }
+
+    /// Section notes: Lightkey learns each once, then follows every song.
+    public static let sectionNotes: [(name: String, note: Int)] = [
+        ("Intro", 1), ("Verse", 2), ("Pre-Chorus", 3), ("Chorus", 4), ("Bridge", 5),
+        ("Tag", 6), ("Interlude", 7), ("Instrumental", 8), ("Outro", 9), ("Ending", 10),
+    ]
+
+    /// A song section's note, by its name: "Verse 2" sends Verse's. Spaces,
+    /// hyphens and case don't count, so "Pre Chorus", "PreChorus" and
+    /// "pre-chorus" are all the Pre-Chorus; the longest name wins, so
+    /// "Pre-Chorus" isn't taken for a Chorus.
+    public static func sectionNote(forName name: String) -> Int? {
+        let compact = ServicePosition.compacted(name)
+        return sectionNotes
+            .map { (name: ServicePosition.compacted($0.name), note: $0.note) }
+            .sorted { $0.name.count > $1.name.count }
+            .first { compact.hasPrefix($0.name) }?.note
+    }
+
     /// The note an added song or cue gets: the lowest free one above the
     /// defaults, then any free one below them, never a reserved one.
     public static func nextFreeNote(in table: [LightingCue]) -> Int {

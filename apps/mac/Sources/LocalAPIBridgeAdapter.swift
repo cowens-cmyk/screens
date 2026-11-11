@@ -471,12 +471,14 @@ final class AppAPIBridge: LocalAPIBridge {
     private func advance(steps: Int, settled: Bool, service: Service?, decks: [String: Presentation]) throws {
         if steps != 0 {
             try controls.advance(steps: steps, settled: settled) {
-                try advanceSlide(steps: steps, positions: service.map { positions(in: $0, decks: decks) } ?? [])
+                try advanceSlide(
+                    steps: steps, positions: service.map { positions(in: $0, decks: decks) } ?? [],
+                    order: service?.items.map(\.id) ?? [])
             }
         }
     }
 
-    private func advanceSlide(steps: Int, positions: [FirePosition]) throws {
+    private func advanceSlide(steps: Int, positions: [FirePosition], order: [String]) throws {
 
         if let contextID = controls.liveContextID, let occurrence = controls.liveOccurrence,
            let current = positions.firstIndex(where: {
@@ -511,9 +513,21 @@ final class AppAPIBridge: LocalAPIBridge {
             return
         }
 
-        guard let position = steps > 0 ? positions.first : positions.last else {
+        // No plan slide is up. A plan video that is (the countdown, an
+        // announcement) is where the plan is: go to the item after it, not
+        // back to the walk-in. Any other slide from outside the plan goes
+        // nowhere.
+        guard !positions.isEmpty else {
             throw APIError.badRequest("Nothing is live and the current service has no slides.")
         }
+        let places = positions.map { PlanSlideSteps.Place(itemID: $0.itemID, occurrence: $0.occurrence) }
+        let start = controls.planStepStart(order: order)
+        guard let next = PlanSlideSteps.step(steps, from: start, order: order, in: places) else {
+            throw APIError.badRequest(start == .elsewhere
+                ? "The slide on screen isn't from the current service."
+                : "Already at the \(steps > 0 ? "end" : "start") of the service.")
+        }
+        let position = positions[next]
         controls.fire(
             slide: position.slide, in: position.presentation,
             arrangementId: position.arrangementId,

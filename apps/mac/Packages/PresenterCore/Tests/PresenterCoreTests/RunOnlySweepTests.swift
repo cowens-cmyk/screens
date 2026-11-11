@@ -106,6 +106,20 @@ import Testing
         #expect(editor.contains("journalCan: !runOnly && journal?.canRedo == true"))
     }
 
+    /// The Key chip on the Present page transposes the song (and the band's
+    /// chords on the stage display); run-only shows the key and nothing more.
+    @Test func theKeyChipDoesNotTransposeInRunOnly() throws {
+        let sweep = try SourceSweep.app()
+        let grid = try #require(sweep.file("PresentGridView.swift")).text
+        let start = try #require(grid.range(of: "struct SongKeyChip: View {"))
+        let body = grid[start.upperBound...].prefix(700)
+        let gate = try #require(body.range(of: "if runOnly {"))
+        let menu = try #require(body.range(of: "transposeMenu(musicKey: musicKey)"))
+        let label = try #require(body.range(of: "} else {"))
+        #expect(gate.lowerBound < label.lowerBound && label.lowerBound < menu.lowerBound,
+                "run-only gets a plain label; the transpose menu is the else branch")
+    }
+
     @Test func runOnlyShowsOnlyThePickedTabs() throws {
         let sweep = try SourceSweep.app()
         let panel = try #require(sweep.file("ServiceControlsPanel.swift")).text

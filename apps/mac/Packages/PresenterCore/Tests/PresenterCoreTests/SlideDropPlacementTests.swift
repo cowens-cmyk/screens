@@ -106,6 +106,30 @@ struct SlideDropPlacementTests {
         #expect(presentation.slides[3].sectionId == "chorus")
     }
 
+    /// The grid asks before media dropped beside a repeated chorus joins
+    /// every repeat, so it has to know the section the insert will take.
+    @Test func theSectionAnInsertJoinsIsTheOneItLandsIn() {
+        let presentation = deck([slide("a", section: "verse"), slide("b", section: "chorus")])
+        for anchor: SlideDropPlacement.Anchor in [.before("a"), .after("a"), .before("b"), .after("b"), .end, .before("gone")] {
+            var landed = presentation
+            SlideDropPlacement.insert([slide("new")], at: anchor, in: &landed)
+            let new = landed.slides.first { $0.id == "new" }
+            #expect(SlideDropPlacement.sectionId(at: anchor, in: presentation) == new?.sectionId, "\(anchor)")
+        }
+        #expect(SlideDropPlacement.sectionId(at: .before("b"), in: presentation) == "chorus")
+        #expect(SlideDropPlacement.sectionId(at: .end, in: deck([])) == nil)
+    }
+
+    @Test func mediaDroppedBetweenSlidesAsksAboutARepeatedSection() throws {
+        let sweep = try SourceSweep.app()
+        let grid = try #require(sweep.file("PresentGridView.swift")).text
+        let start = try #require(grid.range(of: "private func insertMediaSlides(mediaIDs: [String], anchor: SlideDropPlacement.Anchor) -> Bool {"))
+        let body = grid[start.upperBound...].prefix(900)
+        let ask = try #require(body.range(of: "confirmingRepeatedSectionEdit(sections: [SlideDropPlacement.sectionId(at: anchor, in: presentation)])"))
+        let insert = try #require(body.range(of: "model.insertSlides(presentation.id, slides: added, at: anchor)"))
+        #expect(ask.lowerBound < insert.lowerBound)
+    }
+
     @Test func theEndAndAMissingSlideBothAppend() {
         var presentation = deck([])
         SlideDropPlacement.insert([slide("first")], at: .end, in: &presentation)

@@ -87,26 +87,34 @@ public enum SlideDropPlacement {
     /// Puts slides at an anchor, taking the section of the slide they land
     /// beside so they show under the same heading.
     public static func insert(_ slides: [Slide], at anchor: Anchor, in presentation: inout Presentation) {
-        let index: Int
-        let neighbor: Slide?
-        switch anchor {
-        case .before(let id):
-            index = presentation.slides.firstIndex { $0.id == id } ?? presentation.slides.count
-            neighbor = presentation.slides.indices.contains(index) ? presentation.slides[index] : presentation.slides.last
-        case .after(let id):
-            let found = presentation.slides.firstIndex { $0.id == id }
-            index = found.map { $0 + 1 } ?? presentation.slides.count
-            neighbor = found.map { presentation.slides[$0] } ?? presentation.slides.last
-        case .end:
-            index = presentation.slides.count
-            neighbor = presentation.slides.last
-        }
+        let (index, neighbor) = landing(at: anchor, in: presentation)
         let landing = slides.map { slide in
             var slide = slide
             slide.sectionId = neighbor?.sectionId
             return slide
         }
         presentation.slides.insert(contentsOf: landing, at: index)
+    }
+
+    /// The section slides inserted at `anchor` join. When it repeats in the
+    /// arrangement, they show in every repeat, so the grid asks first.
+    public static func sectionId(at anchor: Anchor, in presentation: Presentation) -> String? {
+        landing(at: anchor, in: presentation).neighbor?.sectionId
+    }
+
+    private static func landing(at anchor: Anchor, in presentation: Presentation) -> (index: Int, neighbor: Slide?) {
+        switch anchor {
+        case .before(let id):
+            let index = presentation.slides.firstIndex { $0.id == id } ?? presentation.slides.count
+            let neighbor = presentation.slides.indices.contains(index) ? presentation.slides[index] : presentation.slides.last
+            return (index, neighbor)
+        case .after(let id):
+            let found = presentation.slides.firstIndex { $0.id == id }
+            return (found.map { $0 + 1 } ?? presentation.slides.count,
+                    found.map { presentation.slides[$0] } ?? presentation.slides.last)
+        case .end:
+            return (presentation.slides.count, presentation.slides.last)
+        }
     }
 }
 

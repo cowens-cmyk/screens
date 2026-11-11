@@ -23,6 +23,12 @@ import Testing
         PlanSlideSteps.places(plan) { counts[$0.id] }
     }
 
+    private var order: [String] { plan.map(\.id) }
+
+    private func step(_ delta: Int, from live: Place?, in places: [Place]) -> Int? {
+        PlanSlideSteps.step(delta, from: live.map { .slide($0) } ?? .clear, order: order, in: places)
+    }
+
     @Test func anEmptyPresentationHasNoPlaces() {
         #expect(places == [
             Place(itemID: "welcome", occurrence: 0), Place(itemID: "welcome", occurrence: 1),
@@ -37,41 +43,72 @@ import Testing
     }
 
     @Test func forwardSkipsTheEmptyPresentation() throws {
-        let next = try #require(PlanSlideSteps.step(1, from: Place(itemID: "welcome", occurrence: 1), in: places))
+        let next = try #require(step(1, from: Place(itemID: "welcome", occurrence: 1), in: places))
         #expect(places[next] == Place(itemID: "song", occurrence: 0))
     }
 
     @Test func backSkipsTheEmptyPresentation() throws {
-        let previous = try #require(PlanSlideSteps.step(-1, from: Place(itemID: "song", occurrence: 0), in: places))
+        let previous = try #require(step(-1, from: Place(itemID: "song", occurrence: 0), in: places))
         #expect(places[previous] == Place(itemID: "welcome", occurrence: 1))
     }
 
     @Test func theEndsStopWithAnEmptyPresentationLast() {
-        #expect(PlanSlideSteps.step(1, from: Place(itemID: "song", occurrence: 2), in: places) == nil,
+        #expect(step(1, from: Place(itemID: "song", occurrence: 2), in: places) == nil,
                 "the empty closing deck is not a slide to go to")
-        #expect(PlanSlideSteps.step(-1, from: Place(itemID: "welcome", occurrence: 0), in: places) == nil)
+        #expect(step(-1, from: Place(itemID: "welcome", occurrence: 0), in: places) == nil)
     }
 
     @Test func nothingLiveStartsAtAnEnd() throws {
-        #expect(try places[#require(PlanSlideSteps.step(1, from: nil, in: places))] == Place(itemID: "welcome", occurrence: 0))
-        #expect(try places[#require(PlanSlideSteps.step(-1, from: nil, in: places))] == Place(itemID: "song", occurrence: 2))
+        #expect(try places[#require(step(1, from: nil, in: places))] == Place(itemID: "welcome", occurrence: 0))
+        #expect(try places[#require(step(-1, from: nil, in: places))] == Place(itemID: "song", occurrence: 2))
         let firstEmpty = PlanSlideSteps.places([item("empty"), item("song")]) { counts[$0.id] }
-        #expect(PlanSlideSteps.step(1, from: nil, in: firstEmpty) == 0, "an empty first item is skipped")
+        #expect(step(1, from: nil, in: firstEmpty) == 0, "an empty first item is skipped")
         #expect(firstEmpty.first == Place(itemID: "song", occurrence: 0))
     }
 
-    @Test func aLiveSlideThatIsGoneStartsOver() throws {
+    @Test func aLiveSlideThatIsGoneCarriesOnFromItsItem() throws {
         // The live presentation had its slides deleted while one was up.
         let gone = Place(itemID: "empty", occurrence: 0)
-        #expect(try places[#require(PlanSlideSteps.step(1, from: gone, in: places))] == Place(itemID: "welcome", occurrence: 0))
+        #expect(try places[#require(step(1, from: gone, in: places))] == Place(itemID: "song", occurrence: 0))
+        #expect(try places[#require(step(-1, from: gone, in: places))] == Place(itemID: "welcome", occurrence: 1))
+    }
+
+    /// The countdown (a plan video that plays once) takes the slides down.
+    /// Next goes to the item after it, not back to the walk-in, and
+    /// Previous to the item before it, not the walkout.
+    @Test func aLivePlanVideoIsWhereThePlanIs() throws {
+        #expect(try places[#require(PlanSlideSteps.step(1, from: .item("video"), order: order, in: places))]
+            == Place(itemID: "song", occurrence: 0))
+        #expect(try places[#require(PlanSlideSteps.step(-1, from: .item("video"), order: order, in: places))]
+            == Place(itemID: "welcome", occurrence: 1))
+    }
+
+    @Test func aVideoAtAnEndOfThePlanStepsNowhereThatWay() {
+        let plan = [item("countdown", .media), item("song"), item("walkout", .media)]
+        let places = PlanSlideSteps.places(plan) { $0.id == "song" ? 2 : nil }
+        let order = plan.map(\.id)
+        #expect(PlanSlideSteps.step(-1, from: .item("countdown"), order: order, in: places) == nil,
+                "not round to the song's last slide")
+        #expect(PlanSlideSteps.step(1, from: .item("walkout"), order: order, in: places) == nil)
+        #expect(PlanSlideSteps.step(1, from: .item("countdown"), order: order, in: places) == 0)
+    }
+
+    /// A deck put up outside the plan (the walk-in restarted from Service
+    /// Day, a library deck): a press doesn't pull the plan up over it.
+    @Test func aSlideFromOutsideThePlanStepsNowhere() {
+        #expect(PlanSlideSteps.step(1, from: .elsewhere, order: order, in: places) == nil)
+        #expect(PlanSlideSteps.step(-1, from: .elsewhere, order: order, in: places) == nil)
+        let outside = Place(itemID: "library-deck", occurrence: 0)
+        #expect(PlanSlideSteps.step(1, from: .slide(outside), order: order, in: places) == nil)
+        #expect(PlanSlideSteps.step(1, from: .item("gone-item"), order: order, in: places) == nil)
     }
 
     @Test func aPlanOfEmptyPresentationsHasNowhereToGo() {
         let empty = PlanSlideSteps.places([item("empty"), item("closing")]) { counts[$0.id] }
         #expect(empty.isEmpty)
-        #expect(PlanSlideSteps.step(1, from: nil, in: empty) == nil)
-        #expect(PlanSlideSteps.step(-1, from: nil, in: empty) == nil)
-        #expect(PlanSlideSteps.step(0, from: nil, in: places) == nil)
+        #expect(step(1, from: nil, in: empty) == nil)
+        #expect(step(-1, from: nil, in: empty) == nil)
+        #expect(step(0, from: nil, in: places) == nil)
     }
 
     /// The next item still lists an empty presentation; firing it reports
