@@ -30,7 +30,8 @@ enum StageLayouts {
     static let messageID = BasicTemplates.messageStageID
     /// What the stage shows while a video plays.
     static let videoID = BasicTemplates.videoStageID
-    /// Before the service: time until the countdown and the service.
+    /// Before the service and after it ends: the countdown to the next
+    /// service's start.
     static let preServiceID = BasicTemplates.preServiceStageID
     /// Not a layout: a slide's stage choice that shows the audience screen
     /// (right-click › Show on Stage Display).

@@ -1129,10 +1129,10 @@ final class ServiceControls {
         }
     }
 
-    /// The pre-service slideshow, or the plan's final slide (where one
-    /// service ends and the next one's walk-in begins), puts the stage on
-    /// Before Service: how long until the countdown and the service. Any
-    /// other slide takes it back off; songs and the message have already
+    /// The pre-service slideshow, the walkout, or the plan's final slide
+    /// (where one service ends and the next one's walk-in begins) puts the
+    /// stage on Before Service: the countdown to the next service's start.
+    /// Any other slide takes it back off; songs and the message have already
     /// set their own mode by then.
     private func followBeforeService(
         slide: Slide, in presentation: Presentation, arrangementId: String?, contextID: String?,
@@ -1144,22 +1144,24 @@ final class ServiceControls {
         // The walk-in slideshow put up on its own (Service Day's restart, the
         // library grid, the Local API) carries no plan item, and its every
         // auto-advance would otherwise take the stage back to Worship.
-        var before = ServiceLighting.isPreService(
-            presentation, preServiceID: appModel.slideBuilding.serviceDay?.preServicePresentationId)
-        if !before, let plan {
-            if let contextID, plan.items.first(where: { $0.id == contextID })?.isPreService == true {
-                before = true
-            } else if let last = appModel.fireableItems(plan).last(where: { $0.itemKind == .presentation }),
+        let day = appModel.slideBuilding.serviceDay
+        let before = BeforeServiceStage.applies(
+            slideshow: ServiceLighting.isPreService(presentation, preServiceID: day?.preServicePresentationId),
+            item: contextID.flatMap { id in plan?.items.first { $0.id == id } },
+            presentationID: presentation.id, walkoutDeckID: day?.walkoutPresentationId,
+            endOfPlan: { () -> Bool in
+                guard let plan,
+                      let last = appModel.fireableItems(plan).last(where: { $0.itemKind == .presentation }),
                       last.refId == presentation.id,
                       // The pastor preaches over the message's last slide,
                       // so a plan that ends on the message keeps the
                       // Message stage until the walk-in or the next item.
-                      PresentationTypes.category(of: presentation) != PresentationTypes.sermon {
+                      PresentationTypes.category(of: presentation) != PresentationTypes.sermon
+                else { return false }
                 let slides = SlideSceneBuilder.arrangedSlides(
                     for: presentation, arrangementId: arrangementId ?? last.arrangementId)
-                before = SlideSceneBuilder.isLastArranged(slideID: slide.id, occurrence: occurrence, in: slides)
-            }
-        }
+                return SlideSceneBuilder.isLastArranged(slideID: slide.id, occurrence: occurrence, in: slides)
+            }())
         if before {
             if setup.stageMode != .preService { setup.stageMode = .preService }
         } else if setup.stageMode == .preService {
@@ -1274,9 +1276,13 @@ final class ServiceControls {
     var nextSermonTimerReset: Date?
 
     /// Today's next service (its time, and its countdown's start when one
-    /// is scheduled), for the Before Service stage's timers; nil when there
-    /// is none left today.
+    /// is scheduled), for the Until Countdown timer; nil when there is none
+    /// left today.
     var nextService: SermonTimerReset.Service?
+
+    /// The service start the Before Service stage counts down to (see
+    /// ServiceStartClock); nil when there is none left today.
+    var stageServiceTime: Date?
 
     /// A service is starting: sets the Sermon timer back unless a sermon is
     /// still going. `reason` is for Diagnostics.

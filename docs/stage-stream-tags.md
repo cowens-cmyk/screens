@@ -50,10 +50,12 @@ Strings are exact. Help text: `Stage display: <stage>. Livestream: <stream>.`
    **Lyrics + chords**, `message` → **Message timer**, `preService` → **Before
    service**, `mirror` → **Audience screen** (other values fall through)
 4. Video only → **Video time left**
-5. Type `Sermon` → **Message timer**; type `Worship` → **Lyrics + chords**
-6. Last presentation item → **Before service** (its last slide puts the stage
+5. `item.isWalkout == true`, or `presentation.id ==
+   slideBuildingSettings.serviceDay.walkoutPresentationId` → **Before service**
+6. Type `Sermon` → **Message timer**; type `Worship` → **Lyrics + chords**
+7. Last presentation item → **Before service** (its last slide puts the stage
    there)
-7. **No change**
+8. **No change**
 
 ## Presentation items: livestream, first match wins
 
@@ -102,3 +104,4 @@ Strings are exact. Help text: `Stage display: <stage>. Livestream: <stream>.`
 | Transition: one slide, the bumper video as its background | Video time left | Full screen |
 | Pre-service slideshow | Before service | (its slides' look) |
 | Walkout with a Full Screen stream action, last in the plan | Before service | Full screen |
+| Walkout item (`isWalkout`), any slide of it | Before service | (its slides' look) |

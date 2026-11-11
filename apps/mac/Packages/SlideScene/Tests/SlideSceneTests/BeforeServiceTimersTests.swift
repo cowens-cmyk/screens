@@ -3,11 +3,73 @@ import PresenterCore
 import Testing
 @testable import SlideScene
 
-@Test func beforeServiceLayoutReadsTheTimersTheAppMakes() {
+@Test func beforeServiceLayoutReadsTheTimerTheAppMakes() {
     #expect(ServiceTrackingTimers.id(.untilCountdown, .remaining) == ConfidenceLayoutTemplate.untilCountdownTimerID)
     #expect(ServiceTrackingTimers.id(.untilService, .remaining) == ConfidenceLayoutTemplate.untilServiceTimerID)
-    let ids = ConfidenceLayoutTemplate.preService.make(name: "Before Service").objects.compactMap(\.textLink?.timerId)
-    #expect(ids == [ConfidenceLayoutTemplate.untilCountdownTimerID, ConfidenceLayoutTemplate.untilServiceTimerID])
+    let objects = ConfidenceLayoutTemplate.preService.make(name: "Before Service").objects
+    #expect(objects.compactMap(\.textLink?.timerId) == [ConfidenceLayoutTemplate.untilServiceTimerID],
+            "one timer, to the service's start")
+}
+
+private let stageNow = Date(timeIntervalSince1970: 2_000_000)
+
+/// What the Before Service stage draws, as the render thread would, with the
+/// app's Until Service timer in the state `timer` gives.
+private func beforeServiceText(_ timer: TimerSnapshot, at date: Date = stageNow) -> [String] {
+    var layout = ConfidenceLayoutTemplate.preService.make(name: "Before Service")
+    layout.id = BasicTemplates.preServiceStageID
+    let scene = ConfidenceSceneBuilder.scene(
+        layout: layout, info: ConfidenceInfo(timers: [timer]), at: date)
+    return (scene.layers.first { $0.kind == .slide }?.items ?? []).compactMap {
+        if case .text(let styled) = $0.content { return styled.string }
+        return nil
+    }
+}
+
+@Test func beforeServiceShowsOnlyTheCountdownToTheService() {
+    let timer = ServiceTrackingTimers.until(.untilService, stageNow.addingTimeInterval(754), now: stageNow)
+    #expect(beforeServiceText(timer) == ["SERVICE STARTS IN", "12:34"])
+}
+
+@Test func beforeServiceCountsDownAsTheClockMoves() {
+    // It reads the wall clock, so the countdown video playing (or not)
+    // makes no difference to it.
+    let timer = ServiceTrackingTimers.until(.untilService, stageNow.addingTimeInterval(300), now: stageNow)
+    #expect(beforeServiceText(timer, at: stageNow.addingTimeInterval(120)).last == "3:00")
+    #expect(beforeServiceText(timer, at: stageNow.addingTimeInterval(299)).last == "0:01")
+}
+
+@Test func beforeServiceShowsHoursOverAnHour() {
+    let timer = ServiceTrackingTimers.until(.untilService, stageNow.addingTimeInterval(3600 + 5 * 60 + 9), now: stageNow)
+    #expect(beforeServiceText(timer).last == "1:05:09")
+}
+
+@Test func beforeServiceHoldsAtZeroWhenTheServiceTimePasses() {
+    let timer = ServiceTrackingTimers.until(.untilService, stageNow.addingTimeInterval(30), now: stageNow)
+    #expect(beforeServiceText(timer, at: stageNow.addingTimeInterval(45)) == ["SERVICE STARTS IN", "0:00"])
+    // Rebuilt after the moment (the walk-in ran late): still 0:00, never negative.
+    let late = ServiceTrackingTimers.until(
+        .untilService, stageNow, now: stageNow.addingTimeInterval(90), holdsAtZero: true)
+    #expect(beforeServiceText(late, at: stageNow.addingTimeInterval(95)) == ["SERVICE STARTS IN", "0:00"])
+}
+
+@Test func beforeServiceShowsTheClockWhenNoServiceIsLeft() {
+    let none = ServiceTrackingTimers.until(.untilService, nil, now: stageNow, holdsAtZero: true)
+    let text = beforeServiceText(none)
+    #expect(text.count == 2)
+    #expect(text.first == "TIME")
+    #expect(!text.contains("SERVICE STARTS IN"))
+    // A moment that passed without the hold is the same as none.
+    let past = ServiceTrackingTimers.until(.untilService, stageNow.addingTimeInterval(-5), now: stageNow)
+    #expect(beforeServiceText(past).first == "TIME")
+}
+
+@Test func theUntilTimerHoldsAtZeroOnlyWhenAskedTo() {
+    let past = stageNow.addingTimeInterval(-60)
+    #expect(!ServiceTrackingTimers.until(.untilService, past, now: stageNow).isRunning)
+    let held = ServiceTrackingTimers.until(.untilService, past, now: stageNow, holdsAtZero: true)
+    #expect(held.isRunning)
+    #expect(held.value(at: stageNow.addingTimeInterval(500)) == 0)
 }
 
 @Test func untilTimersCountDownToTheirMomentAndStopAfterIt() {

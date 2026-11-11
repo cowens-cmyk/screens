@@ -8,12 +8,13 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     case sermon
     /// What the stage shows while a video plays.
     case video
-    /// Before the service: how long until the countdown starts and until
-    /// the service itself.
+    /// Before the service and after it ends: a big countdown to the next
+    /// service's start.
     case preService
 
-    /// The built-in timers the Before Service layout shows (Service
-    /// Tracking's, made from the plan's service times).
+    /// The built-in timers Service Tracking makes from the day's service
+    /// times. The Before Service layout shows Until Service; any layout can
+    /// show either.
     public static let untilCountdownTimerID = "service_tracking.untilCountdown.remaining"
     public static let untilServiceTimerID = "service_tracking.untilService.remaining"
 
@@ -361,9 +362,46 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         )
     }
 
-    /// Before the service: the countdown's start large, the service time
-    /// under it, the clock at the bottom.
+    /// Before the service, and after it ends: one big countdown to the next
+    /// service's start and nothing else. With no service to count to (none
+    /// left today) the clock takes its place, so the screen never reads
+    /// "starts in 0:00" for a service that isn't coming. Which of the two
+    /// shows follows the Until Service timer: it runs while a service is
+    /// ahead (and holds at 0:00 for a few minutes after the start, see
+    /// ServiceStartClock) and is stopped when there is none.
     static func preService(name: String) -> ConfidenceLayout {
+        func shown(_ object: SlideObject, whenTimer state: VisibilityConditionState) -> SlideObject {
+            var object = object
+            object.visibilityConditions = [
+                VisibilityCondition(conditionKind: .timer, state: state, timerId: untilServiceTimerID)
+            ]
+            return object
+        }
+        var timer = linked("Until Service", .timer, x: 60, y: 250, width: 1800, height: 700,
+                           size: 560, color: messageGreen, tabular: true, shrink: true, minSize: 120)
+        timer.textLink?.timerId = untilServiceTimerID
+        timer.textLink?.usesWarningColor = false
+        timer.textStyle?.fontName = "HelveticaNeue-Bold"
+        var clock = linked("Clock", .clock, x: 60, y: 250, width: 1800, height: 700,
+                           size: 420, color: white, tabular: true, shrink: true, minSize: 120,
+                           clockFormat: "h:mm")
+        clock.textStyle?.fontName = "HelveticaNeue-Bold"
+        return ConfidenceLayout(
+            id: UUID().uuidString,
+            name: name,
+            objects: [
+                shown(label("SERVICE STARTS IN", y: 170), whenTimer: .isRunning),
+                shown(timer, whenTimer: .isRunning),
+                shown(label("TIME", y: 170), whenTimer: .isNotRunning),
+                shown(clock, whenTimer: .isNotRunning),
+            ]
+        )
+    }
+
+    /// The Before Service layout as it was made until November 2026: how
+    /// long until the countdown starts, until the service, and the clock.
+    /// Kept only to recognise untouched copies of it.
+    static func legacyPreService(name: String) -> ConfidenceLayout {
         func timer(_ objectName: String, _ id: String, y: Double, height: Double, size: Double, color: String) -> SlideObject {
             var timer = linked(objectName, .timer, x: 60, y: y, width: 1800, height: height,
                                size: size, color: color, tabular: true, shrink: true, minSize: 80)
@@ -388,6 +426,14 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
                 clock,
             ]
         )
+    }
+
+    /// A saved Before Service layout that is still exactly what the old
+    /// template made (object ids aside) gets the new design's objects. One
+    /// anybody has touched, even slightly, is left alone: nil.
+    public static func upgradedPreServiceObjects(for layout: ConfidenceLayout) -> [SlideObject]? {
+        guard isUntouched(layout, comparedWith: legacyPreService(name: layout.name)) else { return nil }
+        return preService(name: layout.name).objects
     }
 
     static let messageGreen = "#30D158FF"

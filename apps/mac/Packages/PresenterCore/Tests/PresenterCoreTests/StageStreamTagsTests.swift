@@ -123,6 +123,29 @@ struct StageStreamTagsTests {
         #expect(StageStreamTags.tags(for: plan.items[2], in: plan, library: lib)?.stage == "Before service")
     }
 
+    @Test func theWalkoutIsBeforeServiceOnEverySlideAndWhereverItSits() {
+        let loop = deck("loop", slides: [slide("a"), slide("b")])
+        var walkout = item("w", ref: "loop")
+        walkout.isWalkout = true
+        // Not last in the plan, and not a sermon or a song: only the item says so.
+        let plan = Service(id: "p", name: "", serviceDate: "", items: [walkout, item("z", ref: "other")])
+        let lib = library([loop], themes: [plainTheme])
+        #expect(StageStreamTags.tags(for: plan.items[0], in: plan, library: lib)?.stage == "Before service")
+        #expect(StageStreamTags.tags(for: loop.slides[0], of: plan.items[0], in: plan, library: lib)?.stage == "Before service")
+
+        // Service Day's walkout presentation counts without the item flag.
+        var settings = SlideBuildingSettings(id: "s")
+        settings.serviceDay = ServiceDaySettings(services: [], walkoutPresentationId: "loop")
+        let plain = Service(id: "p", name: "", serviceDate: "", items: [item("w", ref: "loop"), item("z", ref: "other")])
+        #expect(StageStreamTags.tags(for: plain.items[0], in: plain, library: library([loop], themes: [plainTheme], settings: settings))?.stage == "Before service")
+        #expect(StageStreamTags.tags(for: plain.items[0], in: plain, library: library([loop], themes: [plainTheme]))?.stage == "No change")
+
+        // Its own stage layout still wins, as for the walk-in.
+        var own = loop
+        own.stageLayoutId = "custom"
+        #expect(StageStreamTags.tags(for: plan.items[0], in: plan, library: library([own], themes: [plainTheme]))?.stage == "Own layout")
+    }
+
     @Test func screensByTypeDecidesBeforeTheTheme() {
         var settings = SlideBuildingSettings(id: "s")
         settings.updateScreens(forType: PresentationTypes.worship) { $0.livestream = .audience }
