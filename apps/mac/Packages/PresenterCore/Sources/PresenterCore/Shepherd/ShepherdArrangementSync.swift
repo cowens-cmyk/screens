@@ -52,6 +52,16 @@ public enum ShepherdArrangementSync {
 
         static let wordless: Set<String> = ["intro", "instrumental", "interlude", "turnaround", "solo", "blank"]
 
+        /// Parts a band plays without new words: a vamp, an outro, an
+        /// ending, a breakdown, and the wordless ones above. A song that
+        /// lacks one is only missing a blank to hold its place in the
+        /// order, so it can be added without anyone typing. Verses,
+        /// choruses, pre-choruses, bridges, refrains and tags carry
+        /// lyrics: an empty slide there would hide a real gap.
+        public var takesBlankSlide: Bool { Self.wordless.contains(kind) || Self.blankKinds.contains(kind) }
+
+        static let blankKinds: Set<String> = ["vamp", "outro", "ending", "breakdown"]
+
         /// "Verse 3", "Pre-Chorus", for a warning.
         public var displayName: String {
             let names = [
@@ -177,6 +187,135 @@ public enum ShepherdArrangementSync {
     /// "Shepherd's arrangement has Bridge 2; this song has no Bridge 2".
     public static func warning(missing name: String) -> String {
         "Shepherd's arrangement has \(name); this song has no \(name)"
+    }
+
+    /// The name in a warning made by `warning(missing:)`: "Bridge 2" from
+    /// "Shepherd's arrangement has Bridge 2; this song has no Bridge 2". Nil
+    /// for any other note.
+    public static func missingName(fromWarning warning: String) -> String? {
+        let head = "Shepherd's arrangement has "
+        guard warning.hasPrefix(head), let split = warning.range(of: "; this song has no ") else { return nil }
+        let name = String(warning[warning.index(warning.startIndex, offsetBy: head.count)..<split.lowerBound])
+        guard !name.isEmpty, warning == Self.warning(missing: name) else { return nil }
+        return name
+    }
+
+    // MARK: Adding the parts a song lacks
+
+    /// Of Shepherd's names the song has no section for, the ones that can
+    /// be added as an empty slide (see `SectionLabel.takesBlankSlide`),
+    /// once each and in the order given.
+    public static func blankFixableNames(in names: [String]) -> [String] {
+        var seen = Set<String>()
+        return names.filter { name in
+            guard let label = label(name)?.label, label.takesBlankSlide else { return false }
+            return seen.insert(label.displayName).inserted
+        }
+    }
+
+    public struct BlankSectionFix: Equatable, Sendable {
+        /// The song after.
+        public var presentation: Presentation
+        /// Names of the sections made ("Vamp", "Outro").
+        public var added: [String]
+        /// The names asked for that the song now has a section for: the
+        /// ones added, and any that were there already. Their warnings
+        /// are done with.
+        public var resolved: [String]
+    }
+
+    /// Gives the song a blank slide, in a section of its own, for each of
+    /// `missing` that is normally wordless (Vamp, Outro, Ending…), and puts
+    /// the section where Shepherd's arrangement sings it. Lyric parts are
+    /// left alone, and a name the song already has is not added again, so
+    /// running it twice changes nothing more.
+    ///
+    /// - Parameters:
+    ///   - missing: names from the warnings ("Vamp", "Bridge 2").
+    ///   - sequence: Shepherd's order for the plan item; nil when it can't
+    ///     be had, and the new sections go on the end.
+    ///   - arrangementId: the arrangement the plan item plays (nil: the
+    ///     song's default).
+    ///   - shepherdTag: `tag(_:)` of the item's Shepherd arrangement. The
+    ///     Screens arrangement that follows it (and the one in use, when
+    ///     Shepherd made it) takes the new sections where Shepherd sings
+    ///     them, and nothing else in it moves.
+    ///
+    /// An arrangement made by hand is never reordered: when it is the one in
+    /// use, the new sections are added on its end, so they play.
+    public static func addBlankSections(
+        _ presentation: Presentation, missing: [String], sequence: [String]?, arrangementId: String?,
+        shepherdTag: String? = nil, themeSlideName: String = "Lyrics"
+    ) -> BlankSectionFix {
+        var result = presentation
+        guard var sections = presentation.sections, !sections.isEmpty else {
+            return BlankSectionFix(presentation: presentation, added: [], resolved: [])
+        }
+        var labels: [SectionLabel?] = sections.map { label($0.name)?.label }
+        var added: [String] = []
+        var resolved: [String] = []
+        var addedIds = Set<String>()
+        for name in blankFixableNames(in: missing) {
+            guard let wanted = label(name)?.label else { continue }
+            resolved.append(name)
+            if sectionIndex(for: wanted, in: labels) != nil { continue }
+            let section = PresentationSection(id: UUID().uuidString, name: wanted.displayName)
+            sections.append(section)
+            labels.append(wanted)
+            // Deliberately no `objects`: a blank slide, like the ones an
+            // import makes for a part with no words. Themed as a lyric
+            // slide so it takes the song's look.
+            result.slides.append(Slide(
+                id: UUID().uuidString, name: "", objects: [], sectionId: section.id, themeSlideName: themeSlideName))
+            added.append(section.name)
+            addedIds.insert(section.id)
+        }
+        guard !addedIds.isEmpty else { return BlankSectionFix(presentation: presentation, added: [], resolved: resolved) }
+        result.sections = sections
+
+        let newIds = sections.map(\.id).filter(addedIds.contains)
+        let inUse = arrangementId ?? presentation.defaultArrangementId
+        let target = sequence.map { mapping(sequence: $0, onto: result).sectionIds }
+        var arrangements = result.arrangements ?? []
+        for index in arrangements.indices {
+            var arrangement = arrangements[index]
+            let follows = shepherdTag.map { isSyncs(arrangement, tag: $0) } ?? false
+            if follows || (arrangement.id == inUse && arrangement.shepherdArrangementId != nil) {
+                arrangement.sectionIds = inserting(newIds, into: arrangement.sectionIds, following: target)
+            } else if arrangement.id == inUse {
+                arrangement.sectionIds += newIds.filter { !arrangement.sectionIds.contains($0) }
+            }
+            arrangements[index] = arrangement
+        }
+        if !arrangements.isEmpty { result.arrangements = arrangements }
+
+        // A song still exactly as imported keeps following Shepherd's chart.
+        if let imported = presentation.shepherdImportHash,
+           imported == ShepherdSongImport.fingerprint(presentation) {
+            result.shepherdImportHash = ShepherdSongImport.fingerprint(result)
+        }
+        return BlankSectionFix(presentation: result, added: added, resolved: resolved)
+    }
+
+    /// `order` with the new sections placed where `target` (Shepherd's
+    /// order, with them) has them. Nothing already in `order` moves or goes:
+    /// when `order` isn't `target` less the new ones, in the same order, the
+    /// new sections go on the end instead.
+    private static func inserting(_ new: [String], into order: [String], following target: [String]?) -> [String] {
+        let newSet = Set(new)
+        let appended = order + new.filter { !order.contains($0) }
+        guard let target, target.contains(where: newSet.contains) else { return appended }
+        var merged: [String] = []
+        var next = 0
+        for id in target {
+            if newSet.contains(id) {
+                merged.append(id)
+            } else if next < order.count, order[next] == id {
+                merged.append(id)
+                next += 1
+            }
+        }
+        return next == order.count ? merged : appended
     }
 
     // MARK: The song's arrangement
