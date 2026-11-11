@@ -68,7 +68,8 @@ final class CodecPipelineTests: XCTestCase {
         } else {
             media = PreparedMedia(
                 url: url, duration: 0, frameDuration: 1.0 / 30.0,
-                naturalSize: .zero, hasAlpha: hasAlpha ?? false, asset: asset)
+                naturalSize: .zero, hasAlpha: hasAlpha ?? false, codec: "", hardwareDecodes: true,
+                asset: asset, audioTrack: nil)
         }
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(

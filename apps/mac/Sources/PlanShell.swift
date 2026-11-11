@@ -190,8 +190,14 @@ struct PlanShell: View {
                 themeRouted
             }
         }
-        // Notes from the phone remote's stage view, over either face.
-        .overlay(alignment: .top) { BoothMessageBanner() }
+        // Notes from the phone remote's stage view, over either face, and
+        // under them a video that couldn't play.
+        .overlay(alignment: .top) {
+            VStack(spacing: 0) {
+                BoothMessageBanner()
+                if let controls { MediaProblemBanner(controls: controls) }
+            }
+        }
         .tint(HopeStyle.blue)
         .preferredColorScheme(.dark)
         // The menu bar's commands (File › New, Import, the Present menu, …)
@@ -1587,6 +1593,47 @@ struct NewSongSheet: View {
         .padding(16)
         .frame(width: 440)
         .onAppear { titleFocused = true }
+    }
+}
+
+/// A video that couldn't play and was taken off the screens. It stays until
+/// someone dismisses it, so a look back at the booth screen still finds it.
+private struct MediaProblemBanner: View {
+    let controls: ServiceControls
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack {
+            if let problem = controls.mediaProblem {
+                HStack(alignment: .center, spacing: 14) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(HopeStyle.amber)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Video can\u{2019}t play")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text("\u{201C}\(problem.name)\u{201D} couldn\u{2019}t play on this Mac and was taken off the screens.")
+                            .font(.system(size: 17, weight: .semibold))
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Button("Dismiss") { controls.dismissMediaProblem() }
+                        .controlSize(.large)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .frame(maxWidth: 640)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(HopeStyle.amber, lineWidth: 2))
+                .shadow(radius: 12, y: 4)
+                .padding(.top, 10)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .id(problem.id)
+            }
+        }
+        .animation(HopeMotion.ui(reduced: reduceMotion), value: controls.mediaProblem?.id)
     }
 }
 
