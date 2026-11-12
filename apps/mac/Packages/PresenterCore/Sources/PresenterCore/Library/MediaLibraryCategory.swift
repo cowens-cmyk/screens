@@ -44,6 +44,13 @@ public enum MediaLibraryCategory: String, CaseIterable, Identifiable, Sendable {
     /// It Ends) overrides this.
     public var loopsByDefault: Bool { self == .worshipBackgrounds }
 
+    /// Worship backgrounds go behind the slides; everything else (a
+    /// countdown, an announcement video, a picture) goes up in front unless
+    /// it's set to Background by hand.
+    public static func defaultClassification(forFolder path: String?) -> MediaClassification {
+        containing(folder: path) == .worshipBackgrounds ? .background : .foreground
+    }
+
     /// The category whose folder holds this path: the folder itself or one
     /// inside it. Matched without regard to case, so a "Worship backgrounds"
     /// folder made by hand counts.
@@ -193,5 +200,26 @@ extension MediaItem {
     public func loopsWhenPlaced(otherwise: Bool) -> Bool? {
         guard mediaKind == .video else { return nil }
         return loopChoice == nil && libraryCategory == nil ? otherwise : nil
+    }
+}
+
+public extension Library {
+    /// Imports used to file every picture and video as a background, so a
+    /// countdown or an announcement video went up behind the slides. Once
+    /// per library: each one takes its folder's layer, Background in
+    /// Worship Backgrounds and Foreground everywhere else. Returns how many
+    /// changed.
+    @discardableResult
+    func migrateMediaLayersByFolder() throws -> Int {
+        var migrated = 0
+        for id in try store.ids(of: .media) {
+            let document = try open(MediaItem.self, id: id)
+            let wanted = MediaLibraryCategory.defaultClassification(forFolder: document.value.folder)
+            guard document.value.classification != wanted else { continue }
+            try document.update { $0.classification = wanted }
+            try save(document)
+            migrated += 1
+        }
+        return migrated
     }
 }

@@ -12,9 +12,14 @@ import SlideScene
 final class ShowSetup {
     static let shared = ShowSetup()
 
+    /// What goes over the camera. Lower Third follows each presentation:
+    /// its own choice, its slide's, its type's in Screens by Type, its
+    /// theme's. Full Screen and Transparent take over the stream for the item
+    /// that's live (picked here or by an action) and end when the next plan
+    /// item goes live, so a song after a full-screen video gets its lower
+    /// third again by itself.
     enum StreamMode: String, CaseIterable, Identifiable {
-        /// Slides whose theme has a livestream lower third show in it;
-        /// everything else leaves the camera clear.
+        /// Each presentation's own livestream look.
         case auto
         /// Whatever the room sees, edge to edge.
         case fullScreen
@@ -140,10 +145,22 @@ final class ShowSetup {
     var onSideTVsChange: (() -> Void)?
     var streamMode: StreamMode {
         didSet {
-            UserDefaults.standard.set(streamMode.rawValue, forKey: "show.streamMode")
-            onStreamModeChosen?()
+            if !returningToAuto { onStreamModeChosen?() }
             changed()
         }
+    }
+
+    @ObservationIgnored private var returningToAuto = false
+
+    /// A new plan item went live: a Full Screen or Transparent picked for
+    /// the one before ends, and the stream follows the presentations again.
+    /// A video's hold on the stream is left alone; the slide going live
+    /// decides that.
+    func followPresentations() {
+        guard streamMode != .auto else { return }
+        returningToAuto = true
+        defer { returningToAuto = false }
+        streamMode = .auto
     }
 
     /// Called when the stream routing needs recomputing.
@@ -161,7 +178,11 @@ final class ShowSetup {
         sideTVsOn = defaults.bool(forKey: "show.sideTVs.on")
         sideTVsLyricScale = Self.clampedLyricScale(
             defaults.object(forKey: "show.sideTVs.lyricScale") as? Double ?? SideScreenLyrics.defaultScale)
-        streamMode = defaults.string(forKey: "show.streamMode").flatMap(StreamMode.init(rawValue:)) ?? .auto
+        // Full Screen or Transparent was once kept from one run to the next
+        // and then held every presentation after it; each run now starts
+        // following the presentations.
+        streamMode = .auto
+        defaults.removeObject(forKey: "show.streamMode")
         stageMode = defaults.string(forKey: "show.stageMode").flatMap(StageMode.init(rawValue:)) ?? .worship
         modeBeforeAudience = defaults.string(forKey: "show.stageModeBeforeAudience")
             .flatMap(StageMode.init(rawValue:)).flatMap { $0 == .mirror ? nil : $0 } ?? .worship

@@ -53,6 +53,8 @@ struct ServiceContinuousView: View {
 
     /// The livestream question for slides just made from media here.
     @State private var livestreamPrompt: LivestreamPromptRequest?
+    /// The presentation whose screens are being set, from its tags.
+    @State private var presentationScreens: PresentationScreensTarget?
 
     /// The selection box dragged across the page, from any empty space.
     @State private var pageMarquee = PageMarquee()
@@ -212,6 +214,7 @@ struct ServiceContinuousView: View {
                 }
             }
             .sheet(item: $livestreamPrompt) { LivestreamPromptSheet(model: model, request: $0) }
+            .sheet(item: $presentationScreens) { PresentationScreensSheet(model: model, presentationID: $0.id) }
             .mediaCueSheets(model: model, state: mediaMenuState)
             // The page sits on the window's dark backdrop and paints no
             // background of its own, so it reads as dark whatever the Mac's
@@ -850,7 +853,16 @@ struct ServiceContinuousView: View {
                     .lineLimit(1)
                 leading()
                 if let plan = try? model.service(serviceID), let tags = model.stageStreamTags(for: item, in: plan) {
-                    StageStreamTagLine(tags: tags)
+                    // A presentation's tags open what it puts on each screen.
+                    if item.itemKind == .presentation, !item.refId.isEmpty, !runOnly {
+                        Button { presentationScreens = PresentationScreensTarget(id: item.refId) } label: {
+                            StageStreamTagLine(tags: tags)
+                        }
+                        .buttonStyle(.plain)
+                        .help(tags.help + " Click to choose its type, livestream and stage.")
+                    } else {
+                        StageStreamTagLine(tags: tags)
+                    }
                 }
                 Spacer(minLength: 8)
                 detail()

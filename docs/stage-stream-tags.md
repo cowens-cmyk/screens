@@ -8,7 +8,17 @@ same rules. Change both together.
 Inputs are only synced documents: the plan (`service`), the item's
 `presentation` or `media`, `slideBuildingSettings` and `theme` documents. The
 livestream tag assumes the operator's switch is on Lower Third (the usual; the
-switch is per Mac and not synced).
+switch is per Mac and not synced). Full Screen and Transparent on that switch,
+picked by hand or by a `setStreamMode` action, last only while the item is live:
+`StreamRouter.itemFired` calls `ShowSetup.followPresentations()` when a slide
+from a different plan item goes live, before that item's own actions run. The
+switch isn't saved between runs.
+
+In Present, clicking a presentation's tags opens `PresentationScreensSheet`
+(`apps/mac/Sources/SlideScreensSheet.swift`). It sets `presentation.category`,
+`streamThemeId` and `stageLayoutId`, and can clear every slide's own
+`streamDesign` and `stageLayoutId`. One slide's choices are set with
+right-click › Screens… (`SlideScreensSheet`).
 
 Strings are exact. Help text: `Stage display: <stage>. Livestream: <stream>.`
 

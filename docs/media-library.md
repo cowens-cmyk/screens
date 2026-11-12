@@ -76,3 +76,23 @@ over the grid it came from stays where it is.
 
 Run-Only can open packs and browse them; nothing in a pack drags, imports,
 renames or deletes there.
+
+## Background or foreground
+
+`MediaItem.classification` decides the layer a picture or video goes up on
+(`CueMedia.firedLayer`). Background goes behind the slides, and Foreground
+goes in front for videos (still graphics for pictures). The default follows
+the folder: `MediaLibraryCategory.defaultClassification(forFolder:)` gives
+Background for Worship Backgrounds (and packs inside it) and Foreground for
+everything else.
+
+- **Imports** (`MediaImporter`) set it from the folder they land in.
+- **A move** across the Worship Backgrounds line (`AppModel.file`) switches
+  it. A move that doesn't cross the line keeps a choice made by hand.
+- **Existing media:** imports used to set Background for everything, so each
+  library is set once by `Library.migrateMediaLayersByFolder` (marker
+  `.migrated-media-layers-by-folder-v1` in the library folder).
+
+Media dropped onto a slide is still that slide's background
+(`CueMedia.droppedOnSlide`), whatever its classification.
+

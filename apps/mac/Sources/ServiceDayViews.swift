@@ -1,144 +1,12 @@
 import PresenterCore
 import SwiftUI
 
-/// The top of the Schedule tab: the service times, when the pre-service
-/// slides start again before each, and the rest of the day at a glance
-/// (with the countdowns Schedule Service set).
-struct ServiceDayCard: View {
-    let model: AppModel
-    let scheduler: SchedulerController?
-
-    @State private var editing = false
-    @AppStorage(ServiceStation.runsServiceKey) private var runsHere = false
-
-    private var settings: ServiceDaySettings? { model.slideBuilding.serviceDay }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Image(systemName: "sunrise")
-                    .font(.system(size: 11))
-                    .foregroundStyle(HopeStyle.amber)
-                Text(settings.map { Self.title(days: ServiceDay.days($0)) } ?? "Service Day")
-                    .font(.system(size: 11, weight: .semibold))
-                Spacer()
-                Button(settings == nil ? "Set Up" : "Edit") { editing = true }
-                    .controlSize(.small)
-                    .help("Service times and the pre-service slides")
-            }
-            if let settings {
-                details(settings)
-            } else {
-                Text("Start the pre-service slides again before each service, so whatever was left up is replaced.")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(8)
-        .background(HopeStyle.amber.opacity(0.07), in: RoundedRectangle.standard(CornerStandard.element))
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(HopeStyle.amber.opacity(0.25), lineWidth: 1))
-        .sheet(isPresented: $editing) {
-            ServiceDaySheet(model: model, scheduler: scheduler)
-        }
-    }
-
-    @ViewBuilder
-    private func details(_ settings: ServiceDaySettings) -> some View {
-        let slideshowID = settings.preServicePresentationId ?? ""
-        if slideshowID.isEmpty {
-            Text("Choose the pre-service slides to restart them before each service.")
-                .font(.system(size: 9))
-                .foregroundStyle(Color.orange)
-        } else {
-            let folderOn = model.schedulerBoard.folder(id: ServiceDay.folderID)?.enabled ?? true
-            HStack(spacing: 4) {
-                Text(model.entry(slideshowID)?.name ?? "Missing slideshow")
-                    .foregroundStyle(model.entry(slideshowID) == nil ? Color.orange : Color.secondary)
-                    .lineLimit(1)
-                if !folderOn || scheduler?.enabled != true {
-                    Text(scheduler?.enabled != true ? "· Scheduler off" : "· Restarts off")
-                        .foregroundStyle(Color.orange)
-                }
-            }
-            .font(.system(size: 9))
-        }
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            if let day = ServiceDay.upcomingDay(
-                settings, countdownStarts: countdownStarts, after: context.date, calendar: .current) {
-                Text(Self.dayLine(day, now: context.date))
-                    .font(.system(size: 10).monospacedDigit())
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("No service times.")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        Toggle("Run on this Mac", isOn: $runsHere)
-            .toggleStyle(.checkbox)
-            .controlSize(.mini)
-            .font(.system(size: 9))
-            .help("Play the countdowns and restart the pre-service slides from this Mac. Other Macs skip them.")
-        Text(runsHere
-            ? "A restart goes ahead only over empty screens, the end of the plan or stopped pre-service slides, or after 20 minutes on the plan's last item. Otherwise it's skipped."
-            : "This Mac skips the countdowns and pre-service restarts.")
-            .font(.system(size: 8))
-            .foregroundStyle(runsHere ? Color.secondary.opacity(0.7) : Color.orange)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    /// The countdowns Schedule Service set, still to run.
-    private var countdownStarts: [Date] {
-        model.residentScheduleTriggers
-            .filter { $0.archived != true && $0.notes?.hasPrefix(ServiceCountdown.triggerNotePrefix) == true }
-            .compactMap { ServiceCountdown.startDate(of: $0) }
-    }
-
-    static func title(days: [Int]) -> String {
-        let names = days.map { Calendar.current.weekdaySymbols[$0 - 1] }
-        let list = names.count <= 2
-            ? names.joined(separator: " and ")
-            : names.dropLast().joined(separator: ", ") + " and " + names.last!
-        return list + " Services"
-    }
-
-    /// "Today · Pre-service 7:30 · Countdown 7:54:50 · Service 8:00 · …",
-    /// the day in bold.
-    static func dayLine(_ day: (day: Date, events: [ServiceDay.Event]), now: Date) -> AttributedString {
-        var line = AttributedString(dayLabel(day.day, now: now))
-        line.font = .system(size: 10, weight: .semibold)
-        line += AttributedString(" · " + day.events.map(label).joined(separator: " · "))
-        return line
-    }
-
-    static func dayLabel(_ day: Date, now: Date) -> String {
-        Calendar.current.isDate(day, inSameDayAs: now) ? "Today" : day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
-    }
-
-    static func label(_ event: ServiceDay.Event) -> String {
-        let name = switch event.kind {
-        case .preService: "Pre-service"
-        case .countdown: "Countdown"
-        case .service: "Service"
-        }
-        return name + " " + clock(event.date)
-    }
-
-    /// "7:30", or "7:54:50" when the seconds matter.
-    static func clock(_ date: Date) -> String {
-        let parts = Calendar.current.dateComponents([.hour, .minute, .second], from: date)
-        let hour = (parts.hour ?? 0) % 12 == 0 ? 12 : (parts.hour ?? 0) % 12
-        let base = String(format: "%d:%02d", hour, parts.minute ?? 0)
-        return (parts.second ?? 0) == 0 ? base : base + String(format: ":%02d", parts.second ?? 0)
-    }
-}
-
-/// Service Day setup: the days and times of the services, the pre-service
-/// slideshow, and when it starts again before each. Saving rewrites the
-/// restart triggers in the scheduler.
+/// Service Day setup (More › Service Day…): the days and times of the
+/// services, and the presentations every plan shares: the pre-service
+/// slideshow, the Transition and the Walkout. The service times are what the
+/// stage's Before Service countdown and the sermon timer reset fall back on
+/// when a plan has no Shepherd times. The pre-service slides no longer
+/// restart at set times; the Schedule tab's Countdowns play at set times.
 struct ServiceDaySheet: View {
     let model: AppModel
     let scheduler: SchedulerController?
@@ -149,7 +17,6 @@ struct ServiceDaySheet: View {
     @State private var slideshowID = ""
     @State private var clearFirst = true
     @State private var makeLoop = true
-    @State private var runsHere = ServiceStation.sheetDefault
     @State private var search = ""
     @State private var transitionID = ""
     @State private var walkoutID = ""
@@ -161,7 +28,7 @@ struct ServiceDaySheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Service Day").font(.headline)
-            Text("Before each service the pre-service slides start again from the first slide, replacing whatever was left up.")
+            Text("The service times, and the presentations every plan shares.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -187,15 +54,10 @@ struct ServiceDaySheet: View {
 
             standingPickers
 
-            Toggle("Clear the screens first", isOn: $clearFirst)
-                .help("Clears everything on the screens, and audio, before the slides start")
-            Toggle("Run on this Mac", isOn: $runsHere)
-                .help("Restart the slides and play the countdowns from this Mac. Other Macs skip them.")
-
             HStack {
                 if existing != nil {
                     Button("Remove", role: .destructive, action: remove)
-                        .help("Stop restarting the pre-service slides and forget these times")
+                        .help("Forget these times and presentations")
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -316,41 +178,19 @@ struct ServiceDaySheet: View {
 
     private func serviceRow(_ service: Binding<ServiceDayTime>) -> some View {
         let value = service.wrappedValue
-        let serviceSeconds = ServiceDay.secondsOfDay(value.serviceTime) ?? 0
-        let restartSeconds = ServiceDay.secondsOfDay(value.restartTime) ?? 0
-        // Moving the service moves its restart with it, keeping the lead.
         let serviceTime = Binding<Date>(
             get: { ScheduleConditionFormat.timeOfDayDate(value.serviceTime) },
-            set: { date in
-                let lead = serviceSeconds - restartSeconds
-                let time = ScheduleConditionFormat.timeOfDay(from: date)
-                service.wrappedValue.serviceTime = time
-                service.wrappedValue.restartTime = ServiceDay.timeString(
-                    secondsOfDay: (ServiceDay.secondsOfDay(time) ?? 0) - lead)
-            })
-        let restartTime = Binding<Date>(
-            get: { ScheduleConditionFormat.timeOfDayDate(value.restartTime) },
-            set: { service.wrappedValue.restartTime = ScheduleConditionFormat.timeOfDay(from: $0) })
-        let lead = serviceSeconds - restartSeconds
-        return GroupBox {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    DatePicker("Service at", selection: serviceTime, displayedComponents: .hourAndMinute)
-                    Spacer()
-                    if services.count > 1 {
-                        Button(role: .destructive) { services.removeAll { $0.id == value.id } } label: {
-                            Image(systemName: "minus.circle")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Remove this service time")
-                    }
+            set: { service.wrappedValue.serviceTime = ScheduleConditionFormat.timeOfDay(from: $0) })
+        return HStack {
+            DatePicker("Service at", selection: serviceTime, displayedComponents: .hourAndMinute)
+                .fixedSize()
+            if services.count > 1 {
+                Button(role: .destructive) { services.removeAll { $0.id == value.id } } label: {
+                    Image(systemName: "minus.circle")
                 }
-                DatePicker("Restart pre-service at", selection: restartTime, displayedComponents: .hourAndMinute)
-                Text(lead > 0 ? "\(lead / 60) min before the service." : "This is after the service starts.")
-                    .font(.caption)
-                    .foregroundStyle(lead > 0 ? Color.secondary : Color.orange)
+                .buttonStyle(.borderless)
+                .help("Remove this service time")
             }
-            .padding(4)
         }
     }
 
@@ -389,8 +229,6 @@ struct ServiceDaySheet: View {
             model.relinkPreServiceItems(to: slideshowID)
         }
         if standingChanged { model.relinkStandingItems() }
-        ServiceStation.runsService = runsHere
-        apply(ServiceDay.changes(from: model.residentScheduleTriggers, to: settings))
         if makeLoop, let fix = loopFix {
             model.updatePresentation(slideshowID) { $0.autoAdvance = fix }
         }
@@ -399,32 +237,7 @@ struct ServiceDaySheet: View {
 
     private func remove() {
         model.updateSlideBuilding { $0.serviceDay = nil }
-        for trigger in model.residentScheduleTriggers where ServiceDay.isRestartTrigger(trigger) {
-            model.deleteScheduleTrigger(trigger.id)
-        }
-        scheduler?.sweep()
         dismiss()
-    }
-
-    private func apply(_ changes: ServiceDay.Changes) {
-        for id in changes.deletes {
-            model.deleteScheduleTrigger(id)
-        }
-        for fresh in changes.updates {
-            model.updateScheduleTrigger(fresh.id) { ServiceDay.applyManagedFields(of: fresh, to: &$0) }
-        }
-        for trigger in changes.creates {
-            model.createScheduleTrigger(trigger)
-        }
-        // The table may already hold the new ones; count each once.
-        let created = Set(changes.creates.map(\.id))
-        let ids = ServiceDay.restartTriggerIDs(
-            model.residentScheduleTriggers.filter { !changes.deletes.contains($0.id) && !created.contains($0.id) }
-                + changes.creates)
-        model.updateSchedulerBoard { board in
-            if let placed = board.placingServiceDay(triggerIDs: ids) { board = placed }
-        }
-        scheduler?.sweep()
     }
 }
 

@@ -1,76 +1,64 @@
-# Scheduler schedules
+# Countdowns
 
-The Scheduler's **New Schedule…** sheet (`apps/mac/Sources/PlanScheduleSheet.swift`)
-makes an ordinary `ScheduleTrigger` from a simple form: what plays, and when.
-The engine, History, snooze, end dates and folders treat it like any other
-trigger. The logic is in `PresenterCore/Library/PlanSchedule.swift` and is
-tested in `PlanScheduleTests`.
+The Schedule tab's **Countdowns** card (`apps/mac/Sources/CountdownScheduleViews.swift`)
+plays the countdown at set start times every week, from that day's plan. The
+logic is in `PresenterCore/Library/WeeklyCountdown.swift` and
+`PlanSchedule.swift`, tested in `WeeklyCountdownTests` and `PlanScheduleTests`.
 
-## When
+## The setup
 
-One condition per schedule:
+The sheet's fields are the days, every how many weeks, one start time per
+service, the plan series, a fallback video, a start day, and an end day or
+Never. The setup is not stored in a settings document. It lives in the
+triggers it makes: one weekly `ScheduleTrigger` per start time, marked
+`weeklycountdown:<n>` in its notes, all with the same rule and action.
+`WeeklyCountdown.setup(from:)` reads the setup back from them, and
+`WeeklyCountdown.changes` rewrites them in place on save, keeping each one's
+on/off state. Each Mac's board files them in a **Countdowns** folder
+(`placingWeeklyCountdowns`).
 
-| Repeats | Condition |
-| --- | --- |
-| Never | `oneTime`, `date` = start day + time |
-| Every day | `weekly`, all seven days, `startDate` |
-| Weekly | `weekly`, the chosen `days`, `startDate`, `intervalWeeks` when more than 1 |
+The rule uses two optional `ScheduleCondition` fields:
 
-`startDate` ("2026-11-15") and `intervalWeeks` are optional fields on
-`ScheduleCondition`. `ScheduleMath` fires nothing before the start day, and
-for an interval it counts whole Sunday-to-Saturday weeks from the start day's
-week, so "every 2 weeks on Sunday and Wednesday" keeps both days in the same
-week. A weekly condition without them behaves as before.
+- `startDate` ("2026-11-15"): `ScheduleMath` fires nothing before that day.
+- `intervalWeeks`: whole Sunday-to-Saturday weeks are counted from the start
+  day's week.
 
-**Ends** writes the trigger's existing `enabledUntil` as the end day's last
-second (`2026-12-31T23:59:59`), or nothing for **Never**. After the last run,
-the trigger is archived to History as any ended trigger is.
+**Ends** writes the trigger's `enabledUntil` as the end day's last second.
 
-## What
+## The action
 
-- **A presentation**: `firePresentation` from slide 1.
-- **One plan**: `fireServiceItem` with `serviceId` and `serviceItemId`, as the
-  Schedule Service countdowns already use.
-- **Each week's plan**: `fireServiceItem` with `planSeries`. It is set to the
-  service type ("Sunday Morning Worship") for a series of Shepherd plans. For
-  a template, `serviceId` is the template and `planSeries` is the template's
-  service type, or "" when it has none.
-
-A plan's item has a new id in each week's plan, so the action also carries
-what the item is: `serviceItemRole` (countdown, preService, transition,
-walkout), `serviceItemName`, and `serviceItemRefId` (the presentation or video
-it plays). All four fields are optional on `SlideAction`.
+Every trigger has one `fireServiceItem` action that names a series instead of
+a plan. For a Shepherd service type, `planSeries` is the type name. For a
+template, `serviceId` is the template and `planSeries` is its type, or ""
+when it has none. `serviceItemRole` is `countdown`, and `serviceItemRefId` is
+the **If no video** fallback. `PlanSchedule.Source` reads the series back.
 
 ## Firing
 
-When the trigger fires, `SchedulerController.fireNow` resolves every
-`fireServiceItem` action through `AppModel.resolvePlanItem`
-(`PlanSchedule.resolve`):
+`SchedulerController.fireNow` resolves the action with
+`AppModel.resolvePlanItem` (`PlanSchedule.resolve`):
 
-1. **The plan.** A single plan is itself. A series takes the non-template plan
-   dated today whose `mxuServiceTypeName` matches (the open plan if two
-   match). A template without a type takes the plan named like it, else the
-   day's only plan. **Run Now** takes the next plan when there's none today.
-2. **The item.** It matches the same id first (one plan, or the template),
-   then the role, then the same linked presentation or video, then the name.
-3. **The content.** An item with nothing linked (a week's countdown with no
-   video chosen yet) plays the action's `serviceItemRefId` in that item's
-   place. The plan still moves on after it.
+1. **The plan:** the non-template plan dated today of that service type, or
+   the open plan when two share the day. A template without a type matches by
+   name, else the day's only plan. **Run Now** takes the next plan when there
+   is none today.
+2. **The item:** the plan's countdown (`isCountdown`).
+3. **The video:** a countdown with no video plays the fallback in that item's
+   place.
 
-The action is then pinned to that plan and item (`PlanSchedule.pinned`) and
-goes to `ActionRouter`, which brings the plan up and calls
-`ServiceControls.fireServiceItem`. If either step can't resolve, the whole
-trigger is skipped before anything is cleared. History records the reason.
+If any step fails, the trigger is skipped before anything is cleared, and
+History gives the reason. A plan given its own countdown with **Start Time…**
+(Schedule Service, one-time `countdown:<planID>` triggers) on that day keeps
+it, and the weekly one stands aside (`WeeklyCountdown.planHasItsOwn`).
+Otherwise the action is pinned to that plan and item, and `ActionRouter` brings
+the plan up and plays the item inside it, so the plan moves on when the video
+ends. Only the Mac that runs the service plays them
+(`ServiceDay.firesOnlyOnServiceMac`).
 
-Triggers that play a plan item fire only on the Mac that runs the service
-(`ServiceDay.firesOnlyOnServiceMac`). One whose item is a pre-service
-slideshow goes through `PreServiceGuard`, like the Service Day restarts.
+## Pre-service restarts retired
 
-## Editing
-
-The sheet opens for any trigger with one `weekly` or `oneTime` condition and
-one `firePresentation` or `fireServiceItem` action, with or without a
-`clearAll` first (`PlanScheduleSheet.canEdit`). The Service Day restarts and
-the Schedule Service countdowns are excluded, because their own setups
-rewrite them. Anything else stays in the full trigger editor. The editor
-shows an interval or start date set in the sheet as a caption.
+The Service Day setup no longer makes pre-service restart triggers.
+`SchedulerController` deletes any that sync in from older versions
+(`ServiceDay.isRestartTrigger`) and removes the empty Service Day folder.
+The setup itself (service times, pre-service slideshow, Transition, Walkout)
+is now More › **Service Day…**.

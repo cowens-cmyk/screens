@@ -101,11 +101,12 @@ public struct MediaImporter {
         }
         let hash = try await storeBlob(url)
         if Self.alreadyHas(hash, seen: &seen) { return .duplicate }
+        let folder = placement.folder(for: .media)
         var item = MediaItem(
             id: UUID().uuidString,
             name: url.deletingPathExtension().lastPathComponent,
             mediaKind: .image,
-            classification: .background,
+            classification: MediaLibraryCategory.defaultClassification(forFolder: folder),
             fileHash: hash,
             fileName: url.lastPathComponent,
             fileStatus: .ready,
@@ -142,11 +143,12 @@ public struct MediaImporter {
         let probe = await Self.probeVideo(asset)
         let hash = try await storeBlob(url)
         if Self.alreadyHas(hash, seen: &seen) { return .duplicate }
+        let folder = placement.folder(for: .media)
         var item = MediaItem(
             id: UUID().uuidString,
             name: url.deletingPathExtension().lastPathComponent,
             mediaKind: .video,
-            classification: .background,
+            classification: MediaLibraryCategory.defaultClassification(forFolder: folder),
             fileHash: hash,
             fileName: url.lastPathComponent,
             fileStatus: probe.status,

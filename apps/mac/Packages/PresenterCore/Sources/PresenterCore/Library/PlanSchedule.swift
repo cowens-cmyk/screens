@@ -154,7 +154,7 @@ public enum PlanSchedule {
         return dates
     }
 
-    static func weekday(of day: String, calendar: Calendar) -> Int? {
+    public static func weekday(of day: String, calendar: Calendar) -> Int? {
         ScheduleMath.parseLocalDate(day + "T12:00", calendar: calendar)
             .map { calendar.component(.weekday, from: $0) }
     }
@@ -169,7 +169,7 @@ public enum PlanSchedule {
         return formatter.string(from: date)
     }
 
-    static func listed(_ names: [String]) -> String {
+    public static func listed(_ names: [String]) -> String {
         switch names.count {
         case 0: return ""
         case 1: return names[0]

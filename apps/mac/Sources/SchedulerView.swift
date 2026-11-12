@@ -25,13 +25,6 @@ struct SchedulerView: View {
     @State private var snoozeSheetTrigger: SnoozeTarget?
 
     @State private var endDateSheetTrigger: SnoozeTarget?
-    /// The Schedule sheet: "new" for a new schedule, else the trigger's id.
-    @State private var scheduleSheet: ScheduleSheetTarget?
-
-    struct ScheduleSheetTarget: Identifiable {
-        let triggerID: String?
-        var id: String { triggerID ?? "new" }
-    }
 
     struct SnoozeTarget: Identifiable {
         let triggerID: String
@@ -89,11 +82,6 @@ struct SchedulerView: View {
                 snooze(target.triggerID, until: until)
             }
         }
-        .sheet(item: $scheduleSheet) { target in
-            PlanScheduleSheet(model: model, scheduler: scheduler, triggerID: target.triggerID) { id in
-                selectedTriggerID = id
-            }
-        }
         .sheet(item: $endDateSheetTrigger) { target in
             EndDateSheet(name: target.name) { until in
                 model.updateScheduleTrigger(target.triggerID) {
@@ -110,7 +98,7 @@ struct SchedulerView: View {
                 onChip
             }
             statusRow
-            ServiceDayCard(model: model, scheduler: scheduler)
+            CountdownsCard(model: model, scheduler: scheduler)
                 .padding(.horizontal, 8)
                 .padding(.bottom, 4)
             ScrollView {
@@ -205,7 +193,6 @@ struct SchedulerView: View {
 
     private var addMenu: some View {
         Menu {
-            Button("New Schedule\u{2026}") { scheduleSheet = ScheduleSheetTarget(triggerID: nil) }
             Button("New Trigger") { addTrigger() }
             Divider()
             Button("New Folder") {
@@ -224,7 +211,7 @@ struct SchedulerView: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Add a schedule, a trigger or a folder")
+        .help("Add a trigger or a folder")
     }
 
     @ViewBuilder
@@ -528,9 +515,6 @@ struct SchedulerView: View {
             }
             .contextMenu {
                 Button("Run Now") { scheduler?.runNow(triggerID: id) }
-                if PlanScheduleSheet.canEdit(trigger) {
-                    Button("Edit Schedule\u{2026}") { scheduleSheet = ScheduleSheetTarget(triggerID: id) }
-                }
                 Menu("Enabled") {
                     Picker("Enabled", selection: Binding(
                         get: { trigger.enabled ?? true },
@@ -681,11 +665,6 @@ struct SchedulerView: View {
         VStack(spacing: 0) {
             if let id = selectedTriggerID, let trigger = try? model.scheduleTrigger(id) {
                 SidebarSectionHeader("Trigger", glyph: .combos) {
-                    if PlanScheduleSheet.canEdit(trigger) {
-                        Button("Edit Schedule\u{2026}") { scheduleSheet = ScheduleSheetTarget(triggerID: id) }
-                            .buttonStyle(CardButtonStyle())
-                            .help("What it plays, which days, how often, and from when to when")
-                    }
                     Button("Run Now") { scheduler?.runNow(triggerID: id) }
                         .buttonStyle(CardButtonStyle())
                         .help("Fires this trigger's actions immediately — gates ignored")
