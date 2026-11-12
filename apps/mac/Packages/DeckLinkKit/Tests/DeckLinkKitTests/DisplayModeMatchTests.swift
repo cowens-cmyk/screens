@@ -59,4 +59,27 @@ import Testing
             width: 1920, height: 1080, framesPerSecond: 30, in: modes)
         #expect(match == nil)
     }
+
+    @Test func aSixtyFrameScreenTakesTheSixtyModeWhenThePortHasOne() {
+        let modes = [
+            mode("1080p29.97", duration: 1001, scale: 30000),
+            mode("1080p59.94", duration: 1001, scale: 60000),
+        ]
+        let match = DeckLinkDisplayMode.bestMatchAtOrBelow(
+            width: 1920, height: 1080, framesPerSecond: 60, in: modes)
+        #expect(match?.name == "1080p59.94")
+    }
+
+    @Test func aPortWithoutSixtySendsTheFastestRateItHas() {
+        let modes = [
+            mode("1080p25", duration: 1000, scale: 25000),
+            mode("1080p29.97", duration: 1001, scale: 30000),
+            mode("2160p59.94", 3840, 2160, duration: 1001, scale: 60000),
+        ]
+        let match = DeckLinkDisplayMode.bestMatchAtOrBelow(
+            width: 1920, height: 1080, framesPerSecond: 60, in: modes)
+        #expect(match?.name == "1080p29.97")
+        #expect(DeckLinkDisplayMode.bestMatchAtOrBelow(
+            width: 1280, height: 720, framesPerSecond: 60, in: modes) == nil)
+    }
 }

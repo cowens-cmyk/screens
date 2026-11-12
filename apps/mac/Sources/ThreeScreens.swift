@@ -101,6 +101,29 @@ enum ShowScreens {
             outputs.removePlaceholderScreen(id: extra.id)
             DiagnosticsStore.shared.note("screens.removedExtra", detail: extra.name)
         }
+        moveToSixtyOnce(outputs)
+    }
+
+    /// What a screen is made at: 1080p60, what the switcher runs.
+    static let defaultFramesPerSecond = 60
+    /// The rates Settings › Screens offers.
+    static let frameRates = [24, 25, 30, 50, 60]
+    private static let sixtyKey = "screens.movedToSixty.v1"
+
+    /// Screens used to be made at 30 frames a second. Once, every screen
+    /// still under 60 is moved to it; after that the rate is whatever
+    /// Settings › Screens says, so one set back to 30 stays there.
+    private static func moveToSixtyOnce(_ outputs: OutputManager) {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: sixtyKey) else { return }
+        defaults.set(true, forKey: sixtyKey)
+        for screen in outputs.placeholderScreens where screen.framesPerSecond < defaultFramesPerSecond {
+            outputs.reconfigurePlaceholderScreen(
+                id: screen.id, name: screen.name, width: screen.width, height: screen.height,
+                framesPerSecond: defaultFramesPerSecond)
+            DiagnosticsStore.shared.note(
+                "screens.frameRate", detail: "\(screen.name): \(screen.framesPerSecond) to \(defaultFramesPerSecond)")
+        }
     }
 
     /// The role's screen, adopted from what's there or made, with its role
@@ -117,7 +140,8 @@ enum ShowScreens {
                     id: existing.id, name: role.name, width: existing.width,
                     height: existing.height, framesPerSecond: existing.framesPerSecond)
         } else {
-            screen = outputs.addPlaceholderScreen(name: role.name, width: 1920, height: 1080)
+            screen = outputs.addPlaceholderScreen(
+                name: role.name, width: 1920, height: 1080, framesPerSecond: defaultFramesPerSecond)
             DiagnosticsStore.shared.note("screens.created", detail: role.name)
         }
         guard let screen else { return nil }
@@ -368,6 +392,22 @@ struct ScreenOutput {
             id: screen.id, name: screen.name, width: width, height: height,
             framesPerSecond: screen.framesPerSecond)
         // NDI and DeckLink size their frames when they start.
+        if ndiOn {
+            NDIScreenOutputs.shared.enable(screenID: screen.id, render: render)
+        }
+        DeckLinkScreenOutputs.shared.refreshCarry(for: screen.id, render: render)
+    }
+
+    // MARK: Frame rate
+
+    var frameRate: Int { screen.framesPerSecond }
+
+    func setFrameRate(_ framesPerSecond: Int) {
+        guard framesPerSecond > 0, framesPerSecond != screen.framesPerSecond else { return }
+        outputs.reconfigurePlaceholderScreen(
+            id: screen.id, name: screen.name, width: screen.width, height: screen.height,
+            framesPerSecond: framesPerSecond)
+        // NDI and DeckLink take their rate when they start.
         if ndiOn {
             NDIScreenOutputs.shared.enable(screenID: screen.id, render: render)
         }
