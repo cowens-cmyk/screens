@@ -38,5 +38,19 @@ The Screens panel shows "Loading the plan into memory" with a bar while a pass
 runs (`PlanPreloadStatus`). Each pass that loaded something notes
 `plan.preload` in Diagnostics with the counts and the time it took.
 
-A video still starts its own player when it goes up; only opening the file is
-done ahead.
+One that fails to play is dropped from standby, so the next try opens it
+afresh.
+
+## Players standing by
+
+Opening a file is the small part of starting a video; the wait is the player
+and its decoder coming up. As the plan moves on (`watchPosition`: the live
+item or deck changing) and after each pass, `readyUpcomingPlayers` takes the
+videos of the item on screen and the next two (`upcomingVideos`: plan video
+items, and every slide's effective background, each with the loop it will be
+played with), up to six, and has the engine make and preroll a player for each
+(`MediaEngine.standBy(playing:loop:options:)`), paused on its first frame and
+under no id, so it is on no screen and in no transport list. `play` takes the
+one whose file, loop and trim match and starts it; anything else gets a fresh
+player as before. Players for videos no longer coming up are stopped
+(`releaseStandbyPlayers`), and one already playing needs none.

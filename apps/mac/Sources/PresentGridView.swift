@@ -1315,20 +1315,22 @@ struct SlideGridBody: View {
                 if choice.key == "default" { Divider() }
             }
             // One named lower third, from any theme that has them.
-            let own = current == ["design"] ? chosen.first?.streamDesign : nil
-            let themes = model.resident.themes.values
-                .map { (theme: $0, thirds: StreamWording.lowerThirds($0.slides ?? [])) }
-                .filter { !$0.thirds.isEmpty }
-                .sorted { $0.theme.name.localizedStandardCompare($1.theme.name) == .orderedAscending }
+            // Ticked only when every chosen slide has the same one.
+            let designs = Set(chosen.map { "\($0.streamDesign?.themeId ?? "")|\($0.streamDesign?.slideId ?? "")" })
+            let own = current == ["design"] && designs.count == 1 ? chosen.first?.streamDesign : nil
+            let themes = LowerThirdChoices.themes(model)
             if !themes.isEmpty {
-                Menu((own != nil ? "✓ " : "") + StreamWording.chooseLowerThird) {
-                    ForEach(themes, id: \.theme.id) { entry in
-                        Menu(entry.theme.name) {
+                let listed = themes.contains { theme in
+                    theme.id == own?.themeId && theme.thirds.contains { $0.id == own?.slideId }
+                }
+                Menu((listed ? "✓ " : "") + StreamWording.chooseLowerThird) {
+                    ForEach(themes) { entry in
+                        Menu(entry.name) {
                             ForEach(entry.thirds, id: \.id) { design in
-                                let on = own?.themeId == entry.theme.id && own?.slideId == design.id
+                                let on = own?.themeId == entry.id && own?.slideId == design.id
                                 Button((on ? "✓ " : "") + design.name) {
                                     setStreamDesign(
-                                        StreamDesign(category: "", mode: .design, themeId: entry.theme.id, slideId: design.id),
+                                        StreamDesign(category: "", mode: .design, themeId: entry.id, slideId: design.id),
                                         of: slideIDs)
                                 }
                             }
@@ -2407,7 +2409,8 @@ struct PosterImage: View {
 
     var body: some View {
 
-        let stamp = "\(mediaId)|\(model.media(mediaId)?.fileHash ?? "gone")"
+        let item = model.media(mediaId)
+        let stamp = "\(mediaId)|\(item?.fileHash ?? "gone")|\(item.map(MediaPosterStore.posterTime(of:)) ?? 0)"
         ZStack {
             if let image {
                 Image(decorative: image, scale: 1)

@@ -86,6 +86,63 @@ final class PlaybackIntegrationTests: XCTestCase {
         engine.stopAll()
     }
 
+    func testAPlayerStandingByIsTakenAndPlaysAtOnce() async throws {
+        let engine = try MediaEngine(device: device)
+        let url = try await makeOneSecondLoop()
+        await engine.standBy(playing: url, loop: true)
+        XCTAssertEqual(engine.standbyPlayerCount, 1)
+        // Waiting, it isn't on any screen: nothing plays, nothing to show.
+        XCTAssertTrue(engine.playingIDs.isEmpty)
+        XCTAssertNil(engine.transport(id: "song"))
+        await engine.standBy(playing: url, loop: true)
+        XCTAssertEqual(engine.standbyPlayerCount, 1, "one per file and way of playing it")
+
+        // Asked for another way (not looping), it isn't the one: a fresh
+        // player is made and the one standing by stays.
+        let media = try await engine.prepare(url: url)
+        engine.play(media, id: "once", loop: false)
+        XCTAssertEqual(engine.standbyPlayerCount, 1)
+
+        engine.play(media, id: "song", loop: true)
+        XCTAssertEqual(engine.standbyPlayerCount, 0, "taken")
+        XCTAssertTrue(try XCTUnwrap(engine.transport(id: "song")).isPlaying)
+        let deadline = Date(timeIntervalSinceNow: 0.5)
+        var framesDisplayed = 0
+        while Date() < deadline {
+            _ = engine.surface(for: "song", hostTime: CACurrentMediaTime())
+            framesDisplayed = engine.stats(for: "song")?.framesDisplayed ?? 0
+            if framesDisplayed > 0 { break }
+            try await Task.sleep(for: .milliseconds(8))
+        }
+        XCTAssertGreaterThan(framesDisplayed, 0, "the readied player did not deliver a first frame")
+
+        // It keeps going like any other: across the loop, then stopped.
+        let later = Date(timeIntervalSinceNow: 5)
+        while Date() < later, (engine.stats(for: "song")?.framesDisplayed ?? 0) < 45 {
+            _ = engine.surface(for: "song", hostTime: CACurrentMediaTime())
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        XCTAssertGreaterThanOrEqual(engine.stats(for: "song")?.framesDisplayed ?? 0, 45)
+        engine.stop(id: "song")
+        XCTAssertNil(engine.transport(id: "song"))
+        engine.stopAll()
+    }
+
+    func testPlayersStandingByAreLetGo() async throws {
+        let engine = try MediaEngine(device: device)
+        let url = try await makeOneSecondLoop()
+        await engine.standBy(playing: url, loop: true)
+        await engine.standBy(playing: url, loop: false)
+        XCTAssertEqual(engine.standbyPlayerCount, 2)
+        engine.releaseStandbyPlayers(keeping: [url])
+        XCTAssertEqual(engine.standbyPlayerCount, 2)
+        engine.releaseStandbyPlayers(keeping: [])
+        XCTAssertEqual(engine.standbyPlayerCount, 0)
+        // A file that isn't there readies nothing, and playing still works.
+        await engine.standBy(playing: tempDir.appendingPathComponent("missing.mov"), loop: true)
+        XCTAssertEqual(engine.standbyPlayerCount, 0)
+    }
+
     func testSixtyFPSLoopIsSeamlessAcrossWraps() async throws {
         let url = tempDir.appendingPathComponent("loop60.mov")
         try await MediaAuthoring.writeMovie(

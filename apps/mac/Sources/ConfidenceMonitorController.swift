@@ -36,6 +36,7 @@ final class ConfidenceMonitorController {
         self.render = render
         self.controls = controls
         restore()
+        lastAudienceScreenID = ShowTargets.mirrorSource(setup: ShowSetup.shared, render: render)
         refresh()
         armMutationWatch()
         armStageWatch()
@@ -145,7 +146,7 @@ final class ConfidenceMonitorController {
         breakLongNextLinesInSavedLayouts()
         for (screenID, layoutID) in assignments where layoutID != StageLayouts.audienceID {
             if let layout = appModel.resident.confidenceLayouts.value(layoutID) {
-                layouts[screenID] = layout
+                layouts[screenID] = layout.showingAudience(screenID: audienceScreenID)
             } else if appModel.client.isReady, appModel.indexEntry(layoutID) == nil {
 
                 assignments.removeValue(forKey: screenID)
@@ -164,6 +165,12 @@ final class ConfidenceMonitorController {
         refreshPreviews()
     }
 
+    /// The screen an Audience box in a stage layout shows on this Mac: the
+    /// audience screen, unless the stage is that screen.
+    private var audienceScreenID: String? {
+        ShowTargets.mirrorSource(setup: ShowSetup.shared, render: render)
+    }
+
     /// Copies the stage mode's layout (or the audience screen, for Mirror)
     /// to the render thread. Returns the mode's layout, if it has one.
     @discardableResult
@@ -176,7 +183,8 @@ final class ConfidenceMonitorController {
             source = .mirror
         case .worship, .message, .preService, .announcements:
             let id = setup.stageLayoutOverride ?? StageLayouts.id(for: setup.stageMode)
-            let layout = appModel.resident.confidenceLayouts.value(id) ?? StageLayouts.fallback(for: id)
+            let layout = (appModel.resident.confidenceLayouts.value(id) ?? StageLayouts.fallback(for: id))
+                .showingAudience(screenID: audienceScreenID)
             modeLayout = layout
             source = .layout(layout)
         }
@@ -307,11 +315,22 @@ final class ConfidenceMonitorController {
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.refreshStagePlan()
+                // A different audience screen changes what the Audience
+                // boxes show and which screen has to be kept running for
+                // them, so everything is copied again, not only the plan.
+                let audience = self.audienceScreenID
+                if audience != self.lastAudienceScreenID {
+                    self.lastAudienceScreenID = audience
+                    self.refresh()
+                } else {
+                    self.refreshStagePlan()
+                }
                 self.armStageWatch()
             }
         }
     }
+
+    private var lastAudienceScreenID: String?
 
     private func refreshPreviews() {
         previewLayoutChoices = appModel.entries(of: .confidenceLayout)
@@ -319,7 +338,7 @@ final class ConfidenceMonitorController {
         var previews: [String: ConfidenceLayout] = [:]
         for layoutID in previewCounts.keys {
             if let layout = appModel.resident.confidenceLayouts.value(layoutID) {
-                previews[layoutID] = layout
+                previews[layoutID] = layout.showingAudience(screenID: audienceScreenID)
             }
         }
         render.previewLayoutsBox.value = previews

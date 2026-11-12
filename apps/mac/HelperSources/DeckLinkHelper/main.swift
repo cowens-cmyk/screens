@@ -228,17 +228,14 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol, @unchecked 
             }
             let modes = allModes.filter { keying == 0 || $0.supportsKeying }
 
-            if let configured = DeckLinkRuntime.configuredOutputMode(
-                    persistentID: devicePersistentID),
-                let cardMode = modes.first(where: {
-                    $0.modeID == configured
-                        && $0.width == Int(width) && $0.height == Int(height)
-                }) {
-                chosenModeID = cardMode.modeID
-            } else if frameRateDenominator != 0,
-                let match = DeckLinkDisplayMode.bestMatchAtOrBelow(
+            // The screen's size and rate decide, progressive first; the
+            // card's own setting in Desktop Video Setup (1080i59.94 until
+            // someone changes it) no longer overrides them.
+            if frameRateDenominator != 0,
+                let match = DeckLinkDisplayMode.automatic(
                     width: Int(width), height: Int(height),
                     framesPerSecond: Int(frameRateNumerator / frameRateDenominator),
+                    configured: DeckLinkRuntime.configuredOutputMode(persistentID: devicePersistentID),
                     in: modes) {
                 chosenModeID = match.modeID
             } else {

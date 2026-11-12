@@ -192,6 +192,19 @@ public final class MediaEngine: @unchecked Sendable {
         _ media: PreparedMedia, id: String, loop: Bool,
         options: PlaybackOptions = PlaybackOptions()
     ) {
+        // One readied ahead for this very file, loop and trim goes up as it
+        // is: its decoder is running and its first frame is waiting.
+        let key = StandbyPlayerKey(url: media.url, loop: loop, options: options)
+        if let ready = standbyPlayers.withLock({ $0.removeValue(forKey: key) }) {
+            ready.id.value = id
+            ready.player.setAudioOutputDevice(uid: audioDeviceUID.value)
+            ready.player.setAudioVolume(audioVolume.value)
+            replacePlayer(ready.player, for: id)
+            stills.withLock { $0[id] = nil }
+            contentChanged()
+            ready.player.play()
+            return
+        }
         let player = makePlayer(media, id: id, loop: loop, options: options)
         replacePlayer(player, for: id)
         player.startWatching()
@@ -250,6 +263,10 @@ public final class MediaEngine: @unchecked Sendable {
                 return true
             }
             guard removed else { return }
+            // Opened afresh the next time it's asked for, not handed the
+            // same asset that just failed.
+            let url = player.media.url
+            standbyVideos.withLock { $0[url] = nil }
             contentChanged()
             DispatchQueue.global(qos: .utility).async { player.stop() }
         case .stalled:
@@ -353,6 +370,9 @@ public final class MediaEngine: @unchecked Sendable {
         for player in players.value.values {
             player.setAudioOutputDevice(uid: uid)
         }
+        for standby in standbyPlayers.value.values {
+            standby.player.setAudioOutputDevice(uid: uid)
+        }
     }
 
     public func setAudioOutputDelay(milliseconds: Int) {
@@ -407,6 +427,95 @@ public final class MediaEngine: @unchecked Sendable {
         guard standbyVideos.value[url] == nil else { return }
         let prepared = try await open(url: url)
         standbyVideos.withLock { $0[url] = prepared }
+    }
+
+    // MARK: Players standing by
+
+    /// Which player a video needs: the file and how it is to be played.
+    private struct StandbyPlayerKey: Hashable {
+        var url: URL
+        var loop: Bool
+        var inPoint: Double?
+        var outPoint: Double?
+        var rate: Double?
+
+        init(url: URL, loop: Bool, options: PlaybackOptions) {
+            self.url = url
+            self.loop = loop
+            inPoint = options.inPoint
+            outPoint = options.outPoint
+            rate = options.rate
+        }
+    }
+
+    private final class StandbyPlayer: @unchecked Sendable {
+        let player: MediaPlayer
+        /// The id it plays under once it is taken; nil while it waits.
+        let id = Locked<String?>(nil)
+        init(_ player: MediaPlayer) { self.player = player }
+    }
+
+    /// Players made ahead of time for the videos about to be shown, paused
+    /// on their first frame. Opening the file is the small part of starting
+    /// a video; the wait is the player and its decoder coming up, and this
+    /// is done before anyone asks. `play` takes the one that matches.
+    private let standbyPlayers = Locked<[StandbyPlayerKey: StandbyPlayer]>([:])
+
+    /// Readies a player for `url`, to be played with this loop and trim.
+    /// Returns once it is ready (or couldn't be made).
+    public func standBy(playing url: URL, loop: Bool, options: PlaybackOptions = PlaybackOptions()) async {
+        let key = StandbyPlayerKey(url: url, loop: loop, options: options)
+        guard standbyPlayers.value[key] == nil, let media = try? await prepare(url: url) else { return }
+        let holder = Locked<StandbyPlayer?>(nil)
+        let player = MediaPlayer(
+            media: media, loop: loop, factory: factory, audioDeviceUID: audioDeviceUID.value,
+            audioSink: videoAudioSink, audioDelay: videoAudioDelay, options: options,
+            onProblem: { [weak self] player, problem in
+                // Taken and playing: its id hears about it. Still waiting:
+                // one that failed is dropped, so the video starts afresh.
+                if let id = holder.value?.id.value {
+                    self?.player(player, for: id, reported: problem)
+                } else if case .failed = problem {
+                    self?.dropStandbyPlayer(key, player)
+                }
+            }
+        )
+        let standby = StandbyPlayer(player)
+        holder.value = standby
+        let added = standbyPlayers.withLock { table -> Bool in
+            guard table[key] == nil else { return false }
+            table[key] = standby
+            return true
+        }
+        guard added else {
+            player.stop()
+            return
+        }
+        player.startWatching()
+        if await !player.preroll() { dropStandbyPlayer(key, player) }
+    }
+
+    private func dropStandbyPlayer(_ key: StandbyPlayerKey, _ player: MediaPlayer) {
+        let removed = standbyPlayers.withLock { table -> Bool in
+            guard table[key]?.player === player else { return false }
+            table[key] = nil
+            return true
+        }
+        if removed { DispatchQueue.global(qos: .utility).async { player.stop() } }
+    }
+
+    /// How many players are standing by.
+    public var standbyPlayerCount: Int { standbyPlayers.value.count }
+
+    /// Stops the players standing by for files not in `keep`.
+    public func releaseStandbyPlayers(keeping keep: Set<URL>) {
+        let dropped = standbyPlayers.withLock { table -> [StandbyPlayer] in
+            let gone = table.filter { !keep.contains($0.key.url) }
+            for key in gone.keys { table[key] = nil }
+            return Array(gone.values)
+        }
+        guard !dropped.isEmpty else { return }
+        DispatchQueue.global(qos: .utility).async { dropped.forEach { $0.player.stop() } }
     }
 
     public func isStandingBy(_ url: URL) -> Bool {

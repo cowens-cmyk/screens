@@ -54,22 +54,11 @@ public enum StageScenes {
         audience: () -> RenderScene
     ) -> RenderScene {
         // A layout build is shared through the cache when one is given.
-        func builtScene(_ layout: ConfidenceLayout) -> RenderScene {
+        func layoutScene(_ layout: ConfidenceLayout) -> RenderScene {
             guard let cache else {
                 return ConfidenceSceneBuilder.scene(layout: layout, info: info, at: date)
             }
             return cache.scene(slot: slot, layout: layout, info: info, at: date)
-        }
-        // A layout with an Audience box shows the room's screen in it: the
-        // rest is built (and cached) as usual, and the picture is laid in
-        // fresh each time, since it changes with every slide.
-        func layoutScene(_ layout: ConfidenceLayout) -> RenderScene {
-            guard let box = layout.objects.last(where: isAudienceBox) else { return builtScene(layout) }
-            var rest = layout
-            rest.objects.removeAll(where: isAudienceBox)
-            var scene = builtScene(rest)
-            addAudience(audience(), into: frame(of: box), backdrop: box.fill, to: &scene)
-            return scene
         }
         if let plan, let video = activeVideo(in: info, at: date) {
             let live = audience()
@@ -129,34 +118,6 @@ public enum StageScenes {
     /// ones that show the sermon timer.
     public static func showsOnlyDuringMessage(_ object: SlideObject) -> Bool {
         object.textLink?.source == .timer && object.textLink?.timerId == SermonTimer.id
-    }
-
-    static func isAudienceBox(_ object: SlideObject) -> Bool {
-        object.objectKind == .shape
-            && object.name.caseInsensitiveCompare(ConfidenceLayoutTemplate.audienceBoxName) == .orderedSame
-    }
-
-    /// The whole audience scene, every layer, fitted into `area` over the
-    /// box's own fill. Each layer goes to the same layer of the stage, under
-    /// the layout's own text (which sits on the slide layer, laid first), and
-    /// the backdrop under them all.
-    static func addAudience(
-        _ audience: RenderScene, into area: CGRect, backdrop: ObjectFill?, to scene: inout RenderScene
-    ) {
-        if backdrop?.fillKind == .solid, let color = backdrop?.colorHex.flatMap(ColorHex.color) {
-            let plate = RenderItem(
-                id: "stage-audience-backdrop", frame: area,
-                content: .shape(ShapeStyle(kind: .rectangle, fill: .solid(color))))
-            if let index = scene.layers.firstIndex(where: { $0.kind == .videoInput }) {
-                scene.layers[index].items.insert(plate, at: 0)
-            }
-        }
-        let picture = aspectFit(audience.canvasSize, in: area)
-        for kind in LayerKind.allCases {
-            for item in videoItems(of: audience, layer: kind, into: picture) {
-                scene.addItem(item, to: kind)
-            }
-        }
     }
 
     static func isVideoBox(_ object: SlideObject) -> Bool {

@@ -52,6 +52,34 @@ extension StreamDesign {
     var isThemeLowerThird: Bool { mode == .design && (themeId ?? "").isEmpty && lowerThirdImageID == nil }
 }
 
+/// Every theme that has lower thirds, with them, for the right-click menu's
+/// Choose Lower Third. The menu is built for every tile on the page each
+/// time the page is drawn, so the list is worked out once and kept until
+/// the themes change.
+@MainActor
+enum LowerThirdChoices {
+    struct ThemeThirds: Identifiable {
+        let id: String
+        let name: String
+        let thirds: [(id: String, name: String)]
+    }
+
+    private static var kept: (version: Int, fills: Int, themes: [ThemeThirds])?
+
+    static func themes(_ model: AppModel) -> [ThemeThirds] {
+        let version = model.kindVersions[.theme], fills = model.fillVersion(of: .theme)
+        if let kept, kept.version == version, kept.fills == fills { return kept.themes }
+        let themes = model.resident.themes.values
+            .compactMap { theme -> ThemeThirds? in
+                let thirds = StreamWording.lowerThirds(theme.slides ?? []).map { (id: $0.id, name: $0.name) }
+                return thirds.isEmpty ? nil : ThemeThirds(id: theme.id, name: theme.name, thirds: thirds)
+            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        kept = (version, fills, themes)
+        return themes
+    }
+}
+
 /// What the livestream shows for this slide.
 struct SlideStreamPicker: View {
     let model: SlideEditorModel

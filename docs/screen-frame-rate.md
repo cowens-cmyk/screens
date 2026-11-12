@@ -15,9 +15,14 @@ with its own width, height and `framesPerSecond`, kept per Mac in
 - **Changing it.** `ScreenOutput.setFrameRate` rebuilds the screen and restarts
   its NDI sender and DeckLink carry, which take their rate when they start.
 - **NDI** sends at the screen's rate.
-- **DeckLink.** With no format chosen the helper uses the card's configured
-  output mode when it matches the screen's size, else
-  `DeckLinkDisplayMode.bestMatchAtOrBelow`: the mode at the screen's rate (the
-  fractional one first, so 1080p59.94 for 60), else the fastest standard rate
-  under it that the port has, so a card that tops out at 1080p30 still sends.
+- **DeckLink.** With no format chosen the helper asks
+  `DeckLinkDisplayMode.automatic`, after leaving out modes that can't key
+  when keying is on. In order: the card's own setting when it is progressive
+  and at the screen's size and rate (so 1080p60 over 1080p59.94); the mode at
+  the screen's size and rate, progressive and fractional first (1080p59.94
+  for 1080p at 60); the card's setting at that size, whatever it is; the
+  fastest standard rate under the screen's. Left at its default the card says
+  1080i59.94, which is how a 1080p screen went out interlaced before.
+- **Video delay** is counted in frames, so a change of rate rescales it to
+  keep its time (`ShowScreens.keepDelayTime`).
 - **A display** (HDMI, DisplayPort) is drawn at the display's own refresh rate.

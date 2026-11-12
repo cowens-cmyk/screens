@@ -44,6 +44,14 @@ setup, never mixed) and every 5 seconds picks
   fallback, else five minutes). They count only when no Start Time…
   countdown is set that day. With 7:55, 9:25 and 11:10 and a five-minute
   video, the stage counts to 8:00, 9:30 and 11:15.
+- A day with no services: `ServiceStartClock.nextServiceDay` asks each of the
+  next 14 days for its services (the same sources, in the same order) and the
+  first day that has any gives the target, so on a Thursday the stage counts
+  to Sunday's first service. A day that has services keeps to its own: after
+  its last one there is no target and the clock shows.
+- With no Service Day setup saved, its standard times (Sunday 8:00, 9:30,
+  11:15; `ServiceDay.defaultSettings`) stand in as the last source, for the
+  stage's countdown only: the Sermon timer is never set back on them.
 - Walk-in: the next service still to come, at its service time (not the
   countdown's start). It reads the wall clock, so it needs nothing from the
   countdown video.

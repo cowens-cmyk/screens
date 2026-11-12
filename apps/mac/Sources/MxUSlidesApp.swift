@@ -240,7 +240,7 @@ struct MxUSlidesApp: App {
             PlanTimeBridge.shared.start(model)
             SermonTimerAutoReset.shared.start(model: model, controls: controls)
             SongSlideAutoFit.shared.start(model: model, controls: controls)
-            PlanPreloader.shared.start(model: model, render: render)
+            PlanPreloader.shared.start(model: model, render: render, controls: controls)
             WebsiteEventSync.shared.start(model: model, controls: controls)
             MessageCleanupRunner.shared.start(model: model)
             MediaDriveMonitor.shared.start(model: model)

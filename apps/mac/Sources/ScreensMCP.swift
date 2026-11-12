@@ -513,7 +513,8 @@ final class ScreensMCP {
     // MARK: Stage display
 
     private static let stageModes: [String: String] = [
-        "lyrics_and_chords": "worship", "message": "message", "pre_service": "preService", "audience": "mirror",
+        "lyrics_and_chords": "worship", "message": "message", "pre_service": "preService",
+        "announcements": "announcements", "audience": "mirror",
     ]
 
     private var setStageDisplay: MCPTool {
@@ -521,14 +522,15 @@ final class ScreensMCP {
             name: "set_stage_display", title: "Set the stage display",
             description: "Sets what the stage display shows from a slide on: lyrics_and_chords (the slide's words with the "
                 + "song's chords in the key the band plays, and the next slide), message (sermon timer and clock), "
-                + "pre_service (time until the service), audience (what the room sees), or default (the presentation's "
-                + "type decides: Worship shows lyrics and chords, Sermon the message timer). Without slide_ids it goes "
+                + "pre_service (time until the service), announcements (the room's screen, 90 seconds and the clock), "
+                + "audience (what the room sees), or default (the presentation's type decides: Worship shows lyrics "
+                + "and chords, Sermon the message timer, Announcements their own layout). Without slide_ids it goes "
                 + "on the first slide, so it holds for the whole presentation. stage_layout_id (list_stage_layouts) "
                 + "picks a particular stage layout for the slides, or the whole presentation without slide_ids.",
             inputSchema: Self.object([
                 "presentation_id": Self.string("The presentation."),
                 "slide_ids": Self.strings("Only these slides."),
-                "mode": ["type": "string", "enum": ["default", "lyrics_and_chords", "message", "pre_service", "audience"],
+                "mode": ["type": "string", "enum": ["default", "lyrics_and_chords", "message", "pre_service", "announcements", "audience"],
                          "description": "What the stage display shows."],
                 "stage_layout_id": Self.string("A stage layout id; an empty string clears it."),
             ], required: ["presentation_id"]),

@@ -98,8 +98,12 @@ final class StreamRouter {
             case .off: .transparent
             }
             let choice: StreamChoice?
+            // The Walkout takes the whole livestream with what the room
+            // sees, whatever its slide says: it shares the Closing slide,
+            // which is set up for the service, not for people leaving.
             switch StreamPrecedence.decide(
-                global: global, design: liveSlide?.streamDesign, video: video.phase
+                global: global, design: walkoutIsLive ? StreamDesign.slideFullScreen : liveSlide?.streamDesign,
+                video: video.phase
             ) {
             case .nothing: choice = nil
             case .clear: choice = .clear
@@ -283,6 +287,12 @@ final class StreamRouter {
                 self?.fetchWantedThemes()
             }
         }
+    }
+
+    /// The plan item on screen is the plan's Walkout.
+    private var walkoutIsLive: Bool {
+        guard let liveItemID, let plan = livePlanID.flatMap({ appModel.resident.services.value($0) }) else { return false }
+        return plan.items.first { $0.id == liveItemID }?.isWalkout == true
     }
 
     /// A slide went live from a plan item (nil: from the library). Called
