@@ -81,7 +81,7 @@ With Settings › Local API enabled, the app serves a REST and WebSocket API on 
 
 ### Scheduler
 
-`apps/mac/Sources/SchedulerView.swift` is the Schedule mode's board of triggers. **New Schedule…** (`PlanScheduleSheet.swift`) makes one from a form: a presentation, or an item from one plan or from each week's plan (by service type or template), once, daily, or weekly every N weeks, from a start day until an end day or for good. See `docs/scheduler.md`.
+`apps/mac/Sources/SchedulerView.swift` is the Schedule mode's board of triggers. Its **Countdowns** card (`CountdownScheduleViews.swift`) plays the countdown from each week's plan at set start times, on chosen days, every N weeks, from a start day until an end day or for good. See `docs/scheduler.md`.
 
 ### Media Library
 

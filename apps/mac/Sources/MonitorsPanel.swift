@@ -371,7 +371,7 @@ struct MonitorsPanel: View {
                     .pickerStyle(.menu)
                     .controlSize(.small)
                     .fixedSize()
-                    .help("Lower Third: slides whose theme has a livestream lower third show in it; everything else leaves the camera clear. Full Screen: the room's screen, edge to edge. Transparent: nothing over the camera.")
+                    .help("Lower Third: each presentation's own livestream look (its slides, its type, its theme). Full Screen: the room's screen, edge to edge, until the next item. Transparent: nothing over the camera, until the next item.")
                 }
             }
             if let streamTarget {

@@ -137,7 +137,7 @@ enum SettingsIndex {
         SettingsEntry(
             id: "show.streamMode", category: .livestream,
             title: "Livestream shows",
-            caption: "Transparent: nothing over the camera. Lower Third: each slide in the lower third chosen for its type, or its presentation's or theme's own. Full Screen: the room's slide, edge to edge.",
+            caption: "Lower Third: each presentation and slide in its own livestream look, or its type's. Full Screen (the room's slide, edge to edge) and Transparent (nothing over the camera) last until the next plan item goes live.",
             keywords: "livestream stream switch mode transparent lower third full screen camera overlay"),
         SettingsEntry(
             id: "show.typeScreens", category: .livestream,

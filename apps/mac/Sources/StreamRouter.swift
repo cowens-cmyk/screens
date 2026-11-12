@@ -288,6 +288,9 @@ final class StreamRouter {
     /// A slide went live from a plan item (nil: from the library). Called
     /// before its noteLiveTheme.
     func itemFired(_ itemID: String?) {
+        // Another item: a Full Screen or Transparent picked for the last one
+        // ends here, before this item's own actions can pick again.
+        if itemID != liveItemID { ShowSetup.shared.followPresentations() }
         let services = appModel.resident.services
         livePlanID = StreamPrecedence.firedPlan(
             item: itemID, previousItem: liveItemID, previousPlan: livePlanID,

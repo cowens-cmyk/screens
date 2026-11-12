@@ -242,7 +242,8 @@ final class SchedulerController {
         let wake = [result.nextWake, snoozeWake].compactMap { $0 }.min()
         scheduleWake(at: wake, from: now)
         updateTimerWatch(triggers: triggers, board: board)
-        placeServiceDay(triggers, board: board)
+        retirePreServiceRestarts()
+        placeCountdowns(triggers, board: board)
     }
 
     private func scheduleWake(at date: Date?, from now: Date) {
@@ -381,9 +382,8 @@ final class SchedulerController {
             return
         }
         // A pre-service restart that comes due while a service is still
-        // going leaves it alone, whether the Service Day setup made it or
-        // it's a schedule for each plan's pre-service slideshow.
-        if source != .manual, ServiceDay.isRestartTrigger(trigger) || playsPreServiceItem(trigger),
+        // going leaves it alone.
+        if source != .manual, ServiceDay.isRestartTrigger(trigger),
            case .skip(let reason) = PreServiceGuard.decide(preServiceSituation(for: trigger)) {
             skip(trigger, source: source, reason: reason)
             return
@@ -397,6 +397,15 @@ final class SchedulerController {
         for index in actions.indices where actions[index].kind == .fireServiceItem {
             switch model.resolvePlanItem(actions[index], upcomingIfNone: source == .manual) {
             case .plays(let plan, let item):
+                // A plan given its own countdown with Start Time… plays that
+                // one, timed for its service, not this one as well.
+                if source != .manual, WeeklyCountdown.isWeeklyCountdown(trigger),
+                   WeeklyCountdown.planHasItsOwn(
+                       plan.id, on: ScheduleMath.localDayString(Date(), calendar: .current),
+                       triggers: model.residentScheduleTriggers) {
+                    skip(trigger, source: source, reason: "\(plan.name) has its own countdown set with Start Time….")
+                    return
+                }
                 actions[index] = PlanSchedule.pinned(actions[index], plan: plan, item: item)
             case .skipped(let reason):
                 skip(trigger, source: source, reason: reason)
@@ -457,29 +466,38 @@ final class SchedulerController {
         triggers.first { $0.id == triggerID }?.name ?? triggerID
     }
 
-    // MARK: Service Day
+    // MARK: Countdowns
 
-    /// The restart triggers sync from the team; the board is this
-    /// computer's. Each computer gathers them into its Service Day folder.
-    private func placeServiceDay(_ triggers: [ScheduleTrigger], board: SchedulerBoard) {
-        let ids = ServiceDay.restartTriggerIDs(triggers)
-        guard board.placingServiceDay(triggerIDs: ids) != nil else { return }
-        model.updateSchedulerBoard { board in
-            if let placed = board.placingServiceDay(triggerIDs: ids) { board = placed }
+    /// The weekly countdowns sync from the team; the board is this
+    /// computer's. Each computer gathers them into its Countdowns folder.
+    private func placeCountdowns(_ triggers: [ScheduleTrigger], board: SchedulerBoard) {
+        let ids = WeeklyCountdown.triggerIDs(triggers)
+        if board.placingWeeklyCountdowns(triggerIDs: ids) != nil {
+            model.updateSchedulerBoard { board in
+                if let placed = board.placingWeeklyCountdowns(triggerIDs: ids) { board = placed }
+            }
+        }
+        if model.schedulerBoard.removingEmptyServiceDayFolder() != nil {
+            model.updateSchedulerBoard { board in
+                if let emptied = board.removingEmptyServiceDayFolder() { board = emptied }
+            }
         }
     }
 
-    /// A schedule that plays a plan's pre-service slideshow.
-    private func playsPreServiceItem(_ trigger: ScheduleTrigger) -> Bool {
-        trigger.actions.contains {
-            $0.kind == .fireServiceItem && $0.serviceItemRole == PlanSchedule.Role.preService.rawValue
+    /// The pre-service slides no longer restart at set times: the Service
+    /// Day setup's restart triggers, which sync from older versions, are
+    /// deleted wherever they turn up. The pre-service slideshow itself
+    /// stays first in every plan.
+    private func retirePreServiceRestarts() {
+        for trigger in model.residentScheduleTriggers where ServiceDay.isRestartTrigger(trigger) {
+            DiagnosticsStore.shared.note("scheduler.restartRetired", detail: trigger.name)
+            model.deleteScheduleTrigger(trigger.id)
         }
     }
 
     /// What's on the screens, for the pre-service guard.
     private func preServiceSituation(for trigger: ScheduleTrigger) -> PreServiceGuard.Situation {
         let slideshowID = trigger.actions.first { $0.kind == .firePresentation }?.presentationId
-            ?? (playsPreServiceItem(trigger) ? model.preServiceSlideshowID() : nil)
         var situation = PreServiceGuard.Situation()
         let plan = model.currentServiceID.flatMap { model.resident.services.value($0) }
         let fireable = plan.map(model.fireableItems) ?? []

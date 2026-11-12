@@ -302,7 +302,12 @@ struct PayloadDropDelegate: DropDelegate {
     let performFiles: ([URL]) -> Bool
 
     func validateDrop(info: DropInfo) -> Bool {
-        enabled && info.hasItemsConforming(to: [.plainText, .fileURL]) && accepts(.current)
+        guard enabled, info.hasItemsConforming(to: [.plainText, .fileURL]) else { return false }
+        let payload = DraggedPayload.current
+        // A tile dragged from the media bin can hold its id back until it's
+        // dropped, so there's nothing to check yet: it's checked on the drop.
+        if payload.text == nil, payload.files.isEmpty { return true }
+        return accepts(payload)
     }
 
     func dropEntered(info: DropInfo) { targeted(true) }
@@ -318,7 +323,18 @@ struct PayloadDropDelegate: DropDelegate {
         let payload = DraggedPayload.current
         if !payload.files.isEmpty { return performFiles(payload.files) }
         if let text = payload.text { return performText(text) }
-        return false
+        // The id wasn't on the drag pasteboard: read it from the drop itself.
+        guard let provider = info.itemProviders(for: [.plainText, .text]).first else { return false }
+        // Both run on the main actor, as every drop here does.
+        nonisolated(unsafe) let accepts = accepts
+        nonisolated(unsafe) let performText = performText
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let text = object as? String, !text.isEmpty else { return }
+            Task { @MainActor in
+                if accepts(DraggedPayload(text: text, files: [])) { _ = performText(text) }
+            }
+        }
+        return true
     }
 }
 

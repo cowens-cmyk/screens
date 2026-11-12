@@ -69,6 +69,7 @@ struct PlanShell: View {
     /// is open; with one, Sermon is the plan's message notes).
     @State private var songSearchShown = false
     @State private var pointsShown = false
+    @State private var serviceDayShown = false
     @State private var sermonLibraryShown = false
     /// The top bar's search, and the space its button grows into the field in.
     @State private var search = TopBarSearch()
@@ -1080,6 +1081,7 @@ struct PlanShell: View {
         }
         if !runOnly {
             Button("Edit Pre-Service Slides…", systemImage: "rectangle.stack") { editPreServiceSlides() }
+            Button("Service Day…", systemImage: "sunrise") { serviceDayShown = true }
         }
         if !runOnly { Menu("Bible Theme", systemImage: "book") { bibleThemeItems } }
         if !runOnly, layout != nil {
@@ -1153,6 +1155,9 @@ struct PlanShell: View {
         workspace
             .sheet(isPresented: $songSearchShown) {
                 SongSearchSheet(model: model, render: render) { showBuilt($0) }
+            }
+            .sheet(isPresented: $serviceDayShown) {
+                ServiceDaySheet(model: model, scheduler: nil)
             }
             .sheet(isPresented: $pointsShown) {
                 PointSlidesSheet(

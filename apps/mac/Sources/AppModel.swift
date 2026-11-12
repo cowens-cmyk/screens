@@ -367,6 +367,7 @@ final class AppModel {
         try migrateAnimationVocabulary(prepared, rootURL: root)
         try migrateCrossfadeDefaults(prepared, rootURL: root)
         migrateImportedCutTransitions(prepared, rootURL: root)
+        migrateMediaLayersByFolder(prepared, rootURL: root)
         try backfillContentIndex(prepared, rootURL: root)
         try backfillCCLIIndex(prepared, rootURL: root)
         try seedBasics(prepared, rootURL: root)
@@ -455,6 +456,21 @@ final class AppModel {
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }
         try prepared.normalizeMediaObjects()
         FileManager.default.createFile(atPath: marker.path, contents: nil)
+    }
+
+    /// Every picture and video takes its folder's layer once: Background in
+    /// Worship Backgrounds, Foreground elsewhere. A failure is noted and
+    /// tried again next launch; it never stops the library opening.
+    @LibraryActor private static func migrateMediaLayersByFolder(_ prepared: Library, rootURL: URL) {
+        let marker = rootURL.appendingPathComponent(".migrated-media-layers-by-folder-v1")
+        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
+        do {
+            let changed = try prepared.migrateMediaLayersByFolder()
+            DiagnosticsStore.shared.note("library.mediaLayers", detail: "\(changed) changed")
+            FileManager.default.createFile(atPath: marker.path, contents: nil)
+        } catch {
+            DiagnosticsStore.shared.note("library.mediaLayers.failed", detail: "\(error)")
+        }
     }
 
     @LibraryActor private static func migrateCrossfadeDefaults(_ prepared: Library, rootURL: URL) throws {
@@ -786,6 +802,16 @@ final class AppModel {
         for (key, folders) in pendingFolders {
             guard let done = LibrarySection(rawValue: key).flatMap({ filled[$0.kind] }), !done.isDisjoint(with: folders) else { continue }
             pendingFolders[key] = folders.filter { !done.contains($0) }
+        }
+        // Moved into Worship Backgrounds it goes behind the slides; moved out
+        // of it, in front. A move that doesn't cross that line keeps whatever
+        // was chosen by hand.
+        for refile in refiles where refile.kind == .media {
+            guard let item = media(refile.id) else { continue }
+            let before = MediaLibraryCategory.defaultClassification(forFolder: item.folder)
+            let after = MediaLibraryCategory.defaultClassification(forFolder: refile.folder)
+            guard before != after, item.classification != after else { continue }
+            updateMedia(refile.id) { $0.classification = after }
         }
         return coalescingListBumps { client.refile(refiles) }
     }
