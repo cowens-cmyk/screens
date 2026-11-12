@@ -130,11 +130,19 @@ struct PlanShell: View {
             .onChange(of: modeRaw) { _, _ in presentFocusScroll.reset() }
             .onChange(of: showWholePlan) { _, _ in presentFocusScroll.reset() }
             .onChange(of: planOpenersKey) { ensurePlanOpeners() }
-            .onChange(of: itemID) { _, _ in
-                songWordsEditor = false
-                stageEdit = nil
+            // Whatever is opened next opens on its slide (Audience): Stage
+            // and Words & Chords belong to the item they were chosen on, and
+            // don't follow into another item, another trip into Edit, or a
+            // slide's Edit….
+            .onChange(of: itemID) { _, _ in resetEditorFace() }
+            .onChange(of: model.selectedEntryID) { _, _ in resetEditorFace() }
+            .onChange(of: modeRaw) { _, _ in resetEditorFace() }
+            .onChange(of: model.pendingEditorSlideID) { _, slideID in
+                if slideID != nil, stageEdit != nil || songWordsEditor {
+                    stageEdit = nil
+                    songWordsEditor = false
+                }
             }
-            .onChange(of: model.selectedEntryID) { _, _ in stageEdit = nil }
             .task { await appeared() }
     }
 
@@ -929,6 +937,26 @@ struct PlanShell: View {
 
     // MARK: A slide's Audience and Stage
 
+    /// Back to the slide editor for whatever is selected. A song with no
+    /// slides yet opens on its words instead, decided once here (when it is
+    /// opened) rather than as its slides come and go: deleting a song's last
+    /// slide in the slide editor must not swap editors mid-edit, and Slide
+    /// Editor… on an empty song must still go there.
+    private func resetEditorFace() {
+        stageEdit = nil
+        songWordsEditor = false
+        guard mode == .edit, model.pendingEditorSlideID == nil, let id = selectedRefID,
+              model.indexEntry(id)?.kind == .presentation
+        else { return }
+        Task { @MainActor in
+            guard let deck = await model.presentationsFilled([id])[id],
+                  deck.presentationKind == .song, deck.slides.isEmpty,
+                  selectedRefID == id, mode == .edit, stageEdit == nil
+            else { return }
+            songWordsEditor = true
+        }
+    }
+
     struct StageEdit: Equatable {
         var presentationID: String
         var slideID: String?
@@ -954,7 +982,9 @@ struct PlanShell: View {
         let own = slide?.stageLayoutId ?? ""
         let side = SlideDisplays.StageSide(
             slideName: slideName,
-            slideChoice: own == StageLayouts.audienceID ? "" : own,
+            // Its own layout only while that is the one open: a layout since
+            // deleted, or the audience screen, reads as Usual.
+            slideChoice: own == target.layoutID ? own : "",
             usualName: model.stageLayoutName(usualID),
             layoutName: model.stageLayoutName(target.layoutID),
             setLayout: { id in
@@ -1009,11 +1039,15 @@ struct PlanShell: View {
     private var editor: some View {
         if let refID = selectedRefID, let entry = model.indexEntry(refID) {
             switch entry.kind {
-            // A song with no slides yet opens on its words, to type them in.
-            case .presentation where model.presentation(entry.id).map({
-                $0.presentationKind == .song && (songWordsEditor || $0.slides.isEmpty) }) == true:
+            // Words & Chords, or cards left unsaved when this song's slides
+            // changed under them: those wait here to be kept or dropped.
+            case .presentation where (songWordsEditor || SongEditorPending.hasKeptAside(entry.id))
+                && model.presentation(entry.id)?.presentationKind == .song:
                 SongEditorView(model: model, presentationID: entry.id) { songWordsEditor = false }
                     .id(entry.id)
+                    // Opened for cards kept aside: it takes them as it
+                    // loads, so it stays open on its own account from here.
+                    .onAppear { if !songWordsEditor { songWordsEditor = true } }
             case .presentation where stageEdit?.presentationID == entry.id:
                 if let stageEdit {
                     SlideEditorView(

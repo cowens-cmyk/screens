@@ -52,11 +52,15 @@ updating it rather than treating the split as an edit.
   When the theme isn't loaded, slides are cut by line count alone as before.
 - **Automatically** (`SongSlideAutoFit`, app): every 15 seconds, songs whose
   index `updatedAt` differs from when they were last checked, and that have
-  been quiet for 20 seconds (90 on a Mac that isn't the Main Mac, so the Main
-  Mac's split usually syncs in first), are surveyed and fitted without
-  asking. At launch that is the whole library. The song on screen is skipped
-  until it's off, and nothing runs while this Mac is in Edit. Each split is
-  noted in Diagnostics (`songs.fitToTwoLines`).
+  been quiet for a minute, are surveyed and fitted without asking. At launch
+  that is the whole library. One Mac does it (`thisMacFits`): the Main Mac of
+  a linked library once sync is live, or a Mac that isn't linked. Two Macs
+  splitting the same slide each add new slides and the library keeps both
+  sets, so an Editor Mac never splits. It does nothing while this Mac is in
+  Edit, skips the song on screen, leaves every song in the current plan alone
+  while anything is on the screens, and leaves a song whose theme names a
+  font this Mac doesn't have (`fontsAreHere`). Each split is noted in
+  Diagnostics (`songs.fitToTwoLines`).
 - **File › Fit Song Slides to Two Lines…** (`SongSlideFit`, app): the same
   pass by hand over the whole library. It
   measures each song in its own theme, says how many slides in how many songs

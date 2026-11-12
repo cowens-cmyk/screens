@@ -13,12 +13,20 @@ public enum StandingItems {
     public static let defaultWalkoutReturnMinutes: Double = 8
 
     /// The plan's Closing Song, whatever song is in it: an item named for
-    /// it ("Closing Song", "Closing"), or one the plan places at Closing (a
-    /// song under a Closing header). Going up, it sets the Sermon timer back.
-    public static func isClosingSong(_ item: ServiceItem, position: ServicePosition?) -> Bool {
-        guard item.itemKind == .presentation || item.itemKind == .info else { return false }
+    /// it ("Closing Song", "Closing"), one the plan places at Closing, or
+    /// one under a header named for the close ("CLOSING SONG"), where the
+    /// lights treat it as the next song. Going up, it sets the Sermon timer
+    /// back.
+    public static func isClosingSong(
+        _ item: ServiceItem, in items: [ServiceItem] = [], position: ServicePosition?
+    ) -> Bool {
+        guard item.itemKind == .presentation || item.itemKind == .info, item.isWalkout != true else { return false }
         if case .closing = position { return true }
         if case .closing = ServicePosition.named(item.name) { return true }
+        guard let index = items.firstIndex(where: { $0.id == item.id }),
+              let header = items[..<index].last(where: { $0.itemKind == .header && !$0.isHidden })
+        else { return false }
+        if case .closing = ServicePosition.named(header.name) { return true }
         return false
     }
 

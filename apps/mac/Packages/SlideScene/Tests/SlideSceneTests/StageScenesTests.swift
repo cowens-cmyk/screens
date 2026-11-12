@@ -377,27 +377,27 @@ private func videoBox(_ layout: ConfidenceLayout = videoLayout) -> CGRect {
 
 // MARK: The audience in a layout
 
-@Test func theAnnouncementsLayoutShowsTheRoomInItsAudienceBox() throws {
-    let layout = ConfidenceLayoutTemplate.announcements.make(name: "Announcements")
+@Test func anAudienceBoxShowsThatMacsAudienceScreen() throws {
+    let template = ConfidenceLayoutTemplate.announcements.make(name: "Announcements")
+    #expect(template.hasAudienceBox)
+    let layout = template.showingAudience(screenID: "AUD-1")
     let box = try #require(layout.objects.first { $0.name == ConfidenceLayoutTemplate.audienceBoxName })
-    let area = CGRect(x: box.x!, y: box.y!, width: box.width!, height: box.height!)
-    let scene = StageScenes.scene(
-        override: nil, source: .layout(layout), info: ConfidenceInfo(), at: now, audience: audienceWithVideo)
-    // Every layer of the room, fitted into the box (the same 16:9 here).
-    let picture = try #require(items(in: scene, layer: .videos).first { $0.id == "stage-video-1" })
-    #expect(picture.frame == area)
-    let lyric = try #require(items(in: scene, layer: .slide).first { $0.id == "stage-lyric" })
-    #expect(area.contains(lyric.frame))
-    // The box's own fill is the backdrop under everything.
-    #expect(items(in: scene, layer: .videoInput).first?.id == "stage-audience-backdrop")
-    // And the 90 seconds are on it.
-    #expect(layout.objects.contains { $0.textLink?.timerId == AnnouncementsTimer.id })
-    #expect(layout.objects.contains { $0.textLink?.source == .clock })
-}
+    #expect(box.fill?.screenSourceId == "AUD-1")
 
-@Test func aLayoutWithoutAnAudienceBoxIsUnchanged() {
-    let info = ConfidenceInfo(current: .init(body: "Amazing grace"))
+    // Drawn as the screen's own picture, fitted to the box, so words and
+    // builds are exactly what the room sees rather than a rebuilt copy.
     let scene = StageScenes.scene(
-        override: nil, source: .layout(worship), info: info, at: now, audience: audienceWithVideo)
-    #expect(scene == ConfidenceSceneBuilder.scene(layout: worship, info: info, at: now))
+        override: nil, source: .layout(layout), info: ConfidenceInfo(), at: now, audience: { .empty })
+    let mirrored = scene.layers.flatMap(\.items).first { $0.content.mediaID == "screen::AUD-1" }
+    let item = try #require(mirrored)
+    #expect(item.frame == CGRect(x: box.x!, y: box.y!, width: box.width!, height: box.height!))
+    if case .shape(let style) = item.content, case .media(_, let scale, _) = style.fill {
+        #expect(scale == .fit)
+    }
+    // The screen is kept running for it.
+    #expect(SlideSceneBuilder.mediaWants(for: layout.objects).keys.contains("screen::AUD-1"))
+
+    // With no audience screen to show (the stage is that screen) the layout is left as it is.
+    #expect(template.showingAudience(screenID: nil) == template)
+    #expect(ConfidenceLayoutTemplate.worship.make(name: "W").showingAudience(screenID: "AUD-1").hasAudienceBox == false)
 }

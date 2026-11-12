@@ -141,7 +141,10 @@ extension AppModel {
         let day = slideBuilding.serviceDay
         let inLibrary = { (id: String?) -> String? in id.flatMap { self.libraryEntry($0) != nil ? $0 : nil } }
         let transition = chosenTransitionID() ?? sharedPresentationID(.transition)
-        let walkout = inLibrary(day?.walkoutPresentationId)
+        // The Walkout is the Service Day's choice, else the shared Closing
+        // presentation: the same slide the service closes on, this time with
+        // the Walkout lights and over the whole livestream.
+        let walkout = inLibrary(day?.walkoutPresentationId) ?? sharedPresentationID(.closing)
         guard transition != nil || walkout != nil else { return nil }
         let message = StandingItems.messageItemID(in: plan, positions: ServiceLighting.positions(in: plan, model: self))
         return (transition, walkout, message)

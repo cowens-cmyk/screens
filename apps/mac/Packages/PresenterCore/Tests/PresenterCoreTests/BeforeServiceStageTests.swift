@@ -32,6 +32,43 @@ private func twoServices() -> [SermonTimerReset.Service] {
         #expect(target == date("2026-10-25T11:15:00"))
     }
 
+    @Test func onADayWithNoServicesItCountsToTheNextDayThatHasThem() {
+        // Thursday the 12th: nothing today, so Sunday the 15th's first service.
+        let sunday = SermonTimerReset.services(
+            on: date("2026-11-15T12:00:00"), planTimes: [], scheduled: [],
+            serviceDay: ServiceDay.defaultSettings(preServicePresentationId: nil), calendar: calendar)
+        #expect(sunday.map(\.time) == [
+            date("2026-11-15T08:00:00"), date("2026-11-15T09:30:00"), date("2026-11-15T11:15:00"),
+        ])
+        var asked: [Date] = []
+        let later = ServiceStartClock.nextServiceDay(after: date("2026-11-12T14:00:00"), calendar: calendar) { day in
+            asked.append(day)
+            return SermonTimerReset.services(
+                on: day, planTimes: [], scheduled: [],
+                serviceDay: ServiceDay.defaultSettings(preServicePresentationId: nil), calendar: calendar)
+        }
+        #expect(asked.count == 3, "Friday, Saturday, Sunday")
+        #expect(later == sunday)
+        #expect(ServiceStartClock.target([], later: later, now: date("2026-11-12T14:00:00"))
+            == date("2026-11-15T08:00:00"))
+
+        // On Sunday itself the day's own services are the ones counted to:
+        // 8:00, then 9:30, then 11:15, then none (the clock), not next week.
+        let nextWeek = [SermonTimerReset.Service(time: date("2026-11-22T08:00:00"), source: .serviceDay)]
+        #expect(ServiceStartClock.target(sunday, later: nextWeek, now: date("2026-11-15T07:00:00"))
+            == date("2026-11-15T08:00:00"))
+        #expect(ServiceStartClock.target(sunday, later: nextWeek, now: date("2026-11-15T08:40:00"))
+            == date("2026-11-15T09:30:00"))
+        #expect(ServiceStartClock.target(sunday, later: nextWeek, now: date("2026-11-15T10:30:00"))
+            == date("2026-11-15T11:15:00"))
+        #expect(ServiceStartClock.target(sunday, later: nextWeek, now: date("2026-11-15T13:00:00")) == nil)
+    }
+
+    @Test func noServicesWithinTheLookAheadIsNone() {
+        #expect(ServiceStartClock.nextServiceDay(after: date("2026-11-12T14:00:00"), calendar: calendar) { _ in [] }.isEmpty)
+        #expect(ServiceStartClock.target([], later: [], now: date("2026-11-12T14:00:00")) == nil)
+    }
+
     @Test func afterTheLastServiceThereIsNothingToCountTo() {
         #expect(ServiceStartClock.target(twoServices(), now: date("2026-10-25T12:30:00")) == nil)
         #expect(ServiceStartClock.target([], now: date("2026-10-25T09:00:00")) == nil)

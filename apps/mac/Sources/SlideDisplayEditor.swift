@@ -71,9 +71,15 @@ struct SlideDisplayBar: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
         Picker("Stage layout", selection: Binding(get: { stage.slideChoice }, set: stage.setLayout)) {
+            let layouts = appModel.entries(of: .confidenceLayout)
             Text("Usual (\(stage.usualName))").tag("")
+            // A copy just made isn't listed for a moment; it still needs
+            // its row, or the picker shows nothing selected.
+            if !stage.slideChoice.isEmpty, !layouts.contains(where: { $0.id == stage.slideChoice }) {
+                Text(stage.layoutName).tag(stage.slideChoice)
+            }
             Divider()
-            ForEach(appModel.entries(of: .confidenceLayout), id: \.id) { Text($0.name).tag($0.id) }
+            ForEach(layouts, id: \.id) { Text($0.name).tag($0.id) }
         }
         .labelsHidden()
         .fixedSize()

@@ -210,9 +210,6 @@ final class ServiceControls {
         followBeforeService(
             slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID,
             occurrence: occurrence)
-        // Their own videos (a welcome loop, the logo) leave the stage as it is.
-        let holds = ShowSetup.shared.stageMode == .preService || ShowSetup.shared.stageMode == .announcements
-        if ShowSetup.shared.stageHoldsThroughVideos != holds { ShowSetup.shared.stageHoldsThroughVideos = holds }
         if !deckWasLive {
             actionRouter?.presentationDidGoLive(presentation)
         }
@@ -221,6 +218,16 @@ final class ServiceControls {
         // taking over: the video keeps the livestream, and its plan keeps
         // its move to the next item when it ends.
         let underVideo = autoAdvanced && screenVideoID.map(isMediaLive) == true
+        // The walk-in slideshow's and the announcements' own videos (a
+        // welcome loop, the logo) leave the stage as it is. Only those two:
+        // the walkout and the plan's closing video are on Before Service
+        // too, and theirs still show as videos. A slideshow slide landing
+        // under a video someone put up over it changes nothing, so that
+        // video keeps the stage it was given.
+        if !underVideo {
+            let holds = holdsStageThroughVideos(presentation, contextID: contextID)
+            if ShowSetup.shared.stageHoldsThroughVideos != holds { ShowSetup.shared.stageHoldsThroughVideos = holds }
+        }
 
         let own = RenderContext.sceneTransition(from: slide.transition)
         if let own {
@@ -907,11 +914,18 @@ final class ServiceControls {
         // The plan's countdown plays once and then moves the plan on,
         // whatever the video is set to elsewhere.
         let countdown = contextID.map(isCountdownItem) ?? false
-        // The countdown shows on the stage as a video (its time left is the
-        // time to the service), and so does any video put up outside the
-        // announcements: only a video during them leaves the stage alone.
-        if countdown || ShowSetup.shared.stageMode != .announcements, ShowSetup.shared.stageHoldsThroughVideos {
-            ShowSetup.shared.stageHoldsThroughVideos = false
+        // A plan's own video item (the countdown above all, whose time left
+        // is the time to the service) shows on the stage as a video, and so
+        // does a video put up by hand outside the announcements. Only a
+        // video fired during the announcements leaves the stage alone.
+        let setup = ShowSetup.shared
+        if contextID != nil || setup.stageMode != .announcements, setup.stageHoldsThroughVideos {
+            setup.stageHoldsThroughVideos = false
+        }
+        // A plan video after the announcements ends them, like any other
+        // item: their layout and timer don't stay up behind it.
+        if contextID != nil, setup.stageFollowsItems, setup.stageMode == .announcements {
+            setup.stageMode = .worship
         }
         let loops: Bool? = countdown && mediaItem.mediaKind == .video ? false : loopsOverride
         let playsOnce = mediaItem.mediaKind == .video && !(loops ?? mediaItem.playsLooping)
@@ -1068,7 +1082,7 @@ final class ServiceControls {
         // The Closing Song, whichever song is in it: the message is over,
         // so the Sermon timer goes back to its full length, stopped, ready
         // for the next service. Every time it goes up.
-        if StandingItems.isClosingSong(item, position: positions[item.id]) {
+        if StandingItems.isClosingSong(item, in: service.items, position: positions[item.id]) {
             resetSermonTimer(to: sermonLength)
             DiagnosticsStore.shared.note("sermonTimer.resetAtClosingSong", detail: item.name)
             return
@@ -1202,6 +1216,23 @@ final class ServiceControls {
     /// time); the message puts it on Message (sermon timer and clock) and
     /// starts the sermon timer. A presentation's own stage layout or
     /// livestream theme wins.
+    /// Whether this presentation keeps the stage on its layout while its
+    /// own videos play: the walk-in slideshow while the stage is on Before
+    /// Service, and announcements while it is on Announcements.
+    private func holdsStageThroughVideos(_ presentation: Presentation, contextID: String?) -> Bool {
+        switch ShowSetup.shared.stageMode {
+        case .announcements:
+            return PresentationTypes.category(of: presentation) == PresentationTypes.announcements
+        case .preService:
+            let plan = appModel.currentServiceID.flatMap { appModel.resident.services.value($0) }
+            let item = contextID.flatMap { id in plan?.items.first { $0.id == id } }
+            return item?.isPreService == true || ServiceLighting.isPreService(
+                presentation, preServiceID: appModel.slideBuilding.serviceDay?.preServicePresentationId)
+        case .worship, .message, .mirror:
+            return false
+        }
+    }
+
     private func applyScreenDefaults(for presentation: Presentation) {
         let setup = ShowSetup.shared
         setup.stageLayoutOverride = presentation.stageLayoutId
@@ -1209,6 +1240,13 @@ final class ServiceControls {
         let isMessage = PresentationTypes.category(of: presentation) == PresentationTypes.sermon
         let isAnnouncements = PresentationTypes.category(of: presentation) == PresentationTypes.announcements
         if isAnnouncements { startAnnouncementsTimer() }
+        // Anything else going up ends the announcements, also when it has a
+        // stage layout of its own (which the guard below leaves to itself):
+        // their layout and timer don't stay up over it. A song or the
+        // message then sets its own mode below.
+        if !isAnnouncements, setup.stageFollowsItems, setup.stageMode == .announcements {
+            setup.stageMode = .worship
+        }
         guard setup.stageFollowsItems, presentation.stageLayoutId == nil, setup.stageMode != .mirror else {
             if isMessage { startSermonTimer(for: presentation) }
             return
@@ -1220,10 +1258,6 @@ final class ServiceControls {
             setup.stageMode = .announcements
         } else if PresentationTypes.category(of: presentation) == PresentationTypes.worship {
             // Songs, and songs imported from ProPresenter (filed as worship).
-            setup.stageMode = .worship
-        } else if setup.stageMode == .announcements {
-            // Something else after the announcements (a scripture, a deck
-            // with no type): their layout and timer don't stay up over it.
             setup.stageMode = .worship
         }
     }

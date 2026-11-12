@@ -379,7 +379,9 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     }
 
     /// The name of the box where a layout shows what the audience screen
-    /// shows, scaled to fit (StageScenes). Any layout can have one.
+    /// shows, fitted to the box. Any layout can have one. Which screen that
+    /// is differs from Mac to Mac, so the layout only names the box and each
+    /// Mac fills it in (`ConfidenceLayout.showingAudience`).
     public static let audienceBoxName = "Audience"
 
     /// During the announcements: what the room sees, with their time left
@@ -796,6 +798,28 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
 }
 
 public extension ConfidenceLayout {
+
+    /// Whether the layout has a box that shows the audience screen.
+    var hasAudienceBox: Bool { objects.contains(where: Self.isAudienceBox) }
+
+    private static func isAudienceBox(_ object: SlideObject) -> Bool {
+        object.objectKind == .shape
+            && object.name.caseInsensitiveCompare(ConfidenceLayoutTemplate.audienceBoxName) == .orderedSame
+    }
+
+    /// The layout with each Audience box showing that screen's own picture:
+    /// a screen-source fill, so it is exactly what the room sees (words at
+    /// their real size, builds, videos), fitted to the box. With no screen
+    /// to show (the stage is the audience screen) the layout as it is.
+    func showingAudience(screenID: String?) -> ConfidenceLayout {
+        guard let screenID, !screenID.isEmpty, hasAudienceBox else { return self }
+        var layout = self
+        for index in layout.objects.indices where Self.isAudienceBox(layout.objects[index]) {
+            layout.objects[index].fill = ObjectFill(
+                fillKind: .media, mediaScaleMode: .fit, screenSourceId: screenID)
+        }
+        return layout
+    }
 
     static func defaultTemplate(name: String) -> ConfidenceLayout {
         ConfidenceLayoutTemplate.classic.make(name: name)

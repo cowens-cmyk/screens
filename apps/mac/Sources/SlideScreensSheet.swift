@@ -41,6 +41,12 @@ struct SlideScreensSheet: View {
                     if let imageID {
                         Text(model.media(imageID)?.name ?? "Lower-Third Image").tag("image|\(imageID)")
                     }
+                    // The slide's own design when its theme or design has
+                    // gone: still shown, so Apply keeps it rather than
+                    // quietly putting the slide back on its theme's.
+                    if stream.hasPrefix("design|"), !knownStreamTags.contains(stream) {
+                        Text("Its Own Design").tag(stream)
+                    }
                     streamDesignOptions
                 }
                 LabeledContent("") {
@@ -88,7 +94,7 @@ struct SlideScreensSheet: View {
                     case .audience: stream = "audience"
                     case .design where own.isThemeLowerThird: stream = "lowerThird"
                     case .design:
-                        stream = "design|\(own.themeId ?? "")|\(own.slideId ?? "")"
+                        stream = Self.tag(own)
                     }
                 }
                 stage = first.stageLayoutId ?? ""
@@ -123,19 +129,34 @@ struct SlideScreensSheet: View {
         }
     }
 
+    private static func tag(_ design: StreamDesign) -> String {
+        "design|\(design.themeId ?? "")|\(design.slideId ?? "")"
+    }
+
+    private var knownStreamTags: Set<String> {
+        Set(themes.flatMap { theme in theme.slides.map { "design|\(theme.id)|\($0.id)" } })
+    }
+
     private func apply() {
         let ids = Set(slideIDs)
         let deckTheme = presentation.themeId
         let audienceParts = audience.split(separator: "|", maxSplits: 2).map(String.init)
-        let streamParts = stream.split(separator: "|", maxSplits: 2).map(String.init)
-        let streamSlideID = streamParts.count == 3 ? streamParts[2] : nil
+        // Empty parts kept: a design that names a theme but no slide in it
+        // is "design|<theme>|", and must not read as no choice at all.
+        let streamParts = stream.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+        let streamSlideID = streamParts.count == 3 && !streamParts[2].isEmpty ? streamParts[2] : nil
         let chosen: StreamDesign? = switch streamParts.first {
         case "clear": .slideNothing
         case "audience": .slideFullScreen
         case "lowerThird": .slideLowerThird
         case "image" where streamParts.count == 2: .lowerThirdImage(streamParts[1])
         case "design" where streamParts.count == 3:
-            StreamDesign(category: "", mode: .design, themeId: streamParts[1], slideId: streamSlideID)
+            // Left on the design it already had: that design, untouched.
+            if let own = first?.streamDesign, own.mode == .design, stream == Self.tag(own) {
+                own
+            } else {
+                StreamDesign(category: "", mode: .design, themeId: streamParts[1], slideId: streamSlideID)
+            }
         default: nil
         }
         let stageID = stage

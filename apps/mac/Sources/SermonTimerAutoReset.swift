@@ -28,6 +28,12 @@ final class SermonTimerAutoReset {
     private var timer: Timer?
     private var lastCheck = Date()
     private var services: [SermonTimerReset.Service] = []
+    private var laterServices: [SermonTimerReset.Service] = []
+    /// Today's services as the Before Service stage counts to them.
+    private var stageServices: [SermonTimerReset.Service] = []
+    /// A church that hasn't opened Service Day… still has its standard
+    /// times (Sunday at 8:00, 9:30 and 11:15) to count to.
+    private static let standardServiceDay = ServiceDay.defaultSettings(preServicePresentationId: nil)
     private var servicesWorkedOut: Date?
 
     /// Every plan's times are read when the current plan has none today, so
@@ -59,13 +65,23 @@ final class SermonTimerAutoReset {
         let calendar = Calendar.current
         if servicesWorkedOut.map({ now.timeIntervalSince($0) >= Self.refreshSeconds || !calendar.isDate($0, inSameDayAs: now) }) ?? true {
             services = todaysServices(model: model, now: now, calendar: calendar)
+            // For the Before Service stage once today's are over, or on a
+            // day with none: the next day that has services.
+            laterServices = ServiceStartClock.nextServiceDay(after: now, calendar: calendar) { day in
+                self.todaysServices(model: model, now: day, calendar: calendar, standardTimes: true)
+            }
+            // The stage may count to the standard Sunday times when nothing
+            // else says when services are; the Sermon timer is never set
+            // back on their say-so.
+            stageServices = services.isEmpty
+                ? todaysServices(model: model, now: now, calendar: calendar, standardTimes: true) : services
             servicesWorkedOut = now
         }
         defer { lastCheck = now }
 
         let upcoming = services.filter { $0.time > now }.min { $0.time < $1.time }
         if controls.nextService != upcoming { controls.nextService = upcoming }
-        let stageTime = ServiceStartClock.target(services, now: now)
+        let stageTime = ServiceStartClock.target(stageServices, later: laterServices, now: now)
         if controls.stageServiceTime != stageTime { controls.stageServiceTime = stageTime }
 
         let on = controls.sermonTimerResetsAtServiceStart && ServiceStation.runsService
@@ -77,10 +93,14 @@ final class SermonTimerAutoReset {
             due.countdownStart == nil ? "\(time) service" : "\(time) service countdown")
     }
 
-    /// Today's services: the current plan's Shepherd times first (any
-    /// plan's when it has none today), the countdowns Schedule Service set,
-    /// and the Service Day setup.
-    private func todaysServices(model: AppModel, now: Date, calendar: Calendar) -> [SermonTimerReset.Service] {
+    /// The services on `now`'s day (today, or a later day asked about for
+    /// the Before Service stage): the current plan's Shepherd times first
+    /// (any plan's when it has none that day), the countdowns Schedule
+    /// Service set, the Schedule tab's Countdowns, and the Service Day
+    /// setup, or its standard times when it was never set up.
+    private func todaysServices(
+        model: AppModel, now: Date, calendar: Calendar, standardTimes: Bool = false
+    ) -> [SermonTimerReset.Service] {
         func times(_ plan: Service) -> [Date] {
             guard plan.isTemplate != true else { return [] }
             return (plan.mxuPlanTimes ?? [])
@@ -115,7 +135,8 @@ final class SermonTimerAutoReset {
         }
         return SermonTimerReset.services(
             on: now, planTimes: planTimes, scheduled: scheduled,
-            serviceDay: model.slideBuilding.serviceDay, calendar: calendar)
+            serviceDay: model.slideBuilding.serviceDay ?? (standardTimes ? Self.standardServiceDay : nil),
+            calendar: calendar)
     }
 
     /// How long the weekly countdown's video runs today: the day's plan's

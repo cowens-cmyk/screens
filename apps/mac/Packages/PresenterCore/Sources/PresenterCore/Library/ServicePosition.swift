@@ -94,7 +94,10 @@ public enum ServicePosition: Hashable, Sendable {
             (.message, ["message", "sermon"]),
             (.closing, ["closing", "benediction"]),
         ]
-        return rules.first { $0.1.contains { compact.contains($0) } }?.0
+        if let position = rules.first(where: { $0.1.contains { compact.contains($0) } })?.0 { return position }
+        // "Close", the item after the closing song. Matched whole: "close"
+        // is inside too many other words to look for it in the middle.
+        return compact == "close" ? .closing : nil
     }
 
     /// Letters and digits only, lowercased: "Walk-In", "Walk in" and
@@ -123,8 +126,9 @@ public enum ServicePosition: Hashable, Sendable {
     /// Each plan item's position, by item id; an item with none is absent.
     ///
     /// In order: the item's own choice (`lightingCue`, "none" included);
-    /// the countdown and the pre-service slideshow; the nearest header
-    /// above that names a position; the item's type (message, announcements,
+    /// the countdown, the pre-service slideshow and the walkout; a song
+    /// under a header named for the close (the next song scene); the
+    /// nearest header above that names a position; the item's type (message, announcements,
     /// songs); and its own name. Songs count 1, 2, 3… down the plan, so a
     /// template's order gives Song 1…5 by itself. Hidden items are skipped
     /// and don't take a number.
@@ -134,10 +138,15 @@ public enum ServicePosition: Hashable, Sendable {
     ) -> [String: ServicePosition] {
         var result: [String: ServicePosition] = [:]
         var headerPosition: ServicePosition?
+        // A header that is only named for the close ("CLOSING SONG"), not
+        // pointed at the Closing scene by hand.
+        var headerNamesClosing = false
         var songs = 0
         for item in items where !item.isHidden {
             if item.itemKind == .header {
-                headerPosition = override(item.lightingCue) ?? named(item.name, customNames: customNames)
+                let chosen = override(item.lightingCue)
+                headerPosition = chosen ?? named(item.name, customNames: customNames)
+                headerNamesClosing = chosen == nil && headerPosition == .closing
                 if let headerPosition { result[item.id] = headerPosition }
                 continue
             }
@@ -150,6 +159,16 @@ public enum ServicePosition: Hashable, Sendable {
                 result[item.id] = .countdown
             } else if itemFacts.isPreService {
                 result[item.id] = .walkIn
+            } else if item.isWalkout == true {
+                // Wherever it sits (it is added last, so usually under the
+                // closing header): the Walkout scene, not that header's.
+                result[item.id] = .walkout
+            } else if headerNamesClosing, isSong(item, category: itemFacts.category) {
+                // The closing song is still a song: it takes the next song
+                // scene (Song 5 after four), and Closing waits for the item
+                // that follows it.
+                songs += 1
+                result[item.id] = .song(songs)
             } else if let headerPosition {
                 result[item.id] = headerPosition
             } else if itemFacts.category == PresentationTypes.sermon

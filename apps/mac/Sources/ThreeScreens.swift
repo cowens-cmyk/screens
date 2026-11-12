@@ -121,8 +121,20 @@ enum ShowScreens {
             outputs.reconfigurePlaceholderScreen(
                 id: screen.id, name: screen.name, width: screen.width, height: screen.height,
                 framesPerSecond: defaultFramesPerSecond)
+            keepDelayTime(outputs, screenID: screen.id, from: screen.framesPerSecond, to: defaultFramesPerSecond)
             DiagnosticsStore.shared.note(
                 "screens.frameRate", detail: "\(screen.name): \(screen.framesPerSecond) to \(defaultFramesPerSecond)")
+        }
+    }
+
+    /// A screen's video delay is counted in frames, so a change of frame
+    /// rate keeps its time: 3 frames at 30 become 6 at 60. Its slices too.
+    static func keepDelayTime(_ outputs: OutputManager, screenID: UUID, from old: Int, to new: Int) {
+        guard old > 0, new > 0, old != new else { return }
+        for id in [screenID] + (outputs.screenSlices[screenID] ?? []).map(\.id) {
+            let frames = outputs.videoDelay(forScreen: id)
+            guard frames > 0 else { continue }
+            outputs.setVideoDelay(Int((Double(frames) * Double(new) / Double(old)).rounded()), forScreen: id)
         }
     }
 
@@ -404,9 +416,11 @@ struct ScreenOutput {
 
     func setFrameRate(_ framesPerSecond: Int) {
         guard framesPerSecond > 0, framesPerSecond != screen.framesPerSecond else { return }
+        let before = screen.framesPerSecond
         outputs.reconfigurePlaceholderScreen(
             id: screen.id, name: screen.name, width: screen.width, height: screen.height,
             framesPerSecond: framesPerSecond)
+        ShowScreens.keepDelayTime(outputs, screenID: screen.id, from: before, to: framesPerSecond)
         // NDI and DeckLink take their rate when they start.
         if ndiOn {
             NDIScreenOutputs.shared.enable(screenID: screen.id, render: render)

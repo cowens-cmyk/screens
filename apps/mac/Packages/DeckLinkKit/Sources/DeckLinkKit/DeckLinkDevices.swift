@@ -53,6 +53,40 @@ public struct DeckLinkDisplayMode: Sendable, Equatable, Codable {
         Double(timeScale) / Double(frameDuration)
     }
 
+    /// The mode a screen goes out in when no format was chosen for it. The
+    /// screen's own size and frame rate decide, progressive first: a 1080p
+    /// screen at 60 goes out 1080p59.94 (or 1080p60), never interlaced
+    /// because Desktop Video Setup happens to say 1080i59.94, which is what
+    /// it says until someone changes it. The card's setting only picks
+    /// between modes that already fit (1080p60 over 1080p59.94), and is what
+    /// goes out when the port has nothing at the screen's rate; with neither,
+    /// the fastest standard rate under it.
+    public static func automatic(
+        width: Int, height: Int, framesPerSecond: Int, configured: UInt32?,
+        in modes: [DeckLinkDisplayMode]
+    ) -> DeckLinkDisplayMode? {
+        if let configured,
+           let card = modes.first(where: { $0.modeID == configured }),
+           card.width == width, card.height == height, card.progressive, framesPerSecond > 0,
+           abs(card.framesPerSecond - Double(framesPerSecond)) / Double(framesPerSecond) <= 0.002 {
+            return card
+        }
+        if let match = bestMatch(
+            width: width, height: height, framesPerSecond: framesPerSecond, in: modes) {
+            return match
+        }
+        // Nothing at the screen's rate (an older port, or keying that the
+        // faster mode can't do): what the card is set to at this size, as
+        // before, since that is the format the switcher was set up for.
+        if let card = configured.flatMap({ id in
+            modes.first { $0.modeID == id && $0.width == width && $0.height == height }
+        }) {
+            return card
+        }
+        return bestMatchAtOrBelow(
+            width: width, height: height, framesPerSecond: framesPerSecond, in: modes)
+    }
+
     /// The mode for a screen drawn at `framesPerSecond`: one at that rate,
     /// else the fastest standard rate under it the port has at that size. A
     /// card that tops out at 1080p30 still sends a 60 fps screen, at 30,

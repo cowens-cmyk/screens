@@ -555,6 +555,8 @@ enum SongEditorPending {
         keptAside[id] = (cards, base)
     }
 
+    static func hasKeptAside(_ id: String) -> Bool { keptAside[id] != nil }
+
     static func takeKeptAside(_ id: String) -> (cards: [SongSlides.Card], base: [Slide])? {
         keptAside.removeValue(forKey: id)
     }

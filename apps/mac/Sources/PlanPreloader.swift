@@ -1,6 +1,7 @@
 import Foundation
 import MediaEngine
 import PresenterCore
+import SlideScene
 import SwiftUI
 
 /// Loads the day's plan into memory as soon as it's known, so nothing is
@@ -29,17 +30,123 @@ final class PlanPreloader {
     private(set) var status: Status?
 
     @ObservationIgnored private weak var model: AppModel?
+    @ObservationIgnored private weak var controls: ServiceControls?
     @ObservationIgnored private var render: RenderContext?
+    @ObservationIgnored private var playersGeneration = 0
+    /// Where the plan was last known to be, kept while nothing is on the
+    /// screens between items.
+    @ObservationIgnored private var lastLiveIndex: Int?
+    @ObservationIgnored private var lastPlanID: String?
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var pending: Task<Void, Never>?
 
-    func start(model: AppModel, render: RenderContext?) {
+    func start(model: AppModel, render: RenderContext?, controls: ServiceControls) {
         guard self.model == nil, let render else { return }
         self.model = model
         self.render = render
+        self.controls = controls
         model.whenLibraryReady { [weak self] in
             self?.schedule(after: .milliseconds(200))
             self?.watch()
+            self?.watchPosition()
+        }
+    }
+
+    // MARK: The next videos' players
+
+    /// How many players wait at once: the item on screen and the next two
+    /// seldom have more videos between them.
+    private static let playersStandingBy = 6
+
+    private func watchPosition() {
+        guard let model, let controls else { return }
+        withObservationTracking {
+            _ = controls.liveContextID
+            _ = controls.livePresentationID
+            _ = model.currentServiceID
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.readyUpcomingPlayers()
+                self?.watchPosition()
+            }
+        }
+    }
+
+    /// One video the plan is about to play, and how.
+    struct UpcomingVideo: Hashable {
+        var mediaID: String
+        var loop: Bool
+    }
+
+    /// The videos of the item on screen and the two after it, in order,
+    /// each with the loop it will be played with (a slide's own choice, else
+    /// the video's; the countdown always once).
+    static func upcomingVideos(
+        items: [ServiceItem], liveIndex: Int?, limit: Int,
+        deck: (String) -> Presentation?, media: (String) -> MediaItem?
+    ) -> [UpcomingVideo] {
+        let from = max(liveIndex ?? 0, 0)
+        var found: [UpcomingVideo] = []
+        func add(_ id: String, loops: Bool?, once: Bool = false) {
+            guard found.count < limit, let item = media(id), item.mediaKind == .video else { return }
+            let video = UpcomingVideo(mediaID: id, loop: once ? false : loops ?? item.playsLooping)
+            if !found.contains(video) { found.append(video) }
+        }
+        for item in items.dropFirst(from).prefix(3) {
+            switch item.itemKind {
+            case .media:
+                add(item.refId, loops: nil, once: item.isCountdown == true)
+            case .presentation:
+                guard let deck = deck(item.refId) else { continue }
+                for slide in deck.slides {
+                    if let background = SlideSceneBuilder.effectiveBackground(
+                        slide: slide, presentation: deck, arrangementId: item.arrangementId) {
+                        add(background.mediaId, loops: background.loops)
+                    }
+                }
+            default:
+                break
+            }
+        }
+        return found
+    }
+
+    /// Readies players for the videos about to be shown and lets go of the
+    /// ones no longer coming up. Runs as the plan moves on and after each
+    /// pass; a video already playing needs none.
+    private func readyUpcomingPlayers() {
+        guard let model, let render, let controls, let blobs = model.blobs else { return }
+        let engine = render.media
+        playersGeneration += 1
+        let mine = playersGeneration
+        guard let planID = model.currentServiceID, let plan = model.resident.services.value(planID) else {
+            engine.releaseStandbyPlayers(keeping: [])
+            return
+        }
+        if planID != lastPlanID {
+            lastPlanID = planID
+            lastLiveIndex = nil
+        }
+        let items = model.fireableItems(plan)
+        if let live = controls.liveContextID, let index = items.firstIndex(where: { $0.id == live }) {
+            lastLiveIndex = index
+        }
+        let playing = Set(engine.playingIDs)
+        let wanted = Self.upcomingVideos(
+            items: items, liveIndex: lastLiveIndex, limit: Self.playersStandingBy,
+            deck: { model.presentation($0) }, media: { model.media($0) }
+        ).compactMap { video -> (url: URL, loop: Bool, options: PlaybackOptions)? in
+            guard !playing.contains(video.mediaID), let item = model.media(video.mediaID),
+                  let url = blobs.url(forHash: item.fileHash)
+            else { return nil }
+            return (url, video.loop, PlaybackOptions(inPoint: item.inPoint, outPoint: item.outPoint, rate: item.playRate))
+        }
+        engine.releaseStandbyPlayers(keeping: Set(wanted.map(\.url)))
+        Task { [weak self] in
+            for video in wanted {
+                guard self?.playersGeneration == mine else { return }
+                await engine.standBy(playing: video.url, loop: video.loop, options: video.options)
+            }
         }
     }
 
@@ -159,8 +266,10 @@ final class PlanPreloader {
                 if engine.isStandingBy(url) {
                     pictureRoom -= bytes
                 } else if bytes <= pictureRoom {
-                    pictureRoom -= bytes
-                    await Task.detached(priority: .utility) { _ = try? engine.standBy(still: url) }.value
+                    // What it really took, which is more than the guess for
+                    // a picture whose size the library never recorded.
+                    let taken = await Task.detached(priority: .utility) { (try? engine.standBy(still: url)) ?? 0 }.value
+                    pictureRoom -= max(taken, bytes)
                     pictures += 1
                 } else {
                     leftOut += 1
@@ -168,6 +277,10 @@ final class PlanPreloader {
             case .video:
                 if !engine.isStandingBy(url) {
                     try? await engine.standBy(video: url)
+                    // One that wouldn't open isn't read (it would be again
+                    // on every pass), and a pass that has been overtaken
+                    // stops here rather than read a whole file first.
+                    guard engine.isStandingBy(url), mine == generation else { continue }
                     let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
                     if size > 0, size <= videoRoom {
                         videoRoom -= size
@@ -181,6 +294,7 @@ final class PlanPreloader {
         }
         guard mine == generation else { return }
         status = nil
+        readyUpcomingPlayers()
         if pictures + videos > 0 || leftOut > 0 {
             let seconds = Date().timeIntervalSince(started)
             DiagnosticsStore.shared.note(
