@@ -109,6 +109,27 @@ private let sundays = WeeklyCountdown.Setup(
     #expect(old.removingEmptyServiceDayFolder()?.nodes == ["x"])
 }
 
+@Test func theDaysStartsLeadToItsServices() {
+    var made = WeeklyCountdown.triggers(for: sundays, makeID: counter())
+    #expect(WeeklyCountdown.starts(on: at(11, 15, 6, 0), triggers: made, calendar: eastern)
+        == [at(11, 15, 7, 55), at(11, 15, 9, 25), at(11, 15, 11, 10)])
+    // Asked for after the last one has started, the day still has all three.
+    #expect(WeeklyCountdown.starts(on: at(11, 15, 13, 0), triggers: made, calendar: eastern).count == 3)
+    #expect(WeeklyCountdown.starts(on: at(11, 14, 9, 0), triggers: made, calendar: eastern).isEmpty)
+    made[1].enabled = false
+    #expect(WeeklyCountdown.starts(on: at(11, 15, 6, 0), triggers: made, calendar: eastern)
+        == [at(11, 15, 7, 55), at(11, 15, 11, 10)])
+
+    // A five-minute video into the services at 8:00, 9:30 and 11:15.
+    let services = SermonTimerReset.services(
+        on: at(11, 15, 6, 0), planTimes: [],
+        scheduled: WeeklyCountdown.starts(on: at(11, 15, 6, 0), triggers: WeeklyCountdown.triggers(for: sundays), calendar: eastern)
+            .map { .init(start: $0, serviceTime: ServiceCountdown.serviceTime(start: $0, videoSeconds: 300)) },
+        serviceDay: nil, calendar: eastern)
+    #expect(services.map(\.time) == [at(11, 15, 8, 0), at(11, 15, 9, 30), at(11, 15, 11, 15)])
+    #expect(ServiceStartClock.target(services, now: at(11, 15, 8, 40)) == at(11, 15, 9, 30))
+}
+
 @Test func daysInWords() {
     #expect(WeeklyCountdown.daysLabel(sundays) == "Sundays")
     var two = sundays

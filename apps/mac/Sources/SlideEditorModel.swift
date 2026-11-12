@@ -3242,7 +3242,7 @@ final class SlideEditorModel {
                     if let poster = await ThumbnailStore.shared.poster(for: item, blobs: blobs) {
                         _ = try? await render.media.showStill(
                             image: poster,
-                            cacheKey: "\(item.id)|\(item.fileHash)|\(item.inPoint ?? 0)",
+                            cacheKey: "\(item.id)|\(item.fileHash)|\(MediaPosterStore.posterTime(of: item))",
                             id: editorID)
                     }
                 case .image:

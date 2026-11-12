@@ -12,6 +12,16 @@ public enum StandingItems {
     /// How long the walkout plays before the pre-service slides come back.
     public static let defaultWalkoutReturnMinutes: Double = 8
 
+    /// The plan's Closing Song, whatever song is in it: an item named for
+    /// it ("Closing Song", "Closing"), or one the plan places at Closing (a
+    /// song under a Closing header). Going up, it sets the Sermon timer back.
+    public static func isClosingSong(_ item: ServiceItem, position: ServicePosition?) -> Bool {
+        guard item.itemKind == .presentation || item.itemKind == .info else { return false }
+        if case .closing = position { return true }
+        if case .closing = ServicePosition.named(item.name) { return true }
+        return false
+    }
+
     public static func transition(in service: Service) -> ServiceItem? {
         service.items.first { $0.isTransition == true }
     }

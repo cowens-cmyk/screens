@@ -239,6 +239,7 @@ struct MxUSlidesApp: App {
             ShepherdSync.shared.attach(model, controls: controls)
             PlanTimeBridge.shared.start(model)
             SermonTimerAutoReset.shared.start(model: model, controls: controls)
+            SongSlideAutoFit.shared.start(model: model, controls: controls)
             WebsiteEventSync.shared.start(model: model, controls: controls)
             MessageCleanupRunner.shared.start(model: model)
             MediaDriveMonitor.shared.start(model: model)

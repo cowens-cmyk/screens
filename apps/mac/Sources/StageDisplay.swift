@@ -33,6 +33,9 @@ enum StageLayouts {
     /// Before the service and after it ends: the countdown to the next
     /// service's start.
     static let preServiceID = BasicTemplates.preServiceStageID
+    /// During the announcements: their 90 seconds, the clock, and what the
+    /// room sees.
+    static let announcementsID = BasicTemplates.announcementsStageID
     /// Not a layout: a slide's stage choice that shows the audience screen
     /// (right-click › Show on Stage Display).
     static let audienceID = "screens.stage.audience"
@@ -43,6 +46,7 @@ enum StageLayouts {
         switch mode {
         case .message: messageID
         case .preService: preServiceID
+        case .announcements: announcementsID
         case .worship, .mirror: worshipID
         }
     }
@@ -52,6 +56,7 @@ enum StageLayouts {
         case messageID: .sermon
         case videoID: .video
         case preServiceID: .preService
+        case announcementsID: .announcements
         default: .worship
         }
     }
@@ -61,6 +66,7 @@ enum StageLayouts {
         case messageID: "Stage — Message"
         case videoID: "Stage — Video"
         case preServiceID: "Stage — Before Service"
+        case announcementsID: "Stage — Announcements"
         default: "Stage — Worship"
         }
     }
@@ -79,12 +85,14 @@ enum StageLayouts {
     /// Libraries seeded before Before Service existed have no document for
     /// it, so the stand-in is what they show.
     static let preServiceFallback = make(preServiceID)
+    static let announcementsFallback = make(announcementsID)
 
     static func fallback(for id: String) -> ConfidenceLayout {
         switch id {
         case messageID: messageFallback
         case videoID: videoFallback
         case preServiceID: preServiceFallback
+        case announcementsID: announcementsFallback
         default: worshipFallback
         }
     }

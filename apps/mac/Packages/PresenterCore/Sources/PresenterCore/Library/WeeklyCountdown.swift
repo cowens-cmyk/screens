@@ -146,6 +146,19 @@ public enum WeeklyCountdown {
             .map(\.id)
     }
 
+    /// When the weekly countdowns start on `day`, earliest first: the ones
+    /// switched on whose days and dates include it. The Before Service stage
+    /// counts to the services these lead into (SermonTimerAutoReset).
+    public static func starts(on day: Date, triggers: [ScheduleTrigger], calendar: Calendar = .current) -> [Date] {
+        let dayStart = calendar.startOfDay(for: day)
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
+        return triggers
+            .filter { isWeeklyCountdown($0) && ($0.enabled ?? true) && $0.archived != true }
+            .compactMap { PlanSchedule.upcoming($0, after: dayStart.addingTimeInterval(-1), count: 1, calendar: calendar).first }
+            .filter { $0 >= dayStart && $0 < dayEnd }
+            .sorted()
+    }
+
     /// Whether the plan has its own countdown set for that day with Start
     /// Time… (Schedule Service). That one is timed for this plan's service,
     /// so the weekly one stands aside rather than play the video twice.

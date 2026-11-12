@@ -1873,6 +1873,11 @@
           "optional": true
         },
         {
+          "name": "posterSeconds",
+          "type": "double",
+          "optional": true
+        },
+        {
           "name": "playRate",
           "type": "double",
           "optional": true

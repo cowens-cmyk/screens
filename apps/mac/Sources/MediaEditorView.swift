@@ -1189,6 +1189,16 @@ struct MediaEditorView: View {
                     clear: { writeTrim(outPoint: .some(nil)) }
                 )
             }
+            if entry.kind == .media, cachedMedia?.mediaKind == .video {
+                LabeledContent("Thumbnail") {
+                    trimControls(
+                        value: cachedMedia?.posterSeconds,
+                        set: { writePoster(tidy(preview.elapsed)) },
+                        clear: { writePoster(nil) }
+                    )
+                }
+                .help("The frame shown for this video in the library, the plan and on slides. Move the preview to the frame you want, then Set.")
+            }
             if trimIn != nil || trimOut != nil, preview.duration > 0 {
                 let length = min(trimOut ?? preview.duration, preview.duration) - max(trimIn ?? 0, 0)
                 let rate = cachedMedia?.playRate ?? 1
@@ -1220,6 +1230,13 @@ struct MediaEditorView: View {
                 .help("Clear")
             }
         }
+    }
+
+    /// The frame the video's thumbnail is taken from; nil goes back to its
+    /// in point.
+    private func writePoster(_ seconds: Double?) {
+        cachedMedia?.posterSeconds = seconds
+        model.updateMedia(entry.id) { $0.posterSeconds = seconds }
     }
 
     private func writeTrim(inPoint: Double?? = nil, outPoint: Double?? = nil) {

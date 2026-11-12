@@ -49,8 +49,11 @@ struct PlanShell: View {
     @State private var creatingPlan = false
     @State private var controlsShown = false
     @State private var addingVideo = false
-    /// Songs open in the song editor; this switches to the slide editor.
-    @State private var songSlideEditor = false
+    /// Songs open in the slide editor like everything else; Words & Chords
+    /// switches to the card-by-card song editor.
+    @State private var songWordsEditor = false
+    /// The stage layout open from a slide's Stage switch.
+    @State private var stageEdit: StageEdit?
     @State private var messagePlanID: String?
     @State private var themeFromImage = false
     @State private var scriptureShown = false
@@ -127,7 +130,11 @@ struct PlanShell: View {
             .onChange(of: modeRaw) { _, _ in presentFocusScroll.reset() }
             .onChange(of: showWholePlan) { _, _ in presentFocusScroll.reset() }
             .onChange(of: planOpenersKey) { ensurePlanOpeners() }
-            .onChange(of: itemID) { _, _ in songSlideEditor = false }
+            .onChange(of: itemID) { _, _ in
+                songWordsEditor = false
+                stageEdit = nil
+            }
+            .onChange(of: model.selectedEntryID) { _, _ in stageEdit = nil }
             .task { await appeared() }
     }
 
@@ -920,6 +927,76 @@ struct PlanShell: View {
 
     private var wholePlanShown: Bool { mode == .present && showWholePlan }
 
+    // MARK: A slide's Audience and Stage
+
+    struct StageEdit: Equatable {
+        var presentationID: String
+        var slideID: String?
+        var layoutID: String
+    }
+
+    private func audienceDisplays(_ presentationID: String) -> SlideDisplays {
+        let isSong = model.presentation(presentationID)?.presentationKind == .song
+        return SlideDisplays(
+            showing: .audience,
+            choose: { display, slideID in
+                if display == .stage { editStage(presentationID, slideID: slideID) }
+            },
+            openWords: isSong ? { songWordsEditor = true } : nil)
+    }
+
+    private func stageDisplays(_ target: StageEdit) -> SlideDisplays {
+        let deck = model.presentation(target.presentationID)
+        let slide = target.slideID.flatMap { id in deck?.slides.first { $0.id == id } }
+        let index = target.slideID.flatMap { id in deck?.slides.firstIndex { $0.id == id } }
+        let slideName = slide.map { !$0.name.isEmpty ? $0.name : "Slide \((index ?? 0) + 1)" } ?? "This slide"
+        let usualID = model.stageLayoutForSlide(nil, in: target.presentationID)
+        let own = slide?.stageLayoutId ?? ""
+        let side = SlideDisplays.StageSide(
+            slideName: slideName,
+            slideChoice: own == StageLayouts.audienceID ? "" : own,
+            usualName: model.stageLayoutName(usualID),
+            layoutName: model.stageLayoutName(target.layoutID),
+            setLayout: { id in
+                guard let slideID = target.slideID else { return }
+                model.updateSlide(presentationID: target.presentationID, slideID: slideID, undoLabel: "Stage Display") {
+                    $0.stageLayoutId = id.isEmpty ? nil : id
+                }
+                editStage(target.presentationID, slideID: slideID, layoutID: id.isEmpty ? usualID : id)
+            },
+            copyForSlide: {
+                guard let slideID = target.slideID else { return }
+                Task {
+                    let name = "\(deck?.name ?? "Slide") \u{2014} \(slideName) Stage"
+                    guard let copy = await model.copyStageLayout(target.layoutID, named: name) else { return }
+                    model.updateSlide(presentationID: target.presentationID, slideID: slideID, undoLabel: "Stage Display") {
+                        $0.stageLayoutId = copy
+                    }
+                    stageEdit = StageEdit(presentationID: target.presentationID, slideID: slideID, layoutID: copy)
+                }
+            })
+        return SlideDisplays(
+            showing: .stage,
+            choose: { display, _ in
+                guard display == .audience else { return }
+                model.pendingEditorSlideID = target.slideID
+                stageEdit = nil
+            },
+            stage: target.slideID == nil ? nil : side)
+    }
+
+    /// Opens the stage layout the slide brings up (or `layoutID`), making a
+    /// built-in one from its template the first time.
+    private func editStage(_ presentationID: String, slideID: String?, layoutID: String? = nil) {
+        let id = layoutID ?? model.stageLayoutForSlide(slideID, in: presentationID)
+        let target = StageEdit(presentationID: presentationID, slideID: slideID, layoutID: id)
+        guard AppModel.builtInStageLayouts.contains(id) else {
+            stageEdit = target
+            return
+        }
+        StageEditorButton.open(model: model, id: id) { _ in stageEdit = target }
+    }
+
     /// The page scrolled to this item by itself (the operator's scroll, or
     /// following the live slide): highlight it in the list without a jump.
     private func showItem(_ id: String) {
@@ -932,14 +1009,24 @@ struct PlanShell: View {
     private var editor: some View {
         if let refID = selectedRefID, let entry = model.indexEntry(refID) {
             switch entry.kind {
-            case .presentation where !songSlideEditor && model.presentation(entry.id)?.presentationKind == .song:
-                SongEditorView(model: model, presentationID: entry.id) { songSlideEditor = true }
+            // A song with no slides yet opens on its words, to type them in.
+            case .presentation where model.presentation(entry.id).map({
+                $0.presentationKind == .song && (songWordsEditor || $0.slides.isEmpty) }) == true:
+                SongEditorView(model: model, presentationID: entry.id) { songWordsEditor = false }
                     .id(entry.id)
+            case .presentation where stageEdit?.presentationID == entry.id:
+                if let stageEdit {
+                    SlideEditorView(
+                        appModel: model, render: render, presentationID: stageEdit.layoutID,
+                        isConfidenceLayout: true, displays: stageDisplays(stageEdit))
+                        .id("stage::\(stageEdit.layoutID)::\(model.importReplaceVersion)")
+                }
             case .presentation, .theme, .overlay, .confidenceLayout:
                 SlideEditorView(
                     appModel: model, render: render, presentationID: entry.id,
                     isTheme: entry.kind == .theme, isOverlay: entry.kind == .overlay,
-                    isConfidenceLayout: entry.kind == .confidenceLayout)
+                    isConfidenceLayout: entry.kind == .confidenceLayout,
+                    displays: entry.kind == .presentation ? audienceDisplays(entry.id) : nil)
                     .id("\(entry.id)::\(model.importReplaceVersion)")
             case .media, .audio:
                 MediaEditorView(model: model, entry: entry).id(entry.id)

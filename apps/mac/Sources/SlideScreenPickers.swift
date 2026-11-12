@@ -20,6 +20,18 @@ enum StreamWording {
     static let nothing = "Nothing (camera only)"
     static let lowerThirdImage = "Lower-Third Image…"
     static let removeLowerThirdImage = "Remove Lower-Third Image"
+    static let chooseLowerThird = "Choose Lower Third"
+
+    /// A theme's lower thirds (designs filed under a folder named for
+    /// them) ahead of its other designs.
+    static func lowerThirdsFirst(_ slides: [Slide]) -> [Slide] {
+        let thirds = lowerThirds(slides)
+        return thirds + slides.filter { !thirds.contains($0) }
+    }
+
+    static func lowerThirds(_ slides: [Slide]) -> [Slide] {
+        slides.filter { ($0.folder ?? "").lowercased().contains("third") }
+    }
 }
 
 /// A slide's stage choice that shows the audience screen, worded the same
@@ -65,7 +77,7 @@ struct SlideStreamPicker: View {
                 Divider()
                 ForEach(designs, id: \.id) { theme in
                     Menu(theme.name) {
-                        ForEach(lowerThirdsFirst(theme.slides), id: \.id) { design in
+                        ForEach(StreamWording.lowerThirdsFirst(theme.slides), id: \.id) { design in
                             Button(title(design)) {
                                 set(StreamDesign(category: "", mode: .design, themeId: theme.id, slideId: design.id))
                             }
@@ -104,11 +116,6 @@ struct SlideStreamPicker: View {
         for id in targetSlideIDs(model) {
             model.updateSlide(id) { $0.streamDesign = design }
         }
-    }
-
-    private func lowerThirdsFirst(_ slides: [Slide]) -> [Slide] {
-        let thirds = slides.filter { ($0.folder ?? "").lowercased().contains("third") }
-        return thirds + slides.filter { !thirds.contains($0) }
     }
 
     private func title(_ slide: Slide) -> String {

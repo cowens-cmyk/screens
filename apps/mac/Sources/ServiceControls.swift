@@ -210,6 +210,9 @@ final class ServiceControls {
         followBeforeService(
             slide: slide, in: presentation, arrangementId: arrangementId, contextID: contextID,
             occurrence: occurrence)
+        // Their own videos (a welcome loop, the logo) leave the stage as it is.
+        let holds = ShowSetup.shared.stageMode == .preService || ShowSetup.shared.stageMode == .announcements
+        if ShowSetup.shared.stageHoldsThroughVideos != holds { ShowSetup.shared.stageHoldsThroughVideos = holds }
         if !deckWasLive {
             actionRouter?.presentationDidGoLive(presentation)
         }
@@ -881,6 +884,12 @@ final class ServiceControls {
         // The plan's countdown plays once and then moves the plan on,
         // whatever the video is set to elsewhere.
         let countdown = contextID.map(isCountdownItem) ?? false
+        // The countdown shows on the stage as a video (its time left is the
+        // time to the service), and so does any video put up outside the
+        // announcements: only a video during them leaves the stage alone.
+        if countdown || ShowSetup.shared.stageMode != .announcements, ShowSetup.shared.stageHoldsThroughVideos {
+            ShowSetup.shared.stageHoldsThroughVideos = false
+        }
         let loops: Bool? = countdown && mediaItem.mediaKind == .video ? false : loopsOverride
         let playsOnce = mediaItem.mediaKind == .video && !(loops ?? mediaItem.playsLooping)
 
@@ -1033,6 +1042,14 @@ final class ServiceControls {
         if item.isWalkout == true { armWalkoutReturn(itemID: item.id) }
 
         let positions = ServiceLighting.positions(in: service, model: appModel)
+        // The Closing Song, whichever song is in it: the message is over,
+        // so the Sermon timer goes back to its full length, stopped, ready
+        // for the next service. Every time it goes up.
+        if StandingItems.isClosingSong(item, position: positions[item.id]) {
+            resetSermonTimer(to: sermonLength)
+            DiagnosticsStore.shared.note("sermonTimer.resetAtClosingSong", detail: item.name)
+            return
+        }
         guard case .song = positions[item.id] else { return }
         let messageID = StandingItems.messageItemID(in: service, positions: positions)
         let index = { (id: String?) in id.flatMap { id in service.items.firstIndex { $0.id == id } } }
@@ -1167,6 +1184,8 @@ final class ServiceControls {
         setup.stageLayoutOverride = presentation.stageLayoutId
         setup.streamThemeOverride = presentation.streamThemeId
         let isMessage = PresentationTypes.category(of: presentation) == PresentationTypes.sermon
+        let isAnnouncements = PresentationTypes.category(of: presentation) == PresentationTypes.announcements
+        if isAnnouncements { startAnnouncementsTimer() }
         guard setup.stageFollowsItems, presentation.stageLayoutId == nil, setup.stageMode != .mirror else {
             if isMessage { startSermonTimer(for: presentation) }
             return
@@ -1174,8 +1193,14 @@ final class ServiceControls {
         if isMessage {
             setup.stageMode = .message
             startSermonTimer(for: presentation)
+        } else if isAnnouncements {
+            setup.stageMode = .announcements
         } else if PresentationTypes.category(of: presentation) == PresentationTypes.worship {
             // Songs, and songs imported from ProPresenter (filed as worship).
+            setup.stageMode = .worship
+        } else if setup.stageMode == .announcements {
+            // Something else after the announcements (a scripture, a deck
+            // with no type): their layout and timer don't stay up over it.
             setup.stageMode = .worship
         }
     }
@@ -1267,6 +1292,16 @@ final class ServiceControls {
             DiagnosticsStore.shared.note("sermonTimer.restarted", detail: "still running from an earlier service")
         }
         timers.setDuration(id: id, seconds: seconds)
+        timers.setKeepsCountingAfterZero(id: id, true)
+        timers.reset(id: id)
+        timers.start(id: id)
+    }
+
+    /// The announcements' 90 seconds, from the top each time they go up.
+    private func startAnnouncementsTimer() {
+        let id = timers.snapshot(id: AnnouncementsTimer.id)?.id
+            ?? timers.addCountdown(id: AnnouncementsTimer.id, name: AnnouncementsTimer.name, seconds: AnnouncementsTimer.seconds)
+        timers.setDuration(id: id, seconds: AnnouncementsTimer.seconds)
         timers.setKeepsCountingAfterZero(id: id, true)
         timers.reset(id: id)
         timers.start(id: id)

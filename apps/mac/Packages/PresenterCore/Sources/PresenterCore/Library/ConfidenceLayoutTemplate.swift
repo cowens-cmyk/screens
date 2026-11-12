@@ -11,6 +11,8 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     /// Before the service and after it ends: a big countdown to the next
     /// service's start.
     case preService
+    /// The announcements: their 90 seconds, the time, and what the room sees.
+    case announcements
 
     /// The built-in timers Service Tracking makes from the day's service
     /// times. The Before Service layout shows Until Service; any layout can
@@ -26,6 +28,7 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         case .sermon: "Sermon"
         case .video: "Video"
         case .preService: "Before Service"
+        case .announcements: "Announcements"
         }
     }
 
@@ -41,6 +44,7 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         case .sermon: Self.sermon(name: name)
         case .video: Self.video(name: name)
         case .preService: Self.preService(name: name)
+        case .announcements: Self.announcements(name: name)
         }
     }
 
@@ -74,8 +78,11 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     /// slide has them. Along the bottom, three slate boxes: the clock with
     /// seconds, the song, and its key, where a stage message replaces them.
     /// `nextChords: false` is the design before the next lines had chords,
-    /// kept only to recognise untouched copies of it.
-    static func worship(name: String, nextChords: Bool = true) -> ConfidenceLayout {
+    /// and `nextMinSize: earlierNextSlideMinSize` the one before a long next
+    /// line broke in two; both kept only to recognise untouched copies.
+    static func worship(
+        name: String, nextChords: Bool = true, nextMinSize: Double = nextSlideMinSize
+    ) -> ConfidenceLayout {
         // The column's two blocks: beside the words, and beside the next lines.
         let column: (x: Double, width: Double) = (30, 110)
         let currentBlock: (y: Double, height: Double) = (40, 460)
@@ -108,7 +115,7 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         // proportion of the (smaller) text, and the box shrinks them to fit.
         var next = linked("Next Slide", .nextSlide,
                           x: words.x, y: 520, width: words.width, height: 350,
-                          size: 80, color: worshipNextGray, alignment: .left, shrink: true, minSize: 44,
+                          size: 80, color: worshipNextGray, alignment: .left, shrink: true, minSize: nextMinSize,
                           chords: nextChords, maxLines: 3)
         next.textStyle?.fontName = "HelveticaNeue-Bold"
         next.textStyle?.verticalAlignment = .top
@@ -267,13 +274,40 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     /// gets the new design's objects; one anybody has touched is left alone.
     public static func upgradedWorshipObjects(for layout: ConfidenceLayout) -> [SlideObject]? {
         let earlier = [
-            worship(name: layout.name, nextChords: false),
+            worship(name: layout.name, nextMinSize: earlierNextSlideMinSize),
+            worship(name: layout.name, nextChords: false, nextMinSize: earlierNextSlideMinSize),
             legacyWorship(name: layout.name),
             previousWorship(name: layout.name, centered: true),
             previousWorship(name: layout.name),
         ]
         guard earlier.contains(where: { isUntouched(layout, comparedWith: $0) }) else { return nil }
         return worship(name: layout.name).objects
+    }
+
+    /// The smallest the next slide's words get. A line is kept whole and
+    /// made smaller to fit, and at 44 a long one ran across the stage on one
+    /// small line; at 64 it breaks in two (evenly) and stays readable.
+    public static let nextSlideMinSize: Double = 64
+    static let earlierNextSlideMinSize: Double = 44
+
+    /// A saved layout whose next-slide box still has the old template's
+    /// sizes (80 down to 44) takes the new smallest size, so a long next
+    /// line breaks in two rather than shrinking. Nil when there is nothing
+    /// to change; a box someone has resized is left as it is.
+    public static func breakingLongNextLines(for layout: ConfidenceLayout) -> [SlideObject]? {
+        var changed = false
+        let objects = layout.objects.map { object -> SlideObject in
+            guard object.objectKind == .text, object.textLink?.source == .nextSlide,
+                  (object.textLink?.sourceObjectName ?? "").isEmpty,
+                  object.textStyle?.autoShrink == true, object.textStyle?.fontSize == 80,
+                  object.textStyle?.minFontSize == earlierNextSlideMinSize
+            else { return object }
+            var object = object
+            object.textStyle?.minFontSize = nextSlideMinSize
+            changed = true
+            return object
+        }
+        return changed ? objects : nil
     }
 
     /// A saved stage layout whose current slide shows chords but whose next
@@ -342,6 +376,44 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
                            shrink: true, minSize: 48, clockFormat: "h:mm")
         clock.textStyle?.fontName = "HelveticaNeue-Medium"
         return ConfidenceLayout(id: UUID().uuidString, name: name, objects: [remaining, box, timer, clock])
+    }
+
+    /// The name of the box where a layout shows what the audience screen
+    /// shows, scaled to fit (StageScenes). Any layout can have one.
+    public static let audienceBoxName = "Audience"
+
+    /// During the announcements: what the room sees, with their time left
+    /// (90 seconds from when they went up, red past 0:00) and the time of
+    /// day under it. Videos in the announcements don't take the stage over,
+    /// so this stays up throughout.
+    static func announcements(name: String) -> ConfidenceLayout {
+        var audience = SlideObject(id: UUID().uuidString, objectKind: .shape, name: audienceBoxName, text: "")
+        audience.shapeKind = .rectangle
+        audience.x = 360
+        audience.y = 30
+        audience.width = 1200
+        audience.height = 675
+        audience.fill = ObjectFill(fillKind: .solid, colorHex: "#141414FF")
+        var timer = linked("Announcements Timer", .timer, x: 60, y: 775, width: 1100, height: 280,
+                           size: 260, color: messageGreen, tabular: true, shrink: true, minSize: 80)
+        timer.textLink?.timerId = AnnouncementsTimer.id
+        timer.textLink?.usesWarningColor = false
+        timer.textStyle?.fontName = "HelveticaNeue-Bold"
+        var clock = linked("Clock", .clock, x: 1220, y: 775, width: 640, height: 280,
+                           size: 190, color: white, tabular: true, shrink: true, minSize: 60,
+                           clockFormat: "h:mm")
+        clock.textStyle?.fontName = "HelveticaNeue-Medium"
+        return ConfidenceLayout(
+            id: UUID().uuidString,
+            name: name,
+            objects: [
+                audience,
+                caption("TIME LEFT", x: 60, y: 725, width: 1100, height: 50, size: 34),
+                timer,
+                caption("TIME", x: 1220, y: 725, width: 640, height: 50, size: 34),
+                clock,
+            ]
+        )
     }
 
     /// The Worship layout as it was made until October 2026: yellow lyrics

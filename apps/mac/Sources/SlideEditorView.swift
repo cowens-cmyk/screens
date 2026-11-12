@@ -15,6 +15,10 @@ struct SlideEditorView: View {
 
     var isConfidenceLayout = false
 
+    /// The Audience / Stage switch, when the editor is one of a slide's
+    /// displays (PlanShell).
+    var displays: SlideDisplays?
+
     private struct QuickEditTarget: Identifiable {
         let id: String
     }
@@ -157,6 +161,10 @@ struct SlideEditorView: View {
             VStack(spacing: 0) {
                 Color.clear
                     .frame(height: ShellView.headerHeight - CornerStandard.panelInset)
+                if let displays {
+                    SlideDisplayBar(appModel: appModel, displays: displays) { model.currentSlide?.id }
+                    Divider()
+                }
                 editorToolbar(model)
                 Divider()
                 canvas(model)

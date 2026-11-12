@@ -58,7 +58,10 @@ Strings are exact. Help text: `Stage display: <stage>. Livestream: <stream>.`
    **Own layout**
 3. First action with `kind == "setStageMode"`, by `stageMode`: `worship` →
    **Lyrics + chords**, `message` → **Message timer**, `preService` → **Before
-   service**, `mirror` → **Audience screen** (other values fall through)
+   service**, `announcements` → **Announcements**, `mirror` → **Audience
+   screen** (other values fall through)
+3a. Type `Announcements` → **Announcements** (before the video rule: a video
+   in the announcements doesn't switch the stage)
 4. Video only → **Video time left**
 5. `item.isWalkout == true`, or `presentation.id ==
    slideBuildingSettings.serviceDay.walkoutPresentationId` → **Before service**

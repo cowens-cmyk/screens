@@ -1314,6 +1314,28 @@ struct SlideGridBody: View {
                 }
                 if choice.key == "default" { Divider() }
             }
+            // One named lower third, from any theme that has them.
+            let own = current == ["design"] ? chosen.first?.streamDesign : nil
+            let themes = model.resident.themes.values
+                .map { (theme: $0, thirds: StreamWording.lowerThirds($0.slides ?? [])) }
+                .filter { !$0.thirds.isEmpty }
+                .sorted { $0.theme.name.localizedStandardCompare($1.theme.name) == .orderedAscending }
+            if !themes.isEmpty {
+                Menu((own != nil ? "✓ " : "") + StreamWording.chooseLowerThird) {
+                    ForEach(themes, id: \.theme.id) { entry in
+                        Menu(entry.theme.name) {
+                            ForEach(entry.thirds, id: \.id) { design in
+                                let on = own?.themeId == entry.theme.id && own?.slideId == design.id
+                                Button((on ? "✓ " : "") + design.name) {
+                                    setStreamDesign(
+                                        StreamDesign(category: "", mode: .design, themeId: entry.theme.id, slideId: design.id),
+                                        of: slideIDs)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Divider()
             if let image {
                 Button("✓ " + (model.media(image)?.name ?? "Lower-Third Image")) {}

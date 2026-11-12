@@ -22,17 +22,28 @@ screen's layout, so a type's Set Stage Layout has to come after it.
 
 The countdown video is neither: it is a video that plays once, so the Video
 layout shows over the stage's mode while it plays (its time left is the time to
-the service). The stage tags (`docs/stage-stream-tags.md`) say the same.
+the service). A video inside the walk-in slideshow (a welcome loop) does not:
+while the stage is on Before Service or Announcements from a slide,
+`ShowSetup.stageHoldsThroughVideos` leaves the Video layout out of the stage
+plan, and the plan's countdown (or any video put up outside the announcements)
+clears it. The stage tags (`docs/stage-stream-tags.md`) say the same.
 
 ## What it counts to
 
 The `Until Service` Service Tracking timer
 (`service_tracking.untilService.remaining`). `SermonTimerAutoReset` works out
 today's services every minute (the plan's Shepherd times, else Schedule
-Service, else the Service Day setup, never mixed) and every 5 seconds picks
+Service, else the Schedule tab's weekly Countdowns, else the Service Day
+setup, never mixed) and every 5 seconds picks
 `ServiceStartClock.target`, stored on `ServiceControls.stageServiceTime`;
 `ServiceTimingController` builds the timer from it.
 
+- Weekly Countdowns (`WeeklyCountdown.starts`): the day's start times from
+  the triggers that are on, each service at its start plus the countdown
+  video's length (the day's plan's countdown, else the **If no video**
+  fallback, else five minutes). They count only when no Start Time…
+  countdown is set that day. With 7:55, 9:25 and 11:10 and a five-minute
+  video, the stage counts to 8:00, 9:30 and 11:15.
 - Walk-in: the next service still to come, at its service time (not the
   countdown's start). It reads the wall clock, so it needs nothing from the
   countdown video.
