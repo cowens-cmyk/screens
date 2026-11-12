@@ -55,6 +55,11 @@ the plan up and plays the item inside it, so the plan moves on when the video
 ends. Only the Mac that runs the service plays them
 (`ServiceDay.firesOnlyOnServiceMac`).
 
+The same start times give the Before Service stage its service times on a
+day with no Shepherd times or Start Time… countdowns: each service begins as
+its countdown video ends (`WeeklyCountdown.starts`, see
+docs/stage-before-service.md).
+
 ## Pre-service restarts retired
 
 The Service Day setup no longer makes pre-service restart triggers.

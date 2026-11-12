@@ -96,3 +96,12 @@ everything else.
 Media dropped onto a slide is still that slide's background
 (`CueMedia.droppedOnSlide`), whatever its classification.
 
+
+## A video's thumbnail
+
+A video's poster is taken at `MediaPosterStore.posterTime(of:)`: the item's
+optional `posterSeconds` (Edit › the video › Trim › **Thumbnail** › Set, at the
+preview playhead), else its in point. The poster's cache key and its on-disk
+fingerprint (`MediaPosterStore.fingerprint(of:)`) include that time, so a new
+frame replaces the old poster everywhere, and an item with no chosen frame
+keeps the fingerprint it always had.

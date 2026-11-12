@@ -142,6 +142,7 @@ final class ConfidenceMonitorController {
         upgradeWorshipLayoutIfUntouched()
         upgradePreServiceLayoutIfUntouched()
         addNextSlideChordsToSavedLayouts()
+        breakLongNextLinesInSavedLayouts()
         for (screenID, layoutID) in assignments where layoutID != StageLayouts.audienceID {
             if let layout = appModel.resident.confidenceLayouts.value(layoutID) {
                 layouts[screenID] = layout
@@ -173,7 +174,7 @@ final class ConfidenceMonitorController {
         switch setup.stageMode {
         case .mirror:
             source = .mirror
-        case .worship, .message, .preService:
+        case .worship, .message, .preService, .announcements:
             let id = setup.stageLayoutOverride ?? StageLayouts.id(for: setup.stageMode)
             let layout = appModel.resident.confidenceLayouts.value(id) ?? StageLayouts.fallback(for: id)
             modeLayout = layout
@@ -184,7 +185,7 @@ final class ConfidenceMonitorController {
         let audience = ShowTargets.mirrorSource(setup: setup, render: render)
             .map { render.outputs.previewProvider(for: $0, ignoringBlack: true) }
         let mirrored = Set(assignments.filter { $0.value == StageLayouts.audienceID }.keys)
-        let video = setup.stageShowsVideos ? StageVideoPlan(
+        let video = setup.stageShowsVideos && !setup.stageHoldsThroughVideos ? StageVideoPlan(
             layout: appModel.resident.confidenceLayouts.value(StageLayouts.videoID)
                 ?? StageLayouts.fallback(for: StageLayouts.videoID),
             isMessage: setup.stageMode == .message
@@ -230,6 +231,25 @@ final class ConfidenceMonitorController {
             appModel.updateConfidenceLayout(layout.id) { layout in
                 // Checked again on the document itself, in case it changed since.
                 if let objects = ConfidenceLayoutTemplate.showingNextSlideChords(for: layout) {
+                    layout.objects = objects
+                }
+            }
+        }
+    }
+
+    private var checkedNextLines = false
+
+    /// A long next line used to shrink onto one small line. Saved layouts
+    /// whose next-slide box still has the old sizes let it break in two,
+    /// once a launch; a box someone resized is left alone.
+    private func breakLongNextLinesInSavedLayouts() {
+        let layouts = appModel.resident.confidenceLayouts.values
+        guard !checkedNextLines, !layouts.isEmpty else { return }
+        checkedNextLines = true
+        for layout in layouts where ConfidenceLayoutTemplate.breakingLongNextLines(for: layout) != nil {
+            DiagnosticsStore.shared.note("stage.nextLines.wrap", detail: layout.name)
+            appModel.updateConfidenceLayout(layout.id) { layout in
+                if let objects = ConfidenceLayoutTemplate.breakingLongNextLines(for: layout) {
                     layout.objects = objects
                 }
             }
@@ -283,6 +303,7 @@ final class ConfidenceMonitorController {
             _ = ShowTargets.mirrorSource(setup: ShowSetup.shared, render: render)
             _ = render.outputs.screenRoles
             _ = ShowSetup.shared.stageShowsVideos
+            _ = ShowSetup.shared.stageHoldsThroughVideos
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }

@@ -40,17 +40,25 @@ final class ShowSetup {
     /// layout: time left and the video) until it ends, whatever the mode,
     /// unless `stageShowsVideos` is off.
     enum StageMode: String, CaseIterable, Identifiable {
-        case worship, message, preService, mirror
+        case worship, message, preService, announcements, mirror
         var id: String { rawValue }
         var title: String {
             switch self {
             case .worship: "Worship"
             case .message: "Message"
             case .preService: "Before Service"
+            case .announcements: "Announcements"
             case .mirror: "Audience Screen"
             }
         }
     }
+
+    /// The pre-service slideshow and the announcements keep their stage
+    /// layout through their own videos (a welcome loop, the logo): the
+    /// stage doesn't switch to the Video layout for them. Set as their
+    /// slides go up (ServiceControls); a plan's countdown, or any other
+    /// video put up outside the announcements, clears it. Not saved.
+    var stageHoldsThroughVideos = false
 
     var stageMode: StageMode {
         didSet {

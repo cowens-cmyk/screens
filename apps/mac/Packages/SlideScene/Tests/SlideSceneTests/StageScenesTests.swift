@@ -374,3 +374,30 @@ private func videoBox(_ layout: ConfidenceLayout = videoLayout) -> CGRect {
     #expect(items(in: own, layer: .alerts).isEmpty)
     #expect(try #require(drawn("Stage Message", of: layout, in: own)).text.string == "Wrap up")
 }
+
+// MARK: The audience in a layout
+
+@Test func theAnnouncementsLayoutShowsTheRoomInItsAudienceBox() throws {
+    let layout = ConfidenceLayoutTemplate.announcements.make(name: "Announcements")
+    let box = try #require(layout.objects.first { $0.name == ConfidenceLayoutTemplate.audienceBoxName })
+    let area = CGRect(x: box.x!, y: box.y!, width: box.width!, height: box.height!)
+    let scene = StageScenes.scene(
+        override: nil, source: .layout(layout), info: ConfidenceInfo(), at: now, audience: audienceWithVideo)
+    // Every layer of the room, fitted into the box (the same 16:9 here).
+    let picture = try #require(items(in: scene, layer: .videos).first { $0.id == "stage-video-1" })
+    #expect(picture.frame == area)
+    let lyric = try #require(items(in: scene, layer: .slide).first { $0.id == "stage-lyric" })
+    #expect(area.contains(lyric.frame))
+    // The box's own fill is the backdrop under everything.
+    #expect(items(in: scene, layer: .videoInput).first?.id == "stage-audience-backdrop")
+    // And the 90 seconds are on it.
+    #expect(layout.objects.contains { $0.textLink?.timerId == AnnouncementsTimer.id })
+    #expect(layout.objects.contains { $0.textLink?.source == .clock })
+}
+
+@Test func aLayoutWithoutAnAudienceBoxIsUnchanged() {
+    let info = ConfidenceInfo(current: .init(body: "Amazing grace"))
+    let scene = StageScenes.scene(
+        override: nil, source: .layout(worship), info: info, at: now, audience: audienceWithVideo)
+    #expect(scene == ConfidenceSceneBuilder.scene(layout: worship, info: info, at: now))
+}

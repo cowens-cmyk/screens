@@ -301,11 +301,9 @@ final class ThumbnailStore {
             return image
         }
         let kind = item.mediaKind
-        let inPoint = item.inPoint ?? 0
+        let inPoint = MediaPosterStore.posterTime(of: item)
         let diskPoster = posterDisk.map {
-            $0.posterURL(id: item.id, fingerprint: MediaPosterStore.fingerprint(
-                fileHash: item.fileHash, inPoint: item.inPoint
-            ))
+            $0.posterURL(id: item.id, fingerprint: MediaPosterStore.fingerprint(of: item))
         }
 
         let extraction = Task.detached(priority: priority) { () -> CGImage? in
@@ -329,7 +327,7 @@ final class ThumbnailStore {
 
     private func persistPoster(_ image: CGImage, for item: MediaItem) {
         guard let posterDisk else { return }
-        let fingerprint = MediaPosterStore.fingerprint(fileHash: item.fileHash, inPoint: item.inPoint)
+        let fingerprint = MediaPosterStore.fingerprint(of: item)
         let destination = posterDisk.posterURL(id: item.id, fingerprint: fingerprint)
         guard !FileManager.default.fileExists(atPath: destination.path) else { return }
         let id = item.id
@@ -366,7 +364,7 @@ final class ThumbnailStore {
     }
 
     private func posterKey(_ item: MediaItem) -> String {
-        "\(item.id)|\(item.fileHash)|\(item.inPoint ?? 0)"
+        "\(item.id)|\(item.fileHash)|\(MediaPosterStore.posterTime(of: item))"
     }
 
     private nonisolated static let imageDecodes = AsyncLimiter(limit: 2)

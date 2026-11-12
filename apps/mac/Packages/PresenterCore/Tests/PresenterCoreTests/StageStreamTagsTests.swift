@@ -56,6 +56,15 @@ struct StageStreamTagsTests {
         #expect(tags == .init(stage: "Lyrics + chords", stream: "Lyrics lower third"))
     }
 
+    @Test func theAnnouncementsKeepTheirStageThroughTheirVideos() {
+        let logo = video("logo")
+        let announcements = deck("ann", category: PresentationTypes.announcements, slides: [slide("logo", background: "logo")])
+        let plan = Service(id: "p", name: "", serviceDate: "", items: [item("i", ref: "ann"), item("x", ref: "other")])
+        let tags = StageStreamTags.tags(for: plan.items[0], in: plan, library: library([announcements], media: [logo]))
+        #expect(tags?.stage == "Announcements")
+        #expect(tags?.stream == "Full screen")
+    }
+
     @Test func theMessageShowsTheTimerAndFollowsTheSeries() {
         let message = deck("msg", category: PresentationTypes.sermon, slides: [slide("a")])
         var plan = Service(id: "p", name: "", serviceDate: "", items: [item("m", ref: "msg"), item("c", ref: "close")])

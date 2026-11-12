@@ -19,7 +19,10 @@ import Foundation
 ///    (`slideBuildingSettings.presentationTypeRules` for the presentation's
 ///    type), then the slide's `actions` (for an item, its first slide's) —
 ///    by `stageMode`: worship "Lyrics + chords", message "Message timer",
-///    preService "Before service", mirror "Audience screen".
+///    preService "Before service", announcements "Announcements", mirror
+///    "Audience screen".
+/// 4a. Type Announcements: "Announcements" (their own videos don't switch
+///    the stage, so this comes before the video rule).
 /// 5. A video that plays once: a media item with `mediaKind` video that
 ///    doesn't loop, or a presentation whose every slide's `background` is
 ///    such a video (a slide: its own background): "Video time left".
@@ -75,6 +78,7 @@ public enum StageStreamTags {
     public static let messageTimer = "Message timer"
     public static let beforeService = "Before service"
     public static let videoTimeLeft = "Video time left"
+    public static let announcements = "Announcements"
     public static let ownLayout = "Own layout"
     public static let audienceScreen = "Audience screen"
     public static let noChange = "No change"
@@ -148,16 +152,18 @@ public enum StageStreamTags {
             case "worship": return lyrics
             case "message": return messageTimer
             case "preService": return beforeService
+            case "announcements": return announcements
             case "mirror": return audienceScreen
             default: break
             }
         }
+        let category = PresentationTypes.category(of: presentation)
+        if category == PresentationTypes.announcements { return announcements }
         if videoOnly(slide: slide, presentation: presentation, library: library) { return videoTimeLeft }
         let walkoutID = library.settings?.serviceDay?.walkoutPresentationId
         if item.isWalkout == true || (walkoutID?.isEmpty == false && presentation.id == walkoutID) {
             return beforeService
         }
-        let category = PresentationTypes.category(of: presentation)
         if category == PresentationTypes.sermon { return messageTimer }
         if category == PresentationTypes.worship { return lyrics }
         if isLastPresentation(item, in: plan) { return beforeService }

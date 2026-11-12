@@ -12,6 +12,19 @@ public struct MediaPosterStore: Sendable {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
+    /// The moment of a video its thumbnail is taken from: the frame chosen
+    /// for it (Media › Thumbnail), else its in point.
+    public static func posterTime(of item: MediaItem) -> Double {
+        max(item.posterSeconds ?? item.inPoint ?? 0, 0)
+    }
+
+    /// The fingerprint of an item's poster as it should be now. A video
+    /// with no chosen frame keeps the one it had (its in point), so posters
+    /// already on disk are still found.
+    public static func fingerprint(of item: MediaItem) -> String {
+        fingerprint(fileHash: item.fileHash, inPoint: item.posterSeconds ?? item.inPoint)
+    }
+
     public static func fingerprint(fileHash: String, inPoint: Double?) -> String {
         let key = "\(fileHash)|\(inPoint ?? 0)"
         let digest = SHA256.hash(data: Data(key.utf8))

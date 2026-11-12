@@ -199,8 +199,36 @@ private func frame(_ object: SlideObject) -> CGRect {
     #expect(next.textStyle?.chordColorHex == current.textStyle?.chordColorHex)
 }
 
+@Test func aLongNextLineBreaksInTwoRatherThanShrinking() throws {
+    let fresh = ConfidenceLayoutTemplate.worship(name: "Stage — Worship")
+    #expect(fresh.objects.first { $0.name == "Next Slide" }?.textStyle?.minFontSize == 64)
+    #expect(ConfidenceLayoutTemplate.breakingLongNextLines(for: fresh) == nil)
+
+    // An untouched copy with the old size takes the new template.
+    var saved = ConfidenceLayoutTemplate.worship(
+        name: "Stage — Worship", nextMinSize: ConfidenceLayoutTemplate.earlierNextSlideMinSize)
+    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: saved) != nil)
+
+    // One someone has changed keeps its design and only gets the size.
+    let index = try #require(saved.objects.firstIndex { $0.name == "Next Slide" })
+    saved.objects[index].y = (saved.objects[index].y ?? 0) + 6
+    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: saved) == nil)
+    let objects = try #require(ConfidenceLayoutTemplate.breakingLongNextLines(for: saved))
+    #expect(objects[index].textStyle?.minFontSize == 64)
+    #expect(objects[index].y == saved.objects[index].y)
+    saved.objects = objects
+    #expect(ConfidenceLayoutTemplate.breakingLongNextLines(for: saved) == nil, "once only")
+
+    // A next box someone resized is left alone.
+    var resized = ConfidenceLayoutTemplate.worship(
+        name: "Stage — Worship", nextMinSize: ConfidenceLayoutTemplate.earlierNextSlideMinSize)
+    resized.objects[index].textStyle?.fontSize = 70
+    #expect(ConfidenceLayoutTemplate.breakingLongNextLines(for: resized) == nil)
+}
+
 @Test func anUntouchedWorshipLayoutWithoutNextChordsTakesTheNewOne() throws {
-    var saved = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", nextChords: false)
+    var saved = ConfidenceLayoutTemplate.worship(
+        name: "Stage — Worship", nextChords: false, nextMinSize: ConfidenceLayoutTemplate.earlierNextSlideMinSize)
     saved.id = "screens.stage.worship"
     #expect(saved.objects.first { $0.name == "Next Slide" }?.textStyle?.showChords == nil)
     let stored = try JSONDecoder().decode(ConfidenceLayout.self, from: JSONEncoder().encode(saved))

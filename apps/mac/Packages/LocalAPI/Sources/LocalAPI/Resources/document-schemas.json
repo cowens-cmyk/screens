@@ -1507,6 +1507,9 @@
         "outPoint": {
           "type": "number"
         },
+        "posterSeconds": {
+          "type": "number"
+        },
         "playRate": {
           "type": "number"
         },

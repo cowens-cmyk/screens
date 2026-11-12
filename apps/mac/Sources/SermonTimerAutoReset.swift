@@ -3,8 +3,9 @@ import PresenterCore
 
 /// Sets the Sermon timer back as each service starts, so it's ready for the
 /// message without anyone touching it. The day's service times come from
-/// the plan (Shepherd), else Schedule Service, else the Service Day setup
-/// (SermonTimerReset.services); the moment is the service's countdown
+/// the plan (Shepherd), else Schedule Service, else the Schedule tab's
+/// Countdowns, else the Service Day setup (SermonTimerReset.services). The
+/// same times drive the Before Service stage's countdown. The moment is the service's countdown
 /// starting, or the service time when it has none.
 ///
 /// The countdown playing sets it back by itself (ServiceControls), so this
@@ -93,7 +94,8 @@ final class SermonTimerAutoReset {
 
         // Spent countdowns are archived once they fire; they still say when
         // today's services are.
-        let scheduled = model.residentScheduleTriggers.compactMap { trigger -> SermonTimerReset.ScheduledCountdown? in
+        let triggers = model.residentScheduleTriggers
+        var scheduled = triggers.compactMap { trigger -> SermonTimerReset.ScheduledCountdown? in
             guard let notes = trigger.notes, notes.hasPrefix(ServiceCountdown.triggerNotePrefix),
                   let start = ServiceCountdown.startDate(of: trigger, calendar: calendar),
                   calendar.isDate(start, inSameDayAs: now)
@@ -103,8 +105,27 @@ final class SermonTimerAutoReset {
             return .init(start: start, serviceTime: ServiceCountdown.serviceTime(of: trigger, videoSeconds: video, calendar: calendar)
                 ?? ServiceCountdown.serviceTime(start: start, videoSeconds: video))
         }
+        // The Schedule tab's Countdowns, when the day has none set with
+        // Start Time…: each service begins as its countdown video ends.
+        if scheduled.isEmpty {
+            let video = weeklyCountdownSeconds(model: model, triggers: triggers, now: now)
+            scheduled = WeeklyCountdown.starts(on: now, triggers: triggers, calendar: calendar).map {
+                .init(start: $0, serviceTime: ServiceCountdown.serviceTime(start: $0, videoSeconds: video))
+            }
+        }
         return SermonTimerReset.services(
             on: now, planTimes: planTimes, scheduled: scheduled,
             serviceDay: model.slideBuilding.serviceDay, calendar: calendar)
+    }
+
+    /// How long the weekly countdown's video runs today: the day's plan's
+    /// countdown, or the fallback video. Nil when it can't be told, and the
+    /// service is then taken as five minutes after the start.
+    private func weeklyCountdownSeconds(model: AppModel, triggers: [ScheduleTrigger], now: Date) -> Double? {
+        guard let action = triggers.first(where: WeeklyCountdown.isWeeklyCountdown)?
+            .actions.first(where: { $0.kind == .fireServiceItem })
+        else { return nil }
+        guard case .plays(_, let item) = model.resolvePlanItem(action, on: now), !item.refId.isEmpty else { return nil }
+        return model.media(item.refId).flatMap(ServiceCountdown.videoSeconds(of:))
     }
 }

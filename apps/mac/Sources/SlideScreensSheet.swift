@@ -14,6 +14,7 @@ struct SlideScreensSheet: View {
     let slideIDs: [String]
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.actionRouter) private var actionRouter
     @State private var themes: [(id: String, name: String, slides: [Slide])] = []
     @State private var audience = ""
     @State private var stream = "default"
@@ -40,7 +41,7 @@ struct SlideScreensSheet: View {
                     if let imageID {
                         Text(model.media(imageID)?.name ?? "Lower-Third Image").tag("image|\(imageID)")
                     }
-                    designOptions(prefix: "design")
+                    streamDesignOptions
                 }
                 LabeledContent("") {
                     HStack {
@@ -87,8 +88,7 @@ struct SlideScreensSheet: View {
                     case .audience: stream = "audience"
                     case .design where own.isThemeLowerThird: stream = "lowerThird"
                     case .design:
-                        let name = themes.first { $0.id == own.themeId }?.slides.first { $0.id == own.slideId }?.name ?? ""
-                        stream = "design|\(own.themeId ?? "")|\(name)"
+                        stream = "design|\(own.themeId ?? "")|\(own.slideId ?? "")"
                     }
                 }
                 stage = first.stageLayoutId ?? ""
@@ -108,13 +108,36 @@ struct SlideScreensSheet: View {
         }
     }
 
+    /// Every theme's designs for the livestream, its lower thirds first.
+    /// Chosen by the design itself, not its name: a theme's full-screen
+    /// design and its lower third are often named alike.
+    @ViewBuilder
+    private var streamDesignOptions: some View {
+        ForEach(themes, id: \.id) { theme in
+            Section(theme.name) {
+                ForEach(StreamWording.lowerThirdsFirst(theme.slides), id: \.id) { design in
+                    Text(design.folder.map { "\(design.name) · \($0)" } ?? design.name)
+                        .tag("design|\(theme.id)|\(design.id)")
+                }
+            }
+        }
+    }
+
     private func apply() {
         let ids = Set(slideIDs)
         let deckTheme = presentation.themeId
         let audienceParts = audience.split(separator: "|", maxSplits: 2).map(String.init)
         let streamParts = stream.split(separator: "|", maxSplits: 2).map(String.init)
-        let streamSlideID = streamParts.count == 3
-            ? themes.first { $0.id == streamParts[1] }?.slides.first { $0.name == streamParts[2] }?.id : nil
+        let streamSlideID = streamParts.count == 3 ? streamParts[2] : nil
+        let chosen: StreamDesign? = switch streamParts.first {
+        case "clear": .slideNothing
+        case "audience": .slideFullScreen
+        case "lowerThird": .slideLowerThird
+        case "image" where streamParts.count == 2: .lowerThirdImage(streamParts[1])
+        case "design" where streamParts.count == 3:
+            StreamDesign(category: "", mode: .design, themeId: streamParts[1], slideId: streamSlideID)
+        default: nil
+        }
         let stageID = stage
         model.updateSlides(presentationID: presentation.id, undoLabel: "Screens") { deck in
             for index in deck.slides.indices where ids.contains(deck.slides[index].id) {
@@ -125,20 +148,13 @@ struct SlideScreensSheet: View {
                     deck.slides[index].themeSlideName = nil
                     deck.slides[index].themeId = nil
                 }
-                switch streamParts.first {
-                case "clear": deck.slides[index].streamDesign = .slideNothing
-                case "audience": deck.slides[index].streamDesign = .slideFullScreen
-                case "lowerThird": deck.slides[index].streamDesign = .slideLowerThird
-                case "image" where streamParts.count == 2:
-                    deck.slides[index].streamDesign = .lowerThirdImage(streamParts[1])
-                case "design" where streamParts.count == 3:
-                    deck.slides[index].streamDesign = StreamDesign(
-                        category: "", mode: .design, themeId: streamParts[1], slideId: streamSlideID)
-                default: deck.slides[index].streamDesign = nil
-                }
+                deck.slides[index].streamDesign = chosen
                 deck.slides[index].stageLayoutId = stageID.isEmpty ? nil : stageID
             }
         }
+        // A slide that is on screen takes the choice now, not the next
+        // time it goes up.
+        actionRouter?.noteStreamDesign(chosen, forSlides: ids)
         dismiss()
     }
 }

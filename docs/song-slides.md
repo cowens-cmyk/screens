@@ -50,8 +50,15 @@ updating it rather than treating the split as an edit.
   fingerprint, so every import path (plan sync, ↻ Lyrics, Get Lyrics, Song
   Search, Import from Shepherd…, Update from Shepherd, `build_song`) gets it.
   When the theme isn't loaded, slides are cut by line count alone as before.
-- **File › Fit Song Slides to Two Lines…** (`SongSlideFit`, app): one pass
-  over the songs already in the library, made before imports did this. It
+- **Automatically** (`SongSlideAutoFit`, app): every 15 seconds, songs whose
+  index `updatedAt` differs from when they were last checked, and that have
+  been quiet for 20 seconds (90 on a Mac that isn't the Main Mac, so the Main
+  Mac's split usually syncs in first), are surveyed and fitted without
+  asking. At launch that is the whole library. The song on screen is skipped
+  until it's off, and nothing runs while this Mac is in Edit. Each split is
+  noted in Diagnostics (`songs.fitToTwoLines`).
+- **File › Fit Song Slides to Two Lines…** (`SongSlideFit`, app): the same
+  pass by hand over the whole library. It
   measures each song in its own theme, says how many slides in how many songs
   will change, and asks. A song edited between the check and the write is
   left as it is. Undo can't reverse it.
@@ -60,8 +67,8 @@ updating it rather than treating the split as an edit.
   tools that change slides; over MCP, call again with `confirm: true`.
 
 Other ways of making songs (Import Lyrics…, the song editor, chord chart
-files, the CMS) still cut by line count only; the menu command or tool fits
-those songs afterwards.
+files, the CMS) still cut by line count only; the automatic pass fits those
+songs within a minute.
 
 ## Tests
 
