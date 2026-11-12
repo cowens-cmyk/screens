@@ -67,8 +67,13 @@ enum SettingsIndex {
         SettingsEntry(
             id: "general.runsService", category: .general,
             title: "Run on this Mac",
-            caption: "Plays the scheduled countdowns and restarts the pre-service slides from this Mac. Other Macs skip them. Kept per Mac.",
+            caption: "Plays the scheduled countdowns and restarts the pre-service slides from this Mac. Other Macs skip them. On a linked Mac, turning it on makes this the Main Mac and the old Main Mac steps down.",
             keywords: "service day countdown schedule pre-service preservice slideshow restart station walk-in"),
+        SettingsEntry(
+            id: "general.removeOldMessages", category: .general,
+            title: "Remove old messages automatically",
+            caption: "Keeps each plan's message in the Messages folder and removes ones last used 30 or more days ago. Songs are never removed.",
+            keywords: "message sermon presentation cleanup old delete remove trash bloat library messages folder 30 days"),
     ]
 
     // MARK: Screens

@@ -4874,6 +4874,16 @@
           "name": "websiteEvents",
           "type": "WebsiteEventSettings",
           "optional": true
+        },
+        {
+          "name": "mainMacId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "mainMacName",
+          "type": "string",
+          "optional": true
         }
       ]
     },

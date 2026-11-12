@@ -2722,8 +2722,10 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
     public var lightingCues: [LightingCue]?
     public var typeScreens: [PresentationTypeScreens]?
     public var websiteEvents: WebsiteEventSettings?
+    public var mainMacId: String?
+    public var mainMacName: String?
 
-    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil, serviceDay: ServiceDaySettings? = nil, lightingCues: [LightingCue]? = nil, typeScreens: [PresentationTypeScreens]? = nil, websiteEvents: WebsiteEventSettings? = nil) {
+    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil, serviceDay: ServiceDaySettings? = nil, lightingCues: [LightingCue]? = nil, typeScreens: [PresentationTypeScreens]? = nil, websiteEvents: WebsiteEventSettings? = nil, mainMacId: String? = nil, mainMacName: String? = nil) {
         self.id = id
         self.designMap = designMap
         self.messageNotesThemeId = messageNotesThemeId
@@ -2736,6 +2738,8 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
         self.lightingCues = lightingCues
         self.typeScreens = typeScreens
         self.websiteEvents = websiteEvents
+        self.mainMacId = mainMacId
+        self.mainMacName = mainMacName
     }
 }
 

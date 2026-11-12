@@ -730,6 +730,22 @@ struct MediaLibraryView: View {
                 }
         } else {
             base
+                // Pointing at a file shows a trash button for it: the same
+                // Delete… as its right-click menu, which asks first.
+                .overlay(alignment: .topTrailing) {
+                    if !runOnly, hoveredID == entry.id {
+                        Button { requestDelete(entry) } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 22, height: 22)
+                                .background(Circle().fill(Color.black.opacity(0.6)))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(5)
+                        .help("Delete \u{201C}\(entry.name)\u{201D}…")
+                    }
+                }
                 .onTapGesture { selectedID = entry.id }
                 // Dropped on the plan or a slide it changes them, so not in Run-Only.
                 .draggablePayload(runOnly ? nil : entry.id)

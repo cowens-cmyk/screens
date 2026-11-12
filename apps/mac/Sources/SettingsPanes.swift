@@ -86,6 +86,7 @@ struct MediaSettingsPane: View {
             switch page {
             case .list:
                 Form {
+                    MediaStorageSection()
                     SoundOutputSection()
                     VideoInputsSection { page = .videoInput($0) }
                     AudioInputsSection { page = .audioInput($0) }

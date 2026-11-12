@@ -70,8 +70,9 @@ public enum BackupBundle {
                 counts[kind.rawValue] = documentFiles(in: target).count
             }
 
+            // From wherever this Mac keeps its media (an external drive too).
             let blobs = try await copyMissing(
-                from: root.appendingPathComponent(blobsName, isDirectory: true),
+                from: MediaStorage.filesDirectory(libraryRoot: root),
                 to: staging.appendingPathComponent(blobsName, isDirectory: true),
                 phase: "Copying media files…", strict: true, progress: progress)
             let fonts = try await copyMissing(
@@ -181,7 +182,7 @@ public enum BackupBundle {
         if options.includes(.mediaFiles) {
             let blobs = try await copyMissing(
                 from: bundleURL.appendingPathComponent(blobsName, isDirectory: true),
-                to: root.appendingPathComponent(blobsName, isDirectory: true),
+                to: MediaStorage.filesDirectory(libraryRoot: root),
                 phase: "Copying media files…", strict: false, progress: progress)
             result.mediaFilesCopied = blobs.copied
             result.warnings += blobs.failures

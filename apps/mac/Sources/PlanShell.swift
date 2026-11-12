@@ -199,6 +199,7 @@ struct PlanShell: View {
         // under them a video that couldn't play.
         .overlay(alignment: .top) {
             VStack(spacing: 0) {
+                MediaDriveBanner()
                 BoothMessageBanner()
                 if let controls { MediaProblemBanner(controls: controls) }
             }
@@ -1060,7 +1061,8 @@ struct PlanShell: View {
     }
 
     /// Everything not used every minute of a service lives in one menu:
-    /// Schedule and the slide builders first, then the rest.
+    /// Schedule (also its own button in the bar) and the slide builders
+    /// first, then the rest.
     @ViewBuilder
     private var moreMenuItems: some View {
         if !runOnly {
@@ -1196,7 +1198,18 @@ struct PlanShell: View {
     private func ensurePlanOpeners() {
         guard !runOnly else { return }
         let current = plans
-        model.ensurePlanOpeners(upcoming: openerPlans(current), templates: current.templates, isCountdownLink: isCountdownLink)
+        let upcoming = openerPlans(current)
+        model.ensurePlanOpeners(upcoming: upcoming, templates: current.templates, isCountdownLink: isCountdownLink)
+        // Shepherd's Announcements or Closing with nothing to link to yet,
+        // or plans with no Transition to put before the message: make the
+        // shared presentations, then link them.
+        let needing = upcoming + current.templates
+        if !model.sharedSlotsToMake(for: needing).isEmpty {
+            Task {
+                guard await model.makeSharedPresentationsIfNeeded(for: needing) else { return }
+                ensurePlanOpeners()
+            }
+        }
         guard model.preServiceSlideshowID() == nil else { return }
         Task {
             guard await model.makePreServiceSlideshowIfNeeded() != nil else { return }

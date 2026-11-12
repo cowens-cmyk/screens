@@ -44,8 +44,9 @@ enum TopBarFit: Equatable {
     case full, compact, tight
 
     static func at(_ width: CGFloat) -> TopBarFit {
-        if width >= 1240 { return .full }
-        if width >= 1110 { return .compact }
+        // Each threshold includes the Schedule cell (about 60 pt with its label).
+        if width >= 1300 { return .full }
+        if width >= 1170 { return .compact }
         return .tight
     }
 }
@@ -515,10 +516,10 @@ struct TopBarActions {
 }
 
 /// Laid out as the operator asked for it: Search; the plan's pin; Present,
-/// Edit and the theme editor; the Bible; then, at the right, the media bin,
-/// listening and where the sound goes, the slide transition, More, Clear,
-/// and the screens' lights. Everything else (Schedule, songs, points, the
-/// sermon notes, the stage display) is in More.
+/// Edit, Schedule and the theme editor; the Bible; then, at the right, the
+/// media bin, listening and where the sound goes, the slide transition, More,
+/// Clear, and the screens' lights. Everything else (Start Time, songs,
+/// points, the sermon notes, the stage display) is in More.
 struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
     @AppStorage(MediaDrawer.openKey) private var mediaBinOpen = false
     let fit: TopBarFit
@@ -547,6 +548,7 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
             TopBarGroup {
                 modeCell(.present, title: "Present", symbol: "play.rectangle", help: "Present" + KeyMapStore.shared.map.helpKeys(for: .modePresent))
                 modeCell(.edit, title: "Edit", symbol: "square.3.layers.3d", help: "Edit: slides, layers and zoom" + KeyMapStore.shared.map.helpKeys(for: .modeEdit))
+                modeCell(.scheduler, title: "Schedule", symbol: "calendar", help: "Schedule: triggers that fire countdowns, slides and macros at set times" + KeyMapStore.shared.map.helpKeys(for: .modeScheduler))
                 themeCell
             }
             TopBarGroup { bibleCell }
@@ -645,6 +647,6 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
     private var moreCell: some View {
         Menu { more() } label: { TopBarCellLabel("More", systemImage: "ellipsis.circle") }
             .topBarMenu()
-            .help("Schedule, songs, sermon points and notes, the stage display, Timers & Macros, Screen Setup")
+            .help("Start time, songs, sermon points and notes, the stage display, Timers & Macros, Screen Setup")
     }
 }

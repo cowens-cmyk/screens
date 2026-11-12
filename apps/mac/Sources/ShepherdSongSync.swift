@@ -53,6 +53,7 @@ extension ShepherdSync {
         var missing = Set<String>()
         var presentations: [String: Presentation] = [:]
         var refreshed = Set<String>()
+        var caughtUp = Set<String>()
         var imported = 0, updated = 0, arranged = 0
         let client = client
         // Songs are split to fit their theme's Lyrics box, so the themes
@@ -100,6 +101,23 @@ extension ShepherdSync {
                 if importing, presentation.shepherdSongId == songID, refreshed.insert(presentation.id).inserted,
                    refresh(presentation, from: detail, model: model) {
                     updated += 1
+                }
+
+                // Shepherd's chart decides what a planned song holds: a song
+                // missing parts the plan's arrangement sings is rebuilt from
+                // the arrangement's ChordPro chart, and wordless parts (Vamp,
+                // Outro…) get their blank, so no ⚠ is left to fix by hand.
+                // Once per song per pass, and never while it is on screen.
+                if importing, controls?.livePresentationID != presentation.id,
+                   caughtUp.insert(presentation.id).inserted {
+                    if let caught = catchUp(presentation, detail: detail, planned: planned, model: model) {
+                        presentation = caught
+                        updated += 1
+                    }
+                    if let filled = fillWordlessParts(
+                        presentation, detail: detail, planned: planned, arrangementId: item.arrangementId, model: model) {
+                        presentation = filled
+                    }
                 }
 
                 let outcome = ShepherdArrangementSync.reconcile(presentation, song: detail, arrangement: planned)
@@ -179,6 +197,51 @@ extension ShepherdSync {
         presentation.folder = model.newPlacement.folder(for: .presentation)
         model.createInDrive(presentation)
         return LyricsFetcher.shared.link(item.id, planID: serviceID, to: presentation.id, model: model)
+    }
+
+    /// The song rebuilt from the plan's Shepherd chart when it lacks parts
+    /// the plan's arrangement sings and the chart has them
+    /// (ShepherdArrangementSync.catchingUp); nil when it needs nothing.
+    private func catchUp(
+        _ presentation: Presentation, detail: ShepherdClient.SongDetail,
+        planned: ShepherdClient.SongArrangement?, model: AppModel
+    ) -> Presentation? {
+        let sequence = ShepherdSongMatch.sequence(of: detail, arrangement: planned)
+        guard !sequence.isEmpty,
+              !ShepherdArrangementSync.mapping(sequence: sequence, onto: presentation).missing.isEmpty,
+              let fresh = ShepherdSongImport.presentation(
+                song: detail, arrangement: planned,
+                options: importOptions(playingKey: nil, model: model, themeId: presentation.themeId)),
+              let caught = ShepherdArrangementSync.catchingUp(presentation, to: fresh, sequence: sequence)
+        else { return nil }
+        newerCharts[presentation.id] = nil
+        model.updatePresentation(presentation.id) { current in
+            // Worked out again as the write lands, on the song as it is then.
+            if let again = ShepherdArrangementSync.catchingUp(current, to: fresh, sequence: sequence) {
+                current = again
+            }
+        }
+        return caught
+    }
+
+    /// The song with blanks for the wordless parts Shepherd's order names
+    /// (ShepherdArrangementSync.fillingWordlessParts); nil when none.
+    private func fillWordlessParts(
+        _ presentation: Presentation, detail: ShepherdClient.SongDetail,
+        planned: ShepherdClient.SongArrangement?, arrangementId: String?, model: AppModel
+    ) -> Presentation? {
+        let sequence = ShepherdSongMatch.sequence(of: detail, arrangement: planned)
+        let tag = ShepherdArrangementSync.tag(planned)
+        guard let filled = ShepherdArrangementSync.fillingWordlessParts(
+            presentation, sequence: sequence, arrangementId: arrangementId, shepherdTag: tag)
+        else { return nil }
+        model.updatePresentation(presentation.id) { current in
+            if let again = ShepherdArrangementSync.fillingWordlessParts(
+                current, sequence: sequence, arrangementId: arrangementId, shepherdTag: tag) {
+                current = again
+            }
+        }
+        return filled
     }
 
     /// Brings a linked song up to Shepherd's chart when it changed and the

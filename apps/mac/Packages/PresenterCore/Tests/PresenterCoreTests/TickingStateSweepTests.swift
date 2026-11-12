@@ -31,6 +31,7 @@ import Testing
         ],
         "MonitorsPanel.swift": [.quiet("the 4 Hz stream badge writes coverage only when it changes")],
         "StageDisplay.swift": [.quiet("the 4 Hz stage video badge writes its flag only when it changes")],
+        "ATEMLink.swift": [.quiet("the 25 Hz stream follow writes coverage only when it changes")],
         // A ⌘0 or ⌘+ zoom eases over 0.18 s.
         "CanvasNavigator.swift": [.moves(["canvasNavigation"])],
     ]

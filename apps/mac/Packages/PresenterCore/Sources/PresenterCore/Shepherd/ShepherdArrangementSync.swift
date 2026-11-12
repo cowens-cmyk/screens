@@ -207,6 +207,52 @@ public enum ShepherdArrangementSync {
         return name
     }
 
+    // MARK: Following Shepherd's chart
+
+    /// The song rebuilt from Shepherd's chart (`fresh`, the ChordPro chart
+    /// of the plan's arrangement, else the song's) when the song can't play
+    /// Shepherd's order and the chart can: Shepherd's ChordPro decides what
+    /// a planned song holds, so the plan's arrangement always has every
+    /// part it names. Nil when the song already has every part, or when the
+    /// chart is missing the same parts (rebuilding would not help).
+    ///
+    /// This is what clears "Shepherd's arrangement has Bridge 2; this song
+    /// has no Bridge 2" for a song linked from elsewhere in the library
+    /// (ProPresenter, SongSelect) or edited in Screens. Themes, backgrounds,
+    /// slide settings, the display key and other arrangements are kept, as
+    /// an Update from Shepherd keeps them. A song taken over from elsewhere
+    /// starts on Shepherd's order, as Import from Shepherd does.
+    public static func catchingUp(
+        _ presentation: Presentation, to fresh: Presentation, sequence: [String]
+    ) -> Presentation? {
+        guard !sequence.isEmpty else { return nil }
+        let before = mapping(sequence: sequence, onto: presentation).missing
+        guard !before.isEmpty else { return nil }
+        var caught = ShepherdSongImport.replacing(presentation, with: fresh)
+        if presentation.shepherdSongId != fresh.shepherdSongId {
+            caught.defaultArrangementId = fresh.defaultArrangementId
+            caught.shepherdImportHash = ShepherdSongImport.fingerprint(caught)
+        }
+        let after = mapping(sequence: sequence, onto: caught).missing
+        guard after.count < before.count else { return nil }
+        return caught
+    }
+
+    /// The song with a blank slide for each wordless part (Vamp, Outro,
+    /// Ending…) Shepherd's order names and the song lacks, placed where
+    /// Shepherd sings it; nil when there is none to add. Sync does this by
+    /// itself, so those parts never show as missing.
+    public static func fillingWordlessParts(
+        _ presentation: Presentation, sequence: [String], arrangementId: String?, shepherdTag: String
+    ) -> Presentation? {
+        guard !sequence.isEmpty else { return nil }
+        let blanks = blankFixableNames(in: mapping(sequence: sequence, onto: presentation).missing)
+        guard !blanks.isEmpty else { return nil }
+        let fix = addBlankSections(
+            presentation, missing: blanks, sequence: sequence, arrangementId: arrangementId, shepherdTag: shepherdTag)
+        return fix.added.isEmpty ? nil : fix.presentation
+    }
+
     // MARK: Adding the parts a song lacks
 
     /// Of Shepherd's names the song has no section for, the ones that can
