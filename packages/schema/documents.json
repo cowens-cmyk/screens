@@ -3436,6 +3436,26 @@
           "name": "serviceItemId",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "planSeries",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "serviceItemRole",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "serviceItemName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "serviceItemRefId",
+          "type": "string",
+          "optional": true
         }
       ]
     },
@@ -3544,6 +3564,16 @@
         },
         {
           "name": "serviceTimeIndex",
+          "type": "int",
+          "optional": true
+        },
+        {
+          "name": "startDate",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "intervalWeeks",
           "type": "int",
           "optional": true
         }

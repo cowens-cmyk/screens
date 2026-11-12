@@ -381,11 +381,27 @@ final class SchedulerController {
             return
         }
         // A pre-service restart that comes due while a service is still
-        // going leaves it alone.
-        if source != .manual, ServiceDay.isRestartTrigger(trigger),
+        // going leaves it alone, whether the Service Day setup made it or
+        // it's a schedule for each plan's pre-service slideshow.
+        if source != .manual, ServiceDay.isRestartTrigger(trigger) || playsPreServiceItem(trigger),
            case .skip(let reason) = PreServiceGuard.decide(preServiceSituation(for: trigger)) {
             skip(trigger, source: source, reason: reason)
             return
+        }
+        // A plan item plays from the plan it's in today: a schedule for each
+        // Sunday's plan finds this Sunday's. One that can't (no plan today,
+        // no such item, nothing linked to it) is skipped with the reason,
+        // before anything is cleared. Run Now on another day uses the next
+        // plan, so a schedule can be tried before it's due.
+        var actions = trigger.actions
+        for index in actions.indices where actions[index].kind == .fireServiceItem {
+            switch model.resolvePlanItem(actions[index], upcomingIfNone: source == .manual) {
+            case .plays(let plan, let item):
+                actions[index] = PlanSchedule.pinned(actions[index], plan: plan, item: item)
+            case .skipped(let reason):
+                skip(trigger, source: source, reason: reason)
+                return
+            }
         }
         // The Sermon timer isn't set back here any more: each service's
         // start does it (SermonTimerAutoReset), whether or not the service
@@ -400,7 +416,7 @@ final class SchedulerController {
             RunRecord(
                 triggerID: trigger.id, name: trigger.name, at: Date(),
                 outcome: late ? .late : .fired, source: source))
-        router.execute(trigger.actions)
+        router.execute(actions)
 
         if ScheduleMath.spentOneOffDue(
             for: trigger, asOf: Date(), calendar: .current) != nil
@@ -453,9 +469,17 @@ final class SchedulerController {
         }
     }
 
+    /// A schedule that plays a plan's pre-service slideshow.
+    private func playsPreServiceItem(_ trigger: ScheduleTrigger) -> Bool {
+        trigger.actions.contains {
+            $0.kind == .fireServiceItem && $0.serviceItemRole == PlanSchedule.Role.preService.rawValue
+        }
+    }
+
     /// What's on the screens, for the pre-service guard.
     private func preServiceSituation(for trigger: ScheduleTrigger) -> PreServiceGuard.Situation {
         let slideshowID = trigger.actions.first { $0.kind == .firePresentation }?.presentationId
+            ?? (playsPreServiceItem(trigger) ? model.preServiceSlideshowID() : nil)
         var situation = PreServiceGuard.Situation()
         let plan = model.currentServiceID.flatMap { model.resident.services.value($0) }
         let fireable = plan.map(model.fireableItems) ?? []

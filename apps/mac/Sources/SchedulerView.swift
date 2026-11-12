@@ -25,6 +25,13 @@ struct SchedulerView: View {
     @State private var snoozeSheetTrigger: SnoozeTarget?
 
     @State private var endDateSheetTrigger: SnoozeTarget?
+    /// The Schedule sheet: "new" for a new schedule, else the trigger's id.
+    @State private var scheduleSheet: ScheduleSheetTarget?
+
+    struct ScheduleSheetTarget: Identifiable {
+        let triggerID: String?
+        var id: String { triggerID ?? "new" }
+    }
 
     struct SnoozeTarget: Identifiable {
         let triggerID: String
@@ -80,6 +87,11 @@ struct SchedulerView: View {
         .sheet(item: $snoozeSheetTrigger) { target in
             SnoozeSheet(name: target.name) { until in
                 snooze(target.triggerID, until: until)
+            }
+        }
+        .sheet(item: $scheduleSheet) { target in
+            PlanScheduleSheet(model: model, scheduler: scheduler, triggerID: target.triggerID) { id in
+                selectedTriggerID = id
             }
         }
         .sheet(item: $endDateSheetTrigger) { target in
@@ -193,6 +205,7 @@ struct SchedulerView: View {
 
     private var addMenu: some View {
         Menu {
+            Button("New Schedule\u{2026}") { scheduleSheet = ScheduleSheetTarget(triggerID: nil) }
             Button("New Trigger") { addTrigger() }
             Divider()
             Button("New Folder") {
@@ -211,7 +224,7 @@ struct SchedulerView: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Add a trigger or a folder")
+        .help("Add a schedule, a trigger or a folder")
     }
 
     @ViewBuilder
@@ -515,6 +528,9 @@ struct SchedulerView: View {
             }
             .contextMenu {
                 Button("Run Now") { scheduler?.runNow(triggerID: id) }
+                if PlanScheduleSheet.canEdit(trigger) {
+                    Button("Edit Schedule\u{2026}") { scheduleSheet = ScheduleSheetTarget(triggerID: id) }
+                }
                 Menu("Enabled") {
                     Picker("Enabled", selection: Binding(
                         get: { trigger.enabled ?? true },
@@ -665,6 +681,11 @@ struct SchedulerView: View {
         VStack(spacing: 0) {
             if let id = selectedTriggerID, let trigger = try? model.scheduleTrigger(id) {
                 SidebarSectionHeader("Trigger", glyph: .combos) {
+                    if PlanScheduleSheet.canEdit(trigger) {
+                        Button("Edit Schedule\u{2026}") { scheduleSheet = ScheduleSheetTarget(triggerID: id) }
+                            .buttonStyle(CardButtonStyle())
+                            .help("What it plays, which days, how often, and from when to when")
+                    }
                     Button("Run Now") { scheduler?.runNow(triggerID: id) }
                         .buttonStyle(CardButtonStyle())
                         .help("Fires this trigger's actions immediately — gates ignored")
@@ -1033,6 +1054,16 @@ private struct ConditionEditor: View {
                     }
                 ))
             }
+            // Set in the Schedule sheet, shown here so the rule isn't hidden.
+            let every = ScheduleMath.interval(of: condition)
+            if every > 1 || condition.startDate != nil {
+                Text([
+                    every > 1 ? "Every \(every) weeks" : nil,
+                    condition.startDate.map { "from \($0.prefix(10))" },
+                ].compactMap { $0 }.joined(separator: ", "))
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+            }
         case .oneTime:
             SecondsTimePicker(
                 date: Binding(
@@ -1308,13 +1339,15 @@ extension SchedulerView {
                         return Calendar.current.shortWeekdaySymbols[day - 1]
                     }.joined(separator: " ")
                     : "Every day"
+                let every = ScheduleMath.interval(of: condition)
+                let cadence = every > 1 ? "Every \(every) wks, " : ""
                 let time = condition.timeOfDay.map { raw in
                     let date = ScheduleConditionFormat.timeOfDayDate(raw)
                     return ScheduleConditionFormat.seconds(in: raw) > 0
                         ? date.formatted(.dateTime.hour().minute().second())
                         : date.formatted(.dateTime.hour().minute())
                 } ?? "any time"
-                return "\(days) \(time)"
+                return "\(cadence)\(days) \(time)"
             case .oneTime:
                 guard let raw = condition.date,
                       let date = ScheduleMath.parseLocalDate(raw, calendar: .current)
@@ -1345,9 +1378,34 @@ extension SchedulerView {
         let summary = parts.joined(
             separator: trigger.conditionLogic == .all ? " & " : " · ")
         let actionCount = trigger.actions.count
+        let targets = trigger.actions.filter { $0.kind != .clearAll }
+        if targets.count == 1, let label = targetLabel(targets[0]) {
+            return summary + " · " + label
+        }
         return actionCount == 0
             ? summary + " · no actions"
             : summary + " · \(actionCount) action\(actionCount == 1 ? "" : "s")"
+    }
+
+    /// "Countdown, each Sunday Morning Worship plan": what a schedule plays.
+    fileprivate func targetLabel(_ action: SlideAction) -> String? {
+        switch action.kind {
+        case .firePresentation:
+            return action.presentationId.flatMap { model.libraryEntry($0)?.name }
+        case .fireServiceItem:
+            let plan = action.serviceId.flatMap { model.resident.services.value($0) }
+            let item = action.serviceItemName
+                ?? plan?.items.first { $0.id == action.serviceItemId }?.name ?? "Plan item"
+            switch PlanSchedule.source(of: action) {
+            case .serviceType(let type): return "\(item), each \(type) plan"
+            case .template(_, let type):
+                return "\(item), each \(type ?? plan.map { PlanSchedule.baseName(ofTemplate: $0.name) } ?? "matching") plan"
+            case .plan: return plan.map { "\(item), \($0.name)" } ?? item
+            case nil: return nil
+            }
+        default:
+            return nil
+        }
     }
 }
 

@@ -257,7 +257,12 @@ struct ServiceDayTests {
             planID: "plan", planName: "Sunday", countdownItemID: "cd",
             start: date("2026-10-25T10:24:50"), serviceTime: date("2026-10-25T10:30:00"), calendar: calendar)
         #expect(ServiceDay.firesOnlyOnServiceMac(countdown))
+        // Anything that plays a plan item takes the service's screens too.
+        var planItem = countdown
+        planItem.notes = nil
+        #expect(ServiceDay.firesOnlyOnServiceMac(planItem))
         var other = countdown
+        other.actions = [SlideAction(id: "lights", kind: .fireCombo, comboId: "lights")]
         other.notes = "lights"
         #expect(!ServiceDay.firesOnlyOnServiceMac(other))
         other.notes = nil

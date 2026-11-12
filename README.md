@@ -79,6 +79,10 @@ With Settings › Local API enabled, the app serves a REST and WebSocket API on 
 
 `apps/mac/Sources/MonitorsPanel.swift` has the Black switch at the bottom of the Screens panel: every audience screen and the livestream (opaque) go solid black, the stage is unchanged. See `docs/black-screen.md`.
 
+### Scheduler
+
+`apps/mac/Sources/SchedulerView.swift` is the Schedule mode's board of triggers. **New Schedule…** (`PlanScheduleSheet.swift`) makes one from a form: a presentation, or an item from one plan or from each week's plan (by service type or template), once, daily, or weekly every N weeks, from a start day until an end day or for good. See `docs/scheduler.md`.
+
 ### Media Library
 
 `apps/mac/Sources/MediaLibraryView.swift` is the media bin. Its categories are folders at the top of the Media library, and Worship Backgrounds holds packs: folders inside it, made by dropping a Finder folder there. See `docs/media-library.md`.
