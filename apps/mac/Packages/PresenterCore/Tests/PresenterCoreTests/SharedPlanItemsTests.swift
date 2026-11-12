@@ -28,6 +28,7 @@ struct SharedPlanItemsTests {
         #expect(SharedPlanItems.slot(forItemNamed: "Weekly Announcements") == .announcements)
         #expect(SharedPlanItems.slot(forItemNamed: "Closing") == .closing)
         #expect(SharedPlanItems.slot(forItemNamed: "Closing Slides") == .closing)
+        #expect(SharedPlanItems.slot(forItemNamed: "Close") == .closing)
         #expect(SharedPlanItems.slot(forItemNamed: "Announcements Loop") == nil)
         #expect(SharedPlanItems.slot(forItemNamed: "Pre-Service") == nil)
         #expect(SharedPlanItems.slot(forItemNamed: "Transition") == nil, "StandingItems places the Transition")
