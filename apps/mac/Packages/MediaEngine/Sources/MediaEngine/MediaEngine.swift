@@ -118,6 +118,11 @@ public final class MediaEngine: @unchecked Sendable {
     /// can't decode is refused up front with a reason rather than handed
     /// to a player that never shows a frame.
     public func prepare(url: URL) async throws -> PreparedMedia {
+        if let held = standbyVideos.value[url] { return held }
+        return try await open(url: url)
+    }
+
+    private func open(url: URL) async throws -> PreparedMedia {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw MediaEngineError.noVideoTrack(url)
@@ -377,13 +382,51 @@ public final class MediaEngine: @unchecked Sendable {
         }
     }
 
+    // MARK: Standing by
+
+    /// Pictures decoded and videos opened ahead of time (the day's plan,
+    /// as the app opens), by file. `showStill(url:id:)` and `prepare(url:)`
+    /// take them from here, so a slide's picture goes up with its words
+    /// instead of after the file has been read and decoded.
+    private let standbyStills = Locked<[URL: StillImage]>([:])
+    private let standbyVideos = Locked<[URL: PreparedMedia]>([:])
+
+    /// Decodes a picture now and keeps it. Returns the memory it takes, in
+    /// bytes; 0 when it was already standing by.
+    @discardableResult
+    public func standBy(still url: URL) throws -> Int {
+        guard standbyStills.value[url] == nil else { return 0 }
+        let still = try StillImage.load(url: url, device: device)
+        standbyStills.withLock { $0[url] = still }
+        return Int(still.size.width * still.size.height) * 4
+    }
+
+    /// Opens a video now (its tracks read, and checked that this Mac can
+    /// play it) and keeps it.
+    public func standBy(video url: URL) async throws {
+        guard standbyVideos.value[url] == nil else { return }
+        let prepared = try await open(url: url)
+        standbyVideos.withLock { $0[url] = prepared }
+    }
+
+    public func isStandingBy(_ url: URL) -> Bool {
+        standbyStills.value[url] != nil || standbyVideos.value[url] != nil
+    }
+
+    /// Lets go of what is standing by for files not in `keep`. Anything
+    /// already on a screen keeps its own picture.
+    public func releaseStandby(keeping keep: Set<URL>) {
+        standbyStills.withLock { held in held = held.filter { keep.contains($0.key) } }
+        standbyVideos.withLock { held in held = held.filter { keep.contains($0.key) } }
+    }
+
     @discardableResult
     public func showStill(url: URL, id: String) async throws -> CGSize {
         let size: CGSize
         if let existing = stills.value[id], existing.url == url {
             size = existing.size
         } else {
-            let still = try StillImage.load(url: url, device: device)
+            let still = try standbyStills.value[url] ?? StillImage.load(url: url, device: device)
             stills.withLock { $0[id] = still }
             contentChanged()
             size = still.size
