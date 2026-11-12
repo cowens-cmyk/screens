@@ -84,6 +84,26 @@ final class StillImageTests: XCTestCase {
         XCTAssertLessThan(red[0], 80, "blue channel too high — channel order wrong?")
     }
 
+    func testAPictureStandingByGoesUpWithoutBeingReadAgain() async throws {
+        let engine = try MediaEngine(device: device)
+        let url = try makeTestPNG()
+        XCTAssertFalse(engine.isStandingBy(url))
+        XCTAssertEqual(try engine.standBy(still: url), 64 * 40 * 4)
+        XCTAssertTrue(engine.isStandingBy(url))
+        XCTAssertEqual(try engine.standBy(still: url), 0, "held once")
+
+        // The file can go: the picture is in memory.
+        try FileManager.default.removeItem(at: url)
+        let size = try await engine.showStill(url: url, id: "still")
+        XCTAssertEqual(size, CGSize(width: 64, height: 40))
+        XCTAssertNotNil(engine.surface(for: "still", hostTime: 0))
+
+        // Let go of, the one already on a screen keeps its picture.
+        engine.releaseStandby(keeping: [])
+        XCTAssertFalse(engine.isStandingBy(url))
+        XCTAssertNotNil(engine.surface(for: "still", hostTime: 0))
+    }
+
     func testStillIsTimeIndependentAndIdempotent() async throws {
         let engine = try MediaEngine(device: device)
         let url = try makeTestPNG()

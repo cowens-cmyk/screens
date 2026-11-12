@@ -8,6 +8,10 @@ struct ScrubBar: View {
 
     var showsTimes = false
 
+    /// How thick the bar is; the Screens panel's is thicker, to be read
+    /// from across the booth.
+    var trackHeight: CGFloat = 3
+
     var trimRange: ClosedRange<Double>? = nil
 
     var onTrimChange: ((ClosedRange<Double>, _ final: Bool) -> Void)? = nil
@@ -67,10 +71,10 @@ struct ScrubBar: View {
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(Color.primary.opacity(0.12))
-                    .frame(height: 3)
+                    .frame(height: trackHeight)
                 Capsule()
                     .fill(isPlaying ? Color.green : Color.secondary)
-                    .frame(width: clamped * width, height: 3)
+                    .frame(width: clamped * width, height: trackHeight)
                 if let trim = displayTrim {
 
                     let lower = min(max(trim.lowerBound, 0), 1)

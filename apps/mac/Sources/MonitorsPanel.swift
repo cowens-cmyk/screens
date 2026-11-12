@@ -48,6 +48,7 @@ struct MonitorsPanel: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    PlanPreloadStatus()
                     if shows(audienceTarget) {
                         monitor("Audience", target: audienceTarget, color: HopeStyle.blue) { target in
                             LiveSceneView(render: render, screenTargetID: target)
@@ -58,6 +59,7 @@ struct MonitorsPanel: View {
                                 .allowsHitTesting(false)
                         }
                     }
+                    if let controls { ScreensProgressBars(controls: controls) }
                     if let sideTVsTarget, shows(sideTVsTarget) { sideTVsMonitor(sideTVsTarget) }
                     if shows(streamTarget) { streamMonitor }
                     if shows(stageTarget) { stageMonitor }

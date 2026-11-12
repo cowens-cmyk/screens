@@ -412,6 +412,25 @@ final class ServiceControls {
         return nil
     }
 
+    /// The whole wait the slide (or plan video) was given before it moves
+    /// on, so the Screens panel can show how far through it is. Kept through
+    /// a hold; a wait that follows a video is the video's length plus its
+    /// delay instead.
+    private var autoAdvanceTotalSeconds: Double?
+
+    /// How far through its wait what's on screen is, 0 to 1; nil when
+    /// nothing is waiting to move on by itself.
+    func autoAdvanceProgress(at date: Date = Date()) -> Double? {
+        guard let pending = autoAdvancePending, let remaining = autoAdvanceRemaining(at: date) else { return nil }
+        var total = autoAdvanceTotalSeconds
+        if pending.firesAt == nil, let mediaID = pending.mediaID,
+           let transport = render.media.transport(id: mediaID), transport.duration > 0 {
+            total = transport.duration / max(transport.rate, 0.01) + pending.delaySeconds
+        }
+        guard let total, total > 0 else { return nil }
+        return min(max(1 - remaining / total, 0), 1)
+    }
+
     func setAutoAdvancePaused(_ paused: Bool) {
         guard paused != autoAdvancePaused, autoAdvancePending != nil else { return }
         autoAdvancePaused = paused
@@ -442,6 +461,7 @@ final class ServiceControls {
         autoAdvancePaused = false
         autoAdvanceHeldRemaining = nil
         advanceTimedContext = nil
+        autoAdvanceTotalSeconds = nil
     }
 
     private func cancelAutoAdvance() {
@@ -556,6 +576,8 @@ final class ServiceControls {
         RunLoop.main.add(timer, forMode: .common)
         autoAdvanceTimer = timer
         autoAdvancePending = AutoAdvancePending(firesAt: Date().addingTimeInterval(delay))
+        // Coming back from a hold, the wait is still the one it started with.
+        if autoAdvanceTotalSeconds == nil { autoAdvanceTotalSeconds = delay }
         advanceTimedContext = .slide(slideID)
     }
 
@@ -767,6 +789,7 @@ final class ServiceControls {
         RunLoop.main.add(timer, forMode: .common)
         mediaAdvanceTimer = timer
         autoAdvancePending = AutoAdvancePending(firesAt: Date().addingTimeInterval(delay))
+        if autoAdvanceTotalSeconds == nil { autoAdvanceTotalSeconds = delay }
         advanceTimedContext = .mediaItem(serviceItemID: serviceItemID, mediaID: mediaID)
     }
 
