@@ -236,7 +236,7 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol, @unchecked 
                 }) {
                 chosenModeID = cardMode.modeID
             } else if frameRateDenominator != 0,
-                let match = DeckLinkDisplayMode.bestMatch(
+                let match = DeckLinkDisplayMode.bestMatchAtOrBelow(
                     width: Int(width), height: Int(height),
                     framesPerSecond: Int(frameRateNumerator / frameRateDenominator),
                     in: modes) {

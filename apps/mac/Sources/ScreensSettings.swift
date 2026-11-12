@@ -435,6 +435,13 @@ private struct ScreenOutputSection: View {
                 }
                 .pickerStyle(.segmented)
                 .fixedSize()
+                Picker("Frame Rate", selection: Binding(get: { output.frameRate }, set: output.setFrameRate)) {
+                    ForEach(Array(Set(ShowScreens.frameRates + [output.frameRate])).sorted(), id: \.self) { rate in
+                        Text("\(rate) fps").tag(rate)
+                    }
+                }
+                .fixedSize()
+                .help("How many frames a second this screen is drawn and sent at. 60 with 1080p is 1080p60.")
                 switch role {
                 case .livestream: livestreamOptions(output)
                 case .stage: stageOptions

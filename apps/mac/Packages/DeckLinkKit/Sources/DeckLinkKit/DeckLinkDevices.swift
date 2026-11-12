@@ -53,6 +53,25 @@ public struct DeckLinkDisplayMode: Sendable, Equatable, Codable {
         Double(timeScale) / Double(frameDuration)
     }
 
+    /// The mode for a screen drawn at `framesPerSecond`: one at that rate,
+    /// else the fastest standard rate under it the port has at that size. A
+    /// card that tops out at 1080p30 still sends a 60 fps screen, at 30,
+    /// rather than refusing it.
+    public static func bestMatchAtOrBelow(
+        width: Int, height: Int, framesPerSecond: Int,
+        in modes: [DeckLinkDisplayMode]
+    ) -> DeckLinkDisplayMode? {
+        if let match = bestMatch(width: width, height: height, framesPerSecond: framesPerSecond, in: modes) {
+            return match
+        }
+        for rate in [60, 50, 30, 25, 24] where rate < framesPerSecond {
+            if let lower = bestMatch(width: width, height: height, framesPerSecond: rate, in: modes) {
+                return lower
+            }
+        }
+        return nil
+    }
+
     public static func bestMatch(
         width: Int, height: Int, framesPerSecond: Int,
         in modes: [DeckLinkDisplayMode]
