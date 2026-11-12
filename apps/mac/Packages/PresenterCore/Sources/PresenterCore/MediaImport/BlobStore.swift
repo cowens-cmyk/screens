@@ -3,6 +3,11 @@ import Foundation
 
 public struct BlobStore: Sendable {
     public let directory: URL
+    /// The files are on an external drive (MediaStorage), which can be
+    /// unplugged.
+    public let isExternal: Bool
+    /// The folder chosen for the drive; the library for this Mac.
+    public let storageRoot: URL
 
     private final class Cache: @unchecked Sendable {
         private let lock = NSLock()
@@ -102,12 +107,35 @@ public struct BlobStore: Sendable {
 
     private let cache = Cache()
 
+    /// The store for this Mac's media location (MediaStorage).
     public init(libraryRoot: URL) throws {
-        directory = libraryRoot.appendingPathComponent("blobs", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try self.init(libraryRoot: libraryRoot, location: MediaStorage.location())
+    }
+
+    public init(libraryRoot: URL, location: MediaStorage.Location) throws {
+        let resolved = MediaStorage.resolve(libraryRoot: libraryRoot, location: location)
+        directory = resolved.directory
+        isExternal = resolved.isExternal
+        storageRoot = resolved.root
+        // On a drive, only inside a chosen folder that's there: with the
+        // drive unplugged its path is an empty spot on the internal disk.
+        if !isExternal || MediaStorage.isReachable(storageRoot) {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+    }
+
+    /// The files can be read and written now: always on this Mac; on a
+    /// drive while it's plugged in.
+    public var isAvailable: Bool {
+        !isExternal || MediaStorage.isReachable(directory)
+    }
+
+    private func requireAvailable() throws {
+        guard isAvailable else { throw MediaStorage.DriveNotConnected(folder: storageRoot.path) }
     }
 
     public func store(fileURL: URL) throws -> String {
+        try requireAvailable()
         let hash = try Self.sha256(of: fileURL)
         let destination = url(forHash: hash, ext: fileURL.pathExtension)
         if !FileManager.default.fileExists(atPath: destination.path) {
@@ -118,6 +146,7 @@ public struct BlobStore: Sendable {
     }
 
     public func adopt(fileURL: URL) throws -> String {
+        try requireAvailable()
         let hash = try Self.sha256(of: fileURL)
         let destination = url(forHash: hash, ext: fileURL.pathExtension)
         if !FileManager.default.fileExists(atPath: destination.path) {

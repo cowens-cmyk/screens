@@ -4122,6 +4122,12 @@
         },
         "websiteEvents": {
           "$ref": "#/components/schemas/WebsiteEventSettings"
+        },
+        "mainMacId": {
+          "type": "string"
+        },
+        "mainMacName": {
+          "type": "string"
         }
       },
       "required": [

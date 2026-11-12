@@ -220,6 +220,7 @@ struct AppSettingsView: View {
 
     @AppStorage("present.continuous") private var continuousPresent = true
     @AppStorage(ServiceStation.runsServiceKey) private var runsService = false
+    @AppStorage(MessageCleanupRunner.enabledKey) private var removeOldMessages = true
 
     private var generalPane: some View {
         Form {
@@ -250,6 +251,7 @@ struct AppSettingsView: View {
                 }
             }
             Section {
+                MainMacRoleRow()
                 SettingsToggle("general.runsService", isOn: $runsService)
             } header: {
                 Text("Service Day")
@@ -257,6 +259,13 @@ struct AppSettingsView: View {
                 Text(runsService
                     ? "A restart goes ahead only over empty screens, the end of the plan or stopped pre-service slides, or after 20 minutes on the plan's last item."
                     : "This Mac skips the countdowns and pre-service restarts.")
+            }
+            Section {
+                SettingsToggle("general.removeOldMessages", isOn: $removeOldMessages)
+            } header: {
+                Text("Messages")
+            } footer: {
+                Text("Each plan's message is kept in the library's Messages folder. One whose last service was \(MessageCleanup.keepDays) days ago or more is removed by the Mac with Run on this Mac on. Songs are never removed.")
             }
         }
         .settingsForm()

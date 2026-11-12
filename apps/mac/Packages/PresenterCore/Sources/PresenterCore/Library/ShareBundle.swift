@@ -98,7 +98,10 @@ public enum ShareBundle {
             // Media files and posters are named by their hash.
             var blobCount = 0
             for folderName in [BackupBundle.blobsName, BackupBundle.postersName] {
-                let source = root.appendingPathComponent(folderName, isDirectory: true)
+                // Media files from wherever this Mac keeps them (MediaStorage).
+                let source = folderName == BackupBundle.blobsName
+                    ? try MediaStorage.filesDirectory(libraryRoot: root)
+                    : root.appendingPathComponent(folderName, isDirectory: true)
                 let target = staging.appendingPathComponent(folderName, isDirectory: true)
                 let names = (try? files.contentsOfDirectory(atPath: source.path)) ?? []
                 for file in names where contents.fileHashes.contains(where: { file.hasPrefix($0) }) {

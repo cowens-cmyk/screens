@@ -427,4 +427,64 @@ struct ShepherdArrangementSyncTests {
         #expect(kept.shepherdImportHash == imported.shepherdImportHash)
         #expect(ShepherdSongImport.decision(for: kept, chartHash: "newer") == .edited)
     }
+
+    // MARK: Following Shepherd's chart
+
+    @Test func aLibrarySongMissingPartsIsRebuiltFromShepherdsChart() throws {
+        let chart = "Verse 1\n[C]Amazing grace\n\nChorus\n[G]My chains are gone\n\nBridge 2\n[Am]The earth shall soon\n\nTag\n[F]Forever"
+        let sequence = ["Verse 1", "Chorus", "Bridge 2", "Chorus", "Tag"]
+        let arrangement = ShepherdClient.SongArrangement(id: "a1", name: "Default", sequence: sequence)
+        let detail = ShepherdClient.SongDetail(
+            id: "song-1", title: "Grace", arrangements: [arrangement], chordChart: chart, defaultArrangementId: "a1")
+        let fresh = try #require(ShepherdSongImport.presentation(song: detail, arrangement: arrangement))
+
+        // From ProPresenter: no Bridge 2, no Tag.
+        let song = librarySong(sections: ["Verse 1", "Chorus"])
+        #expect(ShepherdArrangementSync.reconcile(song, song: detail, arrangement: arrangement).warnings.count == 2)
+        let caught = try #require(ShepherdArrangementSync.catchingUp(song, to: fresh, sequence: sequence))
+        #expect(caught.id == song.id, "the same song, rebuilt in place")
+        #expect(caught.shepherdSongId == "song-1")
+        #expect(ShepherdArrangementSync.reconcile(caught, song: detail, arrangement: arrangement).warnings.isEmpty)
+        // Its old sections keep their ids, so plan items and cues still find them.
+        let verse = try #require(caught.sections?.first { $0.name == "Verse 1" })
+        #expect(verse.id == "s0")
+        // Nothing more to do on the next pass.
+        #expect(ShepherdArrangementSync.catchingUp(caught, to: fresh, sequence: sequence) == nil)
+    }
+
+    @Test func aSongThatAlreadyHasEveryPartIsLeftAlone() throws {
+        let chart = "Verse 1\n[C]Amazing grace\n\nChorus\n[G]My chains are gone"
+        let arrangement = ShepherdClient.SongArrangement(id: "a1", name: "Default", sequence: ["Verse 1", "Chorus"])
+        let detail = ShepherdClient.SongDetail(
+            id: "song-1", title: "Grace", arrangements: [arrangement], chordChart: chart, defaultArrangementId: "a1")
+        let fresh = try #require(ShepherdSongImport.presentation(song: detail, arrangement: arrangement))
+        let song = librarySong(sections: ["Verse 1", "Chorus"])
+        #expect(ShepherdArrangementSync.catchingUp(song, to: fresh, sequence: ["Verse 1", "Chorus"]) == nil)
+    }
+
+    @Test func aChartMissingTheSamePartsDoesNotReplaceTheSong() throws {
+        // Shepherd's order names a Bridge its own chart doesn't have.
+        let chart = "Verse 1\n[C]Amazing grace\n\nChorus\n[G]My chains are gone"
+        let sequence = ["Verse 1", "Chorus", "Bridge"]
+        let arrangement = ShepherdClient.SongArrangement(id: "a1", name: "Default", sequence: sequence)
+        let detail = ShepherdClient.SongDetail(
+            id: "song-1", title: "Grace", arrangements: [arrangement], chordChart: chart, defaultArrangementId: "a1")
+        let fresh = try #require(ShepherdSongImport.presentation(song: detail, arrangement: arrangement))
+        let song = librarySong(sections: ["Verse 1", "Chorus"])
+        #expect(ShepherdArrangementSync.catchingUp(song, to: fresh, sequence: sequence) == nil)
+    }
+
+    @Test func wordlessPartsAreFilledBySync() throws {
+        let chart = "Verse 1\n[C]Amazing grace\n\nChorus\n[G]My chains are gone"
+        let sequence = ["Verse 1", "Chorus", "Vamp", "Chorus", "Outro"]
+        let arrangement = ShepherdClient.SongArrangement(id: "a1", name: "Default", sequence: sequence)
+        let detail = ShepherdClient.SongDetail(
+            id: "song-1", title: "Grace", arrangements: [arrangement], chordChart: chart, defaultArrangementId: "a1")
+        let imported = try #require(ShepherdSongImport.presentation(song: detail, arrangement: arrangement))
+        let filled = try #require(ShepherdArrangementSync.fillingWordlessParts(
+            imported, sequence: sequence, arrangementId: nil, shepherdTag: "a1"))
+        #expect(ShepherdArrangementSync.reconcile(filled, song: detail, arrangement: arrangement).warnings.isEmpty)
+        #expect(ShepherdArrangementSync.fillingWordlessParts(
+            filled, sequence: sequence, arrangementId: nil, shepherdTag: "a1") == nil)
+    }
 }

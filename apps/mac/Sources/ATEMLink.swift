@@ -143,7 +143,7 @@ final class ATEMLink {
         guard let render else { return }
         let target = ShowSetup.shared.streamTarget
         guard !target.isEmpty else {
-            coverage = .transparent
+            if coverage != .transparent { coverage = .transparent }
             return
         }
         if provider?.target != target {
