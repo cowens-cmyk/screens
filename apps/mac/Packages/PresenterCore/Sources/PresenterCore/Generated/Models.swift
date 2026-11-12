@@ -1884,8 +1884,12 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
     public var stageMode: String?
     public var serviceId: String?
     public var serviceItemId: String?
+    public var planSeries: String?
+    public var serviceItemRole: String?
+    public var serviceItemName: String?
+    public var serviceItemRefId: String?
 
-    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, signageId: String? = nil, screenId: String? = nil, delaySeconds: Double? = nil, streamMode: String? = nil, stageMode: String? = nil, serviceId: String? = nil, serviceItemId: String? = nil) {
+    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, signageId: String? = nil, screenId: String? = nil, delaySeconds: Double? = nil, streamMode: String? = nil, stageMode: String? = nil, serviceId: String? = nil, serviceItemId: String? = nil, planSeries: String? = nil, serviceItemRole: String? = nil, serviceItemName: String? = nil, serviceItemRefId: String? = nil) {
         self.id = id
         self.kind = kind
         self.layer = layer
@@ -1925,6 +1929,10 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
         self.stageMode = stageMode
         self.serviceId = serviceId
         self.serviceItemId = serviceItemId
+        self.planSeries = planSeries
+        self.serviceItemRole = serviceItemRole
+        self.serviceItemName = serviceItemName
+        self.serviceItemRefId = serviceItemRefId
     }
 }
 
@@ -1968,8 +1976,10 @@ public struct ScheduleCondition: Codable, Sendable, Equatable, Identifiable {
     public var offsetSeconds: Double?
     public var serviceId: String?
     public var serviceTimeIndex: Int?
+    public var startDate: String?
+    public var intervalWeeks: Int?
 
-    public init(id: String, kind: ScheduleConditionKind, days: [Int]? = nil, timeOfDay: String? = nil, date: String? = nil, timerId: String? = nil, timerSeconds: Double? = nil, excludedDates: [String]? = nil, calendarId: String? = nil, eventTitleContains: String? = nil, offsetSeconds: Double? = nil, serviceId: String? = nil, serviceTimeIndex: Int? = nil) {
+    public init(id: String, kind: ScheduleConditionKind, days: [Int]? = nil, timeOfDay: String? = nil, date: String? = nil, timerId: String? = nil, timerSeconds: Double? = nil, excludedDates: [String]? = nil, calendarId: String? = nil, eventTitleContains: String? = nil, offsetSeconds: Double? = nil, serviceId: String? = nil, serviceTimeIndex: Int? = nil, startDate: String? = nil, intervalWeeks: Int? = nil) {
         self.id = id
         self.kind = kind
         self.days = days
@@ -1983,6 +1993,8 @@ public struct ScheduleCondition: Codable, Sendable, Equatable, Identifiable {
         self.offsetSeconds = offsetSeconds
         self.serviceId = serviceId
         self.serviceTimeIndex = serviceTimeIndex
+        self.startDate = startDate
+        self.intervalWeeks = intervalWeeks
     }
 }
 

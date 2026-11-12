@@ -2811,6 +2811,18 @@
         },
         "serviceItemId": {
           "type": "string"
+        },
+        "planSeries": {
+          "type": "string"
+        },
+        "serviceItemRole": {
+          "type": "string"
+        },
+        "serviceItemName": {
+          "type": "string"
+        },
+        "serviceItemRefId": {
+          "type": "string"
         }
       },
       "required": [
@@ -2905,6 +2917,12 @@
           "type": "string"
         },
         "serviceTimeIndex": {
+          "type": "integer"
+        },
+        "startDate": {
+          "type": "string"
+        },
+        "intervalWeeks": {
           "type": "integer"
         }
       },

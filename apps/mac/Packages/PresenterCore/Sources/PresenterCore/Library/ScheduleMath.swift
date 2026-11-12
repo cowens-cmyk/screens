@@ -47,6 +47,35 @@ public enum ScheduleMath {
         return excluded.contains(localDayString(date, calendar: calendar))
     }
 
+    /// The first day a weekly rule runs: midnight of its start date. Nil
+    /// when it has none (it runs from whenever it was made).
+    public static func startDay(of condition: ScheduleCondition, calendar: Calendar) -> Date? {
+        guard let raw = condition.startDate, !raw.isEmpty else { return nil }
+        return parseLocalDate(String(raw.prefix(10)) + "T00:00", calendar: calendar)
+    }
+
+    /// Every how many weeks a weekly rule runs: 1 unless it says more.
+    public static func interval(of condition: ScheduleCondition) -> Int {
+        max(1, condition.intervalWeeks ?? 1)
+    }
+
+    /// Whether a day falls in a week the rule runs: counted in whole weeks
+    /// (Sunday to Saturday) from the week of its start date, so "every 2
+    /// weeks on Sunday and Wednesday" keeps both days in the same week.
+    /// Every week when it repeats weekly or has no start to count from.
+    static func inRepeatWeek(_ date: Date, _ condition: ScheduleCondition, calendar: Calendar) -> Bool {
+        let every = interval(of: condition)
+        guard every > 1, let start = startDay(of: condition, calendar: calendar) else { return true }
+        func sundayOf(_ day: Date) -> Date {
+            let midnight = calendar.startOfDay(for: day)
+            let back = calendar.component(.weekday, from: midnight) - 1
+            return calendar.date(byAdding: .day, value: -back, to: midnight) ?? midnight
+        }
+        guard let days = calendar.dateComponents([.day], from: sundayOf(start), to: sundayOf(date)).day,
+              days >= 0 else { return false }
+        return (days / 7) % every == 0
+    }
+
     public static func snoozed(
         _ trigger: ScheduleTrigger, at now: Date, calendar: Calendar
     ) -> Bool {
@@ -107,13 +136,19 @@ public enum ScheduleMath {
                 match.second = time.second
                 match.weekday = weekday
 
+                // Nothing before the first day; from there, only the weeks
+                // the rule repeats on and the days not left out.
                 var cursor = after
-
-                for _ in 0 ... (condition.excludedDates?.count ?? 0) {
+                if let start = startDay(of: condition, calendar: calendar) {
+                    cursor = max(cursor, start.addingTimeInterval(-1))
+                }
+                let tries = 2 + interval(of: condition) * ((condition.excludedDates?.count ?? 0) + 1)
+                for _ in 0 ..< tries {
                     guard let candidate = calendar.nextDate(
                         after: cursor, matching: match, matchingPolicy: .nextTime,
                         direction: .forward) else { return nil }
-                    if !isExcluded(candidate, in: condition, calendar: calendar) {
+                    if inRepeatWeek(candidate, condition, calendar: calendar),
+                       !isExcluded(candidate, in: condition, calendar: calendar) {
                         return candidate
                     }
                     cursor = candidate
@@ -172,6 +207,8 @@ public enum ScheduleMath {
             guard days.contains(weekday) else { return false }
 
             guard !isExcluded(now, in: condition, calendar: calendar) else { return false }
+            if let start = startDay(of: condition, calendar: calendar), now < start { return false }
+            guard inRepeatWeek(now, condition, calendar: calendar) else { return false }
             guard let raw = condition.timeOfDay else { return true }  
             guard let time = parseTimeOfDay(raw) else { return false }
             let parts = calendar.dateComponents([.hour, .minute, .second], from: now)

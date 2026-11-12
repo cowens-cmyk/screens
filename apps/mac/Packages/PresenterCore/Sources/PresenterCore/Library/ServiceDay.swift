@@ -142,11 +142,13 @@ public enum ServiceDay {
     /// service, for the scheduler's history.
     public static let notThisMacReason = "Not this Mac's job."
 
-    /// The restarts and scheduled countdowns sync to every Mac, but only
-    /// the one running the service should take its screens; on the others
-    /// they're skipped. Every other trigger fires everywhere as before.
+    /// The restarts, scheduled countdowns and anything that plays a plan
+    /// item sync to every Mac, but only the one running the service should
+    /// take its screens; on the others they're skipped. Every other trigger
+    /// fires everywhere as before.
     public static func firesOnlyOnServiceMac(_ trigger: ScheduleTrigger) -> Bool {
         isRestartTrigger(trigger) || trigger.notes?.hasPrefix(ServiceCountdown.triggerNotePrefix) == true
+            || trigger.actions.contains { $0.kind == .fireServiceItem }
     }
 
     /// The service time a restart trigger belongs to.
