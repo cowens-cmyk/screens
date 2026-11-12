@@ -47,7 +47,7 @@ public enum SharedPlanItems {
                 ["announcements", "announcement", "weeklyannouncements", "churchannouncements",
                  "announcementslides", "announcementsslides"]
             case .closing:
-                ["closing", "closingslide", "closingslides", "closingremarks", "closingannouncements"]
+                ["closing", "close", "closingslide", "closingslides", "closingremarks", "closingannouncements"]
             case .transition:
                 []
             }
