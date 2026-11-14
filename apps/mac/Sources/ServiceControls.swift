@@ -2381,11 +2381,20 @@ final class ServiceControls {
                 engine.play(prepared, id: video.mediaID, loop: video.loop, options: video.options)
                 // Taken off the screens in the moment between the check and
                 // the play: the main thread's stop already ran, so this one
-                // stops it rather than leave a player no one will stop.
-                guard live.value.contains(video.mediaID) else {
-                    engine.stop(id: video.mediaID)
-                    continue
+                // stops it rather than leave a player no one will stop. The
+                // check and the stop hold the live set's lock together: were
+                // the id put straight back on between them, the stop would
+                // land on the player its new start had just made, and the
+                // screens would end up with none. Put back on, the main
+                // thread waits here and its new start comes after the stop.
+                let stillLive = live.withLock { ids -> Bool in
+                    guard ids.contains(video.mediaID) else {
+                        engine.stop(id: video.mediaID)
+                        return false
+                    }
+                    return true
                 }
+                guard stillLive else { continue }
                 await MainActor.run {
                     DiagnosticsStore.shared.note("media.play.start", detail: "\(video.name) — \(summary)")
                     self?.watchFirstPicture(mediaID: video.mediaID, name: video.name)
