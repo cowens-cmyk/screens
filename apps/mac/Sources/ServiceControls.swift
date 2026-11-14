@@ -115,6 +115,53 @@ final class ServiceControls {
     private(set) var liveContextID: String?
     private(set) var liveOccurrence: Int?
 
+    /// Moves the live place, writing each half only when it changes: a
+    /// write of the same value still re-runs every view that reads it, and
+    /// the plan's sidebar and pages read these on every fire.
+    private func setLivePlace(_ contextID: String?, _ occurrence: Int?) {
+        if liveContextID != contextID { liveContextID = contextID }
+        if liveOccurrence != occurrence { liveOccurrence = occurrence }
+        syncTileMarks()
+    }
+
+    /// One slide tile on a grid: the item (or deck) it fires in, and its
+    /// place there.
+    struct TileKey: Hashable {
+        let contextID: String
+        let occurrence: Int
+    }
+
+    /// What a tile shows about the show: live (with its build step), or
+    /// next for the arrow key.
+    struct TileMark: Equatable {
+        var isLive = false
+        var step: Int?
+        var isNext = false
+    }
+
+    /// Each tile reads its own mark here rather than liveContextID,
+    /// liveOccurrence, nextPlace and the build step, which every tile on
+    /// the page shared: a fire re-ran all of them. Now it re-runs the tile
+    /// that stopped being live or next and the one that became so.
+    @ObservationIgnored private let tileMarks = KeyedValues<TileKey, TileMark>(absent: TileMark())
+
+    func tileMark(contextID: String?, occurrence: Int) -> TileMark {
+        guard let contextID else { return TileMark() }
+        return tileMarks.value(TileKey(contextID: contextID, occurrence: occurrence))
+    }
+
+    private func syncTileMarks() {
+        var marks: [TileKey: TileMark] = [:]
+        if let contextID = liveContextID, let occurrence = liveOccurrence {
+            marks[TileKey(contextID: contextID, occurrence: occurrence)] = TileMark(
+                isLive: true, step: state.slideAnimationStep?.consumed)
+        }
+        if let next = nextPlace {
+            marks[TileKey(contextID: next.contextID, occurrence: next.occurrence), default: TileMark()].isNext = true
+        }
+        tileMarks.set(marks)
+    }
+
     private(set) var keyboardFires = 0
 
     func noteKeyboardFire() {
@@ -263,8 +310,7 @@ final class ServiceControls {
         where render.nextLiveTransitions[layer] == nil {
             render.nextLiveTransitions[layer] = transition
         }
-        liveContextID = contextID
-        liveOccurrence = occurrence
+        setLivePlace(contextID, occurrence)
 
         serviceTracking?.noteItemFired(serviceItemID: contextID)
         refreshNextSlide()
@@ -376,8 +422,7 @@ final class ServiceControls {
 
     private func exitLanded() {
         if state.liveSlide == nil, liveContextID != nil {
-            liveContextID = nil
-            liveOccurrence = nil
+            setLivePlace(nil, nil)
             cancelAutoAdvance()
             refreshNextSlide()
         }
@@ -1749,8 +1794,7 @@ final class ServiceControls {
 
         state.clear(function: function, atHostTime: CACurrentMediaTime())
         if function == .slides, state.liveSlide == nil {
-            liveContextID = nil
-            liveOccurrence = nil
+            setLivePlace(nil, nil)
             cancelAutoAdvance()
             refreshNextSlide()
         }
@@ -1775,8 +1819,7 @@ final class ServiceControls {
         stashExitTransition(for: [layer])
         state.clear(layer: layer, atHostTime: CACurrentMediaTime())
         if layer == .slide, state.liveSlide == nil {
-            liveContextID = nil
-            liveOccurrence = nil
+            setLivePlace(nil, nil)
             cancelAutoAdvance()
             refreshNextSlide()
         }
@@ -1792,8 +1835,7 @@ final class ServiceControls {
         endedPlanMediaItemID = nil
 
         if state.liveSlide == nil {
-            liveContextID = nil
-            liveOccurrence = nil
+            setLivePlace(nil, nil)
             cancelAutoAdvance()
         }
         cancelMediaAdvance()
@@ -1921,7 +1963,7 @@ final class ServiceControls {
             if let live = state.liveSlide, live.presentation?.id == id, let occurrence = liveOccurrence {
                 let ids = SlideSceneBuilder.arrangedSlides(for: fresh, arrangementId: live.arrangementId).map(\.id)
                 if let followed = LiveOccurrence.follow(slideID: live.slide.id, from: occurrence, in: ids) {
-                    liveOccurrence = followed
+                    setLivePlace(liveContextID, followed)
                 }
             }
             state.presentationEdited(fresh)
@@ -1966,6 +2008,7 @@ final class ServiceControls {
         currentItemName = context.currentItemName
         nextItemName = context.nextItemName
         if nextPlace != context.nextPlace { nextPlace = context.nextPlace }
+        syncTileMarks()
         if state.hasLinkedText {
 
             apply()
@@ -2116,6 +2159,7 @@ final class ServiceControls {
         syncExitSweep()
 
         appModel.noteOnAirDeck(livePresentationID)
+        syncTileMarks()
     }
 
     private var slideThemeOverrides: [String: Theme] = [:]

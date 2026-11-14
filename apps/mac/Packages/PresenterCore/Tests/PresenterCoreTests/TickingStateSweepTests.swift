@@ -156,7 +156,10 @@ import Testing
         for name in ["PresentGridView.swift", "ServiceContinuousView.swift"] {
             let file = try #require(sweep.file(name))
             for index in file.lines.indices
-            where file.code(index).contains(/\b(liveOccurrence|liveContextID|slideAnimationStep)\b/) {
+            // A tile reads its own mark (ServiceControls.tileMark), the
+            // narrow form of the live slide: a host reading either would
+            // make every fire rebuild all its tiles.
+            where file.code(index).contains(/\b(liveOccurrence|liveContextID|slideAnimationStep|tileMark)\b/) {
                 let type = file.enclosingType(of: index)
                 if type == "SlideTile" { tileReads += 1 }
                 if let type, hosts.contains(type), !verbs.contains(file.enclosingMember(of: index) ?? "") {

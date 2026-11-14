@@ -1886,12 +1886,18 @@ struct SlideTile: View {
 
     let fire: () -> Void
 
-    private var isLive: Bool {
-        contextID != nil && controls?.liveContextID == contextID && controls?.liveOccurrence == index
+    /// This tile's own mark (ServiceControls.tileMark): the tile depends on
+    /// whether it is live or next and nothing else about the show, so a
+    /// fire re-runs only the tiles whose answer changed.
+    private var mark: ServiceControls.TileMark {
+        controls?.tileMark(contextID: contextID, occurrence: index) ?? ServiceControls.TileMark()
     }
 
+    private var isLive: Bool { mark.isLive }
+
     private var liveAnimationStep: Int? {
-        isLive ? controls?.slideAnimationStep?.consumed : nil
+        let mark = mark
+        return mark.isLive ? mark.step : nil
     }
 
     @Environment(\.actionRouter) private var actionRouter
@@ -1912,10 +1918,7 @@ struct SlideTile: View {
     }
 
     /// The slide an arrow key fires next, from wherever the live slide is.
-    private var isNext: Bool {
-        guard let contextID, let next = controls?.nextPlace else { return false }
-        return next.contextID == contextID && next.occurrence == index
-    }
+    private var isNext: Bool { mark.isNext }
 
     private var cornerRadius: CGFloat { roundedCorners ? CornerStandard.element : 0 }
 
