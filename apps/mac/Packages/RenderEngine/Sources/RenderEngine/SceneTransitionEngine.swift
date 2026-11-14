@@ -13,11 +13,12 @@ public struct SceneTransition: Sendable, Equatable {
         case filmBurn
 
         /// A dissolve that never thins what both pictures cover: the
-        /// incoming one fades up over the outgoing one, which stays at full
-        /// strength, in the first half; then the outgoing one fades away
-        /// under it in the second. A plain dissolve has each at half
-        /// strength halfway through, which over a camera (a keyed lower
-        /// third) lets the camera show through both. See
+        /// incoming pictures, shapes and fills fade up over the outgoing
+        /// ones, which stay at full strength, in the first half; then the
+        /// outgoing ones fade away under them in the second. A plain
+        /// dissolve has each at half strength halfway through, which over a
+        /// camera (a keyed lower third) lets the camera show through both.
+        /// Text crosses as in a plain dissolve. See
         /// `push(_:streamDissolve:otherwise:)`.
         case heldDissolve
     }
@@ -409,7 +410,7 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             let steady = steadyText(old: oldItems, new: newItems)
             // A box whose words partly change: its unchanged lines hold and
             // only the changed lines cross over.
-            let reworded = transition.kind == .cut || transition.kind == .heldDissolve ? [] : rewordedText(
+            let reworded = transition.kind == .cut ? [] : rewordedText(
                 old: oldItems.filter { !steady.leaving.contains(membershipKey($0)) },
                 new: newItems.filter { !steady.arriving.contains(membershipKey($0)) })
             let oldKeys = Set(oldItems.map(membershipKey)).union(steady.arriving)
@@ -466,13 +467,34 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                 ))
                 scene.layers[index].items = items
             case .heldDissolve:
-                // Under, the outgoing items at full strength until halfway,
-                // then fading; over them, the incoming ones fading up to full
-                // by halfway. Where both cover, one is always at full.
+                // What covers the camera (pictures, shapes, fills) holds:
+                // the outgoing at full strength until halfway, then fading,
+                // under the incoming fading up to full by halfway, so where
+                // both cover one is always at full. Words cross exactly as in
+                // a plain dissolve (unchanged lines hold, changed lines cross,
+                // old words fade as new ones come): held, the old line and
+                // the new one would both be at full strength halfway, one on
+                // top of the other. The outgoing words go just under the
+                // incoming ones, over the incoming design, so they fade out
+                // in view rather than vanish under a new bar.
                 let arrivingStrength = min(1, progress * 2)
                 let leavingStrength = min(1, (1 - progress) * 2)
-                scene.layers[index].items = (hold.contains(.leaving) ? leaving : faded(leaving, to: leavingStrength))
-                    + arrivingFaded(newItems, to: arrivingStrength)
+                let coversUnder = leaving.filter { !Self.isText($0) }
+                let wordsLeaving = faded(leaving.filter(Self.isText), to: 1 - progress)
+                var arriving = newItems.map { item -> RenderItem in
+                    guard !oldKeys.contains(membershipKey(item)) else { return item }
+                    var out = item
+                    if Self.isText(item) {
+                        out.opacity *= progress
+                    } else if !hold.contains(.arriving) {
+                        out.opacity *= arrivingStrength
+                    }
+                    return out
+                }
+                arriving = lineDissolved(arriving, reworded, progress: progress)
+                arriving.insert(contentsOf: wordsLeaving, at: arriving.firstIndex(where: Self.isText) ?? arriving.count)
+                scene.layers[index].items = (hold.contains(.leaving) ? coversUnder : faded(coversUnder, to: leavingStrength))
+                    + arriving
             case .blurDissolve:
 
                 let swell = (1 - abs(progress * 2 - 1)) * 60
@@ -665,6 +687,11 @@ public final class SceneTransitionEngine: @unchecked Sendable {
 
     private static func hasSteadyLine(_ old: RenderItem, _ new: RenderItem) -> Bool {
         !rewordedText(old: [old], new: [new]).isEmpty
+    }
+
+    static func isText(_ item: RenderItem) -> Bool {
+        if case .text = item.content { return true }
+        return false
     }
 
     private static func faded(_ items: [RenderItem], to opacity: Double) -> [RenderItem] {

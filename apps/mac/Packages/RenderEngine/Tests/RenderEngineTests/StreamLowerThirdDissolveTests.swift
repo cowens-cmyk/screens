@@ -225,6 +225,94 @@ final class StreamLowerThirdDissolveTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(leastCover(try render(engine.scene(at: Date()))), 0.99)
     }
 
+    // MARK: Words
+
+    /// A lyric line on the livestream: words only, the stream's copy of a
+    /// song slide in Lower Third mode.
+    private func words(_ id: String, _ text: String, fontSize: Double = 30) -> RenderItem {
+        RenderItem(
+            id: id, frame: CGRect(x: 10, y: 60, width: 172, height: 44),
+            content: .text(StyledText(string: text, fontSize: fontSize)))
+    }
+
+    private func opacity(_ id: String, in scene: RenderScene) -> Double {
+        scene.layers.first { $0.kind == .slide }?.items.filter { $0.id == id }.map(\.opacity).max() ?? 0
+    }
+
+    /// One lyric slide to the next must not have the old line and the new
+    /// one both at full strength on top of each other: a plain cross.
+    func testWordsToWordsCrossRatherThanHold() throws {
+        var from = nothing
+        from.addItem(words("verse-1", "Amazing grace"), to: .slide)
+        var to = nothing
+        to.addItem(words("verse-2", "I once was lost"), to: .slide)
+        let engine = engine(showing: from)
+        engine.push(to, streamDissolve: dissolve) { _ in self.roomDissolve }
+        let origin = Date()
+        for t in stride(from: 0.0, through: 0.25, by: 1.0 / 120) {
+            let scene = engine.scene(at: origin.addingTimeInterval(t))
+            let old = opacity("verse-1::leaving", in: scene), new = opacity("verse-2", in: scene)
+            XCTAssertLessThanOrEqual(old + new, 1.001, "both lines up at once at \(t) s")
+            XCTAssertFalse(old > 0.52 && new > 0.52, "old \(old) and new \(new) both over half at \(t) s")
+        }
+        XCTAssertEqual(engine.scene(at: origin.addingTimeInterval(dissolve + 0.01)), to)
+    }
+
+    /// A design whose bar stays while its words change: the bar holds the
+    /// camera covered, the words cross.
+    func testABarWithChangingWordsHoldsTheBarAndCrossesTheWords() throws {
+        func design(_ id: String, _ text: String) -> RenderScene {
+            var scene = nothing
+            scene.addItem(RenderItem(
+                id: "bar", frame: CGRect(x: 0, y: CGFloat(bandTop), width: canvas.width, height: canvas.height - CGFloat(bandTop)),
+                content: .solid(SceneColor(red: 0.1, green: 0.2, blue: 0.6, alpha: 1))), to: .slide)
+            scene.addItem(words(id, text), to: .slide)
+            return scene
+        }
+        let engine = engine(showing: design("point-1", "Point one"))
+        engine.push(design("point-2", "Point two"), streamDissolve: dissolve) { _ in self.roomDissolve }
+        let origin = Date()
+        // Frame by frame in time order: drawing past the end retires the
+        // change, so the pixels and the items are checked on one pass.
+        for t in stride(from: 0.0, through: 0.25, by: 1.0 / 120) {
+            let scene = engine.scene(at: origin.addingTimeInterval(t))
+            XCTAssertEqual(opacity("bar", in: scene), 1, "the bar stays as it is at \(t) s")
+            let old = opacity("point-1::leaving", in: scene), new = opacity("point-2", in: scene)
+            XCTAssertLessThanOrEqual(old + new, 1.001, "the words held instead of crossing at \(t) s")
+            XCTAssertFalse(old > 0.52 && new > 0.52, "old \(old) and new \(new) both over half at \(t) s")
+            XCTAssertGreaterThanOrEqual(leastCover(try render(scene)), 0.99, "the bar let the camera through at \(t) s")
+        }
+    }
+
+    /// A lyric box whose first line stays and second line changes: the first
+    /// line never dips, as rewordedText keeps it for the room.
+    func testAnUnchangedLineHoldsWhileTheChangedLineCrosses() throws {
+        var from = nothing
+        from.addItem(words("lyric-1", "Amazing grace\nhow sweet the sound", fontSize: 16), to: .slide)
+        var to = nothing
+        to.addItem(words("lyric-2", "Amazing grace\nthat saved a wretch", fontSize: 16), to: .slide)
+        let engine = engine(showing: from)
+        engine.push(to, streamDissolve: dissolve) { _ in self.roomDissolve }
+        let origin = Date()
+        let mid = engine.scene(at: origin.addingTimeInterval(dissolve / 2))
+        XCTAssertEqual(opacity("lyric-2", in: mid), 1, "the steady line is drawn at full strength")
+        XCTAssertGreaterThan(opacity("lyric-2::changed", in: mid), 0, "the new line is crossing in")
+        XCTAssertGreaterThan(opacity("lyric-1::leaving", in: mid), 0, "the old line is crossing out")
+
+        // In pixels: the first line's coverage never drops below the
+        // settled frame's.
+        func firstLine(_ frame: RenderedFrame) -> Float {
+            var sum: Float = 0
+            for y in 60..<80 { for x in 10..<182 { sum += pixel(frame, x: x, y: y).w } }
+            return sum
+        }
+        let settled = firstLine(try render(to))
+        XCTAssertGreaterThan(settled, 1)
+        for (t, frame) in try frames(engine, from: origin, 0, 0.25) {
+            XCTAssertGreaterThanOrEqual(firstLine(frame), settled * 0.97, "the unchanged line dipped at \(t) s")
+        }
+    }
+
     // MARK: Over a clear camera
 
     func testFromNothingItComesInWithTheTransitionItWasGiven() throws {
