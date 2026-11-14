@@ -155,21 +155,45 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             // again mid-transition carries on from where it is.
             let showing = Self.current(s, at: now)
             s.groups += 1
+            // The new full-frame media without a picture yet, cut or not: a
+            // background that cut in before its first frame would show
+            // nothing, and one that waited alone would come up after the
+            // words. Media an earlier change is still waiting for, and that
+            // this one keeps, is still waited for (a second click inside the
+            // wait doesn't put the background up before it has a picture).
             var awaiting = Set<String>()
+            var latest = now.addingTimeInterval(Self.longestMediaWait)
             if ready != nil {
                 for layer in changed where Self.waitsForMedia(layer, transitionFor(layer)) {
-                    guard let transition = transitionFor(layer), transition.kind != .cut else { continue }
                     awaiting.formUnion(Self.arrivingMediaIDs(on: layer, from: showing, to: scene))
                 }
+                let kept = Set(scene.layers.flatMap { $0.items.compactMap(\.content.mediaID) })
+                for active in s.active.values where !active.awaiting.isEmpty && active.startedAt > now {
+                    let still = active.awaiting.intersection(kept)
+                    if !still.isEmpty {
+                        awaiting.formUnion(still)
+                        latest = min(latest, active.startedAt)
+                    }
+                }
             }
+            // Every layer this change touches waits with it, the words as
+            // much as the background: the slide goes up whole, on one clock,
+            // once its media has a picture (or `latest` comes, so a file that
+            // never opens can't hold the screens). Until then the screens
+            // keep what they showed.
             for layer in changed {
-                if let transition = transitionFor(layer), transition.kind != .cut {
+                let transition = transitionFor(layer)
+                if let transition, transition.kind != .cut {
                     var active = Active(
                         previous: showing, startedAt: now, transition: transition, group: s.groups)
-                    if Self.waitsForMedia(layer, transition), !awaiting.isEmpty {
+                    if !awaiting.isEmpty {
                         active.awaiting = awaiting
-                        active.startedAt = now.addingTimeInterval(Self.longestMediaWait)
+                        active.startedAt = latest
                     }
+                    s.active[layer] = active
+                } else if !awaiting.isEmpty {
+                    var active = Active(previous: showing, startedAt: latest, transition: .cut, group: s.groups)
+                    active.awaiting = awaiting
                     s.active[layer] = active
                 } else {
                     s.active[layer] = nil
@@ -180,10 +204,12 @@ public final class SceneTransitionEngine: @unchecked Sendable {
         if let ready { startReady(ready, at: Date()) }
     }
 
-    /// Whether a change on `layer` waits for its incoming pictures before
-    /// it starts: the full-frame media layers always, and a held dissolve
-    /// on any layer (a lower-third picture on the livestream's slide layer),
-    /// since holding the old one up is the point of it.
+    /// Whether the media arriving on `layer` is what a change waits for:
+    /// the full-frame media layers always, cut or not, and the slide layer
+    /// when it changes with a held dissolve (a lower-third picture on the
+    /// livestream's copy), since holding the old one up until the new one
+    /// can cover it is the point of it. Every layer the change touches then
+    /// waits on that one set, on one clock.
     static func waitsForMedia(_ layer: LayerKind, _ transition: SceneTransition?) -> Bool {
         mediaLayers.contains(layer) || transition?.kind == .heldDissolve
     }
@@ -257,6 +283,17 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             s.target.layers.enumerated().map { ($0.element.kind, $0.offset) },
             uniquingKeysWith: { first, _ in first })
         for (kind, active) in s.active {
+            // A cut waiting for its media shows the layer as it was.
+            if active.transition.kind == .cut {
+                guard !active.awaiting.isEmpty, date < active.startedAt else { continue }
+                let held = active.previous.layers.first { $0.kind == kind }?.items ?? []
+                if let index = scene.layers.firstIndex(where: { $0.kind == kind }) {
+                    scene.layers[index].items = held
+                } else if !held.isEmpty {
+                    for item in held { scene.addItem(item, to: kind) }
+                }
+                continue
+            }
             let progress = progress(of: active, at: date)
             guard progress < 1,
                   let index = scene.layers.firstIndex(where: { $0.kind == kind }) else { continue }
