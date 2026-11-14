@@ -1953,7 +1953,14 @@ struct SlideTile: View {
                         .allowsHitTesting(false)
                 }
             }
+            // The caption is words and badge glyphs with nothing of its own
+            // to click or point at (their tooltips are off, tileHelp). Left
+            // hit-testable, each of its text runs was a responder SwiftUI
+            // walked on every pointer move over the page (StyledTextResponder
+            // in the booth's sample). The tile's own shape below still takes
+            // the click, the right-click and the drag over the caption.
             label
+                .allowsHitTesting(false)
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: fire)
