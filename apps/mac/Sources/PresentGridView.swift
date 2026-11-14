@@ -955,7 +955,7 @@ struct SlideGridBody: View {
     }
 
     @ViewBuilder
-    private func tileMenu(index: Int, slide: Slide) -> some View {
+    fileprivate func tileMenu(index: Int, slide: Slide) -> some View {
         if !runOnly {
             let targetIDs = menuTargetIDs(clicked: index, slide: slide)
             if targetIDs.count > 1 {
@@ -1447,7 +1447,8 @@ struct SlideGridBody: View {
             ))
 
             .id("tileMenu|\(slide.id)|\(cueMediaIDs(of: slide).contains { model.media($0) == nil })|\(missingMedia(of: slide).isEmpty)")
-            .contextMenu { tileMenu(index: index, slide: slide) }
+            // No menu in run-only (tileMenu checks too, as it always has).
+            .contextMenu { if !runOnly { TileMenuContent(grid: self, index: index, slide: slide) } }
 
             .id(Self.tileAnchor(contextID: contextID, index: index))
     }
@@ -2968,6 +2969,26 @@ struct FollowSuggestionOutline: View {
                 .onAppear { dim = true }
                 .allowsHitTesting(false)
         }
+    }
+}
+
+/// A slide tile's right-click menu, built when the menu is opened. Written
+/// inline in `.contextMenu { … }`, SwiftUI calls that closure every time the
+/// tile updates, so every tile built its whole menu (screens, layouts,
+/// livestream designs, themes, actions) on every pass of the plan page:
+/// a tenth of the booth's tile-body time. Inside a view of its own, the
+/// closure only makes this small value and the menu's items are built from
+/// its body when the menu is shown. A probe (a SwiftUI host updating 20
+/// tiles 6 times) counted 120 calls of an inline menu closure and 0
+/// evaluations of a menu view's body. The items are the same code,
+/// SlideGridBody.tileMenu, so they match today's one for one.
+private struct TileMenuContent: View {
+    let grid: SlideGridBody
+    let index: Int
+    let slide: Slide
+
+    var body: some View {
+        grid.tileMenu(index: index, slide: slide)
     }
 }
 
