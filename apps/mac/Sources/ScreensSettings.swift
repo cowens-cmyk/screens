@@ -45,11 +45,11 @@ struct ScreensSettingsPane: View {
         .settingsForm()
         .onAppear { pickDefaultDisplay() }
         .onChange(of: outputs.displays.map(\.uuid)) { _, _ in pickDefaultDisplay() }
-        .task { DeckLinkDeviceCatalog.shared.refresh() }
+        .task { DeckLinkDeviceCatalog.shared.refresh(allModes: true) }
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didBecomeActiveNotification)
         ) { _ in
-            DeckLinkDeviceCatalog.shared.refresh()
+            DeckLinkDeviceCatalog.shared.refresh(allModes: true)
         }
     }
 
