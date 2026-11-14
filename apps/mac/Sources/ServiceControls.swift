@@ -28,7 +28,12 @@ final class ServiceControls {
     /// Mixer panel is gone; this keeps that audio path.
     let mixer: AudioMixerController
 
-    private var liveMediaIDs: Set<String> = []
+    private var liveMediaIDs: Set<String> = [] {
+        didSet { liveMediaBox.value = liveMediaIDs }
+    }
+
+    /// liveMediaIDs, readable off the main thread by a video starting up.
+    @ObservationIgnored private let liveMediaBox = Locked<Set<String>>([])
 
     private var transitionResweepScheduled = false
 
@@ -2260,10 +2265,30 @@ final class ServiceControls {
         let seeds = state.transportSeeds()
         media.refresh(seeds: seeds)
         guard !added.isEmpty, let blobs else { return }
+        // Videos start from here, not from a task on the main actor: such a
+        // task waits for the main thread to come free before it even opens
+        // the file, and again before it plays, so on a busy Present page a
+        // song's background came up a third of a second or more after its
+        // words. The engine is safe to drive from any thread; only the
+        // bookkeeping comes back to the main actor.
+        let videos = added.compactMap { mediaID -> StartingVideo? in
+            guard !mediaID.hasPrefix(ScreenMirrorService.prefix), !mediaID.hasPrefix("input::"),
+                  let item = appModel.media(mediaID), item.mediaKind == .video,
+                  let url = blobs.url(forHash: item.fileHash)
+            else { return nil }
+            return StartingVideo(
+                mediaID: mediaID, name: item.name, url: url,
+                loop: (wanted[mediaID] ?? nil) ?? item.playsLooping,
+                options: PlaybackOptions(inPoint: item.inPoint, outPoint: item.outPoint, rate: item.playRate))
+        }
+        if !videos.isEmpty { startVideos(videos, seeds: seeds) }
+        let starting = Set(videos.map(\.mediaID))
+        let rest = added.filter { !starting.contains($0) }
+        guard !rest.isEmpty else { return }
         // Media cleared or replaced while it loads is left unstarted: the
         // clear already ran, and nothing would stop it later.
         Task { [weak self, render, appModel, media] in
-            for mediaID in added {
+            for mediaID in rest {
 
                 if mediaID.hasPrefix(ScreenMirrorService.prefix) {
                     ScreenMirrorService.shared.start(id: mediaID, render: render)
@@ -2325,6 +2350,50 @@ final class ServiceControls {
     }
 
     private func isLiveMedia(_ id: String) -> Bool { liveMediaIDs.contains(id) }
+
+    /// A video the screens want, with everything needed to start it.
+    private struct StartingVideo: Sendable {
+        let mediaID: String
+        let name: String
+        let url: URL
+        let loop: Bool
+        let options: PlaybackOptions
+    }
+
+    /// Opens and plays videos off the main thread, in order. One taken off
+    /// the screens while it opened is left unstarted, as before; a player
+    /// standing by for it (PlanPreloader) is taken by `play`.
+    private func startVideos(_ videos: [StartingVideo], seeds: [TransportSeed]) {
+        let engine = render.media
+        let live = liveMediaBox
+        Task.detached(priority: .userInitiated) { [weak self] in
+            for video in videos {
+                let prepared: PreparedMedia
+                do {
+                    prepared = try await engine.prepare(url: video.url)
+                } catch {
+                    await self?.videoCouldNotPlay(
+                        mediaID: video.mediaID, name: video.name, reason: MediaEngine.describe(error))
+                    continue
+                }
+                guard live.value.contains(video.mediaID) else { continue }
+                let summary = prepared.summary
+                engine.play(prepared, id: video.mediaID, loop: video.loop, options: video.options)
+                // Taken off the screens in the moment between the check and
+                // the play: the main thread's stop already ran, so this one
+                // stops it rather than leave a player no one will stop.
+                guard live.value.contains(video.mediaID) else {
+                    engine.stop(id: video.mediaID)
+                    continue
+                }
+                await MainActor.run {
+                    DiagnosticsStore.shared.note("media.play.start", detail: "\(video.name) — \(summary)")
+                    self?.watchFirstPicture(mediaID: video.mediaID, name: video.name)
+                    self?.media.refresh(seeds: seeds)
+                }
+            }
+        }
+    }
 
     // MARK: A video that can't play
 
