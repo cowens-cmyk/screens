@@ -89,10 +89,10 @@ import Testing
         "AppModel.swift libraryOpened",
         "AppModel.swift locateMissingMedia",
         "AppModel.swift importFiles",
-        "AppModel.swift importProPresenter",
+        "AppModel.swift importProPresenterItems",
         "AppModel.swift importProPresenterThemes",
         "AppModel.swift importProPresenterPlaylists",
-        "AppModel.swift importPowerPoint",
+        "AppModel.swift importPowerPointDecks",
         "AppModel.swift transcodeFlagged",
     ]
 

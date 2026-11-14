@@ -1680,9 +1680,10 @@ struct SlideGridBody: View {
         // the grid may change under it.
         let anchor = SlideDropPlacement.anchor(for: place, in: slides.map(\.id))
         Task { @MainActor in
-            let imported = await model.importFiles(await MediaSlides.withLowerThirds(urls))
-            guard let anchor, !imported.isEmpty else { return }
-            _ = insertMediaSlides(mediaIDs: imported, anchor: anchor)
+            await model.importForSlides(urls) { imported in
+                guard let anchor, !imported.isEmpty else { return }
+                _ = insertMediaSlides(mediaIDs: imported, anchor: anchor)
+            }
         }
     }
 

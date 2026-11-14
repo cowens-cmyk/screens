@@ -381,8 +381,9 @@ struct SlideEditorView: View {
                     Task { @MainActor in
                         let urls = await droppedFileURLs(providers)
                         guard !urls.isEmpty else { return }
-                        let imported = await appModel.importFiles(await MediaSlides.withLowerThirds(urls))
-                        _ = model.insertMediaSlides(mediaIDs: imported, beforeSlideID: beforeID)
+                        await appModel.importForSlides(urls) { imported in
+                            _ = model.insertMediaSlides(mediaIDs: imported, beforeSlideID: beforeID)
+                        }
                     }
                     return
                 }
@@ -606,14 +607,14 @@ struct SlideEditorView: View {
         guard !urls.isEmpty else { return }
         let slideID = slide.id
         Task { @MainActor in
-
-            let imported = await appModel.importFiles(insertZone ? await MediaSlides.withLowerThirds(urls) : urls)
-            guard let first = imported.first else { return }
-            if insertZone {
-                // Every file dropped between slides becomes a slide.
-                _ = model.insertMediaSlides(mediaIDs: imported, beforeSlideID: slideID)
-            } else {
-                _ = model.setDroppedBackground(mediaID: first, onSlide: slideID)
+            await appModel.importForSlides(urls, pairing: insertZone) { imported in
+                guard let first = imported.first else { return }
+                if insertZone {
+                    // Every file dropped between slides becomes a slide.
+                    _ = model.insertMediaSlides(mediaIDs: imported, beforeSlideID: slideID)
+                } else {
+                    _ = model.setDroppedBackground(mediaID: first, onSlide: slideID)
+                }
             }
         }
     }
@@ -1535,7 +1536,7 @@ extension SlideEditorView {
             dropFiles: { urls in
                 guard !runOnly else { return }
                 Task { @MainActor in
-                    addMediaSlides(model, await appModel.importFiles(await MediaSlides.withLowerThirds(urls)))
+                    await appModel.importForSlides(urls) { _ = addMediaSlides(model, $0) }
                 }
             },
             breadcrumb: "editor.emptyDrop",

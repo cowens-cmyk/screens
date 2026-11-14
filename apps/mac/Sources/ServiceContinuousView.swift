@@ -755,8 +755,7 @@ struct ServiceContinuousView: View {
                     dropText: { dropOnEmptyDeck($0, presentationID: presentationID) },
                     dropFiles: { urls in
                         Task { @MainActor in
-                            let imported = await model.importFiles(await MediaSlides.withLowerThirds(urls))
-                            addMediaSlides(imported, to: presentationID)
+                            await model.importForSlides(urls) { _ = addMediaSlides($0, to: presentationID) }
                         }
                     },
                     breadcrumb: "present.emptyDrop",

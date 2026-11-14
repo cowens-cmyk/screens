@@ -300,21 +300,6 @@ struct MediaLibraryView: View {
 
     /// Shown while files are being added: copying a folder of videos can
     /// take minutes, and without it the bin looks like nothing happened.
-    private func importBar(_ progress: AppModel.MediaImportProgress) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
-                .progressViewStyle(.linear)
-            Text("Importing \(progress.done + 1) of \(progress.total) \u{00B7} \(progress.fileName)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .monospacedDigit()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-    }
-
     private func rowFill(_ row: Shown) -> Color {
         if dropTarget == row.rawValue { return Color.accentColor.opacity(0.35) }
         return shown == row ? Color.primary.opacity(0.1) : .clear
@@ -504,8 +489,11 @@ struct MediaLibraryView: View {
     private func detail(entries: [LibraryIndex.Entry], browse: Browse) -> some View {
         VStack(spacing: 0) {
             header(count: entries.count + browse.packs.count, open: browse.open)
-            if let progress = model.mediaImportProgress {
-                importBar(progress)
+            // In the main window the activity bar above the page already
+            // shows the import; only the Media Library's own window needs
+            // the line here.
+            if !embedded, let line = model.activity.lines.first(where: { $0.kind == .importing }) {
+                ActivityLines(lines: [line]) { model.dismissActivity($0) }
             }
             Divider()
             ScrollView {
