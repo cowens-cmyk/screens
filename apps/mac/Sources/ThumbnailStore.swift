@@ -64,9 +64,12 @@ final class ThumbnailStore {
     ) -> CGImage? {
 
         _ = thumbStillsVersion
-        _ = contentsVersion
         _ = placeholdersReady
         if let hit = contents.object(forKey: cacheKey as NSString) { return hit.image }
+        // Until its picture lands, this tile (and only this tile) waits on
+        // its own key: one counter for every tile re-ran the whole plan page
+        // each time any picture was drawn, every 100 ms through a launch.
+        contentSignals.observe(cacheKey)
         guard let compositor = render?.compositor else { return nil }
 
         let provisional = provisionalContents[cacheKey]
@@ -164,20 +167,8 @@ final class ThumbnailStore {
     @ObservationIgnored private var provisionalContents: [String: ProvisionalContent] = [:]
     @ObservationIgnored private var contentsInFlight: Set<String> = []
 
-    private(set) var contentsVersion = 0
-    @ObservationIgnored private var contentsBumpScheduled = false
-
-    private func scheduleContentsBump() {
-        guard !contentsBumpScheduled else { return }
-        contentsBumpScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(100)) {
-            MainActor.assumeIsolated {
-                let store = ThumbnailStore.shared
-                store.contentsBumpScheduled = false
-                store.contentsVersion += 1
-            }
-        }
-    }
+    /// The tiles waiting for a picture, each on its own key.
+    @ObservationIgnored private let contentSignals = KeyedSignals<String>()
 
     private func landContent(
         key: String, identity: String?, frame: RenderedFrame?,
@@ -202,7 +193,7 @@ final class ThumbnailStore {
                 placeholdersReady: readyAtBuild
             )
         }
-        scheduleContentsBump()
+        contentSignals.fire(key)
     }
 
     @ObservationIgnored private var backgroundMaps:
