@@ -1886,8 +1886,18 @@ final class AppModel {
     func isMediaFileMissing(_ item: MediaItem) -> Bool {
         _ = blobsVersion
         guard let blobs else { return false }
-        return blobs.url(forHash: item.fileHash) == nil
+        // Asked by every plan tile on every pass (the booth's sample has it
+        // statting the media folder and file from inside tile bodies), so a
+        // file's answer is kept for two seconds, or until a download or a
+        // drive change bumps blobsVersion.
+        return fileMissingMemo.value(
+            for: item.fileHash, generation: blobsVersion, now: ProcessInfo.processInfo.systemUptime
+        ) {
+            blobs.url(forHash: item.fileHash) == nil
+        }
     }
+
+    @ObservationIgnored private var fileMissingMemo = ShortLivedMemo<String, Bool>(lifetime: 2)
 
     @concurrent
     nonisolated private static func mediaReferenceSets(
@@ -2955,14 +2965,10 @@ final class AppModel {
     private(set) var isImporting = false
     var lastImportSummary: String?
 
-    /// Media files being added, for the media bin's progress bar; nil when
-    /// no media import is running.
-    struct MediaImportProgress: Equatable {
-        var done: Int
-        var total: Int
-        var fileName: String
-    }
-    private(set) var mediaImportProgress: MediaImportProgress?
+    /// What the main window's activity bar shows: imports and the plan
+    /// loading into memory (ActivityModel.swift).
+    var activity = ActivityBoard()
+    @ObservationIgnored var activityExpiry: Task<Void, Never>?
 
     private(set) var importReplaceVersion = 0
 
@@ -2976,24 +2982,52 @@ final class AppModel {
 
     /// `skippingHashes` leaves out pictures and videos already there (see
     /// MediaImporter); a background pack passes its own files' hashes.
+    ///
+    /// Every import shows in the activity bar. One started inside another
+    /// (a PDF's pages, a drop that pairs lower thirds and makes slides)
+    /// joins that one's line rather than starting and ending its own.
     @discardableResult
     func importFiles(_ urls: [URL], placement: LibraryHome.Placement? = nil, skippingHashes: Set<String>? = nil) async -> [String] {
-        if urls.contains(where: { Self.documentImportExtensions.contains($0.pathExtension.lowercased()) }) {
+        if let ticket = ImportActivity.current {
+            return await importFiles(urls, placement: placement ?? newPlacement, skippingHashes: skippingHashes, ticket: ticket)
+        }
+        let ticket = beginImportActivity()
+        defer { endImportActivity(ticket) }
+        return await ImportActivity.$current.withValue(ticket) {
+            await importFiles(urls, placement: placement ?? newPlacement, skippingHashes: skippingHashes, ticket: ticket)
+        }
+    }
+
+    private func importFiles(
+        _ urls: [URL], placement: LibraryHome.Placement?, skippingHashes: Set<String>?, ticket: ActivityBoard.Ticket
+    ) async -> [String] {
+        let documents = urls.filter { Self.documentImportExtensions.contains($0.pathExtension.lowercased()) }
+        if let first = documents.first {
+            let before = lastImportSummary
+            activity.setStage(.document(name: first.lastPathComponent), of: ticket)
             let split = await importDocuments(from: urls)
+            if lastImportSummary != before, let said = lastImportSummary {
+                activity.note(said, problem: split.handled.isEmpty, of: ticket)
+            } else if split.handled.isEmpty {
+                activity.note("Couldn\u{2019}t import \u{201C}\(first.lastPathComponent)\u{201D}", problem: true, of: ticket)
+            }
             noteLibraryWideMutation()
             return split.rest.isEmpty
-                ? [] : await importFiles(split.rest, placement: placement, skippingHashes: skippingHashes)
+                ? [] : await importFiles(split.rest, placement: placement, skippingHashes: skippingHashes, ticket: ticket)
         }
         isImporting = true
-        defer {
-            isImporting = false
-            mediaImportProgress = nil
-        }
+        defer { isImporting = false }
+        activity.setStage(.files, of: ticket)
         let results = await importer?.importFiles(
             at: urls, placement: placement ?? newPlacement, skippingHashes: skippingHashes
         ) { done, total, file in
-            self.mediaImportProgress = MediaImportProgress(done: done, total: total, fileName: file.lastPathComponent)
+            self.activity.noteFiles(done: done, total: total, fileName: file.lastPathComponent, of: ticket)
         } ?? []
+        if !results.isEmpty {
+            activity.noteFiles(
+                done: results.count, total: results.count,
+                fileName: results.last?.fileURL.lastPathComponent ?? "", of: ticket)
+        }
         let flagged = results.filter {
             if case .media(_, .needsTranscode) = $0.outcome { return true } else { return false }
         }.count
@@ -3002,10 +3036,11 @@ final class AppModel {
         }.count
         let duplicates = results.filter { $0.outcome == .duplicate }.count
         var summary = "Imported \(results.count - skipped - duplicates) of \(results.count) files"
-        if flagged > 0 { summary += " — \(flagged) flagged for transcode" }
-        if duplicates > 0 { summary += " — \(duplicates) already there" }
-        if skipped > 0 { summary += " — \(skipped) skipped" }
+        if flagged > 0 { summary += " \u{2014} \(flagged) flagged for transcode" }
+        if duplicates > 0 { summary += " \u{2014} \(duplicates) already there" }
+        if skipped > 0 { summary += " \u{2014} \(skipped) skipped" }
         lastImportSummary = summary
+        activity.note(summary, problem: skipped > 0 || flagged > 0, of: ticket)
         noteMutation(.media)
         return results.compactMap { result in
             if case .media(let id, _) = result.outcome { return id }
@@ -3029,6 +3064,12 @@ final class AppModel {
     @discardableResult
     func importProPresenter(
         urls: [URL], onDocument: ((URL) -> Void)? = nil
+    ) async -> [ProPresenterImporter.DocumentSummary] {
+        await withImportActivity(named: urls) { await importProPresenterItems(urls: urls, onDocument: onDocument) }
+    }
+
+    private func importProPresenterItems(
+        urls: [URL], onDocument: ((URL) -> Void)?
     ) async -> [ProPresenterImporter.DocumentSummary] {
         isImporting = true
         defer { isImporting = false }
@@ -3127,6 +3168,12 @@ final class AppModel {
     @discardableResult
     func importPowerPoint(
         urls: [URL], onDocument: ((URL) -> Void)? = nil
+    ) async -> [PPTXImporter.DocumentSummary] {
+        await withImportActivity(named: urls) { await importPowerPointDecks(urls: urls, onDocument: onDocument) }
+    }
+
+    private func importPowerPointDecks(
+        urls: [URL], onDocument: ((URL) -> Void)?
     ) async -> [PPTXImporter.DocumentSummary] {
         isImporting = true
         defer { isImporting = false }

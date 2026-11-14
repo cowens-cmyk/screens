@@ -122,14 +122,14 @@ final class StreamRouter {
                 routing[stream] = overlays
             case .audience:
                 break
-            case .design(let key, let theme):
+            case .design(let theme):
                 routing[stream] = overlays.union([LayerKind.slide.rawValue])
-                themeRouting[stream] = key
-                overrides[key] = theme
+                themeRouting[stream] = Self.variantKey
+                overrides[Self.variantKey] = theme
             case .image(let mediaID):
                 routing[stream] = overlays.union([LayerKind.slide.rawValue])
-                themeRouting[stream] = Self.imageKey
-                images[Self.imageKey] = mediaID
+                themeRouting[stream] = Self.variantKey
+                images[Self.variantKey] = mediaID
             }
         }
         // The side TVs read the room's scene with larger lyrics, which
@@ -139,19 +139,36 @@ final class StreamRouter {
         if setup.sideTVsOn, !sideTVs.isEmpty, sideTVs != stream {
             themeRouting[sideTVs] = SideScreenLyrics.variantKey
         }
-        outputs.setLayerRouting(routing)
-        outputs.setSlideThemeRouting(themeRouting)
-        controls?.setSlideThemeOverrides(overrides, images: images)
+        // The screens read the routing on their own threads, between any
+        // two of these calls. A stream about to read its copy gets the copy
+        // first; one about to stop reading it stops before it goes. Either
+        // way round, no frame finds the routing pointing at a copy that
+        // isn't there and shows the room's slide instead.
+        let publish = {
+            self.outputs.setLayerRouting(routing)
+            self.outputs.setSlideThemeRouting(themeRouting)
+        }
+        if themeRouting[stream] == Self.variantKey {
+            controls?.setSlideThemeOverrides(overrides, images: images)
+            publish()
+        } else {
+            publish()
+            controls?.setSlideThemeOverrides(overrides, images: images)
+        }
     }
 
-    /// The stream's copy of the live scene with the slide's lower-third
-    /// picture in place of the slide.
-    private static let imageKey = "stream-slide-image"
+    /// The stream's copy of the live scene: a lower-third design, or the
+    /// slide's lower-third picture, in place of the slide. Every design and
+    /// picture goes under this one key, so one lower third following
+    /// another is a change within one copy, which dissolves (see
+    /// RenderContext.setLiveScenes), rather than a switch to another copy,
+    /// which cut.
+    static let variantKey = "stream-lower-third"
 
     enum StreamChoice {
         case clear
         case audience
-        case design(key: String, theme: Theme)
+        case design(theme: Theme)
         case image(mediaID: String)
     }
 
@@ -167,7 +184,7 @@ final class StreamRouter {
             only.name = name
             scoped.slides = [only]
         }
-        return .design(key: "stream-slide:\(themeID)##\(own.slideId ?? "")", theme: scoped)
+        return .design(theme: scoped)
     }
 
     /// What the livestream shows for the live slide when nothing on the
@@ -196,7 +213,7 @@ final class StreamRouter {
                 only.name = name
                 scoped.slides = [only]
             }
-            return .design(key: "stream-type:\(themeID)##\(slideID)", theme: scoped)
+            return .design(theme: scoped)
         case .theme(let id):
             // Not read yet, or gone: the slide's theme until it arrives.
             guard let chosen = appModel.theme(id) else { return routed(through: liveTheme, lowerThirdOnly: lowerThirdOnly) }
@@ -232,15 +249,15 @@ final class StreamRouter {
                     only.name = category
                     scoped.slides = [only]
                 }
-                return .design(key: "stream-design:\(themeID)##\(pick.slideId ?? "")", theme: scoped)
+                return .design(theme: scoped)
             }
         }
         if let lowerThirdID = theme.streamLowerThirdThemeId, !lowerThirdID.isEmpty,
            let lowerThird = appModel.theme(lowerThirdID) {
-            return .design(key: "stream-lower-third:\(lowerThirdID)", theme: ThemeCategories.lowerThirds(of: lowerThird))
+            return .design(theme: ThemeCategories.lowerThirds(of: lowerThird))
         }
         if chosen, (theme.streamDesigns ?? []).isEmpty, theme.hasSlideFolder(BasicTemplates.lowerThirds) {
-            return .design(key: "stream-lower-third:\(theme.id)", theme: ThemeCategories.lowerThirds(of: theme))
+            return .design(theme: ThemeCategories.lowerThirds(of: theme))
         }
         return .clear
     }

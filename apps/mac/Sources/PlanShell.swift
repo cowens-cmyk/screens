@@ -425,14 +425,18 @@ struct PlanShell: View {
             }
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
             // Listening is never a secret: a red bar across the top
-            // of the slides for as long as a microphone is open. The
-            // floating panels sit below it.
+            // of the slides for as long as a microphone is open. Under it,
+            // files being imported and the plan loading into memory, on
+            // every page. The floating panels sit below both.
             .safeAreaInset(edge: .top, spacing: 0) {
-                LiveListeningBar()
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                        planBox.floatingTop = height
-                        screensBox.floatingTop = height
-                    }
+                VStack(spacing: 0) {
+                    LiveListeningBar()
+                    ActivityBar(model: model)
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    planBox.floatingTop = height
+                    screensBox.floatingTop = height
+                }
             }
             .animation(HopeMotion.ui(reduced: reduceMotion), value: LiveAssist.shared.listening)
     }

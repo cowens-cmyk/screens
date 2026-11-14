@@ -59,7 +59,7 @@ final class DeckLinkAutoSetup {
     }
 
     func refreshNow() {
-        DeckLinkDeviceCatalog.shared.refresh()
+        DeckLinkDeviceCatalog.shared.refresh(allModes: true)
     }
 }
 

@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import OutputEngine
+import PresenterCore
 
 enum DeckLinkAlphaKey: Int32, Codable, CaseIterable {
     case off = 0
@@ -367,9 +368,17 @@ final class DeckLinkDeviceCatalog {
 
     private(set) var displayModes: [Int64: [DeckLinkHelperDisplayMode]] = [:]
 
+    /// The output ports the last look found, so one that comes back is
+    /// asked for its modes again.
+    @ObservationIgnored private var portsSeen: Set<Int64> = []
+
     private init() {}
 
-    func refresh() {
+    /// Asks the helper which ports there are. The background watch (every
+    /// 8 s, DeckLinkAutoSetup) asks only new ports for their modes;
+    /// Settings passes `allModes` so a port remapped in Desktop Video Setup
+    /// shows its new modes while someone is looking.
+    func refresh(allModes: Bool = false) {
         let connection = NSXPCConnection(serviceName: DeckLinkHelperIdentity.serviceName)
         connection.remoteObjectInterface = NSXPCInterface(with: DeckLinkHelperProtocol.self)
         connection.resume()
@@ -392,14 +401,29 @@ final class DeckLinkDeviceCatalog {
             let devices = (try? JSONDecoder().decode(
                 [DeckLinkHelperDevice].self, from: data)) ?? []
             Task { @MainActor [weak self] in
-                self?.allDevices = devices
-                self?.devices = devices.filter(\.supportsPlayback)
-                self?.hasFetched = true
-                DeckLinkScreenOutputs.shared.catalogFound(self?.devices ?? [])
+                guard let self else { return }
+                // This runs every 8 seconds all day. Setting an observed
+                // property re-runs every view that reads it even when the
+                // value is the same, so only a real change is set.
+                let playback = devices.filter(\.supportsPlayback)
+                if self.allDevices != devices { self.allDevices = devices }
+                if self.devices != playback { self.devices = playback }
+                if !self.hasFetched { self.hasFetched = true }
+                DeckLinkScreenOutputs.shared.catalogFound(playback)
                 replyConnection.invalidate()
 
-                for device in self?.devices ?? [] {
-                    self?.refreshModes(devicePersistentID: device.persistentID)
+                // A port's modes don't change while it stays plugged in, and
+                // asking walks the driver in the same helper that feeds the
+                // outputs: ask once per port, again after it has gone and
+                // come back, on every look while its modes came back empty (a
+                // failed reply, or a helper not ready yet: the output mode is
+                // picked from this list), and whenever Settings asks.
+                let ask = DeckLinkModeAsking.portsToAsk(
+                    present: playback.map(\.persistentID), seen: self.portsSeen,
+                    modeCounts: self.displayModes.mapValues(\.count), allModes: allModes)
+                self.portsSeen = Set(playback.map(\.persistentID))
+                for port in ask {
+                    self.refreshModes(devicePersistentID: port)
                 }
             }
         }
@@ -430,11 +454,19 @@ final class DeckLinkDeviceCatalog {
             let modes = (try? JSONDecoder().decode(
                 [DeckLinkHelperDisplayMode].self, from: data)) ?? []
 
-            DiagnosticsStore.shared.note(
-                "decklink.modes",
-                detail: "device \(devicePersistentID): \(modes.count) modes")
             Task { @MainActor [weak self] in
-                self?.displayModes[devicePersistentID] = modes
+                // Written down when a port's modes change, not on every look:
+                // the same line every 8 s for each port was 3,600 lines an
+                // hour in the booth's breadcrumbs.
+                // An empty answer (a failed decode, a helper not ready)
+                // never replaces modes the port gave before.
+                let known = self?.displayModes[devicePersistentID]
+                if known != modes, DeckLinkModeAsking.keeps(answerCount: modes.count, knownCount: known?.count) {
+                    DiagnosticsStore.shared.note(
+                        "decklink.modes",
+                        detail: "device \(devicePersistentID): \(modes.count) modes")
+                    self?.displayModes[devicePersistentID] = modes
+                }
                 self?.modesFetchInFlight.remove(devicePersistentID)
                 replyConnection.invalidate()
             }

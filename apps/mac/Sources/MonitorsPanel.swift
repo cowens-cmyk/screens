@@ -48,7 +48,6 @@ struct MonitorsPanel: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    PlanPreloadStatus()
                     if shows(audienceTarget) {
                         monitor("Audience", target: audienceTarget, color: HopeStyle.blue) { target in
                             LiveSceneView(render: render, screenTargetID: target)

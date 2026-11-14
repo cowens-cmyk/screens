@@ -81,7 +81,7 @@ struct ServiceContinuousView: View {
 
     var body: some View {
         let _ = BodyMeter.tick(.serviceContinuous)
-        let _ = model.listVersion
+        let _ = PlanPageCauses.note(listVersion: model.listVersion)
         if let service = try? model.service(serviceID) {
             let positions = firePositions(service)
             // Every item, hidden ones too: a hidden video can still be live.
@@ -755,8 +755,7 @@ struct ServiceContinuousView: View {
                     dropText: { dropOnEmptyDeck($0, presentationID: presentationID) },
                     dropFiles: { urls in
                         Task { @MainActor in
-                            let imported = await model.importFiles(await MediaSlides.withLowerThirds(urls))
-                            addMediaSlides(imported, to: presentationID)
+                            await model.importForSlides(urls) { _ = addMediaSlides($0, to: presentationID) }
                         }
                     },
                     breadcrumb: "present.emptyDrop",

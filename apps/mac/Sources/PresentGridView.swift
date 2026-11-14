@@ -521,22 +521,32 @@ struct SlideGridBody: View {
             : (SlideGridMetrics.lastWidths[contextID] ?? (buildsRowsNearView ? SlideGridMetrics.continuousWidth : 0))
     }
 
-    private func nearRows(top: CGFloat) -> Range<Int> {
+    /// The rows within `screens` viewports of the visible part of the page.
+    private func nearRows(top: CGFloat, screens: CGFloat = 1) -> Range<Int> {
         if buildsRowsNearView, let cell {
             let across = SlidesAcross.clamped(slidesAcross)
             let viewport = PresentCardFrames.shared.scrollView?.contentView.bounds.height ?? 900
             return SlidesAcross.nearRows(
                 gridTop: top, rowPitch: cell.height + SlideGridMetrics.spacing,
-                rowCount: (slides.count + across - 1) / across, viewport: viewport, margin: viewport)
+                rowCount: (slides.count + across - 1) / across, viewport: viewport, margin: viewport * screens)
         } else {
             return 0 ..< 0
         }
     }
 
-    private func buildRows(_ rows: Range<Int>) {
-        if !rows.isEmpty, !builtRows.isSuperset(of: rows) {
-            builtRows.formUnion(rows)
-        }
+    /// Builds the rows coming near the screen and lets go of those now more
+    /// than two screens away (SlidesAcross.rowsToKeep). They used to stay
+    /// built for as long as the page was open, so a scroll through the plan
+    /// left every tile of every item in the view tree: every pointer move
+    /// and scroll tick hit-tested all of them, and anything the tiles watch
+    /// re-ran all of them. A row let go is an empty cell of the same size,
+    /// so nothing moves; coming back, its pictures come from
+    /// ThumbnailStore's caches.
+    private func buildRows(_ near: Range<Int>, keep: Range<Int>) {
+        let across = SlidesAcross.clamped(slidesAcross)
+        let selectedRows = Set(selectedOccurrences.map { $0 / across })
+        let rows = SlidesAcross.rowsToKeep(built: builtRows, near: near, keep: keep, selected: selectedRows)
+        if rows != builtRows { builtRows = rows }
     }
 
     private func measured(_ width: CGFloat) {
@@ -639,6 +649,7 @@ struct SlideGridBody: View {
     }
 
     var body: some View {
+        let _ = BodyMeter.tick(.slideGridBody)
         ZStack(alignment: .topLeading) {
 
             Color.clear
@@ -709,8 +720,8 @@ struct SlideGridBody: View {
                 }
                 let near = nearRows(top: top)
                 Color.clear
-                    .onAppear { buildRows(near) }
-                    .onChange(of: near) { _, rows in buildRows(rows) }
+                    .onAppear { buildRows(near, keep: nearRows(top: top, screens: 2)) }
+                    .onChange(of: near) { _, rows in buildRows(rows, keep: nearRows(top: top, screens: 2)) }
                     .onAppear { measured(proxy.size.width) }
                     .onChange(of: proxy.size.width) { _, width in measured(width) }
 
@@ -1680,9 +1691,10 @@ struct SlideGridBody: View {
         // the grid may change under it.
         let anchor = SlideDropPlacement.anchor(for: place, in: slides.map(\.id))
         Task { @MainActor in
-            let imported = await model.importFiles(await MediaSlides.withLowerThirds(urls))
-            guard let anchor, !imported.isEmpty else { return }
-            _ = insertMediaSlides(mediaIDs: imported, anchor: anchor)
+            await model.importForSlides(urls) { imported in
+                guard let anchor, !imported.isEmpty else { return }
+                _ = insertMediaSlides(mediaIDs: imported, anchor: anchor)
+            }
         }
     }
 
@@ -1908,6 +1920,7 @@ struct SlideTile: View {
     private var cornerRadius: CGFloat { roundedCorners ? CornerStandard.element : 0 }
 
     var body: some View {
+        let _ = BodyMeter.tick(.slideTile)
         // The slide gets the weight: its group is a thin colored edge, and
         // what it is sits under it as plain text, not a filled strip.
         VStack(alignment: .leading, spacing: SlideGridMetrics.labelGap) {
@@ -1942,7 +1955,14 @@ struct SlideTile: View {
                         .allowsHitTesting(false)
                 }
             }
+            // The caption is words and badge glyphs with nothing of its own
+            // to click or point at (their tooltips are off, tileHelp). Left
+            // hit-testable, each of its text runs was a responder SwiftUI
+            // walked on every pointer move over the page (StyledTextResponder
+            // in the booth's sample). The tile's own shape below still takes
+            // the click, the right-click and the drag over the caption.
             label
+                .allowsHitTesting(false)
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: fire)
@@ -2314,7 +2334,7 @@ struct SlideThumbnailView: View {
     }
 
     var body: some View {
-
+        let _ = BodyMeter.tick(.slideThumbnail)
         let source = ThumbnailStore.shared.backgroundSource(
             slideID: slide.id, presentation: presentation,
             arrangementId: arrangementId, stamp: updatedStamp

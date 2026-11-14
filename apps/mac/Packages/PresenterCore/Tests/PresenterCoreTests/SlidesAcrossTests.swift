@@ -149,4 +149,28 @@ struct SlidesAcrossTests {
         #expect(SlidesAcross.nearRows(gridTop: -9000, rowPitch: 200, rowCount: 20, viewport: 900, margin: 900).isEmpty, "far above")
         #expect(SlidesAcross.nearRows(gridTop: 0, rowPitch: 0, rowCount: 20, viewport: 900, margin: 900).isEmpty, "not measured")
     }
+
+    /// Scrolling a long plan from top to bottom: the tiles that exist follow
+    /// the screen instead of piling up, so a pointer move costs the same at
+    /// the end of a 600-slide plan as at the start.
+    @Test func builtRowsFollowTheScreenRatherThanAccumulating() {
+        let rows = 100, pitch: CGFloat = 200, viewport: CGFloat = 900
+        var built = Set<Int>()
+        var most = 0
+        for top in stride(from: CGFloat(0), through: -CGFloat(rows) * pitch, by: -37) {
+            let near = SlidesAcross.nearRows(gridTop: top, rowPitch: pitch, rowCount: rows, viewport: viewport, margin: viewport)
+            let keep = SlidesAcross.nearRows(gridTop: top, rowPitch: pitch, rowCount: rows, viewport: viewport, margin: viewport * 2)
+            built = SlidesAcross.rowsToKeep(built: built, near: near, keep: keep)
+            #expect(built.isSuperset(of: Set(near)), "every row near the screen is built")
+            most = max(most, built.count)
+        }
+        #expect(most <= 25, "at most the screen and two screens either side: \(most) rows")
+        #expect(built.count < rows / 2, "the top of the plan let go once scrolled far past")
+    }
+
+    @Test func aRowJustScrolledPastStaysAndSelectedRowsStay() {
+        let kept = SlidesAcross.rowsToKeep(built: [3, 4, 5, 20], near: 5 ..< 9, keep: 2 ..< 12, selected: [20])
+        #expect(kept == [3, 4, 5, 6, 7, 8, 20])
+        #expect(SlidesAcross.rowsToKeep(built: [], near: 0 ..< 0, keep: 0 ..< 0).isEmpty)
+    }
 }

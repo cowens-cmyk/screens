@@ -11,6 +11,16 @@ public struct SceneTransition: Sendable, Equatable {
         case blurDissolve
 
         case filmBurn
+
+        /// A dissolve that never thins what both pictures cover: the
+        /// incoming pictures, shapes and fills fade up over the outgoing
+        /// ones, which stay at full strength, in the first half; then the
+        /// outgoing ones fade away under them in the second. A plain
+        /// dissolve has each at half strength halfway through, which over a
+        /// camera (a keyed lower third) lets the camera show through both.
+        /// Text crosses as in a plain dissolve. See
+        /// `push(_:streamDissolve:otherwise:)`.
+        case heldDissolve
     }
 
     public var kind: Kind
@@ -146,21 +156,45 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             // again mid-transition carries on from where it is.
             let showing = Self.current(s, at: now)
             s.groups += 1
+            // The new full-frame media without a picture yet, cut or not: a
+            // background that cut in before its first frame would show
+            // nothing, and one that waited alone would come up after the
+            // words. Media an earlier change is still waiting for, and that
+            // this one keeps, is still waited for (a second click inside the
+            // wait doesn't put the background up before it has a picture).
             var awaiting = Set<String>()
+            var latest = now.addingTimeInterval(Self.longestMediaWait)
             if ready != nil {
-                for layer in changed where Self.mediaLayers.contains(layer) {
-                    guard let transition = transitionFor(layer), transition.kind != .cut else { continue }
+                for layer in changed where Self.waitsForMedia(layer, transitionFor(layer)) {
                     awaiting.formUnion(Self.arrivingMediaIDs(on: layer, from: showing, to: scene))
                 }
+                let kept = Set(scene.layers.flatMap { $0.items.compactMap(\.content.mediaID) })
+                for active in s.active.values where !active.awaiting.isEmpty && active.startedAt > now {
+                    let still = active.awaiting.intersection(kept)
+                    if !still.isEmpty {
+                        awaiting.formUnion(still)
+                        latest = min(latest, active.startedAt)
+                    }
+                }
             }
+            // Every layer this change touches waits with it, the words as
+            // much as the background: the slide goes up whole, on one clock,
+            // once its media has a picture (or `latest` comes, so a file that
+            // never opens can't hold the screens). Until then the screens
+            // keep what they showed.
             for layer in changed {
-                if let transition = transitionFor(layer), transition.kind != .cut {
+                let transition = transitionFor(layer)
+                if let transition, transition.kind != .cut {
                     var active = Active(
                         previous: showing, startedAt: now, transition: transition, group: s.groups)
-                    if Self.mediaLayers.contains(layer), !awaiting.isEmpty {
+                    if !awaiting.isEmpty {
                         active.awaiting = awaiting
-                        active.startedAt = now.addingTimeInterval(Self.longestMediaWait)
+                        active.startedAt = latest
                     }
+                    s.active[layer] = active
+                } else if !awaiting.isEmpty {
+                    var active = Active(previous: showing, startedAt: latest, transition: .cut, group: s.groups)
+                    active.awaiting = awaiting
                     s.active[layer] = active
                 } else {
                     s.active[layer] = nil
@@ -169,6 +203,42 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             s.target = scene
         }
         if let ready { startReady(ready, at: Date()) }
+    }
+
+    /// Whether the media arriving on `layer` is what a change waits for:
+    /// the full-frame media layers always, cut or not, and the slide layer
+    /// when it changes with a held dissolve (a lower-third picture on the
+    /// livestream's copy), since holding the old one up until the new one
+    /// can cover it is the point of it. Every layer the change touches then
+    /// waits on that one set, on one clock.
+    static func waitsForMedia(_ layer: LayerKind, _ transition: SceneTransition?) -> Bool {
+        mediaLayers.contains(layer) || transition?.kind == .heldDissolve
+    }
+
+    /// The livestream's push. Its slide layer is what goes over the camera
+    /// (a lower-third design, or a slide's lower-third picture, in place of
+    /// the slide). When one lower third follows another the slide layer
+    /// changes with a held dissolve of `streamDissolve` seconds (a cut at 0),
+    /// whatever the room's slide transition is. A lower third arriving over
+    /// a clear camera, or leaving it clear, and every other layer, keep
+    /// `otherwise`, as the room's do.
+    public func push(
+        _ scene: RenderScene, streamDissolve: Double,
+        otherwise transitionFor: (LayerKind) -> SceneTransition?
+    ) {
+        let before = state.withLock { $0.target }
+        let crossing = Self.showsSomething(.slide, in: before) && Self.showsSomething(.slide, in: scene)
+        let held: SceneTransition = streamDissolve < 0.05
+            ? .cut : SceneTransition(kind: .heldDissolve, duration: streamDissolve)
+        push(scene) { layer in
+            layer == .slide && crossing ? held : transitionFor(layer)
+        }
+    }
+
+    /// Whether a layer has anything on it that isn't hidden or see-through.
+    static func showsSomething(_ kind: LayerKind, in scene: RenderScene) -> Bool {
+        guard let layer = scene.layers.first(where: { $0.kind == kind }), !layer.isHidden else { return false }
+        return layer.items.contains { $0.opacity > 0.001 }
     }
 
     public func scene(at date: Date) -> RenderScene {
@@ -214,6 +284,17 @@ public final class SceneTransitionEngine: @unchecked Sendable {
             s.target.layers.enumerated().map { ($0.element.kind, $0.offset) },
             uniquingKeysWith: { first, _ in first })
         for (kind, active) in s.active {
+            // A cut waiting for its media shows the layer as it was.
+            if active.transition.kind == .cut {
+                guard !active.awaiting.isEmpty, date < active.startedAt else { continue }
+                let held = active.previous.layers.first { $0.kind == kind }?.items ?? []
+                if let index = scene.layers.firstIndex(where: { $0.kind == kind }) {
+                    scene.layers[index].items = held
+                } else if !held.isEmpty {
+                    for item in held { scene.addItem(item, to: kind) }
+                }
+                continue
+            }
             let progress = progress(of: active, at: date)
             guard progress < 1,
                   let index = scene.layers.firstIndex(where: { $0.kind == kind }) else { continue }
@@ -385,6 +466,35 @@ public final class SceneTransitionEngine: @unchecked Sendable {
                     ))
                 ))
                 scene.layers[index].items = items
+            case .heldDissolve:
+                // What covers the camera (pictures, shapes, fills) holds:
+                // the outgoing at full strength until halfway, then fading,
+                // under the incoming fading up to full by halfway, so where
+                // both cover one is always at full. Words cross exactly as in
+                // a plain dissolve (unchanged lines hold, changed lines cross,
+                // old words fade as new ones come): held, the old line and
+                // the new one would both be at full strength halfway, one on
+                // top of the other. The outgoing words go just under the
+                // incoming ones, over the incoming design, so they fade out
+                // in view rather than vanish under a new bar.
+                let arrivingStrength = min(1, progress * 2)
+                let leavingStrength = min(1, (1 - progress) * 2)
+                let coversUnder = leaving.filter { !Self.isText($0) }
+                let wordsLeaving = faded(leaving.filter(Self.isText), to: 1 - progress)
+                var arriving = newItems.map { item -> RenderItem in
+                    guard !oldKeys.contains(membershipKey(item)) else { return item }
+                    var out = item
+                    if Self.isText(item) {
+                        out.opacity *= progress
+                    } else if !hold.contains(.arriving) {
+                        out.opacity *= arrivingStrength
+                    }
+                    return out
+                }
+                arriving = lineDissolved(arriving, reworded, progress: progress)
+                arriving.insert(contentsOf: wordsLeaving, at: arriving.firstIndex(where: Self.isText) ?? arriving.count)
+                scene.layers[index].items = (hold.contains(.leaving) ? coversUnder : faded(coversUnder, to: leavingStrength))
+                    + arriving
             case .blurDissolve:
 
                 let swell = (1 - abs(progress * 2 - 1)) * 60
@@ -577,6 +687,11 @@ public final class SceneTransitionEngine: @unchecked Sendable {
 
     private static func hasSteadyLine(_ old: RenderItem, _ new: RenderItem) -> Bool {
         !rewordedText(old: [old], new: [new]).isEmpty
+    }
+
+    static func isText(_ item: RenderItem) -> Bool {
+        if case .text = item.content { return true }
+        return false
     }
 
     private static func faded(_ items: [RenderItem], to opacity: Double) -> [RenderItem] {

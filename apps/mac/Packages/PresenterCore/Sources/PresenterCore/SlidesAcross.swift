@@ -74,6 +74,22 @@ public enum SlidesAcross {
         }
     }
 
+    /// The rows of a plan page grid that stay built as tiles: the ones near
+    /// the screen now, those still within the wider `keep` band (so a row
+    /// scrolled just past isn't torn down and rebuilt on every wheel tick),
+    /// and the rows holding selected slides (a selection box keeps what it
+    /// has reached). Everything else goes back to an empty cell of the same
+    /// size. Each built tile is a few dozen views with its own gestures,
+    /// menu and drop target; on the booth Mac a page that kept every tile it
+    /// had ever shown spent a third of its main thread hit-testing them on
+    /// every pointer move, so how many there are has to follow the screen,
+    /// not the length of the plan.
+    public static func rowsToKeep(
+        built: Set<Int>, near: Range<Int>, keep: Range<Int>, selected: Set<Int> = []
+    ) -> Set<Int> {
+        built.filter { keep.contains($0) || selected.contains($0) }.union(near)
+    }
+
     public static func tileAspect(canvas: CGSize) -> CGFloat {
         if canvas.width > 0, canvas.height > 0 {
             canvas.width / canvas.height
