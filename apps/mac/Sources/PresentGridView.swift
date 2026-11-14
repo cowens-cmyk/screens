@@ -2332,9 +2332,13 @@ struct SlideThumbnailView: View {
 
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
 
+    /// The deck's listed stamp, read through the deck's own signal
+    /// (AppModel.deckStamp) rather than entry(), which watches the whole
+    /// library's list version: a create or edit anywhere re-ran every
+    /// thumbnail. Same value as before, so the same cache keys.
     private var updatedStamp: String {
         contentStamp
-            ?? "\(model.entry(presentation.id)?.updatedAt.timeIntervalSince1970 ?? 0)"
+            ?? "\(model.deckStamp(presentation.id))"
     }
 
     var body: some View {

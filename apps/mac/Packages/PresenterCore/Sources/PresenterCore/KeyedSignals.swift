@@ -19,6 +19,14 @@ public final class KeyedSignals<Key: Hashable> {
     /// How many keys are being waited on.
     public var count: Int { signals.count }
 
+    /// The keys being waited on.
+    public var keys: [Key] { Array(signals.keys) }
+
+    /// Re-runs everything waiting, for a change that touches every key.
+    public func fireAll() {
+        for key in keys { fire(key) }
+    }
+
     /// Makes the calling view (or observation) depend on `key`.
     public func observe(_ key: Key) {
         if let signal = signals[key] {
