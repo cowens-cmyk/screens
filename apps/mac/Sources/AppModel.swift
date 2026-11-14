@@ -1886,8 +1886,18 @@ final class AppModel {
     func isMediaFileMissing(_ item: MediaItem) -> Bool {
         _ = blobsVersion
         guard let blobs else { return false }
-        return blobs.url(forHash: item.fileHash) == nil
+        // Asked by every plan tile on every pass (the booth's sample has it
+        // statting the media folder and file from inside tile bodies), so a
+        // file's answer is kept for two seconds, or until a download or a
+        // drive change bumps blobsVersion.
+        return fileMissingMemo.value(
+            for: item.fileHash, generation: blobsVersion, now: ProcessInfo.processInfo.systemUptime
+        ) {
+            blobs.url(forHash: item.fileHash) == nil
+        }
     }
+
+    @ObservationIgnored private var fileMissingMemo = ShortLivedMemo<String, Bool>(lifetime: 2)
 
     @concurrent
     nonisolated private static func mediaReferenceSets(
