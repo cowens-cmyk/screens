@@ -2101,7 +2101,9 @@ final class ServiceControls {
             variants[SideScreenLyrics.variantKey] = SideScreenLyrics.scene(
                 base, presentation: state.liveSlide?.presentation, scale: setup.sideTVsLyricScale)
         }
-        render.setLiveScenes(base, variants: variants)
+        render.setLiveScenes(
+            base, variants: variants,
+            streamKey: StreamRouter.variantKey, streamDissolve: setup.streamLowerThirdDissolve)
         if endsBlack { render.outputs.setBlack(false) }
         syncScreenVideo()
         syncMedia()

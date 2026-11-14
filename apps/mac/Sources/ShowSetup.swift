@@ -148,6 +148,16 @@ final class ShowSetup {
         return (min(max(value, range.lowerBound), range.upperBound) * 10).rounded() / 10
     }
 
+    /// How long one lower third takes to dissolve into the next on the
+    /// livestream, the old one held up until the new one covers it; 0 cuts.
+    var streamLowerThirdDissolve: Double {
+        didSet {
+            let clamped = StreamLowerThirdDissolve.clamped(streamLowerThirdDissolve)
+            if clamped != streamLowerThirdDissolve { streamLowerThirdDissolve = clamped; return }
+            UserDefaults.standard.set(streamLowerThirdDissolve, forKey: StreamLowerThirdDissolve.key)
+        }
+    }
+
     /// Called when the side TVs are turned on or off, moved or resized, so
     /// their scene and its routing are made again.
     var onSideTVsChange: (() -> Void)?
@@ -184,6 +194,8 @@ final class ShowSetup {
         stageTarget = defaults.string(forKey: "show.stageTarget") ?? ""
         sideTVsTarget = defaults.string(forKey: "show.sideTVsTarget") ?? ""
         sideTVsOn = defaults.bool(forKey: "show.sideTVs.on")
+        streamLowerThirdDissolve = StreamLowerThirdDissolve.clamped(
+            defaults.object(forKey: StreamLowerThirdDissolve.key) as? Double ?? StreamLowerThirdDissolve.defaultSeconds)
         sideTVsLyricScale = Self.clampedLyricScale(
             defaults.object(forKey: "show.sideTVs.lyricScale") as? Double ?? SideScreenLyrics.defaultScale)
         // Full Screen or Transparent was once kept from one run to the next
@@ -211,5 +223,24 @@ final class ShowSetup {
     private func sideTVsChanged() {
         onSideTVsChange?()
         onChange?()
+    }
+}
+
+/// The livestream's dissolve from one lower third to the next (Settings ›
+/// Screens › Livestream).
+enum StreamLowerThirdDissolve {
+    static let key = "show.stream.lowerThirdDissolve"
+    static let defaultSeconds = 0.2
+    static let range: ClosedRange<Double> = 0...1
+
+    /// Within the range, to a tenth of a second; anything unreadable is the
+    /// default.
+    static func clamped(_ value: Double) -> Double {
+        guard value.isFinite else { return defaultSeconds }
+        return (min(max(value, range.lowerBound), range.upperBound) * 10).rounded() / 10
+    }
+
+    static func label(_ seconds: Double) -> String {
+        seconds < 0.05 ? "Cut" : String(format: "%.1f s", seconds)
     }
 }

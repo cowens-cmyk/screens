@@ -87,7 +87,15 @@ final class RenderContext {
         }
     }
 
-    func setLiveScenes(_ scene: RenderScene, variants: [String: RenderScene]) {
+    /// `streamKey` names the livestream's variant: one lower third
+    /// following another there dissolves over `streamDissolve` seconds with
+    /// the old one held up (SceneTransitionEngine.push(_:streamDissolve:otherwise:)),
+    /// whatever the room's slides do. Every other variant changes as the
+    /// room does.
+    func setLiveScenes(
+        _ scene: RenderScene, variants: [String: RenderScene],
+        streamKey: String? = nil, streamDissolve: Double = StreamLowerThirdDissolve.defaultSeconds
+    ) {
         let stash = nextLiveTransitions
         let media = media
         variantEngines.withLock { engines in
@@ -98,8 +106,13 @@ final class RenderContext {
                 let engine = engines[themeID]
                     ?? SceneTransitionEngine(initial: variant, mediaReady: { [media] in media.hasPicture(id: $0) })
                 engines[themeID] = engine
-                engine.push(variant) { layer in
+                let roomDefault: (LayerKind) -> SceneTransition? = { layer in
                     stash[layer] ?? Self.roomDefault(for: layer)
+                }
+                if themeID == streamKey {
+                    engine.push(variant, streamDissolve: streamDissolve, otherwise: roomDefault)
+                } else {
+                    engine.push(variant, transitionFor: roomDefault)
                 }
             }
         }

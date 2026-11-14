@@ -512,6 +512,17 @@ private struct ScreenOutputSection: View {
         }
         .pickerStyle(.segmented)
         .fixedSize()
+        LabeledContent("Lower third dissolve") {
+            HStack(spacing: 8) {
+                Slider(value: $setup.streamLowerThirdDissolve, in: StreamLowerThirdDissolve.range, step: 0.1)
+                    .frame(maxWidth: 220)
+                Text(StreamLowerThirdDissolve.label(setup.streamLowerThirdDissolve))
+                    .monospacedDigit()
+                    .frame(width: 40, alignment: .trailing)
+            }
+        }
+        .help("One lower third to the next on the livestream. The old one stays up until the new one covers it. 0 cuts.")
+        .settingsAnchor("screens.lowerThirdDissolve")
         Toggle(isOn: Binding(
             get: { alphaKey },
             set: { alphaKey = $0; output.applyKeying() }

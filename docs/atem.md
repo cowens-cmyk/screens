@@ -16,7 +16,11 @@ The Black switch (`docs/black-screen.md`) puts an opaque black item on the
 Livestream screen, so it counts as full screen and the keyer goes on air.
 
 Both cuts happen while the key signal is clear, so what the stream sees is
-the slide's own fade, not a cut. Full-screen graphics go through the same
+the slide's own fade, not a cut. One lower third following another never
+clears the key: the Livestream screen holds the old one at full strength
+while the new one dissolves over it (`SceneTransition.Kind.heldDissolve`,
+Settings › Screens › Livestream › Lower third dissolve, 0.2 s), so the keyer
+stays on and the key never dips where both cover the camera. Full-screen graphics go through the same
 keyer: a full slide's key is solid, so it covers the camera. Nothing switches
 program.
 

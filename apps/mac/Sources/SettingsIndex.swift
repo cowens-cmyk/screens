@@ -100,6 +100,11 @@ enum SettingsIndex {
             caption: "Fill and key for the switcher's keyer, from a DeckLink port.",
             keywords: "alpha key transparent fill external internal switcher keyer decklink sdi ndi luma black see-through"),
         SettingsEntry(
+            id: "screens.lowerThirdDissolve", category: .screens,
+            title: "Lower third dissolve",
+            caption: "How long one lower third takes to dissolve into the next on the livestream. The old one stays up until the new one covers it. 0 cuts.",
+            keywords: "lower third dissolve transition crossfade fade livestream stream key keyer duration cut"),
+        SettingsEntry(
             id: "screens.stage", category: .screens,
             title: "Stage",
             caption: ShowScreen.stage.summary,
