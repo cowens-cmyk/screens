@@ -42,9 +42,9 @@ import Testing
         #expect(!single.contains("modify("), "no whole-value refile")
 
         let mutation = try block(after: "private func noteMutation(_ kind: DocumentKind) {", in: model)
-        expectInOrder(["kindVersions.bump(kind)", "if listBumpsHeld > 0 {", "listBumpOwed = true", "} else {", "listVersion += 1"], in: mutation, "noteMutation")
+        expectInOrder(["kindVersions.bump(kind)", "if listBumpsHeld > 0 {", "listBumpOwed = true", "} else {", "bumpLists(listing: false)"], in: mutation, "noteMutation")
         let coalescing = try block(after: "private func coalescingListBumps<T>(", in: model)
-        expectInOrder(["listBumpsHeld += 1", "let result = body()", "listBumpsHeld -= 1", "if listBumpsHeld == 0, listBumpOwed {", "listVersion += 1"], in: coalescing, "coalescingListBumps")
+        expectInOrder(["listBumpsHeld += 1", "let result = body()", "listBumpsHeld -= 1", "if listBumpsHeld == 0, listBumpOwed {", "bumpLists(listing: false)"], in: coalescing, "coalescingListBumps")
     }
 
     @Test func theViewMenuSortsAndNarrowsOffMain() throws {

@@ -955,7 +955,7 @@ struct SlideGridBody: View {
     }
 
     @ViewBuilder
-    private func tileMenu(index: Int, slide: Slide) -> some View {
+    fileprivate func tileMenu(index: Int, slide: Slide) -> some View {
         if !runOnly {
             let targetIDs = menuTargetIDs(clicked: index, slide: slide)
             if targetIDs.count > 1 {
@@ -1447,7 +1447,8 @@ struct SlideGridBody: View {
             ))
 
             .id("tileMenu|\(slide.id)|\(cueMediaIDs(of: slide).contains { model.media($0) == nil })|\(missingMedia(of: slide).isEmpty)")
-            .contextMenu { tileMenu(index: index, slide: slide) }
+            // No menu in run-only (tileMenu checks too, as it always has).
+            .contextMenu { if !runOnly { TileMenuContent(grid: self, index: index, slide: slide) } }
 
             .id(Self.tileAnchor(contextID: contextID, index: index))
     }
@@ -1886,12 +1887,18 @@ struct SlideTile: View {
 
     let fire: () -> Void
 
-    private var isLive: Bool {
-        contextID != nil && controls?.liveContextID == contextID && controls?.liveOccurrence == index
+    /// This tile's own mark (ServiceControls.tileMark): the tile depends on
+    /// whether it is live or next and nothing else about the show, so a
+    /// fire re-runs only the tiles whose answer changed.
+    private var mark: ServiceControls.TileMark {
+        controls?.tileMark(contextID: contextID, occurrence: index) ?? ServiceControls.TileMark()
     }
 
+    private var isLive: Bool { mark.isLive }
+
     private var liveAnimationStep: Int? {
-        isLive ? controls?.slideAnimationStep?.consumed : nil
+        let mark = mark
+        return mark.isLive ? mark.step : nil
     }
 
     @Environment(\.actionRouter) private var actionRouter
@@ -1912,10 +1919,7 @@ struct SlideTile: View {
     }
 
     /// The slide an arrow key fires next, from wherever the live slide is.
-    private var isNext: Bool {
-        guard let contextID, let next = controls?.nextPlace else { return false }
-        return next.contextID == contextID && next.occurrence == index
-    }
+    private var isNext: Bool { mark.isNext }
 
     private var cornerRadius: CGFloat { roundedCorners ? CornerStandard.element : 0 }
 
@@ -2328,9 +2332,13 @@ struct SlideThumbnailView: View {
 
     @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
 
+    /// The deck's listed stamp, read through the deck's own signal
+    /// (AppModel.deckStamp) rather than entry(), which watches the whole
+    /// library's list version: a create or edit anywhere re-ran every
+    /// thumbnail. Same value as before, so the same cache keys.
     private var updatedStamp: String {
         contentStamp
-            ?? "\(model.entry(presentation.id)?.updatedAt.timeIntervalSince1970 ?? 0)"
+            ?? "\(model.deckStamp(presentation.id))"
     }
 
     var body: some View {
@@ -2965,6 +2973,26 @@ struct FollowSuggestionOutline: View {
                 .onAppear { dim = true }
                 .allowsHitTesting(false)
         }
+    }
+}
+
+/// A slide tile's right-click menu, built when the menu is opened. Written
+/// inline in `.contextMenu { … }`, SwiftUI calls that closure every time the
+/// tile updates, so every tile built its whole menu (screens, layouts,
+/// livestream designs, themes, actions) on every pass of the plan page:
+/// a tenth of the booth's tile-body time. Inside a view of its own, the
+/// closure only makes this small value and the menu's items are built from
+/// its body when the menu is shown. A probe (a SwiftUI host updating 20
+/// tiles 6 times) counted 120 calls of an inline menu closure and 0
+/// evaluations of a menu view's body. The items are the same code,
+/// SlideGridBody.tileMenu, so they match today's one for one.
+private struct TileMenuContent: View {
+    let grid: SlideGridBody
+    let index: Int
+    let slide: Slide
+
+    var body: some View {
+        grid.tileMenu(index: index, slide: slide)
     }
 }
 

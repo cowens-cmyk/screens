@@ -124,6 +124,14 @@ struct PlanPreloadPlanTests {
         #expect(message * 5 < big.pictures)
     }
 
+    @Test func playersStandByForTheWholePlanFrom32GB() {
+        let small = PlanPreloadPlan.Players(limit: 6, itemsAhead: 3)
+        #expect(PlanPreloadPlan.players(physicalMemory: 8 * gigabyte) == small, "as before")
+        #expect(PlanPreloadPlan.players(physicalMemory: 16 * gigabyte) == small)
+        #expect(PlanPreloadPlan.players(physicalMemory: 32 * gigabyte) == PlanPreloadPlan.Players(limit: 12, itemsAhead: nil))
+        #expect(PlanPreloadPlan.players(physicalMemory: 64 * gigabyte) == PlanPreloadPlan.Players(limit: 12, itemsAhead: nil))
+    }
+
     @Test func aPictureWithNoRecordedSizeCountsAsFullHD() {
         #expect(PlanPreloadPlan.pictureBytes(width: nil, height: nil) == 1920 * 1080 * 4)
         #expect(PlanPreloadPlan.pictureBytes(width: 3840, height: 2160) == 3840 * 2160 * 4)

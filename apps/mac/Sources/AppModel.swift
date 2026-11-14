@@ -269,7 +269,7 @@ final class AppModel {
         if listBumpsHeld > 0 {
             listBumpOwed = true
         } else {
-            listVersion += 1
+            bumpLists(listing: false)
         }
     }
 
@@ -282,13 +282,66 @@ final class AppModel {
         listBumpsHeld -= 1
         if listBumpsHeld == 0, listBumpOwed {
             listBumpOwed = false
-            listVersion += 1
+            bumpLists(listing: false)
         }
         return result
     }
 
+    // MARK: Telling the UI the library moved
+
+    /// listVersion and listingVersion re-run every list and the whole plan
+    /// page. Library writes (each create or edit, then its landed batch)
+    /// reach them through this throttle (BumpThrottle): the first at once,
+    /// any more within 0.25 s folded into one at its end. A 300-file import
+    /// was 600 whole-page passes; it is now about four a second, ending on
+    /// the final state. Only when the UI hears changes: the library's own
+    /// reads, writes, index and sync are untouched, and everything a view
+    /// reads (indexSnapshot, the resident tables, the decks) is current the
+    /// moment it changes. Settings the operator changes (sort, filter,
+    /// folder names) still bump at once.
+    @ObservationIgnored private var listThrottle = BumpThrottle(interval: 0.25)
+    @ObservationIgnored private var listingOwed = false
+
+    private func bumpLists(listing: Bool) {
+        if listing { listingOwed = true }
+        switch listThrottle.ask(now: ProcessInfo.processInfo.systemUptime) {
+        case .now:
+            flushListBump()
+        case .after(let delay):
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self else { return }
+                self.listThrottle.trailingFired(now: ProcessInfo.processInfo.systemUptime)
+                self.flushListBump()
+            }
+        case .folded:
+            break
+        }
+    }
+
+    private func flushListBump() {
+        listVersion += 1
+        if listingOwed {
+            listingOwed = false
+            listingVersion += 1
+        }
+    }
+
+    /// Each deck's listed stamp, observed per deck: a slide thumbnail's
+    /// cache key carries its deck's `updatedAt`, and read through entry()
+    /// that made every tile depend on listVersion, so any create or edit
+    /// anywhere in the library re-ran every tile. A tile now depends on its
+    /// own deck's signal, fired when that deck's stamp changes.
+    @ObservationIgnored private let deckSignals = KeyedSignals<String>()
+
+    func deckStamp(_ id: String) -> TimeInterval {
+        deckSignals.observe(id)
+        return indexEntry(id)?.updatedAt.timeIntervalSince1970 ?? 0
+    }
+
     private func noteLibraryWideMutation() {
         kindVersions.bumpAll()
+        deckSignals.fireAll()
         listVersion += 1
         listingVersion += 1
         decks.libraryWideBump()
@@ -3255,6 +3308,7 @@ extension AppModel: LibraryReadSide {
 
         pendingEntries[change.id] = Library.listedKinds.contains(change.kind) ? change.value.map { LibraryIndex.Entry(pending: $0) } : nil
         land(change)
+        if change.kind == .presentation { deckSignals.fire(change.id) }
     }
 
     func optimisticWriteFailed(_ change: DocumentChange, error: any Error) {
@@ -3263,6 +3317,7 @@ extension AppModel: LibraryReadSide {
         noteMutation(change.kind)
         if change.kind == .presentation {
             decks.writeRefused(id: change.id)
+            deckSignals.fire(change.id)
         }
     }
 
@@ -3270,13 +3325,14 @@ extension AppModel: LibraryReadSide {
         for change in batch.changes {
             pendingEntries[change.id] = nil
             land(change)
+            if change.kind == .presentation { deckSignals.fire(change.id) }
         }
         if batch.snapshot.generation != appliedGeneration {
             appliedGeneration = batch.snapshot.generation
-            listVersion += 1
-            if appliedListing.map(batch.snapshot.listsLike) != true {
-                listingVersion += 1
+            for id in DeckStamps.changed(watched: deckSignals.keys, before: appliedListing, after: batch.snapshot) {
+                deckSignals.fire(id)
             }
+            bumpLists(listing: appliedListing.map(batch.snapshot.listsLike) != true)
             appliedListing = batch.snapshot
         }
         batchObservers.notify(batch)

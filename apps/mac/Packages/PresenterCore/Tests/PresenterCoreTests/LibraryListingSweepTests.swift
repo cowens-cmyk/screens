@@ -20,8 +20,12 @@ import Testing
         #expect(!(try body(model, "private func noteMutation(_ kind: DocumentKind) {")).contains("listingVersion"),
                 "a document change reaches the listing through its batch")
         let apply = try body(model, "func apply(_ batch: LibraryBatch) {")
-        #expect(apply.contains("appliedListing.map(batch.snapshot.listsLike) != true"))
-        #expect(apply.contains("listingVersion += 1"))
+        #expect(apply.contains("bumpLists(listing: appliedListing.map(batch.snapshot.listsLike) != true)"))
+        // The bump goes out through the throttle (BumpThrottle), which
+        // moves the listing version only when a batch said it changed.
+        let flush = try body(model, "private func flushListBump() {")
+        #expect(flush.contains("if listingOwed {"))
+        #expect(flush.contains("listingVersion += 1"))
     }
 
     @Test func theSidebarReadsListVersionOnlyForSearch() throws {

@@ -26,19 +26,37 @@ final class StandbyCostBenchmark: XCTestCase {
         if let tempDir { try? FileManager.default.removeItem(at: tempDir) }
     }
 
-    private func footprint() -> Int64 {
+    private func footprint(of pid: pid_t = getpid()) -> Int64 {
         var usage = rusage_info_v4()
         let result = withUnsafeMutablePointer(to: &usage) {
-            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0) }
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
         }
         return result == 0 ? Int64(usage.ri_phys_footprint) : 0
     }
 
+    /// The decoders run in VTDecoderXPCService, outside this process: its
+    /// footprint (all of them, as far as this user can see) is the rest of
+    /// what a player standing by costs.
+    private func decoderServiceFootprint() -> Int64 {
+        let pgrep = Process()
+        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        pgrep.arguments = ["-x", "VTDecoderXPCService"]
+        let pipe = Pipe()
+        pgrep.standardOutput = pipe
+        guard (try? pgrep.run()) != nil else { return 0 }
+        pgrep.waitUntilExit()
+        let text = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return text.split(separator: "\n").compactMap { pid_t($0) }.reduce(0) { $0 + footprint(of: $1) }
+    }
+
     /// A five-second full-HD loop with motion in every frame, like a motion background.
-    private func makeBackground(_ name: String, codec: MediaAuthoring.Codec) async throws -> URL {
+    private func makeBackground(
+        _ name: String, codec: MediaAuthoring.Codec, framesPerSecond: Int32 = 30
+    ) async throws -> URL {
         let url = tempDir.appendingPathComponent(name)
         try await MediaAuthoring.writeMovie(
-            to: url, codec: codec, size: CGSize(width: 1920, height: 1080), frameCount: 150
+            to: url, codec: codec, size: CGSize(width: 1920, height: 1080),
+            frameCount: Int(framesPerSecond) * 5, framesPerSecond: framesPerSecond
         ) { context, frame in
             let t = CGFloat(frame) / 150
             context.setFillColor(CGColor(srgbRed: 0.1 + 0.3 * t, green: 0.2, blue: 0.5 - 0.3 * t, alpha: 1))
@@ -98,16 +116,62 @@ final class StandbyCostBenchmark: XCTestCase {
             let engine = try MediaEngine(device: device)
             try await Task.sleep(for: .milliseconds(500))
             let before = footprint()
+            let decodersBefore = decoderServiceFootprint()
             for url in urls { await engine.standBy(playing: url, loop: true) }
             try await Task.sleep(for: .milliseconds(500))
             let perPlayer = Double(footprint() - before) / Double(urls.count) / 1_048_576
+            let perDecoder = Double(decoderServiceFootprint() - decodersBefore) / Double(urls.count) / 1_048_576
             XCTAssertEqual(engine.standbyPlayerCount, urls.count)
             engine.releaseStandbyPlayers(keeping: [])
             engine.stopAll()
 
             print(String(
-                format: "standby-bench %@ 1080p30: cold first picture median %.0f ms (max %.0f), standing by median %.0f ms (max %.0f), %.1f MB per player standing by",
-                "\(codec)", median(cold), cold.max() ?? 0, median(warm), warm.max() ?? 0, perPlayer))
+                format: "standby-bench %@ 1080p30: cold first picture median %.0f ms (max %.0f), standing by median %.0f ms (max %.0f), per player standing by %.1f MB here + %.1f MB in VTDecoderXPCService (those services held %.0f MB before)",
+                "\(codec)", median(cold), cold.max() ?? 0, median(warm), warm.max() ?? 0, perPlayer, perDecoder,
+                Double(decodersBefore) / 1_048_576))
         }
+    }
+
+    /// The evidence a bigger cap would need: twelve standing by (the cap on
+    /// a 32 GB Mac) while four others play 1080p60, and a thirteenth started
+    /// cold still gets its first picture. Prints how long that took.
+    func testAThirteenthStartsWhileTwelveStandByAndFourPlay() async throws {
+        let device = try XCTUnwrap(MTLCreateSystemDefaultDevice())
+        let engine = try MediaEngine(device: device)
+        var waiting: [URL] = []
+        for n in 0..<12 {
+            waiting.append(try await makeBackground("waiting-\(n).mov", codec: n.isMultiple(of: 2) ? .h264 : .hevc))
+        }
+        var playing: [URL] = []
+        for n in 0..<4 {
+            playing.append(try await makeBackground("playing-\(n).mov", codec: .h264, framesPerSecond: 60))
+        }
+        let late = try await makeBackground("thirteenth.mov", codec: .h264)
+
+        for url in waiting { await engine.standBy(playing: url, loop: true) }
+        XCTAssertEqual(engine.standbyPlayerCount, 12)
+        for (n, url) in playing.enumerated() {
+            let id = "playing\(n)"
+            _ = try await firstPicture(engine, id: id) {
+                engine.play(try await engine.prepare(url: url), id: id, loop: true)
+            }
+        }
+        // The four run for two seconds, their frames pulled as the outputs would.
+        let until = CACurrentMediaTime() + 2
+        while CACurrentMediaTime() < until {
+            for n in 0..<4 { _ = engine.surface(for: "playing\(n)", hostTime: CACurrentMediaTime()) }
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        let ms = try await firstPicture(engine, id: "thirteenth") {
+            engine.play(try await engine.prepare(url: late), id: "thirteenth", loop: true)
+        }
+        let running = (0..<4).filter { (engine.stats(for: "playing\($0)")?.framesDisplayed ?? 0) > 0 }.count
+        print(String(
+            format: "standby-bench load: 12 standing by, %d of 4 playing 1080p60, a 13th cold play's first picture in %.0f ms",
+            running, ms))
+        XCTAssertLessThan(ms, 1000, "the thirteenth got no picture within a second")
+        XCTAssertEqual(engine.standbyPlayerCount, 12)
+        engine.releaseStandbyPlayers(keeping: [])
+        engine.stopAll()
     }
 }

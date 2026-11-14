@@ -96,9 +96,11 @@ final class PlanPreloader {
 
     // MARK: The next videos' players
 
-    /// How many players wait at once: the item on screen and the next two
-    /// seldom have more videos between them.
-    private static let playersStandingBy = 6
+    /// How many players wait at once, and over how much of the plan: the
+    /// next two items on a small Mac, the whole plan on 32 GB and up
+    /// (PlanPreloadPlan.players).
+    private static let playersStandingBy = PlanPreloadPlan.players(
+        physicalMemory: ProcessInfo.processInfo.physicalMemory)
 
     private func watchPosition() {
         guard let model, let controls else { return }
@@ -117,10 +119,12 @@ final class PlanPreloader {
     /// The videos of the item on screen and the two after it
     /// (PlanUpcomingVideos, in SlideScene, where it is tested).
     static func upcomingVideos(
-        items: [ServiceItem], liveIndex: Int?, limit: Int,
+        items: [ServiceItem], liveIndex: Int?, players: PlanPreloadPlan.Players,
         deck: (String) -> Presentation?, media: (String) -> MediaItem?
     ) -> [PlanUpcomingVideos.Video] {
-        PlanUpcomingVideos.videos(items: items, liveIndex: liveIndex, limit: limit, deck: deck, media: media)
+        PlanUpcomingVideos.videos(
+            items: items, liveIndex: liveIndex, limit: players.limit, itemsAhead: players.itemsAhead,
+            deck: deck, media: media)
     }
 
     /// Readies players for the videos about to be shown and lets go of the
@@ -145,7 +149,7 @@ final class PlanPreloader {
         }
         let playing = Set(engine.playingIDs)
         let wanted = Self.upcomingVideos(
-            items: items, liveIndex: lastLiveIndex, limit: Self.playersStandingBy,
+            items: items, liveIndex: lastLiveIndex, players: Self.playersStandingBy,
             deck: { model.presentation($0) }, media: { model.media($0) }
         ).compactMap { video -> (url: URL, loop: Bool, options: PlaybackOptions)? in
             guard !playing.contains(video.mediaID), let item = model.media(video.mediaID),
