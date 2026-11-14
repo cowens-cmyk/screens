@@ -145,6 +145,7 @@ final class DiagnosticsStore: NSObject, MXMetricManagerSubscriber, @unchecked Se
         }
         parts.append(passMeter.withLock { $0.drainPulse() })
         parts.append(bodyMeter.withLock { $0.drainPulse(names: MeteredView.allCases.map(\.name)) })
+        if let causes = PlanPageCauses.drainPulse() { parts.append(causes) }
         note("perf.pulse", detail: parts.joined(separator: " | "))
     }
 

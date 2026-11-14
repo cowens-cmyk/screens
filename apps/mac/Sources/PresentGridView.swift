@@ -649,6 +649,7 @@ struct SlideGridBody: View {
     }
 
     var body: some View {
+        let _ = BodyMeter.tick(.slideGridBody)
         ZStack(alignment: .topLeading) {
 
             Color.clear
@@ -1919,6 +1920,7 @@ struct SlideTile: View {
     private var cornerRadius: CGFloat { roundedCorners ? CornerStandard.element : 0 }
 
     var body: some View {
+        let _ = BodyMeter.tick(.slideTile)
         // The slide gets the weight: its group is a thin colored edge, and
         // what it is sits under it as plain text, not a filled strip.
         VStack(alignment: .leading, spacing: SlideGridMetrics.labelGap) {
@@ -2332,7 +2334,7 @@ struct SlideThumbnailView: View {
     }
 
     var body: some View {
-
+        let _ = BodyMeter.tick(.slideThumbnail)
         let source = ThumbnailStore.shared.backgroundSource(
             slideID: slide.id, presentation: presentation,
             arrangementId: arrangementId, stamp: updatedStamp

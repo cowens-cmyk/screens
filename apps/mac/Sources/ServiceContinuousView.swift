@@ -81,7 +81,7 @@ struct ServiceContinuousView: View {
 
     var body: some View {
         let _ = BodyMeter.tick(.serviceContinuous)
-        let _ = model.listVersion
+        let _ = PlanPageCauses.note(listVersion: model.listVersion)
         if let service = try? model.service(serviceID) {
             let positions = firePositions(service)
             // Every item, hidden ones too: a hidden video can still be live.
