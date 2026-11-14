@@ -63,11 +63,28 @@ final class MediaDriveMonitor {
 
     /// Checks the drive; a change shows the files again (or as missing).
     func refresh() {
-        guard let resolved else { return }
-        let connected = !resolved.isExternal || MediaStorage.isReachable(resolved.directory)
-        let values = try? (connected ? resolved.directory : resolved.root)
-            .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        freeBytes = values?.volumeAvailableCapacityForImportantUsage
+        guard let resolved, !checking else { return }
+        checking = true
+        // Off the main thread: "available for important usage" asks the
+        // system how much purgeable space it could free, which can take a
+        // while, and this runs every 10 s for as long as the app is open
+        // (the booth's sample has it on the main thread mid-service).
+        Task { [weak self] in
+            let (connected, free) = await Task.detached(priority: .utility) { () -> (Bool, Int64?) in
+                let connected = !resolved.isExternal || MediaStorage.isReachable(resolved.directory)
+                let values = try? (connected ? resolved.directory : resolved.root)
+                    .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+                return (connected, values?.volumeAvailableCapacityForImportantUsage)
+            }.value
+            self?.checked(resolved, connected: connected, free: free)
+        }
+    }
+
+    @ObservationIgnored private var checking = false
+
+    private func checked(_ resolved: MediaStorage.Resolved, connected: Bool, free: Int64?) {
+        checking = false
+        if freeBytes != free { freeBytes = free }
         guard connected != isConnected else { return }
         isConnected = connected
         DiagnosticsStore.shared.note(connected ? "media.drive.connected" : "media.drive.disconnected", detail: resolved.root.path)
