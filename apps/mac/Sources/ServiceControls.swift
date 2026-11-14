@@ -2017,30 +2017,41 @@ final class ServiceControls {
         }
     }
 
-    private struct PlanSlide {
-        var itemID: String
-        var occurrence: Int
-        var slide: Slide
-        var presentation: Presentation
-        var arrangementId: String?
+    /// The plan's slides in walk order, kept while neither the plan nor any
+    /// deck has changed (PlanSlideIndex). Every fire used to arrange every
+    /// deck in the plan again on the main thread and search the result.
+    private struct PlanIndexKey: Equatable {
+        let service: Service
+        let deckEpoch: Int
+        let deckFills: Int
     }
 
-    private func planSlides(in service: Service) -> [PlanSlide] {
-        var positions: [PlanSlide] = []
-        for item in appModel.runOfShow(service) where item.itemKind == .presentation {
+    @ObservationIgnored private var planIndexCache: (key: PlanIndexKey, index: PlanSlideIndex)?
 
-            guard let presentation = appModel.presentation(item.refId) else { continue }
-            let slides = SlideSceneBuilder.arrangedSlides(
-                for: presentation, arrangementId: item.arrangementId
-            )
-            for (index, slide) in slides.enumerated() {
-                positions.append(PlanSlide(
-                    itemID: item.id, occurrence: index, slide: slide,
-                    presentation: presentation, arrangementId: item.arrangementId
-                ))
+    private func planSlideIndex(for service: Service) -> PlanSlideIndex {
+        // Untracked reads: this runs inside fires and onChange handlers, and
+        // must not make a view depend on every deck edit.
+        let key = PlanIndexKey(
+            service: service,
+            deckEpoch: appModel.kindVersions.untracked(.presentation),
+            deckFills: appModel.tableFills.untracked(.presentation))
+        if let cached = planIndexCache, cached.key == key { return cached.index }
+        var items: [PlanSlideIndex.Item] = []
+        var missing = false
+        for item in appModel.runOfShow(service) where item.itemKind == .presentation {
+            guard let presentation = appModel.presentation(item.refId) else {
+                missing = true
+                continue
             }
+            items.append(PlanSlideIndex.Item(
+                itemID: item.id, arrangementId: item.arrangementId, presentation: presentation))
         }
-        return positions
+        let index = PlanSlideIndex(items: items)
+        // A deck still filling isn't in it yet; its fill lands as a new
+        // fills version and the next look builds it again. Nothing missing
+        // is never kept, so a deck that is gone can't stay out by accident.
+        planIndexCache = missing ? nil : (key, index)
+        return index
     }
 
     private func fireContext() -> FireContext {
@@ -2050,10 +2061,9 @@ final class ServiceControls {
         if let serviceID = appModel.currentServiceID,
            let service = try? appModel.service(serviceID),
            let itemIndex = service.items.firstIndex(where: { $0.id == contextID }) {
-            let positions = planSlides(in: service)
-            guard let current = positions.firstIndex(where: {
-                $0.itemID == contextID && $0.occurrence == occurrence
-            }) else { return context }
+            let index = planSlideIndex(for: service)
+            let positions = index.entries
+            guard let current = index.position(itemID: contextID, occurrence: occurrence) else { return context }
             context.upcoming = positions[(current + 1)...].map { ($0.slide, $0.presentation) }
             if positions.indices.contains(current + 1) {
                 let next = positions[current + 1]
@@ -2061,7 +2071,7 @@ final class ServiceControls {
             }
             context.slidePosition = ConfidenceInfo.SlidePosition(
                 index: occurrence + 1,
-                total: positions.filter { $0.itemID == contextID }.count
+                total: index.count(itemID: contextID)
             )
             context.currentItemName = service.items[itemIndex].name
 
