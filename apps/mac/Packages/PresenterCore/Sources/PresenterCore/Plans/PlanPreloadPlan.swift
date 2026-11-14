@@ -103,6 +103,29 @@ public enum PlanPreloadPlan {
         return Budget(pictures: memory / 4, files: memory / 4)
     }
 
+    /// How many video players wait ready on their first frame, and over how
+    /// many plan items (nil: the whole plan). Below 32 GB as before: the
+    /// item on screen and the next two, six players at most. From 32 GB,
+    /// every video in the plan (its looping backgrounds, video items and
+    /// the videos its actions fire), up to 12, nearest first: the operator
+    /// jumps around the plan, and a player standing by is cheap (measured on
+    /// an M1 Max with twelve standing by, 1080p H.264 and HEVC: under 1 MB of
+    /// the app's footprint and nothing measurable in the system's decoder
+    /// services per player; StandbyCostBenchmark in MediaEngine). Twelve is
+    /// what was measured, and the booth's plan has twelve videos. Kernel
+    /// memory for hardware decoding shows in neither number, and running
+    /// short of decoder sessions would show as a live video failing to
+    /// start, so raising this needs a run with that many standing by while
+    /// several others play.
+    public struct Players: Equatable, Sendable {
+        public var limit: Int
+        public var itemsAhead: Int?
+    }
+
+    public static func players(physicalMemory: UInt64) -> Players {
+        physicalMemory >= 32 << 30 ? Players(limit: 12, itemsAhead: nil) : Players(limit: 6, itemsAhead: 3)
+    }
+
     /// The memory a picture takes decoded: four bytes a pixel, 1920×1080
     /// when the library never recorded its size.
     public static func pictureBytes(width: Int?, height: Int?) -> Int {

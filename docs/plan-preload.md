@@ -94,9 +94,20 @@ afresh.
 Opening a file is the small part of starting a video; the wait is the player
 and its decoder coming up. As the plan moves on (`watchPosition`: the live
 item or deck changing) and after each pass, `readyUpcomingPlayers` takes the
-videos of the item on screen and the next two (`PlanUpcomingVideos.videos`
-in SlideScene: plan video items, and every slide's effective background, each with the loop it will be
-played with), up to six, and has the engine make and preroll a player for each
+plan's videos (`PlanUpcomingVideos.videos` in SlideScene: plan video items,
+every slide's effective background, a deck's and a slide's background fill,
+and the videos slides' and items' actions fire, each with the loop it will be
+played with). How many is `PlanPreloadPlan.players`: below 32 GB the item on
+screen and the next two, up to six; from 32 GB the whole plan, from the item
+on screen to the end and then the items before it, up to 12, nearest first
+(the operator jumps around the plan). With twelve standing by, each cost under
+1 MB of the app's memory and nothing measurable in the system's decoder
+services (1080p H.264 and HEVC on an M1 Max, `StandbyCostBenchmark`). Twelve
+is what was measured, and a day's plan has about that many videos. Kernel
+memory for hardware decoding shows in neither number, and decoder sessions
+running short would show as a live video failing to start, so raising the
+cap needs a run with that many standing by while several others play.
+The engine makes and prerolls a player for each
 (`MediaEngine.standBy(playing:loop:options:)`), paused on its first frame and
 under no id, so it is on no screen and in no transport list. `play` takes the
 one whose file, loop and trim match and starts it; anything else gets a fresh
