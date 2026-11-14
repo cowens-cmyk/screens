@@ -23,6 +23,12 @@ with its own width, height and `framesPerSecond`, kept per Mac in
   for 1080p at 60); the card's setting at that size, whatever it is; the
   fastest standard rate under the screen's. Left at its default the card says
   1080i59.94, which is how a 1080p screen went out interlaced before.
+- **Each port's modes** (`DeckLinkDeviceCatalog.displayModes`) are asked of
+  the helper once per port by the 8 s background look, again when a port
+  comes back, on every look while a port's modes came back empty (a failed
+  reply or a helper not ready yet), and for every port when Settings opens
+  (`DeckLinkModeAsking`). An empty answer never replaces modes a port gave
+  before, and `decklink.modes` is written only when a port's modes change.
 - **Video delay** is counted in frames, so a change of rate rescales it to
   keep its time (`ShowScreens.keepDelayTime`).
 - **A display** (HDMI, DisplayPort) is drawn at the display's own refresh rate.
