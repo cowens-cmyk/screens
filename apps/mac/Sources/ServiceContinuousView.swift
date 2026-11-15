@@ -3,6 +3,11 @@ import RenderEngine
 import SlideScene
 import SwiftUI
 
+/// The whole plan on one page. The selected item reaches the page through
+/// `PlanPageFocus` rather than as a value: the page and every grid and tile
+/// on it used to be rebuilt each time the selection moved (a plan-list
+/// click, the page following the live slide), which is what made the glide
+/// to an item stutter. Now only the views that act on the selection run.
 struct ServiceContinuousView: View {
     let model: AppModel
     let render: RenderContext?
@@ -16,6 +21,86 @@ struct ServiceContinuousView: View {
     /// The item the page has come to by itself (the operator's scroll, or
     /// following the live slide), for the plan list to highlight.
     var onShowItem: ((String) -> Void)? = nil
+
+    @State private var focus: PlanPageFocus
+
+    /// The page's coordinate spaces, for the views on it that measure
+    /// themselves.
+    static let scrollSpace = ServiceContinuousPage.scrollSpace
+    static let contentSpace = ServiceContinuousPage.contentSpace
+
+    init(
+        model: AppModel, render: RenderContext?, controls: ServiceControls?, serviceID: String,
+        focusItemID: String?, focusScroll: Binding<PresentFocusScroll>, onShowItem: ((String) -> Void)? = nil
+    ) {
+        self.model = model
+        self.render = render
+        self.controls = controls
+        self.serviceID = serviceID
+        self.focusItemID = focusItemID
+        _focusScroll = focusScroll
+        self.onShowItem = onShowItem
+        // The first selection is there before the page appears, so it opens
+        // on the item without a glide.
+        _focus = State(initialValue: PlanPageFocus(itemID: focusItemID))
+    }
+
+    var body: some View {
+        ServiceContinuousPage(
+            model: model, render: render, controls: controls, serviceID: serviceID,
+            focus: focus, focusScroll: $focusScroll, onShowItem: onShowItem)
+            // Rebuilt only for another plan or library; the parent re-running
+            // (a fire, a selection) leaves it alone.
+            .equatable()
+            .onChange(of: focusItemID, initial: true) { _, id in
+                if focus.itemID != id { focus.itemID = id }
+            }
+    }
+}
+
+/// The item selected in the plan list, for the page to scroll to.
+@MainActor @Observable
+final class PlanPageFocus {
+    var itemID: String?
+
+    init(itemID: String? = nil) {
+        self.itemID = itemID
+    }
+}
+
+/// Runs `onChange` when the selection moves. A view of its own so that
+/// only it, not the page, depends on the selection.
+private struct PlanPageFocusFollow: View {
+    let focus: PlanPageFocus
+    let onChange: (String?) -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: focus.itemID) { _, id in onChange(id) }
+    }
+}
+
+private struct ServiceContinuousPage: View, Equatable {
+    let model: AppModel
+    let render: RenderContext?
+    let controls: ServiceControls?
+    let serviceID: String
+
+    let focus: PlanPageFocus
+
+    @Binding var focusScroll: PresentFocusScroll
+
+    var onShowItem: ((String) -> Void)? = nil
+
+    /// The closure and the binding are left out: they reach the same state
+    /// whichever pass of the parent made them.
+    nonisolated static func == (a: Self, b: Self) -> Bool {
+        a.model === b.model && a.render === b.render && a.controls === b.controls
+            && a.serviceID == b.serviceID && a.focus === b.focus
+    }
+
+    private var focusItemID: String? { focus.itemID }
 
     @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
     @AppStorage("appMode") private var appModeRaw = AppMode.present.rawValue
@@ -99,15 +184,13 @@ struct ServiceContinuousView: View {
                                 let _ = PresentCardFrames.shared.show(rows)
                                 ForEach(rows, id: \.presentRowIdentity) { item in
                                     itemSection(item, proxy: proxy)
-
-                                        .background {
-                                            GeometryReader { geo in
-                                                let _ = PresentCardFrames.shared.note(
-                                                    item.id, geo.frame(in: .named(Self.scrollSpace)))
-                                                let _ = PresentCardFrames.shared.noteDoc(
-                                                    item.id, geo.frame(in: .named(Self.contentSpace)))
-                                                Color.clear
-                                            }
+                                        // Its place in the content, which a
+                                        // scroll doesn't change; where it is
+                                        // on screen follows from contentOrigin.
+                                        .onGeometryChange(for: CGRect.self) { geo in
+                                            geo.frame(in: .named(Self.contentSpace))
+                                        } action: { frame in
+                                            PresentCardFrames.shared.noteDoc(item.id, frame)
                                         }
                                 }
                             }
@@ -131,6 +214,12 @@ struct ServiceContinuousView: View {
                             .overlay(alignment: .topLeading) { PageMarqueeBox(marquee: pageMarquee) }
                             .environment(\.pageMarquee, pageMarquee)
                             .coordinateSpace(name: Self.contentSpace)
+                            // The one measurement a scroll changes.
+                            .onGeometryChange(for: CGPoint.self) { geo in
+                                geo.frame(in: .named(Self.scrollSpace)).origin
+                            } action: { origin in
+                                PresentCardFrames.shared.contentOrigin = origin
+                            }
                         }
                         .coordinateSpace(name: Self.scrollSpace)
                         .inputRegion("present")
@@ -152,7 +241,7 @@ struct ServiceContinuousView: View {
                             PresentCardFrames.shared.keepPlace(because: "slides across")
                         }
                     }
-                    .onChange(of: focusItemID) { _, id in
+                    .background(PlanPageFocusFollow(focus: focus) { id in
                         // The page moving the selection itself (following the
                         // live slide, the operator's scroll) marks the item
                         // first; anything else is the operator's pick. Read
@@ -163,7 +252,7 @@ struct ServiceContinuousView: View {
                         if !followed { picks.pick(id) }
                         scrollToFocus(id, reason: "selection", proxy: proxy, service: service)
                         if !followed { pointNewSlide(at: id) }
-                    }
+                    })
 
                     .onChange(of: focusScroll.reselects) { _, _ in
                         picks.pick(focusItemID)
@@ -772,14 +861,12 @@ struct ServiceContinuousView: View {
         .background {
             // No grid: tell the page so an earlier grid's rows don't stand in
             // for this item when it keeps its place.
-            GeometryReader { proxy in
-                let _ = PresentCardFrames.shared.noteGrid(PresentLanding.Grid(
-                    id: item.id, top: proxy.frame(in: .named(Self.scrollSpace)).minY,
-                    rowPitch: 0, across: across, count: 0))
-                let _ = PresentCardFrames.shared.noteDocGrid(PresentLanding.Grid(
-                    id: item.id, top: proxy.frame(in: .named(Self.contentSpace)).minY,
-                    rowPitch: 0, across: across, count: 0))
-                Color.clear
+            let id = item.id
+            Color.clear.onGeometryChange(for: PresentLanding.Grid.self) { proxy in
+                PresentLanding.Grid(
+                    id: id, top: proxy.frame(in: .named(Self.contentSpace)).minY, rowPitch: 0, across: across, count: 0)
+            } action: { grid in
+                PresentCardFrames.shared.noteDocGrid(grid)
             }
         }
         .padding(.top, 6)
@@ -952,7 +1039,7 @@ struct ServiceContinuousView: View {
                     chosenAcross: slidesAcross,
                     deleteRequests: deleteRequests,
                     clipboardRequests: clipboardRequests,
-                    pastesAtEnd: focusItemID == item.id,
+                    pastesAtEndCheck: { [focus, id = item.id] in focus.itemID == id },
                     newSlideContexts: ((try? model.service(serviceID))?.items ?? [])
                         .filter { $0.itemKind == .presentation }.map(\.id),
                     buildsRowsNearView: true,
@@ -1190,7 +1277,7 @@ private struct PillDropDelegate: DropDelegate {
     }
 }
 
-extension ServiceContinuousView {
+extension ServiceContinuousPage {
 
     /// The countdown takes a video from the media bin (its id) or from the
     /// Finder (imported into Media › Countdowns first). Locked in run-only.
@@ -1274,23 +1361,16 @@ extension ServiceContinuousView {
         let headerHeight = headerHeights[item.id] ?? 44
         let headerView = header()
         let bodyView = body()
-        return ZStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 0) {
-                Color.clear.frame(height: headerHeight)
-                bodyView
-            }
-            GeometryReader { geo in
-                let frame = geo.frame(in: .named(Self.scrollSpace))
-                let stick = max(0, min(-frame.minY, geo.size.height - headerHeight))
+        return VStack(alignment: .leading, spacing: 0) {
+            Color.clear.frame(height: headerHeight)
+            bodyView
+        }
+        .overlay(alignment: .topLeading) {
+            StickyHeader(headerHeight: headerHeight, margin: Self.pageMargin) {
                 headerView
-
                     .fixedSize(horizontal: false, vertical: true)
                     .background(headerHeightReader(item))
-                    .background { StuckHeaderBackdrop(margin: Self.pageMargin).opacity(stick > 0 ? 1 : 0) }
-                    .frame(width: geo.size.width, alignment: .topLeading)
-                    .offset(y: stick)
             }
-            .zIndex(1)
         }
     }
 
@@ -1858,6 +1938,34 @@ private struct EmptyDeckNewSlide: Identifiable {
 /// Behind an item header only while it is pinned at the top, so tiles
 /// scrolling under it don't show through its text. It reaches over the page
 /// margins to the edges.
+/// An item's header, pinned to the top of the page while its slides scroll
+/// under it. Where it sits is worked out from the section's frame as the
+/// page moves, and only a header whose place changes is drawn again: the
+/// headers of every other item stay put. (It used to be a GeometryReader
+/// per item, which re-ran every header on the page each frame of a scroll
+/// or a glide to an item.)
+private struct StickyHeader<Content: View>: View {
+    let headerHeight: CGFloat
+    let margin: CGFloat
+    @ViewBuilder let content: Content
+
+    @State private var stick: CGFloat = 0
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            // Only while stuck: a material held at opacity 0 still costs a
+            // blur pass.
+            .background { if stick > 0 { StuckHeaderBackdrop(margin: margin) } }
+            .offset(y: stick)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .onGeometryChange(for: CGFloat.self) { [headerHeight] proxy in
+                let frame = proxy.frame(in: .named(ServiceContinuousView.scrollSpace))
+                return max(0, min(-frame.minY, proxy.size.height - headerHeight))
+            } action: { stick = $0 }
+    }
+}
+
 private struct StuckHeaderBackdrop: View {
     let margin: CGFloat
 

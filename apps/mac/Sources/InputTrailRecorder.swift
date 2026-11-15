@@ -270,9 +270,17 @@ final class PresentScrollWatchView: NSView {
 @MainActor
 final class PresentCardFrames {
     static let shared = PresentCardFrames()
-    private(set) var frames: [String: CGRect] = [:]
 
-    private var grids: [String: PresentLanding.Grid] = [:]
+    /// Where the page's content sits in the scroll view, measured once per
+    /// scroll frame. Each item's place on screen is its place in the content
+    /// (which only changes when the page lays out again) plus this, so a
+    /// scroll measures one view instead of every item and every grid.
+    var contentOrigin: CGPoint = .zero
+
+    /// An item's frame in the scroll view's space.
+    func frame(_ id: String) -> CGRect? {
+        docFrames[id]?.offsetBy(dx: contentOrigin.x, dy: contentOrigin.y)
+    }
 
     weak var scrollView: NSScrollView?
 
@@ -306,10 +314,6 @@ final class PresentCardFrames {
     private var holdCorrections: [TimeInterval] = []
 
     private init() {}
-
-    func note(_ id: String, _ frame: CGRect) {
-        if frames[id] != frame { frames[id] = frame }
-    }
 
     func noteDoc(_ id: String, _ frame: CGRect) {
         if docFrames[id] != frame {
@@ -369,10 +373,6 @@ final class PresentCardFrames {
         }
     }
 
-    func noteGrid(_ grid: PresentLanding.Grid) {
-        if grids[grid.id] != grid { grids[grid.id] = grid }
-    }
-
     private var docGrids: [String: PresentLanding.Grid] = [:]
 
     func noteDocGrid(_ grid: PresentLanding.Grid) {
@@ -413,12 +413,17 @@ final class PresentCardFrames {
 
     private var cards: [PresentLanding.Card] {
         rows.compactMap { row in
-            frames[row.id].map { PresentLanding.Card(id: row.id, top: $0.minY, height: $0.height) }
+            frame(row.id).map { PresentLanding.Card(id: row.id, top: $0.minY, height: $0.height) }
         }
     }
 
     private var currentGrids: [PresentLanding.Grid] {
-        rows.compactMap { grids[$0.id] }
+        rows.compactMap { row in
+            docGrids[row.id].map {
+                PresentLanding.Grid(
+                    id: $0.id, top: $0.top + contentOrigin.y, rowPitch: $0.rowPitch, across: $0.across, count: $0.count)
+            }
+        }
     }
 
     func moved() {
@@ -491,7 +496,7 @@ final class PresentCardFrames {
             for (label, wait) in [("0.4 s", 0.4), ("2 s", 1.6)] {
                 try? await Task.sleep(for: .seconds(wait))
                 let cards = rows.compactMap { row in
-                    self.frames[row.id].map { PresentLanding.Card(id: row.id, top: $0.minY, height: $0.height) }
+                    self.frame(row.id).map { PresentLanding.Card(id: row.id, top: $0.minY, height: $0.height) }
                 }
                 let atTop = PresentLanding.cardAtTop(cards)
                 let wanted = cards.first { $0.id == target }.map { "\(Int($0.top))" } ?? "?"
