@@ -419,9 +419,10 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
         output->keyer->RampUp(0);
     }
     BMDTimeValue scheduleAt = 0;
-    int slot = -1;
-    const uint8_t *picture = nullptr;
     {
+        // Copied under the lock, so a close can't free the pictures
+        // mid-copy; the app's side holds it only to take or hand back a
+        // buffer, never while drawing.
         std::lock_guard<std::mutex> guard(output->mutex);
         if (!output->playing) return S_OK;
         output->lastCompletion = std::chrono::steady_clock::now();
@@ -429,24 +430,20 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
             output->streamTime < hardwareTime + output->frameDuration) {
             output->streamTime = hardwareTime + 2 * output->frameDuration;
         }
-        slot = output->pacer.next();
-        picture = output->pictures[slot >= 0 ? slot : output->pacer.shown];
+        int slot = output->pacer.next();
+        const uint8_t *picture =
+            output->pictures[slot >= 0 ? slot : output->pacer.shown];
+        IDeckLinkVideoBuffer *buffer = output->bufferFor(frame);
+        if (buffer && buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
+            void *destination = nullptr;
+            if (buffer->GetBytes(&destination) == S_OK && destination) {
+                memcpy(destination, picture, output->rowBytes * output->height);
+            }
+            buffer->EndAccess(bmdBufferAccessWrite);
+        }
+        if (slot >= 0) output->pacer.showed(slot);
         scheduleAt = output->streamTime;
         output->streamTime += output->frameDuration;
-    }
-    // Copied outside the lock: a waiting buffer taken by next() and the
-    // shown one are both out of the app's reach until showed() below.
-    IDeckLinkVideoBuffer *buffer = output->bufferFor(frame);
-    if (buffer && buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
-        void *destination = nullptr;
-        if (buffer->GetBytes(&destination) == S_OK && destination) {
-            memcpy(destination, picture, output->rowBytes * output->height);
-        }
-        buffer->EndAccess(bmdBufferAccessWrite);
-    }
-    if (slot >= 0) {
-        std::lock_guard<std::mutex> guard(output->mutex);
-        output->pacer.showed(slot);
     }
     if (output->output->ScheduleVideoFrame(
             frame, scheduleAt, output->frameDuration, output->timeScale) !=
