@@ -151,6 +151,10 @@ struct ServiceContinuousPage: View, Equatable {
 
     /// The items the operator picked in the plan list, for LiveSlideFollow.
     @State private var picks = PresentPicks()
+    /// Where a plan-list pick moves the page. Set, never read, here: a
+    /// ScrollViewReader's scrollTo only took effect when the page's body ran
+    /// again, and that rebuilt every grid on it.
+    @State private var pageScroll = PlanPageScroll()
 
     static let scrollSpace = "presentScroll"
 
@@ -222,6 +226,7 @@ struct ServiceContinuousPage: View, Equatable {
                             }
                         }
                         .coordinateSpace(name: Self.scrollSpace)
+                        .scrollPosition($pageScroll.position)
                         .inputRegion("present")
                         .onAppear {
                             viewportHeight = viewport.size.height
@@ -254,11 +259,13 @@ struct ServiceContinuousPage: View, Equatable {
                         if !followed { pointNewSlide(at: id) }
                     })
 
-                    .onChange(of: focusScroll.reselects) { _, _ in
+                    // Read in a view of its own: the page reading the shell's
+                    // scroll state re-ran it (and every grid) on each pick.
+                    .background(PlanPageReselectFollow(focusScroll: $focusScroll) {
                         picks.pick(focusItemID)
                         scrollToFocus(focusItemID, reason: "reselect", proxy: proxy, service: service)
                         pointNewSlide(at: focusItemID)
-                    }
+                    })
                     .onAppear {
 
                         scrollToFocus(focusItemID, reason: "appear", proxy: proxy, service: service)
@@ -1403,7 +1410,7 @@ extension ServiceContinuousPage {
             DiagnosticsStore.shared.note("present.focus", detail: "scroll \(target) (\(reason))")
             InputTrailRecorder.shared.noteFocusScroll()
             withAnimation(reason == "appear" ? nil : jump) {
-                proxy.scrollTo(Self.anchor(for: target, in: service), anchor: .top)
+                pageScroll.position.scrollTo(id: Self.anchor(for: target, in: service), anchor: .top)
             }
             PresentCardFrames.shared.holdCard(target)
             PresentCardFrames.shared.reportLanding(target: target, rows: presentRows(service))
@@ -1456,14 +1463,37 @@ private struct PageMarqueeBox: View {
 }
 
 /// The operator's picks in the plan list, counted so picking the same item
-/// twice still registers.
-private struct PresentPicks: Equatable {
+/// twice still registers. A reference the page holds but never reads in its
+/// body: as the page's own state, each pick re-ran the page and every grid
+/// on it. Only LiveSlideFollow reads it.
+@MainActor @Observable
+private final class PresentPicks {
     private(set) var itemID: String?
     private(set) var count = 0
 
-    mutating func pick(_ itemID: String?) {
+    func pick(_ itemID: String?) {
         self.itemID = itemID
         count += 1
+    }
+}
+
+/// Where a plan-list pick moves the page, in an object of its own: held as
+/// the page's state, setting it re-ran the page's body (and every grid).
+@MainActor @Observable
+final class PlanPageScroll {
+    var position = ScrollPosition()
+}
+
+/// Clicking the item already selected in the plan list scrolls back to it.
+/// The shell counts those clicks; this reads the count so the page doesn't.
+private struct PlanPageReselectFollow: View {
+    @Binding var focusScroll: PresentFocusScroll
+    let onReselect: () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: focusScroll.reselects) { _, _ in onReselect() }
     }
 }
 
@@ -1480,7 +1510,7 @@ private struct LiveSlideFollow: View {
 
     var body: some View {
         Color.clear
-            .onChange(of: picks) { _, picks in
+            .onChange(of: picks.count) { _, _ in
                 hold.selected(picks.itemID, live: controls?.liveContextID)
             }
             .onChange(of: place) { _, _ in

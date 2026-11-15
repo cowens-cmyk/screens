@@ -9,13 +9,16 @@ enum PerfHooks {
 
     private static weak var editor: SlideEditorModel?
 
+    /// The plan list picks the next item, as a click on it does.
+    static let pickNext = Notification.Name("PerfHooks.pickNext")
+
     static func start(model: AppModel) {
         guard let spec = ProcessInfo.processInfo.environment[PerfScenario.environmentKey] else { return }
         guard let scenario = PerfScenario(spec) else {
             DiagnosticsStore.shared.note("perf.scenario.failed", detail: "cannot read \(spec)")
             return
         }
-        observe(["mark", "targets", "play", "stop"])
+        observe(["mark", "targets", "play", "stop", "pick"])
         Task { await run(scenario, spec: spec, model: model) }
     }
 
@@ -27,6 +30,28 @@ enum PerfHooks {
         fitWindow()
         switch scenario {
         case .idle:
+            ready(center: nil, handle: nil)
+        case .present:
+            // Headers and items as a Sunday has them; the library's decks
+            // stand in for the songs, the announcements and the message.
+            let decks = model.entries(in: .presentations).sorted { $0.name < $1.name }
+            guard decks.count >= 14 else { return fail("only \(decks.count) decks") }
+            var items: [ServiceItem] = []
+            var next = 0
+            for (header, count) in [("Countdown", 1), ("Opening Song", 3), ("Worship", 4), ("Message", 3), ("Closing Song", 3)] {
+                items.append(ServiceItem(id: UUID().uuidString, itemKind: .header, name: header, refId: ""))
+                for _ in 0 ..< count {
+                    let deck = decks[next]
+                    next += 1
+                    items.append(ServiceItem(id: UUID().uuidString, itemKind: .presentation, name: deck.name, refId: deck.id))
+                }
+            }
+            let plan = Service(id: UUID().uuidString, name: "Perf Sunday", serviceDate: "2030-01-06", items: items)
+            _ = model.createInDrive(plan)
+            model.currentServiceID = plan.id
+            UserDefaults.standard.set(true, forKey: PlanShell.wholePlanKey)
+            UserDefaults.standard.set(AppMode.present.rawValue, forKey: "appMode")
+            try? await Task.sleep(for: .seconds(5))
             ready(center: nil, handle: nil)
         case .animate(let themeName, let layout):
             guard let editor = await open(named: themeName, in: .themes, model: model) else { return }
@@ -146,6 +171,8 @@ enum PerfHooks {
             }
         case "stop":
             editor?.stopAnimationPreview()
+        case "pick":
+            NotificationCenter.default.post(name: pickNext, object: nil)
         default:
             break
         }

@@ -134,6 +134,15 @@ struct RunOrderList: View {
                 if let id = selectedItemID { selection = [id] }
             }
             .onChange(of: selection) { _, selection in selectionChanged(selection, visible: visible) }
+            #if DEBUG || MXU_PERF_HOOKS
+            .onReceive(NotificationCenter.default.publisher(for: PerfHooks.pickNext)) { _ in
+                let items = visible.filter { $0.itemKind != .header }
+                guard !items.isEmpty else { return }
+                let at = items.firstIndex { $0.id == selectedItemID }.map { ($0 + 1) % items.count } ?? 0
+                DiagnosticsStore.shared.note("perf.pick", detail: "\(items[at].id) \"\(items[at].name)\"")
+                selection = [items[at].id]
+            }
+            #endif
             .onChange(of: selectedItemID) { _, id in surfaceItemChanged(id) }
             .alert("Add Header", isPresented: $addingHeader) {
                 TextField("Header", text: $headerText)
