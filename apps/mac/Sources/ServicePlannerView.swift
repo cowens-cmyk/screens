@@ -502,9 +502,12 @@ struct RunOrderList: View {
                 of: item, presentation: item.itemKind == .presentation ? model.presentation(item.refId) : nil),
                 live: isItemLive(item))
 
+            // Shrinks a little to fit the panel's width before it cuts the
+            // name, and never below 10 pt so it reads from the booth chair.
             Text(displayName(item))
                 .font(.system(size: 12))
                 .lineLimit(1)
+                .minimumScaleFactor(0.85)
                 .truncationMode(.middle)
                 .foregroundStyle(item.itemKind == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                 .layoutPriority(item.isCountdown == true ? 1 : 0)
