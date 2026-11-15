@@ -44,11 +44,18 @@ struct SceneTransform {
         self.offset = offset
     }
 
+    /// A canvas whose shape is within this share of the output's fills it
+    /// (cut by at most that much) rather than fitting with a thin black line
+    /// along two edges: a slide made at 1920 × 1088 or 1918 × 1080 fills a
+    /// 1920 × 1080 screen.
+    static let fillsWithin: CGFloat = 0.03
+
     init(canvasSize: CGSize, targetSize: CGSize, inset: CGFloat = 0) {
-        let s = min(
-            max(targetSize.width - 2 * inset, 1) / canvasSize.width,
-            max(targetSize.height - 2 * inset, 1) / canvasSize.height
-        )
+        let across = max(targetSize.width - 2 * inset, 1) / canvasSize.width
+        let down = max(targetSize.height - 2 * inset, 1) / canvasSize.height
+        let fit = min(across, down)
+        let fill = max(across, down)
+        let s = fill <= fit * (1 + Self.fillsWithin) ? fill : fit
         scale = s
         offset = CGPoint(
             x: (targetSize.width - canvasSize.width * s) / 2,

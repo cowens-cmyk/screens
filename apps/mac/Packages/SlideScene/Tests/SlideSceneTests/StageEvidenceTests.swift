@@ -42,6 +42,36 @@ private final class PlaceholderVideo: MediaTextureSource, @unchecked Sendable {
         surfaces["clip"] = .bgra(texture: texture, transform: VideoColorTransform(
             ycbcrMatrix: matrix_identity_float3x3, ycbcrOffset: .zero,
             gamutToWorking: matrix_identity_float3x3, premultipliedAlpha: true), retained: [])
+        addPortrait(device: device)
+    }
+
+    /// A portrait photo stand-in (4:5): sky, a sun and a hill.
+    private func addPortrait(device: MTLDevice) {
+        let width = 216, height = 270
+        guard let space = CGColorSpace(name: CGColorSpace.displayP3),
+              let context = CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: space,
+                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+              let texture = device.makeTexture(descriptor: {
+                  let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                      pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+                  descriptor.usage = .shaderRead
+                  return descriptor
+              }())
+        else { return }
+        context.setFillColor(CGColor(srgbRed: 0.95, green: 0.55, blue: 0.30, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(srgbRed: 1, green: 0.85, blue: 0.4, alpha: 1))
+        context.fillEllipse(in: CGRect(x: 60, y: 140, width: 96, height: 96))
+        context.setFillColor(CGColor(srgbRed: 0.15, green: 0.35, blue: 0.25, alpha: 1))
+        context.fillEllipse(in: CGRect(x: -80, y: -160, width: 380, height: 260))
+        guard let data = context.data else { return }
+        texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
+                        withBytes: data, bytesPerRow: context.bytesPerRow)
+        surfaces["portrait"] = .bgra(texture: texture, transform: VideoColorTransform(
+            ycbcrMatrix: matrix_identity_float3x3, ycbcrOffset: .zero,
+            gamutToWorking: matrix_identity_float3x3, premultipliedAlpha: true), retained: [])
     }
 
     func surface(for mediaID: String, hostTime: CFTimeInterval) -> MediaSurface? { surfaces[mediaID] }
@@ -273,5 +303,16 @@ struct StageEvidenceTests {
         try renderer.render(unbalanced, "room-song-before")
         try renderer.render(SideScreenLyrics.scene(room, presentation: song, scale: SideScreenLyrics.defaultScale),
                             "side-tvs-song-after")
+    }
+
+    /// A portrait picture as a slide background: before, in black bars;
+    /// after, over a blurred copy of itself.
+    @Test func anOddShapedPictureRendersOverItsOwnBlur() throws {
+        guard let renderer = try StageRenderer() else { return }
+        var scene = RenderScene(canvasSize: CGSize(width: 1920, height: 1080))
+        scene.addItems(SlideSceneBuilder.fullFrameMediaItems(
+            id: "bg", mediaId: "portrait", scaleMode: nil, canvasSize: scene.canvasSize), to: .stillGraphics)
+        try renderer.render(scene, "picture-before")
+        try renderer.render(scene.framingMedia { _ in CGSize(width: 1080, height: 1350) }, "picture-after")
     }
 }
