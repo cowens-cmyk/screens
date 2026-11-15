@@ -55,10 +55,11 @@ public struct DeckLinkDisplayMode: Sendable, Equatable, Codable {
 
     /// The mode a screen goes out in when no format was chosen for it. The
     /// screen's own size and frame rate decide, progressive first: a 1080p
-    /// screen at 60 goes out 1080p59.94 (or 1080p60), never interlaced
-    /// because Desktop Video Setup happens to say 1080i59.94, which is what
-    /// it says until someone changes it. The card's setting only picks
-    /// between modes that already fit (1080p60 over 1080p59.94), and is what
+    /// screen at 60 goes out 1080p60 (1080p59.94 where the port has no
+    /// 1080p60), never interlaced because Desktop Video Setup happens to say
+    /// 1080i59.94, which is what it says until someone changes it. The card's
+    /// setting only picks between modes that already fit (1080p59.94 over
+    /// 1080p60, when someone set it so), and is what
     /// goes out when the port has nothing at the screen's rate; with neither,
     /// the fastest standard rate under it.
     public static func automatic(
@@ -120,7 +121,11 @@ public struct DeckLinkDisplayMode: Sendable, Equatable, Codable {
                 && lhs.timeScale / lhs.frameDuration == Int64(framesPerSecond)
             let rhsExact = rhs.timeScale % rhs.frameDuration == 0
                 && rhs.timeScale / rhs.frameDuration == Int64(framesPerSecond)
-            if lhsExact != rhsExact { return rhsExact }
+            // The exact rate first: a screen at 60 goes out 1080p60, the
+            // rate the Macs' displays and the switcher run at, rather than
+            // drifting a frame every 17 s against them at 59.94. A card set
+            // to 1080p59.94 in Desktop Video Setup still gets it (above).
+            if lhsExact != rhsExact { return lhsExact }
             if lhs.progressive != rhs.progressive { return lhs.progressive }
             return false
         }
