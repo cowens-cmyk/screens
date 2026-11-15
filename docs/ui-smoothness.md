@@ -31,6 +31,12 @@ every item, so anything each item does per frame is multiplied by the plan.
   lookup is cached by slide (`TileStepCache` for animation steps), not done in
   `body`.
 
+- **Accessibility.** Each slide tile is one accessibility element (a button
+  with its number and label), not one per text run and overlay. Something on
+  the booth Mac reads the window's accessibility tree, and SwiftUI answers
+  for every view it can see: on Nov 13 that was a quarter of the sampled
+  freezes and one 130 s stretch at full load.
+
 ## Periodic work
 
 - A progress bar or countdown ticks in a `TimelineView` around only what

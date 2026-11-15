@@ -1969,6 +1969,15 @@ struct SlideTile: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: fire)
+        // One accessibility element per tile, not one per text run, badge
+        // and overlay. Something on the booth Mac reads the window's
+        // accessibility tree; on Nov 13 a quarter of the sampled freezes,
+        // and one 130 s stretch at full load, were SwiftUI answering it
+        // for every view of every tile.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(isLive ? "Live, " : "")Slide \(index + 1), \(slideLabel.title)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { fire() }
 
         .task(id: stepCountKey) {
             let slide = slide
