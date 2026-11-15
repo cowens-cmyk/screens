@@ -81,7 +81,7 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     /// and `nextMinSize: earlierNextSlideMinSize` the one before a long next
     /// line broke in two; both kept only to recognise untouched copies.
     static func worship(
-        name: String, nextChords: Bool = true, nextMinSize: Double = nextSlideMinSize
+        name: String, nextChords: Bool = true, nextMinSize: Double = nextSlideMinSize, flowsLines: Bool = true
     ) -> ConfidenceLayout {
         // The column's two blocks: beside the words, and beside the next lines.
         let column: (x: Double, width: Double) = (30, 110)
@@ -110,6 +110,9 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         current.textStyle?.chordNotation = .numbers
         // White, since gold chords over orange words were hard to tell apart.
         current.textStyle?.chordColorHex = white
+        // The words run on from line to line and break where they fill the
+        // stage, not where the audience slide breaks them (LyricFlow).
+        if flowsLines { current.textLink?.flowsLines = true }
         // The next lines carry their chords like the words being sung, so
         // the band can see the change coming. They are drawn at the same
         // proportion of the (smaller) text, and the box shrinks them to fit.
@@ -123,6 +126,7 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         next.textStyle?.balancedWrap = true
         next.textStyle?.chordNotation = .numbers
         next.textStyle?.chordColorHex = nextChords ? white : captionGray
+        if flowsLines { next.textLink?.flowsLines = true }
 
         // The bottom bar: three boxes, the words centred in each.
         let bar: (y: Double, height: Double) = (945, 110)
@@ -274,8 +278,9 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     /// gets the new design's objects; one anybody has touched is left alone.
     public static func upgradedWorshipObjects(for layout: ConfidenceLayout) -> [SlideObject]? {
         let earlier = [
-            worship(name: layout.name, nextMinSize: earlierNextSlideMinSize),
-            worship(name: layout.name, nextChords: false, nextMinSize: earlierNextSlideMinSize),
+            worship(name: layout.name, flowsLines: false),
+            worship(name: layout.name, nextMinSize: earlierNextSlideMinSize, flowsLines: false),
+            worship(name: layout.name, nextChords: false, nextMinSize: earlierNextSlideMinSize, flowsLines: false),
             legacyWorship(name: layout.name),
             previousWorship(name: layout.name, centered: true),
             previousWorship(name: layout.name),
@@ -304,6 +309,26 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
             else { return object }
             var object = object
             object.textStyle?.minFontSize = nextSlideMinSize
+            changed = true
+            return object
+        }
+        return changed ? objects : nil
+    }
+
+    /// Saved stage layouts whose current or next slide box keeps the audience
+    /// slide's lines whole run the words on instead, so they fill the stage
+    /// (LyricFlow). Only a box never set either way is touched; nil when
+    /// there is nothing to change.
+    public static func flowingStageLyrics(for layout: ConfidenceLayout) -> [SlideObject]? {
+        var changed = false
+        let objects = layout.objects.map { object -> SlideObject in
+            guard object.objectKind == .text,
+                  let link = object.textLink, link.source == .currentSlide || link.source == .nextSlide,
+                  (link.sourceObjectName ?? "").isEmpty, link.flowsLines == nil,
+                  object.textStyle?.keepLinesWhole == true
+            else { return object }
+            var object = object
+            object.textLink?.flowsLines = true
             changed = true
             return object
         }

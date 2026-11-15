@@ -213,10 +213,20 @@ struct StageEvidenceTests {
             ("chords", worshipInfo(current: withChords, next: nextLines, group: "Verse 1")),
             ("long-lines", worshipInfo(current: longLines, next: amazingGrace, group: "Verse 4")),
             ("last-slide", worshipInfo(current: amazingGrace, next: nil, group: "Ending")),
+            ("next-song", worshipInfo(current: withChords, next: {
+                var next = nextLines
+                next.heading = "Center"
+                return next
+            }(), group: "Ending")),
         ]
         for (name, info) in cases {
             try renderer.render(ConfidenceSceneBuilder.scene(layout: before, info: info, at: at), "worship-before-\(name)")
             try renderer.render(ConfidenceSceneBuilder.scene(layout: after, info: info, at: at), "worship-after-\(name)")
+        }
+        // The design before the words ran on, beside it.
+        let kept = ConfidenceLayoutTemplate.worship(name: "Worship", flowsLines: false)
+        for (name, info) in cases {
+            try renderer.render(ConfidenceSceneBuilder.scene(layout: kept, info: info, at: at), "worship-lines-kept-\(name)")
         }
         var message = cases[1].1
         message.alert = CueAlert(message: "Repeat the chorus", behavior: .persist, target: .confidence, firedAt: at.addingTimeInterval(-5))

@@ -206,7 +206,7 @@ private func frame(_ object: SlideObject) -> CGRect {
 
     // An untouched copy with the old size takes the new template.
     var saved = ConfidenceLayoutTemplate.worship(
-        name: "Stage — Worship", nextMinSize: ConfidenceLayoutTemplate.earlierNextSlideMinSize)
+        name: "Stage — Worship", nextMinSize: ConfidenceLayoutTemplate.earlierNextSlideMinSize, flowsLines: false)
     #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: saved) != nil)
 
     // One someone has changed keeps its design and only gets the size.
@@ -228,7 +228,8 @@ private func frame(_ object: SlideObject) -> CGRect {
 
 @Test func anUntouchedWorshipLayoutWithoutNextChordsTakesTheNewOne() throws {
     var saved = ConfidenceLayoutTemplate.worship(
-        name: "Stage — Worship", nextChords: false, nextMinSize: ConfidenceLayoutTemplate.earlierNextSlideMinSize)
+        name: "Stage — Worship", nextChords: false, nextMinSize: ConfidenceLayoutTemplate.earlierNextSlideMinSize,
+        flowsLines: false)
     saved.id = "screens.stage.worship"
     #expect(saved.objects.first { $0.name == "Next Slide" }?.textStyle?.showChords == nil)
     let stored = try JSONDecoder().decode(ConfidenceLayout.self, from: JSONEncoder().encode(saved))
@@ -287,4 +288,29 @@ private func frame(_ object: SlideObject) -> CGRect {
     var named = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", nextChords: false)
     named.objects[next].textLink?.sourceObjectName = "Title"
     #expect(ConfidenceLayoutTemplate.showingNextSlideChords(for: named) == nil)
+}
+
+@Test func stageLyricsRunOnToFillTheStage() throws {
+    let fresh = ConfidenceLayoutTemplate.worship(name: "Stage — Worship")
+    let lyricBoxes = fresh.objects.filter { $0.name == "Current Slide" || $0.name == "Next Slide" }
+    #expect(lyricBoxes.count == 2 && lyricBoxes.allSatisfy { $0.textLink?.flowsLines == true })
+    #expect(ConfidenceLayoutTemplate.flowingStageLyrics(for: fresh) == nil)
+
+    // An untouched copy of the design before takes the new one whole.
+    var saved = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", flowsLines: false)
+    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: saved) != nil)
+
+    // One someone has changed keeps its design; its lyric boxes run on.
+    let index = try #require(saved.objects.firstIndex { $0.name == "Current Slide" })
+    saved.objects[index].y = (saved.objects[index].y ?? 0) + 6
+    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: saved) == nil)
+    let objects = try #require(ConfidenceLayoutTemplate.flowingStageLyrics(for: saved))
+    #expect(objects[index].textLink?.flowsLines == true && objects[index].y == saved.objects[index].y)
+    saved.objects = objects
+    #expect(ConfidenceLayoutTemplate.flowingStageLyrics(for: saved) == nil, "once only")
+
+    // A box set not to run on stays that way.
+    var kept = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", flowsLines: false)
+    kept.objects[index].textLink?.flowsLines = false
+    #expect(ConfidenceLayoutTemplate.flowingStageLyrics(for: kept)?[index].textLink?.flowsLines != true)
 }

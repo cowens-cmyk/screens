@@ -962,6 +962,8 @@ struct SlideObjectInspector: View {
 
                     numberField("Line Limit", maxLinesBinding(object), range: 0...30)
                         .help("Show only the first N lines of the linked slide; 0 = all")
+                    Toggle("Run Lines On", isOn: linkWrite(object, \.flowsLines, default: false))
+                        .help("Join the slide's lines and break them where they fill this box, as large as they fit, rather than where the audience slide breaks them")
                 }
                 if link.source == .nextSlide {
 

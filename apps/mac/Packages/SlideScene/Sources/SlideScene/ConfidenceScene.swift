@@ -330,6 +330,10 @@ public struct ConfidenceInfo: Sendable, Equatable {
 
         public var notes: String?
 
+        /// Over the next lines when they start another song: its name, so
+        /// the band sees at a glance what comes next.
+        public var heading: String?
+
         public struct ObjectText: Sendable, Equatable {
             public var name: String
             public var text: String

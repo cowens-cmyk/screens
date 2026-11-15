@@ -4031,6 +4031,11 @@
           "name": "timerPattern",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "flowsLines",
+          "type": "bool",
+          "optional": true
         }
       ]
     },

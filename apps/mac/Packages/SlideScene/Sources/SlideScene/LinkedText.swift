@@ -79,12 +79,34 @@ public enum LinkedText {
             let named = (link.sourceObjectName?.isEmpty == false)
             if let slide = slideText(for: link, in: info) {
                 var chords = named ? [] : slide.chords
-                if let maxLines = link.maxLines, maxLines > 0 {
+                // The next song's name takes the first line over its words.
+                let heading = link.source == .nextSlide && !named ? nonEmpty(slide.heading) : nil
+                // Under a name, only the song's first line: the two together
+                // read at a glance, and leave the box room to stay large.
+                let lineBudget = heading != nil ? 1 : link.maxLines.flatMap { $0 > 0 ? $0 : nil }
+                if link.flowsLines == true, heading == nil, !named, !resolved.text.isEmpty {
+                    let style = object.textStyle
+                    let flowed = LyricFlow.flowed(
+                        resolved.text, chords: chords,
+                        width: (object.width ?? 0) - (style?.insetLeft ?? 0) - (style?.insetRight ?? 0),
+                        height: (object.height ?? 0) - (style?.insetTop ?? 0) - (style?.insetBottom ?? 0),
+                        fontName: style?.fontName, fontSize: style?.fontSize ?? 0, minFontSize: style?.minFontSize,
+                        maxLines: lineBudget ?? 4)
+                    resolved.text = flowed.text
+                    chords = flowed.chords
+                } else if let maxLines = lineBudget {
                     let lines = resolved.text.components(separatedBy: "\n")
                     if lines.count > maxLines {
                         resolved.text = lines.prefix(maxLines).joined(separator: "\n")
                     }
                     chords = chords.filter { $0.line < maxLines }
+                }
+                if let heading, !resolved.text.isEmpty {
+                    resolved.text = heading + "\n" + resolved.text
+                    chords = chords.map { ChordPlacement(line: $0.line + 1, column: $0.column, symbol: $0.symbol) }
+                    // White over the grey lines, so it reads as a name.
+                    resolved.styleRuns = (resolved.styleRuns ?? []) + [TextStyleRun(
+                        line: 0, column: 0, length: heading.count, colorHex: headingColorHex)]
                 }
 
                 chords = ChordMath.displayPlacements(
@@ -102,6 +124,8 @@ public enum LinkedText {
             return resolved
         }
     }
+
+    static let headingColorHex = "#FFFFFFFF"
 
     /// A stage block filled with the current or next slide's section colour
     /// takes it now. With no colour known its own fill stays, so a section

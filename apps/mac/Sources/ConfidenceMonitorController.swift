@@ -144,6 +144,7 @@ final class ConfidenceMonitorController {
         upgradePreServiceLayoutIfUntouched()
         addNextSlideChordsToSavedLayouts()
         breakLongNextLinesInSavedLayouts()
+        flowStageLyricsInSavedLayouts()
         for (screenID, layoutID) in assignments where layoutID != StageLayouts.audienceID {
             if let layout = appModel.resident.confidenceLayouts.value(layoutID) {
                 layouts[screenID] = layout.showingAudience(screenID: audienceScreenID)
@@ -258,6 +259,26 @@ final class ConfidenceMonitorController {
             DiagnosticsStore.shared.note("stage.nextLines.wrap", detail: layout.name)
             appModel.updateConfidenceLayout(layout.id) { layout in
                 if let objects = ConfidenceLayoutTemplate.breakingLongNextLines(for: layout) {
+                    layout.objects = objects
+                }
+            }
+        }
+    }
+
+    private var checkedFlowingLyrics = false
+
+    /// The stage used to keep each audience line on a line of its own, and
+    /// a long one shrank. Saved layouts whose lyric boxes still do that run
+    /// the words on to fill the stage, once a launch; a box set either way
+    /// by hand is left alone.
+    private func flowStageLyricsInSavedLayouts() {
+        let layouts = appModel.resident.confidenceLayouts.values
+        guard !checkedFlowingLyrics, !layouts.isEmpty else { return }
+        checkedFlowingLyrics = true
+        for layout in layouts where ConfidenceLayoutTemplate.flowingStageLyrics(for: layout) != nil {
+            DiagnosticsStore.shared.note("stage.lyrics.flow", detail: layout.name)
+            appModel.updateConfidenceLayout(layout.id) { layout in
+                if let objects = ConfidenceLayoutTemplate.flowingStageLyrics(for: layout) {
                     layout.objects = objects
                 }
             }

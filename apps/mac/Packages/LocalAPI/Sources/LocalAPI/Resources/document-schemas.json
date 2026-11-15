@@ -3372,6 +3372,9 @@
         },
         "timerPattern": {
           "type": "string"
+        },
+        "flowsLines": {
+          "type": "boolean"
         }
       },
       "required": [
