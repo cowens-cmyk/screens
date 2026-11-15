@@ -37,7 +37,7 @@ private func frame(_ object: SlideObject) -> CGRect {
     #expect(current.textStyle?.showChords == true)
     #expect(current.textStyle?.chordNotation == .numbers)
 
-    #expect(next.textLink?.maxLines == 3, "just the next slide's first lines")
+    #expect(next.textLink?.maxLines == 2, "just the next slide's first lines")
     #expect((next.textStyle?.fontSize ?? 0) < (current.textStyle?.fontSize ?? 0))
     #expect(next.textStyle?.colorHex == ConfidenceLayoutTemplate.worshipNextGray, "grey, dimmer than the words being sung")
     #expect(frame(next).minY >= frame(current).maxY)
@@ -206,7 +206,8 @@ private func frame(_ object: SlideObject) -> CGRect {
 
     // An untouched copy with the old size takes the new template.
     var saved = ConfidenceLayoutTemplate.worship(
-        name: "Stage — Worship", nextMinSize: ConfidenceLayoutTemplate.earlierNextSlideMinSize, flowsLines: false)
+        name: "Stage — Worship", nextMinSize: ConfidenceLayoutTemplate.earlierNextSlideMinSize, flowsLines: false,
+        largeLyrics: false)
     #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: saved) != nil)
 
     // One someone has changed keeps its design and only gets the size.
@@ -229,7 +230,7 @@ private func frame(_ object: SlideObject) -> CGRect {
 @Test func anUntouchedWorshipLayoutWithoutNextChordsTakesTheNewOne() throws {
     var saved = ConfidenceLayoutTemplate.worship(
         name: "Stage — Worship", nextChords: false, nextMinSize: ConfidenceLayoutTemplate.earlierNextSlideMinSize,
-        flowsLines: false)
+        flowsLines: false, largeLyrics: false)
     saved.id = "screens.stage.worship"
     #expect(saved.objects.first { $0.name == "Next Slide" }?.textStyle?.showChords == nil)
     let stored = try JSONDecoder().decode(ConfidenceLayout.self, from: JSONEncoder().encode(saved))
@@ -297,7 +298,7 @@ private func frame(_ object: SlideObject) -> CGRect {
     #expect(ConfidenceLayoutTemplate.flowingStageLyrics(for: fresh) == nil)
 
     // An untouched copy of the design before takes the new one whole.
-    var saved = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", flowsLines: false)
+    var saved = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", flowsLines: false, largeLyrics: false)
     #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: saved) != nil)
 
     // One someone has changed keeps its design; its lyric boxes run on.
@@ -313,4 +314,41 @@ private func frame(_ object: SlideObject) -> CGRect {
     var kept = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", flowsLines: false)
     kept.objects[index].textLink?.flowsLines = false
     #expect(ConfidenceLayoutTemplate.flowingStageLyrics(for: kept)?[index].textLink?.flowsLines != true)
+}
+
+@Test func theWordsBeingSungTakeMostOfTheStage() throws {
+    let fresh = ConfidenceLayoutTemplate.worship(name: "Stage — Worship")
+    let current = try #require(fresh.objects.first { $0.name == "Current Slide" })
+    let next = try #require(fresh.objects.first { $0.name == "Next Slide" })
+    #expect((current.height ?? 0) >= 500 && current.textStyle?.fontSize == 130)
+    #expect(next.textLink?.maxLines == 2)
+    #expect((current.y ?? 0) + (current.height ?? 0) <= next.y ?? 0, "the boxes don't overlap")
+    #expect((next.y ?? 0) + (next.height ?? 0) <= 945, "above the bottom bar")
+    #expect(ConfidenceLayoutTemplate.enlargingStageLyrics(for: fresh) == nil)
+
+    // An untouched copy of the smaller design takes the new one whole.
+    let before = ConfidenceLayoutTemplate.worship(name: "Stage — Worship", largeLyrics: false)
+    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: before) != nil)
+
+    // One with other changes (a colour) still has its lyrics moved; the
+    // colour stays, and the section blocks move with them.
+    var recoloured = before
+    let index = try #require(recoloured.objects.firstIndex { $0.name == "Current Slide" })
+    recoloured.objects[index].textStyle?.colorHex = "#FFFFFFFF"
+    #expect(ConfidenceLayoutTemplate.upgradedWorshipObjects(for: recoloured) == nil)
+    let objects = try #require(ConfidenceLayoutTemplate.enlargingStageLyrics(for: recoloured))
+    for name in ["Current Slide", "Next Slide", "Section", "Section Block", "Next Section", "Next Section Block"] {
+        let moved = try #require(objects.first { $0.name == name })
+        let target = try #require(fresh.objects.first { $0.name == name })
+        #expect([moved.x, moved.y, moved.width, moved.height] == [target.x, target.y, target.width, target.height], "\(name)")
+    }
+    #expect(objects[index].textStyle?.colorHex == "#FFFFFFFF" && objects[index].textStyle?.fontSize == 130)
+    #expect(objects.first { $0.name == "Next Slide" }?.textLink?.maxLines == 2)
+    recoloured.objects = objects
+    #expect(ConfidenceLayoutTemplate.enlargingStageLyrics(for: recoloured) == nil, "once only")
+
+    // Words someone moved stay where they put them.
+    var moved = before
+    moved.objects[index].y = (moved.objects[index].y ?? 0) + 6
+    #expect(ConfidenceLayoutTemplate.enlargingStageLyrics(for: moved) == nil)
 }

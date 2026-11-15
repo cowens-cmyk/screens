@@ -283,6 +283,16 @@ final class ConfidenceMonitorController {
                 }
             }
         }
+        // The words being sung take most of the stage: a Worship layout
+        // with its lyric boxes where the old template put them moves them.
+        for layout in layouts where ConfidenceLayoutTemplate.enlargingStageLyrics(for: layout) != nil {
+            DiagnosticsStore.shared.note("stage.lyrics.large", detail: layout.name)
+            appModel.updateConfidenceLayout(layout.id) { layout in
+                if let objects = ConfidenceLayoutTemplate.enlargingStageLyrics(for: layout) {
+                    layout.objects = objects
+                }
+            }
+        }
     }
 
     private var checkedMessageLayout = false

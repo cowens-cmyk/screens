@@ -77,12 +77,16 @@ public enum LyricFlow {
         let font = CTFontCreateWithName((key.fontName ?? "HelveticaNeue-Bold") as CFString, key.fontSize, nil)
         let offsets = prefixWidths(String(joined), font: font)
         let spaces = joined.indices.filter { joined[$0] == " " }
+        // The spaces where the song's own lines meet: a break there keeps a
+        // phrase together ("bright shining as the sun / We've no less days").
+        let phraseEnds = Set(starts.dropFirst().map { $0 - 1 }.filter { joined.indices.contains($0) && joined[$0] == " " })
         // A line with chords over it is about this much taller than one without.
         let lineHeight = key.fontSize * (original.chords.isEmpty ? 1.2 : 1.75)
 
         var best: (scale: Double, breaks: [Int])?
         for count in 1 ... max(1, min(key.maxLines, spaces.count + 1)) {
-            let breaks = balancedBreaks(count: count, spaces: spaces, offsets: offsets, length: joined.count)
+            let breaks = balancedBreaks(count: count, spaces: spaces, phraseEnds: phraseEnds,
+                                        offsets: offsets, length: joined.count)
             var widest = 0.0
             var from = 0
             for end in breaks + [joined.count] {
@@ -138,16 +142,24 @@ public enum LyricFlow {
         return widths
     }
 
-    /// Spaces to break at for `count` lines of about equal width.
-    private static func balancedBreaks(count: Int, spaces: [Int], offsets: [Double], length: Int) -> [Int] {
+    /// Spaces to break at for `count` lines of about equal width. A space
+    /// where two of the song's lines meet is taken over a nearer one when it
+    /// is within a third of a line of the even break.
+    private static func balancedBreaks(
+        count: Int, spaces: [Int], phraseEnds: Set<Int> = [], offsets: [Double], length: Int
+    ) -> [Int] {
         guard count > 1 else { return [] }
         let total = offsets[length]
+        let bonus = total / Double(count) / 3
         var breaks: [Int] = []
         var after = -1
         for part in 1 ..< count {
             let target = total * Double(part) / Double(count)
             let choices = spaces.filter { $0 > after }
-            guard let nearest = choices.min(by: { abs(offsets[$0] - target) < abs(offsets[$1] - target) }) else { break }
+            func cost(_ space: Int) -> Double {
+                abs(offsets[space] - target) - (phraseEnds.contains(space) ? bonus : 0)
+            }
+            guard let nearest = choices.min(by: { cost($0) < cost($1) }) else { break }
             breaks.append(nearest)
             after = nearest
         }

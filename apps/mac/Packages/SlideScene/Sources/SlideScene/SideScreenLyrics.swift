@@ -36,9 +36,14 @@ public enum SideScreenLyrics {
         return Self.scene(enlargingTextOf: scene, scale: scale)
     }
 
-    /// The scene with each of the slide's own text boxes `scale` times the
-    /// size, around its centre and inside the safe area. Every other layer
-    /// and item is left as it is.
+    /// The scene with the slide's own text drawn `scale` times the size.
+    /// The lyrics alone on a slide (the usual case) get the whole safe area
+    /// of the TV and wrap in it: a song's lines are set nearly as wide as
+    /// the wall, so a box that only grew around its centre was held to the
+    /// wall's width, and with each line kept whole the words shrank back to
+    /// the wall's size, the same picture as the room's. Several boxes each
+    /// grow around their own centre so they don't cover each other. Every
+    /// other layer and item is left as it is.
     public static func scene(enlargingTextOf scene: RenderScene, scale: Double) -> RenderScene {
         let factor = min(max(scale, scaleRange.lowerBound), scaleRange.upperBound)
         guard factor > 1.001,
@@ -46,19 +51,19 @@ public enum SideScreenLyrics {
         else { return scene }
         var out = scene
         let canvas = scene.canvasSize
+        let fills = scene.layers[index].items.filter(enlarges).count == 1
+        func grow(_ item: RenderItem) -> RenderItem {
+            fills ? filling(item, by: factor, canvas: canvas) : enlarged(item, by: factor, canvas: canvas)
+        }
         out.layers[index].items = scene.layers[index].items.map { item in
             guard enlarges(item) else { return item }
-            var grown = enlarged(item, by: factor, canvas: canvas)
+            var grown = grow(item)
             // A page turn or a build carries the box's other states; they
             // grow with it so the move doesn't jump between sizes.
             grown.animationSteps = item.animationSteps.map { step in
                 var step = step
-                if let from = step.fromItem, enlarges(from) {
-                    step.fromItem = enlarged(from, by: factor, canvas: canvas)
-                }
-                if let to = step.toItem, enlarges(to) {
-                    step.toItem = enlarged(to, by: factor, canvas: canvas)
-                }
+                if let from = step.fromItem, enlarges(from) { step.fromItem = grow(from) }
+                if let to = step.toItem, enlarges(to) { step.toItem = grow(to) }
                 return step
             }
             return grown
@@ -89,6 +94,18 @@ public enum SideScreenLyrics {
         return out
     }
 
+    /// The lyrics box given the whole safe area (and any of the canvas the
+    /// theme already put it in), its words `factor` times the size.
+    static func filling(_ item: RenderItem, by factor: Double, canvas: CGSize) -> RenderItem {
+        guard case .text(let text) = item.content, canvas.width > 0, canvas.height > 0 else { return item }
+        let whole = CGRect(origin: .zero, size: canvas)
+        let safe = whole.insetBy(dx: canvas.width * safeMargin, dy: canvas.height * safeMargin)
+        var out = item
+        out.frame = safe.union(item.frame).intersection(whole)
+        out.content = .text(styled(text, scaledBy: factor))
+        return out
+    }
+
     /// `frame` grown around its centre, then moved (and if need be cut)
     /// to sit inside the safe area, or the frame's own edges where the
     /// theme put it past that.
@@ -105,17 +122,21 @@ public enum SideScreenLyrics {
         return CGRect(x: x, y: y, width: width, height: height)
     }
 
-    /// The type and every measure drawn with it, `factor` times larger. It
-    /// shrinks to fit when the box couldn't grow as much (a wide line near
-    /// the safe edge), but never below the room's own size, and keeps each
-    /// written line on one line, so two lines on the wall stay two lines on
-    /// the TVs.
+    /// How much larger than the room's the words are at the least, however
+    /// long the lines: the TVs never show the wall's picture.
+    public static let floorScale = 1.25
+
+    /// The type and every measure drawn with it, `factor` times larger. A
+    /// line too long for the TV wraps, in lines of about equal length, and
+    /// the words shrink to fit only as far as `floorScale` times the room's
+    /// size (or `factor`, when that is smaller).
     static func styled(_ text: StyledText, scaledBy factor: Double) -> StyledText {
         var out = text
         out.fontSize = text.fontSize * factor
         out.autoShrink = true
-        out.minFontSize = text.autoShrink ? min(text.minFontSize, text.fontSize) : text.fontSize
-        out.keepLinesWhole = true
+        out.minFontSize = text.fontSize * min(factor, floorScale)
+        out.keepLinesWhole = false
+        out.balancedWrap = true
         out.tracking = text.tracking * factor
         out.wordSpacing = text.wordSpacing * factor
         out.paragraphSpacing = text.paragraphSpacing * factor

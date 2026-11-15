@@ -79,15 +79,23 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     /// seconds, the song, and its key, where a stage message replaces them.
     /// `nextChords: false` is the design before the next lines had chords,
     /// and `nextMinSize: earlierNextSlideMinSize` the one before a long next
-    /// line broke in two; both kept only to recognise untouched copies.
+    /// line broke in two; both kept only to recognise untouched copies, as
+    /// is `largeLyrics: false`, the one before the words being sung took
+    /// most of the stage.
     static func worship(
-        name: String, nextChords: Bool = true, nextMinSize: Double = nextSlideMinSize, flowsLines: Bool = true
+        name: String, nextChords: Bool = true, nextMinSize: Double = nextSlideMinSize, flowsLines: Bool = true,
+        largeLyrics: Bool = true
     ) -> ConfidenceLayout {
         // The column's two blocks: beside the words, and beside the next lines.
         let column: (x: Double, width: Double) = (30, 110)
-        let currentBlock: (y: Double, height: Double) = (40, 460)
-        let nextBlock: (y: Double, height: Double) = (505, 435)
+        let currentBlock: (y: Double, height: Double) = largeLyrics ? (40, 550) : (40, 460)
+        let nextBlock: (y: Double, height: Double) = largeLyrics ? (595, 345) : (505, 435)
         let words: (x: Double, width: Double) = (170, 1720)
+        // The words being sung take most of the stage: a chart's long line,
+        // run on in three lines, was drawn at about 80 in a box 430 high.
+        // The next lines are a glance ahead, two lines at most.
+        let currentBox: (y: Double, height: Double, size: Double) = largeLyrics ? (60, 520, 130) : (70, 430, 112)
+        let nextBox: (y: Double, height: Double, lines: Int) = largeLyrics ? (605, 330, 2) : (520, 350, 3)
 
         let section = sideways("Section", .currentGroup, column: column, block: currentBlock)
         let nextSection = sideways("Next Section", .nextGroup, column: column, block: nextBlock)
@@ -98,8 +106,8 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
                                           label: nextSection)
 
         var current = linked("Current Slide", .currentSlide,
-                             x: words.x, y: 70, width: words.width, height: 430,
-                             size: 112, color: worshipOrange, alignment: .left, shrink: true, minSize: 60,
+                             x: words.x, y: currentBox.y, width: words.width, height: currentBox.height,
+                             size: currentBox.size, color: worshipOrange, alignment: .left, shrink: true, minSize: 60,
                              chords: true)
         current.textStyle?.fontName = "HelveticaNeue-Bold"
         current.textStyle?.verticalAlignment = .top
@@ -117,9 +125,9 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
         // the band can see the change coming. They are drawn at the same
         // proportion of the (smaller) text, and the box shrinks them to fit.
         var next = linked("Next Slide", .nextSlide,
-                          x: words.x, y: 520, width: words.width, height: 350,
+                          x: words.x, y: nextBox.y, width: words.width, height: nextBox.height,
                           size: 80, color: worshipNextGray, alignment: .left, shrink: true, minSize: nextMinSize,
-                          chords: nextChords, maxLines: 3)
+                          chords: nextChords, maxLines: nextBox.lines)
         next.textStyle?.fontName = "HelveticaNeue-Bold"
         next.textStyle?.verticalAlignment = .top
         next.textStyle?.keepLinesWhole = true
@@ -278,9 +286,11 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
     /// gets the new design's objects; one anybody has touched is left alone.
     public static func upgradedWorshipObjects(for layout: ConfidenceLayout) -> [SlideObject]? {
         let earlier = [
-            worship(name: layout.name, flowsLines: false),
-            worship(name: layout.name, nextMinSize: earlierNextSlideMinSize, flowsLines: false),
-            worship(name: layout.name, nextChords: false, nextMinSize: earlierNextSlideMinSize, flowsLines: false),
+            worship(name: layout.name, largeLyrics: false),
+            worship(name: layout.name, flowsLines: false, largeLyrics: false),
+            worship(name: layout.name, nextMinSize: earlierNextSlideMinSize, flowsLines: false, largeLyrics: false),
+            worship(name: layout.name, nextChords: false, nextMinSize: earlierNextSlideMinSize, flowsLines: false,
+                    largeLyrics: false),
             legacyWorship(name: layout.name),
             previousWorship(name: layout.name, centered: true),
             previousWorship(name: layout.name),
@@ -309,6 +319,47 @@ public enum ConfidenceLayoutTemplate: String, CaseIterable, Sendable {
             else { return object }
             var object = object
             object.textStyle?.minFontSize = nextSlideMinSize
+            changed = true
+            return object
+        }
+        return changed ? objects : nil
+    }
+
+    /// A saved Worship layout whose words and section blocks are still where
+    /// the template put them before the words being sung took most of the
+    /// stage gets the new places and sizes, whatever else was changed in it
+    /// (colours, fonts, the bottom bar). Each piece moves only while it is
+    /// exactly where the old template put it; nil when the words being sung
+    /// were moved or resized, or there is nothing to change.
+    public static func enlargingStageLyrics(for layout: ConfidenceLayout) -> [SlideObject]? {
+        let old = worship(name: layout.name, largeLyrics: false).objects
+        let new = worship(name: layout.name).objects
+        func place(_ object: SlideObject) -> [Double?] { [object.x, object.y, object.width, object.height] }
+        func matching(_ object: SlideObject) -> (old: SlideObject, new: SlideObject)? {
+            guard let index = old.firstIndex(where: { $0.name == object.name && place($0) == place(object) }),
+                  let fresh = new.first(where: { $0.name == object.name })
+            else { return nil }
+            return (old[index], fresh)
+        }
+        guard let current = layout.objects.first(where: {
+            $0.objectKind == .text && $0.textLink?.source == .currentSlide && $0.name == "Current Slide"
+        }), matching(current) != nil, current.textStyle?.fontSize == 112 else { return nil }
+        let moving: Set<String> = ["Current Slide", "Next Slide", "Section", "Section Block",
+                                   "Next Section", "Next Section Block"]
+        var changed = false
+        let objects = layout.objects.map { object -> SlideObject in
+            guard moving.contains(object.name), let pair = matching(object) else { return object }
+            var object = object
+            object.x = pair.new.x
+            object.y = pair.new.y
+            object.width = pair.new.width
+            object.height = pair.new.height
+            if object.name == "Current Slide", object.textStyle?.fontSize == pair.old.textStyle?.fontSize {
+                object.textStyle?.fontSize = pair.new.textStyle?.fontSize
+            }
+            if object.name == "Next Slide", object.textLink?.maxLines == pair.old.textLink?.maxLines {
+                object.textLink?.maxLines = pair.new.textLink?.maxLines
+            }
             changed = true
             return object
         }

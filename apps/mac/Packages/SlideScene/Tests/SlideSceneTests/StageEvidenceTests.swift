@@ -224,12 +224,54 @@ struct StageEvidenceTests {
             try renderer.render(ConfidenceSceneBuilder.scene(layout: after, info: info, at: at), "worship-after-\(name)")
         }
         // The design before the words ran on, beside it.
-        let kept = ConfidenceLayoutTemplate.worship(name: "Worship", flowsLines: false)
+        let kept = ConfidenceLayoutTemplate.worship(name: "Worship", flowsLines: false, largeLyrics: false)
         for (name, info) in cases {
             try renderer.render(ConfidenceSceneBuilder.scene(layout: kept, info: info, at: at), "worship-lines-kept-\(name)")
+        }
+        // The flowing design in the smaller boxes, as 0.38 first had it.
+        let smaller = ConfidenceLayoutTemplate.worship(name: "Worship", largeLyrics: false)
+        for (name, info) in cases {
+            try renderer.render(ConfidenceSceneBuilder.scene(layout: smaller, info: info, at: at), "worship-smaller-\(name)")
         }
         var message = cases[1].1
         message.alert = CueAlert(message: "Repeat the chorus", behavior: .persist, target: .confidence, firedAt: at.addingTimeInterval(-5))
         try renderer.render(ConfidenceSceneBuilder.scene(layout: after, info: message, at: at), "worship-after-stage-message")
+    }
+
+    /// The room's picture and the Side TVs', for a song with lines nearly as
+    /// wide as the wall: the TVs are always larger, and a long line wraps
+    /// evenly on both.
+    @Test func theSideTVsRenderLargerThanTheRoom() throws {
+        guard let renderer = try StageRenderer() else { return }
+        var lyrics = SlideObject(id: "ph-lyrics", objectKind: .text, name: "Lyrics", text: "Sample")
+        lyrics.x = 96; lyrics.y = 40; lyrics.width = 1728; lyrics.height = 240
+        var style = TextStyle()
+        style.autoShrink = true
+        style.minFontSize = 40
+        style.verticalAlignment = .top
+        lyrics.textStyle = style
+        let theme = Theme(
+            id: "wall", name: "Wall", fontFamily: "HelveticaNeue-Bold", fontSize: 72,
+            textColorHex: "#FFFFFFFF", backgroundColorHex: "#1C2633FF",
+            slides: [Slide(id: "wall-lyrics", name: "Lyrics", objects: [lyrics])])
+        var slide = Slide(id: "chorus", name: "", objects: [
+            SlideObject(id: "lyrics", objectKind: .text, name: "Lyrics",
+                        text: "We lift our voices high to the Lord of all the earth and sky\nAnd every heart will sing of all that He has done"),
+        ])
+        slide.themeSlideName = "Lyrics"
+        let song = Presentation(id: "p", name: "Song", presentationKind: .song, themeId: "wall", slides: [slide])
+        let room = SlideSceneBuilder.scene(for: slide, theme: theme, presentation: song)
+        try renderer.render(room, "room-song-after")
+        var unbalanced = room
+        if let layer = unbalanced.layers.firstIndex(where: { $0.kind == .slide }) {
+            unbalanced.layers[layer].items = unbalanced.layers[layer].items.map { item in
+                var item = item
+                if case .text(var text) = item.content { text.balancedWrap = false; item.content = .text(text) }
+                return item
+            }
+        }
+        try renderer.render(unbalanced, "room-song-before")
+        try renderer.render(SideScreenLyrics.scene(room, presentation: song, scale: SideScreenLyrics.defaultScale),
+                            "side-tvs-song-after")
     }
 }

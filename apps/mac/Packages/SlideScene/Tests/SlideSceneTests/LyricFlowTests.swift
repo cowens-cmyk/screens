@@ -94,3 +94,14 @@ private func stageBox(_ source: TextSourceKind, maxLines: Int? = nil, flows: Boo
         #expect(resolved.text == "Oh how I love You\nJesus")
     }
 }
+
+@Suite struct LyricFlowPhraseTests {
+    @Test func aBreakFallsWhereTheSongsLinesMeetWhenItCan() {
+        let text = "When we've been there ten thousand years\nBright shining as the sun\nWe've no less days to sing God's praise"
+        let flowed = LyricFlow.flowed(
+            text, chords: [], width: 1720, height: 430, fontName: "HelveticaNeue-Bold", fontSize: 112, minFontSize: 60)
+        let lines = flowed.text.components(separatedBy: "\n")
+        #expect(lines.contains { $0.hasSuffix("as the sun") } || lines.contains { $0.hasPrefix("We've no") },
+                "a phrase end is kept: \(lines)")
+    }
+}
