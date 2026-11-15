@@ -969,6 +969,14 @@ final class AppModel {
         return value
     }
 
+    /// A picture or video's size in pixels, nil until it's known; for
+    /// framing full-screen media (`RenderScene.framingMedia`).
+    func mediaPixelSize(id: String) -> CGSize? {
+        guard let item = media(id), let width = item.pixelWidth, let height = item.pixelHeight,
+              width > 0, height > 0 else { return nil }
+        return CGSize(width: width, height: height)
+    }
+
     func audio(_ id: String) -> AudioItem? {
         resident.audio.value(id)
     }

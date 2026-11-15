@@ -439,6 +439,7 @@ public enum SlideSceneBuilder {
         let wiring = maskWiring(for: stack.map(\.object))
 
         let music = MusicContext(presentation)
+        let wrapsLyricsEvenly = SideScreenLyrics.carriesLyrics(presentation)
 
         let animationSteps = AnimationSequence.sceneSteps(
             objects: stack.map(\.object), order: paged.order
@@ -468,11 +469,37 @@ public enum SlideSceneBuilder {
                     animationSteps: animationSteps[entry.object.id] ?? []
                 ) {
                     item.animationContext = animationContext
+                    if wrapsLyricsEvenly,
+                       (entry.object.textStyle?.balancedWrap
+                        ?? placeholders[entry.object.id]?.textStyle?.balancedWrap) == nil {
+                        item = Self.wrappingEvenly(item)
+                    }
                     scene.addItem(item, to: .slide)
                 }
             }
         }
         return scene
+    }
+
+    /// A song's lines are a chart's, written for the band, and many are
+    /// longer than the screen is wide. Wrapped the usual way, "You called my
+    /// name and I ran out of that grave" leaves "grave" alone on a line; a
+    /// song's text wraps in lines of about equal length instead, unless its
+    /// own style or its theme's says otherwise. A line that fits is left as
+    /// it is.
+    static func wrappingEvenly(_ item: RenderItem) -> RenderItem {
+        var item = item
+        if case .text(var text) = item.content {
+            text.balancedWrap = true
+            item.content = .text(text)
+        }
+        item.animationSteps = item.animationSteps.map { step in
+            var step = step
+            step.fromItem = step.fromItem.map(wrappingEvenly)
+            step.toItem = step.toItem.map(wrappingEvenly)
+            return step
+        }
+        return item
     }
 
     public struct MusicContext: Sendable, Equatable {

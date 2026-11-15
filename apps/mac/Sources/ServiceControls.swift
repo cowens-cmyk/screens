@@ -2003,6 +2003,11 @@ final class ServiceControls {
             context.upcoming.first { $0.slide.id == next.id }?.presentation
         }
         nextSlideInfo = next.map { ConfidenceSceneBuilder.slideText(for: $0, in: nextPresentation) }
+        // The next lines are another song's: they carry its name.
+        if let nextPresentation, nextPresentation.presentationKind == .song,
+           nextPresentation.id != state.liveSlide?.presentation?.id, !nextPresentation.name.isEmpty {
+            nextSlideInfo?.heading = nextPresentation.name
+        }
         nextSlideSection = next.flatMap { Self.section(of: $0, in: nextPresentation) }
         slidePosition = context.slidePosition
         currentItemName = context.currentItemName
@@ -2133,6 +2138,7 @@ final class ServiceControls {
         )
 
         .applyingMediaEffects { appModel.mediaSceneEffects(id: $0) }
+        .framingMedia { appModel.mediaPixelSize(id: $0) }
 
         var variants: [String: RenderScene] = [:]
         for (themeID, theme) in slideThemeOverrides {
@@ -2142,6 +2148,7 @@ final class ServiceControls {
                 slideThemeOverride: theme, at: now
             )
             .applyingMediaEffects { appModel.mediaSceneEffects(id: $0) }
+            .framingMedia { appModel.mediaPixelSize(id: $0) }
         }
         // The picture stands in for the slide, so it leaves with it: a
         // cleared slide clears the picture too.

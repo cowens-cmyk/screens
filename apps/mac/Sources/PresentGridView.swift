@@ -458,6 +458,13 @@ struct SlideGridBody: View {
 
     var pastesAtEnd = false
 
+    /// Asked when a paste or New Slide comes, instead of `pastesAtEnd`: the
+    /// plan page's selection, read then rather than passed in, so moving
+    /// the selection doesn't rebuild every grid.
+    var pastesAtEndCheck: (() -> Bool)? = nil
+
+    private var hostsPaste: Bool { pastesAtEndCheck?() ?? pastesAtEnd }
+
     var newSlideContexts: [String] = []
 
     var buildsRowsNearView = false
@@ -521,17 +528,17 @@ struct SlideGridBody: View {
             : (SlideGridMetrics.lastWidths[contextID] ?? (buildsRowsNearView ? SlideGridMetrics.continuousWidth : 0))
     }
 
-    /// The rows within `screens` viewports of the visible part of the page.
-    private func nearRows(top: CGFloat, screens: CGFloat = 1) -> Range<Int> {
-        if buildsRowsNearView, let cell {
-            let across = SlidesAcross.clamped(slidesAcross)
-            let viewport = PresentCardFrames.shared.scrollView?.contentView.bounds.height ?? 900
-            return SlidesAcross.nearRows(
-                gridTop: top, rowPitch: cell.height + SlideGridMetrics.spacing,
-                rowCount: (slides.count + across - 1) / across, viewport: viewport, margin: viewport * screens)
-        } else {
-            return 0 ..< 0
+    /// Acts on where the grid is: its width, its place in the content for
+    /// the page's landings, and the rows to build.
+    private func placed(_ place: GridPlace) {
+        measured(place.width)
+        if let cell {
+            PresentCardFrames.shared.noteDocGrid(PresentLanding.Grid(
+                id: contextID, top: place.docTop,
+                rowPitch: cell.height + SlideGridMetrics.spacing,
+                across: SlidesAcross.clamped(slidesAcross), count: slides.count))
         }
+        buildRows(place.near, keep: place.keep)
     }
 
     /// Builds the rows coming near the screen and lets go of those now more
@@ -546,7 +553,13 @@ struct SlideGridBody: View {
         let across = SlidesAcross.clamped(slidesAcross)
         let selectedRows = Set(selectedOccurrences.map { $0 / across })
         let rows = SlidesAcross.rowsToKeep(built: builtRows, near: near, keep: keep, selected: selectedRows)
-        if rows != builtRows { builtRows = rows }
+        // Never animated: rows come in while the page glides to an item, and
+        // inside that animation each new tile would fade in.
+        if rows != builtRows {
+            var plain = Transaction()
+            plain.disablesAnimations = true
+            withTransaction(plain) { builtRows = rows }
+        }
     }
 
     private func measured(_ width: CGFloat) {
@@ -704,37 +717,23 @@ struct SlideGridBody: View {
             performText: { payload, place in !runOnly && dropText(payload, at: place) },
             performFiles: { urls, place in if !runOnly { insertMediaFiles(urls, at: place) } }
         ))
-        .background {
-            GeometryReader { proxy in
-
-                let top = proxy.frame(in: .named(ServiceContinuousView.scrollSpace)).minY
-                let _ = cell.map { cell in
-                    PresentCardFrames.shared.noteGrid(PresentLanding.Grid(
-                        id: contextID, top: top,
-                        rowPitch: cell.height + SlideGridMetrics.spacing,
-                        across: SlidesAcross.clamped(slidesAcross), count: slides.count))
-                    PresentCardFrames.shared.noteDocGrid(PresentLanding.Grid(
-                        id: contextID, top: proxy.frame(in: .named(ServiceContinuousView.contentSpace)).minY,
-                        rowPitch: cell.height + SlideGridMetrics.spacing,
-                        across: SlidesAcross.clamped(slidesAcross), count: slides.count))
-                }
-                let near = nearRows(top: top)
-                Color.clear
-                    .onAppear { buildRows(near, keep: nearRows(top: top, screens: 2)) }
-                    .onChange(of: near) { _, rows in buildRows(rows, keep: nearRows(top: top, screens: 2)) }
-                    .onAppear { measured(proxy.size.width) }
-                    .onChange(of: proxy.size.width) { _, width in measured(width) }
-
-                    .onChange(of: proxy.size.height) { old, height in
-                        if abs(height - old) > 300 {
-                            DiagnosticsStore.shared.note(
-                                "present.grid",
-                                detail: "\(contextID) \(Int(old)) → \(Int(height)) pt, \(slides.count) slides, width \(Int(measuredWidth))")
-                        }
-                    }
+        // Where the grid is, worked out as the page moves but acted on only
+        // when something that matters changes: which rows are near the
+        // screen, the grid's size, its place in the content. It used to be a
+        // GeometryReader whose content re-ran for every grid on the page on
+        // every frame of a scroll.
+        .onGeometryChange(for: GridPlace.self) { [rowPitch = cell.map { $0.height + SlideGridMetrics.spacing },
+                                                  across = SlidesAcross.clamped(slidesAcross),
+                                                  count = slides.count, near = buildsRowsNearView] proxy in
+            GridPlace.of(proxy, rowPitch: rowPitch, across: across, count: count, buildsNear: near)
+        } action: { old, place in
+            placed(place)
+            if abs(place.height - old.height) > 300 {
+                DiagnosticsStore.shared.note(
+                    "present.grid",
+                    detail: "\(contextID) \(Int(old.height)) → \(Int(place.height)) pt, \(slides.count) slides, width \(Int(measuredWidth))")
             }
         }
-
         .onChange(of: slides.count) { _, _ in
             clearSelection()
             DropLatency.relaid(count: slides.count)
@@ -1067,14 +1066,14 @@ struct SlideGridBody: View {
         let anchorIndex = selectedOccurrences.max() ?? liveIndex
         if !runOnly, let anchorIndex, slides.indices.contains(anchorIndex) {
             pasteSlides(after: slides[anchorIndex])
-        } else if !runOnly, pastesAtEnd {
+        } else if !runOnly, hostsPaste {
             pasteSlides(after: presentation.slides.last)
         }
     }
 
     private func selectAllFromKeyboard() {
         let contexts = newSlideContexts.isEmpty ? [contextID] : newSlideContexts
-        if !runOnly, NewSlideRouter.shared.route.answers(contextID, contexts: contexts, isHostTarget: pastesAtEnd) {
+        if !runOnly, NewSlideRouter.shared.route.answers(contextID, contexts: contexts, isHostTarget: hostsPaste) {
             selectedOccurrences = Set(slides.indices)
             selectionAnchor = nil
         } else if !runOnly {
@@ -1094,7 +1093,7 @@ struct SlideGridBody: View {
     private func newSlideFromMenu() {
         let route = NewSlideRouter.shared.route
         let contexts = newSlideContexts.isEmpty ? [contextID] : newSlideContexts
-        if !runOnly, route.answers(contextID, contexts: contexts, isHostTarget: pastesAtEnd) {
+        if !runOnly, route.answers(contextID, contexts: contexts, isHostTarget: hostsPaste) {
             let anchor = route.anchor(in: contextID, selected: selectedOccurrences, count: slides.count)
             newSlideTarget = NewSlideTarget(after: anchor.map { slides[$0] } ?? presentation.slides.last)
         }
@@ -1970,6 +1969,15 @@ struct SlideTile: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: fire)
+        // One accessibility element per tile, not one per text run, badge
+        // and overlay. Something on the booth Mac reads the window's
+        // accessibility tree; on Nov 13 a quarter of the sampled freezes,
+        // and one 130 s stretch at full load, were SwiftUI answering it
+        // for every view of every tile.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(isLive ? "Live, " : "")Slide \(index + 1), \(slideLabel.title)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { fire() }
 
         .task(id: stepCountKey) {
             let slide = slide
@@ -2076,17 +2084,15 @@ struct SlideTile: View {
         }
     }
 
-    private var predictedThemes: [Theme?] { [theme] }
 
     private var stepCount: Int {
-
-        pagedStepCount ?? PlaceholderAnimations.advanceCount(slide: slide, themes: predictedThemes, paging: false)
+        pagedStepCount ?? TileStepCache.steps(slide: slide, theme: theme).count
     }
 
     @State private var pagedStepCount: Int?
 
     private var hasAnySteps: Bool {
-        PlaceholderAnimations.hasAnimationSteps(slide: slide, themes: predictedThemes)
+        TileStepCache.steps(slide: slide, theme: theme).hasAny
     }
 
     private struct StepCountKey: Equatable {
@@ -3077,3 +3083,64 @@ private struct PageMarqueeFollow: ViewModifier {
             }
     }
 }
+
+/// Where a plan page grid is, as far as the page cares: rows near the
+/// screen (and the wider band kept built), its size, and its top in the
+/// page's content. Equal values mean nothing to do, so a scroll that
+/// doesn't bring a row in or out costs no work beyond working this out.
+struct GridPlace: Equatable, Sendable {
+    var docTop: CGFloat = 0
+    var width: CGFloat = 0
+    var height: CGFloat = 0
+    var near: Range<Int> = 0 ..< 0
+    var keep: Range<Int> = 0 ..< 0
+
+    static func of(
+        _ proxy: GeometryProxy, rowPitch: CGFloat?, across: Int, count: Int, buildsNear: Bool
+    ) -> GridPlace {
+        var place = GridPlace(
+            docTop: proxy.frame(in: .named(ServiceContinuousView.contentSpace)).minY,
+            width: proxy.size.width, height: proxy.size.height)
+        // The scroll view in the grid's own space: its top is the grid's
+        // distance below the top of the screen, negated.
+        if buildsNear, let rowPitch, let visible = proxy.bounds(of: .named(ServiceContinuousView.scrollSpace)) {
+            let rows = (count + across - 1) / max(1, across)
+            func band(_ screens: CGFloat) -> Range<Int> {
+                SlidesAcross.nearRows(
+                    gridTop: -visible.minY, rowPitch: rowPitch, rowCount: rows,
+                    viewport: visible.height, margin: visible.height * screens)
+            }
+            place.near = band(1)
+            place.keep = band(2)
+        }
+        return place
+    }
+}
+
+/// A tile's animation steps, worked out once per slide and theme. Counting
+/// builds the slide's whole composition two or three times over, and the
+/// caption asked on every pass of every tile.
+@MainActor
+enum TileStepCache {
+    private struct Entry {
+        let slide: Slide
+        let theme: Theme?
+        let count: Int
+        let hasAny: Bool
+    }
+
+    private static var entries: [String: Entry] = [:]
+
+    static func steps(slide: Slide, theme: Theme?) -> (count: Int, hasAny: Bool) {
+        // Equal values from the library share storage, so these compare fast.
+        if let entry = entries[slide.id], entry.slide == slide, entry.theme == theme {
+            return (entry.count, entry.hasAny)
+        }
+        let count = PlaceholderAnimations.advanceCount(slide: slide, themes: [theme], paging: false)
+        let hasAny = PlaceholderAnimations.hasAnimationSteps(slide: slide, themes: [theme])
+        if entries.count > 5000 { entries.removeAll(keepingCapacity: true) }
+        entries[slide.id] = Entry(slide: slide, theme: theme, count: count, hasAny: hasAny)
+        return (count, hasAny)
+    }
+}
+

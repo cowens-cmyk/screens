@@ -260,8 +260,13 @@ final class PanelMotionMeter: NSObject {
 // MARK: Sizes
 
 enum ShellMetrics {
-    /// The docked plan column and the peeking plan card.
+    /// The docked plan column and the peeking plan card, until the
+    /// operator drags its edge (kept per Mac under `planWidthKey`).
     static let planWidth: CGFloat = 248
+    static let planWidthKey = "planPanel.width"
+    /// Narrow enough to leave the slides the room, wide enough for long
+    /// presentation names.
+    static let planWidthRange: ClosedRange<CGFloat> = 200 ... 520
     /// The docked screens column and the peeking screens card: room for a
     /// 16:9 preview of about 240 by 135.
     static let screensWidth: CGFloat = 300
@@ -305,13 +310,24 @@ struct PanelSurface: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        ZStack {
-            Color.clear.glassEffect(.regular, in: shape)
-            shape.fill(.regularMaterial).opacity(folded ? 0 : 1)
+        // Only the surface showing is in the tree: glass under a material at
+        // opacity 0, or a shadow drawn clear, still costs a blur or an
+        // offscreen pass every frame the live previews under it change.
+        // Inside the panel's animation the two still cross-fade.
+        let surface = ZStack {
+            if folded {
+                Color.clear.glassEffect(.regular, in: shape).transition(.opacity)
+            } else {
+                shape.fill(.regularMaterial).transition(.opacity)
+            }
         }
         .overlay(shape.strokeBorder(.white.opacity(folded ? 0.06 : 0.09)))
-        .shadow(color: .black.opacity(floating && !folded ? 0.35 : 0), radius: 14, y: 6)
         .allowsHitTesting(false)
+        if floating && !folded {
+            surface.shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+        } else {
+            surface
+        }
     }
 }
 
@@ -343,6 +359,8 @@ struct MorphingPanel<Folded: View, Open: View>: View {
     var foldedHeight: CGFloat
     var foldedRadius: CGFloat
     var openWidth: CGFloat
+    /// Dragging the open panel's inner edge sets its width; nil, fixed.
+    var resize: ShellPanelResize? = nil
     @ViewBuilder var folded: () -> Folded
     @ViewBuilder var open: () -> Open
     /// The room the panel has: the window's content beside the toolbar.
@@ -366,7 +384,7 @@ struct MorphingPanel<Folded: View, Open: View>: View {
             open()
                 .modifier(PanelFace(box: box, isOpen: true, shape: shape))
         }
-        .modifier(PanelMorph(box: box, name: name, shape: shape))
+        .modifier(PanelMorph(box: box, name: name, shape: shape, resize: resize))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
             if height != roomHeight { roomHeight = height }
@@ -420,6 +438,7 @@ private struct PanelMorph: ViewModifier {
     let box: ShellPanelBox
     let name: String
     let shape: PanelShape
+    let resize: ShellPanelResize?
 
     func body(content: Content) -> some View {
         let mode = box.panel.mode
@@ -431,6 +450,11 @@ private struct PanelMorph: ViewModifier {
             .clipShape(RoundedRectangle(cornerRadius: frame.radius, style: .continuous))
             .background {
                 PanelSurface(radius: frame.radius, folded: mode == .collapsed, floating: mode != .pinned)
+            }
+            .overlay(alignment: shape.trailing ? .leading : .trailing) {
+                if mode != .collapsed, let resize {
+                    PanelResizeHandle(resize: resize, onLeadingEdge: shape.trailing)
+                }
             }
             .modifier(ShellPanelHover(box: box, name: name))
             .padding(.top, frame.top)
@@ -780,3 +804,46 @@ struct ShellBackdrop: View {
         .accessibilityHidden(true)
     }
 }
+
+/// A panel whose width the operator sets by dragging its inner edge.
+struct ShellPanelResize {
+    var width: CGFloat
+    var range: ClosedRange<CGFloat>
+    var set: (CGFloat) -> Void
+}
+
+/// The strip along a panel's inner edge that resizes it. The width follows
+/// the pointer without animation, so the column tracks the drag exactly.
+private struct PanelResizeHandle: View {
+    let resize: ShellPanelResize
+    /// The panel is on the window's trailing side, so its inner edge is
+    /// its leading one.
+    let onLeadingEdge: Bool
+    @State private var startWidth: CGFloat?
+
+    var body: some View {
+        Color.clear
+            .frame(width: 8)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .pointerStyle(.frameResize(position: onLeadingEdge ? .leading : .trailing))
+            // In the gap beside the panel, reaching 2 pt over its border:
+            // the list's scroll bar along the edge stays the list's.
+            .offset(x: onLeadingEdge ? -6 : 6)
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        let start = startWidth ?? resize.width
+                        if startWidth == nil { startWidth = start }
+                        let moved = onLeadingEdge ? -value.translation.width : value.translation.width
+                        let width = min(max(start + moved, resize.range.lowerBound), resize.range.upperBound).rounded()
+                        var plain = Transaction()
+                        plain.disablesAnimations = true
+                        withTransaction(plain) { resize.set(width) }
+                    }
+                    .onEnded { _ in startWidth = nil }
+            )
+            .accessibilityHidden(true)
+    }
+}
+

@@ -29,7 +29,7 @@ import Testing
             .moves(["alertVisible"]),  
             .quiet("the linked-text clock re-applies the live scene; apply() writes state only on a change"),
         ],
-        "MonitorsPanel.swift": [.quiet("the 4 Hz stream badge writes coverage only when it changes")],
+        "MonitorsPanel.swift": [.quiet("the 1 Hz stream badge writes coverage only when it changes")],
         "StageDisplay.swift": [.quiet("the 4 Hz stage video badge writes its flag only when it changes")],
         "ATEMLink.swift": [.quiet("the 25 Hz stream follow writes coverage only when it changes")],
         // A ⌘0 or ⌘+ zoom eases over 0.18 s.

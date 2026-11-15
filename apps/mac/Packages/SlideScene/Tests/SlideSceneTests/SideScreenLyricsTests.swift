@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 import PresenterCore
-import RenderEngine
+@testable import RenderEngine
 import Testing
 @testable import SlideScene
 
@@ -63,21 +63,55 @@ private func text(of item: RenderItem?) -> StyledText? {
     let sideText = try #require(text(of: item("lyrics", in: side)))
     #expect(sideText.string == roomText.string, "the same words")
     #expect(abs(sideText.fontSize - roomText.fontSize * 1.6) < 0.001)
-    #expect(sideText.autoShrink, "shrinks to fit when the box can't grow as much")
-    #expect(sideText.minFontSize == roomText.fontSize, "never smaller than the wall's")
-    #expect(sideText.keepLinesWhole, "two lines on the wall stay two lines")
+    #expect(sideText.autoShrink)
+    #expect(abs(sideText.minFontSize - roomText.fontSize * 1.25) < 0.001, "always larger than the wall's")
+    #expect(!sideText.keepLinesWhole && sideText.balancedWrap, "a long line wraps evenly")
 
+    // The lyrics alone on the slide get the TV's whole safe area; the theme
+    // put the box above the safe line, so it keeps that top edge.
     let roomFrame = try #require(item("lyrics", in: room)?.frame)
     let sideFrame = try #require(item("lyrics", in: side)?.frame)
-    #expect(sideFrame.height > roomFrame.height * 1.5)
-    #expect(sideFrame.width > roomFrame.width, "grows as wide as the safe area allows")
-    #expect(abs(sideFrame.midX - roomFrame.midX) < 0.001, "still centred")
-    // The theme put the box above the safe line; it keeps that top edge
-    // and grows down, and otherwise stays inside the safe area.
     let safe = CGRect(origin: .zero, size: canvas).insetBy(dx: 96, dy: 54)
-    #expect(safe.union(roomFrame).contains(sideFrame))
-    #expect(sideFrame.minY == roomFrame.minY)
+    #expect(sideFrame == safe.union(roomFrame))
     #expect(!TextRasterizer.overflows(sideText, sceneFrame: sideFrame.size), "the larger words fit their box")
+}
+
+@Test func longChartLinesStillComeOutLargerThanTheWall() throws {
+    // A chart line nearly as wide as the wall: kept whole, it used to shrink
+    // back to the wall's own size on the TVs.
+    var slide = lyricSlide()
+    slide.objects[0].text = "You called my name and I ran out of that grave\nOut of the darkness into Your glorious day"
+    let song = presentation(kind: .song)
+    let room = SlideSceneBuilder.scene(for: slide, theme: wallTheme(), presentation: song)
+    let side = SideScreenLyrics.scene(room, presentation: song, scale: 1.6)
+    let roomItem = try #require(item("lyrics", in: room))
+    let sideItem = try #require(item("lyrics", in: side))
+    let roomText = try #require(text(of: roomItem))
+    let sideText = try #require(text(of: sideItem))
+    let roomDrawn = roomText.fontSize * TextRasterizer.fittedFontScale(for: roomText, sceneFrame: roomItem.frame.size)
+    let sideDrawn = sideText.fontSize * TextRasterizer.fittedFontScale(for: sideText, sceneFrame: sideItem.frame.size)
+    #expect(sideDrawn >= roomDrawn * 1.5, "room \(roomDrawn), side \(sideDrawn)")
+    #expect(!TextRasterizer.overflows(sideText, sceneFrame: sideItem.frame.size))
+}
+
+@Test func twoTextBoxesEachGrowInTheirOwnPlace() throws {
+    var slide = lyricSlide()
+    var second = SlideObject(id: "second", objectKind: .text, name: "Translation", text: "Sublime gracia")
+    second.x = 160; second.y = 800; second.width = 1600; second.height = 120
+    slide.objects.append(second)
+    let song = presentation(kind: .song)
+    let room = SlideSceneBuilder.scene(for: slide, theme: wallTheme(), presentation: song)
+    let side = SideScreenLyrics.scene(room, presentation: song, scale: 1.6)
+    let top = try #require(item("lyrics", in: side)?.frame)
+    let bottom = try #require(item("second", in: side)?.frame)
+    #expect(!top.intersects(bottom), "neither covers the other")
+}
+
+@Test func aSongWrapsItsLongLinesEvenlyOnTheWall() throws {
+    let room = roomScene(presentation(kind: .song))
+    #expect(try #require(text(of: item("lyrics", in: room))).balancedWrap)
+    let talk = roomScene(presentation(kind: .deck, category: PresentationTypes.sermon))
+    #expect(try #require(text(of: item("lyrics", in: talk))).balancedWrap == false, "only songs")
 }
 
 @Test func theBackgroundAndTheThemesOwnPiecesStayTheRooms() {
@@ -159,7 +193,7 @@ private func text(of item: RenderItem?) -> StyledText? {
     #expect(grown.shadow?.blurRadius == 8 && grown.shadow?.offsetY == 4)
     #expect(grown.outline?.width == 6)
     #expect(grown.lineOverrides.first?.fontSize == 80)
-    #expect(grown.minFontSize == 30, "a theme that already shrinks keeps its own floor")
+    #expect(grown.minFontSize == 62.5, "never back down to the room's size")
 }
 
 @Test func pageTurnStatesGrowWithTheBox() throws {

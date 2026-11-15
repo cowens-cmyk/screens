@@ -53,7 +53,7 @@ struct ScreensProgressBars: View {
                 }
                 .help("Time left")
             }
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !row.state.isPlaying)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 10.0, paused: !row.state.isPlaying)) { context in
                 ScrubBar(
                     elapsed: row.state.position(at: context.date),
                     duration: row.state.duration,
@@ -73,7 +73,7 @@ struct ScreensProgressBars: View {
 
     private var advanceBar: some View {
         let paused = controls.autoAdvancePaused
-        return TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: paused)) { context in
+        return TimelineView(.animation(minimumInterval: 1.0 / 10.0, paused: paused)) { context in
             let remaining = controls.autoAdvanceRemaining(at: context.date)
             let progress = controls.autoAdvanceProgress(at: context.date)
             VStack(alignment: .leading, spacing: 4) {

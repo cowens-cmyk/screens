@@ -124,7 +124,9 @@ struct SlidesAcrossTests {
         let rowsFn = try #require(grid.range(of: "private func tileRows(aspect: CGFloat, cell: CGSize?) -> some View {"))
         #expect(grid[rowsFn.upperBound...].prefix(2000).contains("ForEach(0 ..< row.fillers, id: \\.self) { _ in"),
                 "an unmeasured short row keeps its empty columns, so a placeholder is one column wide")
-        #expect(grid.contains("PresentCardFrames.shared.noteGrid(PresentLanding.Grid("), "the grid reports where its rows sit")
+        #expect(grid.contains("PresentCardFrames.shared.noteDocGrid(PresentLanding.Grid("), "the grid reports where its rows sit")
+        #expect(grid.contains(".onGeometryChange(for: GridPlace.self)"), "measured as the page moves, acted on only when it changes")
+        #expect(!grid.contains("GeometryReader { proxy in\n\n                let top"), "no GeometryReader re-running per scroll frame")
         let measured = try #require(grid.range(of: ".coordinateSpace(name: \"slideGrid\")"))
         #expect(grid[measured.upperBound...].prefix(500).contains(".frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)"),
                 "the width is the space offered, never the tiles' own width — or they could not shrink back")

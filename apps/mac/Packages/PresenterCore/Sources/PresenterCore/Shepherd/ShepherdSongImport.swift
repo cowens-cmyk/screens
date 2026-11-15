@@ -71,10 +71,16 @@ public enum ShepherdSongImport {
     /// Changes whenever the words, chords or song order Shepherd gives for
     /// this arrangement change, and never otherwise.
     public static func chartHash(song: ShepherdClient.SongDetail, arrangement: ShepherdClient.SongArrangement?) -> String {
-        let text = source(song: song, arrangement: arrangement)?.text ?? ""
+        let source = source(song: song, arrangement: arrangement)
+        let text = source?.text ?? ""
         let sequence = ShepherdSongMatch.sequence(of: song, arrangement: arrangement)
-        return sha256(["shepherd-chart-1", normalizedLines(text), sequence.joined(separator: "|")]
-            .joined(separator: "\u{1F}"))
+        var parts = ["shepherd-chart-1", normalizedLines(text), sequence.joined(separator: "|")]
+        // A chart Screens now reads differently (parts written again with
+        // other words, "Chorus - Breakdown", first and second endings) gets
+        // a new hash, so those songs are built again; every other song's
+        // hash stays as it was.
+        if source?.isChart == true, ShepherdChart.parse(text).revision > 1 { parts.append("chart-revision-2") }
+        return sha256(parts.joined(separator: "\u{1F}"))
     }
 
     /// Line endings and trailing spaces don't count as a change.

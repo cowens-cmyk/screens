@@ -169,10 +169,14 @@ private func song(
         #expect(chart.sections[0].stanzas.joined().first?.hasPrefix("[G]Amazing") == true)
     }
 
-    @Test func sameNameNewWordsGetsItsOwnSection() {
+    @Test func sameNameNewWordsGetsItsOwnVersion() {
         let chart = ShepherdChart.parse("Chorus\n[C]One way\n\nChorus\n[C]Another way\n\nChorus")
-        #expect(chart.sections.map(\.name) == ["Chorus", "Chorus 2"])
-        #expect(chart.order == [0, 1, 0])
+        #expect(chart.sections.map(\.name) == ["Chorus", "Chorus (2)"])
+        #expect(chart.sections.map(\.version) == [1, 2])
+        // A bare heading brings back the version sung last.
+        #expect(chart.order == [0, 1, 1])
+        #expect(chart.revision == 2)
+        #expect(ShepherdChart.parse(iThankGodChart).revision == 1)
     }
 
     @Test func sequencesMatchBySectionKind() {
@@ -341,5 +345,165 @@ private func song(
         #expect(decoded.chart?.writtenKey == "C" && decoded.defaultArrangementId == "53ad")
         #expect(decoded.arrangements.first?.mediaLinks == [] && decoded.themes.isEmpty && !decoded.archived)
         #expect(ShepherdSongImport.presentation(song: decoded, arrangement: decoded.arrangements.first) != nil)
+    }
+}
+
+// Shaped like the church's "The Lord Is With Me" chart (words stand in):
+// the chart is written out as sung, Bridge 2 gains a line the second time,
+// the first chorus differs from the rest, a "Chorus - Breakdown" heading,
+// and the last chorus ends on another chord.
+let writtenOutChart = """
+{title: Written Out}
+{key: Eb}
+
+{comment: Intro}
+[|][1]        [|][1]        [|]
+
+{comment: Verse 1}
+[1]First verse line one
+But [3m]first verse line two
+
+{comment: Chorus}
+[1] The Lord is [5/7]here [6m] the Lord is [1/3]here
+[4]Ever near in my [6m]hour of [5]need (the Lord is [1]here)
+
+{comment: Chorus}
+[1] The Lord is [5/7]here [6m] the Lord is [1/3]here
+[4]Ever near in my [6m]hour of [5]need the Lord is [1]here
+
+{c: Bridge 1}
+Though fear may [1/3]tell me [4]run
+I may be [1/3]thrown in [4]fire
+
+{c: Bridge 2}
+The heat of the [1/3]flame [4]won't win
+It may look [1/3]like I'm a - [4]lone
+
+{c: Bridge 1}
+Though fear may [1/3]tell me [4]run
+I may be [1/3]thrown in [4]fire
+
+{c: Bridge 2}
+The heat of the [1/3]flame [4]won't win
+It may look [1/3]like I'm a - [4]lone
+The Lord is [5/7]here
+
+{comment: Chorus - Breakdown}
+[1] The Lord is [5/7]here [6m] the Lord is [1/3]here
+[4]Ever near in my [6m]hour of [5]need the Lord is [1]here
+
+{comment: Chorus}
+[1] The Lord is [5/7]here [6m] the Lord is [1/3]here
+[4]Ever near in my [6m]hour of [5]need the Lord is [4]here
+
+{comment: Ending}
+[4]
+"""
+
+// Shaped like "Center (Live)": a refrain written once where it is sung
+// twice, a bridge whose second time has first and second endings.
+let endingsChart = """
+{c: Chorus}
+[4]You be the [6m7]center [1]of it [5]all
+
+{c: Refrain}
+Oh how I [6m7]love You [3m]
+
+{c: Bridge}
+And my whole [4]life for Your [5]glory
+Every - [6m7]thing for the honor of Your [1/3] Name
+
+{c: Refrain}
+Oh how I [4]love You [5]
+
+{c: Bridge}
+And my whole [4]life for Your [5]glory
+Every - [6m7]thing for the honor
+(1.) Of Your [5/7] Name (To Br. 1b)
+(2.) Of Your [1] Name (To Tag 1b)
+
+{c: Refrain}
+Oh how I [4]love You [5]
+
+{c: Chorus}
+Oh for [4]You are the [6m7]center [1]of it [5]all
+"""
+
+@Suite struct ShepherdChartVersionTests {
+
+    private func names(_ chart: ShepherdChart, _ order: [Int]?) -> [String] {
+        (order ?? []).map { chart.sections[$0].name }
+    }
+
+    @Test func eachPartWrittenAgainIsAVersion() {
+        let chart = ShepherdChart.parse(writtenOutChart)
+        #expect(chart.sections.map(\.name) == [
+            "Intro", "Verse 1", "Chorus", "Chorus (2)", "Bridge 1", "Bridge 2", "Bridge 2 (2)", "Chorus (3)", "Ending"])
+        #expect(chart.sections.map(\.heading) == [
+            "Intro", "Verse 1", "Chorus", "Chorus", "Bridge 1", "Bridge 2", "Bridge 2", "Chorus", "Ending"])
+        // The breakdown has the second chorus's words and chords: the same version.
+        #expect(names(chart, chart.order) == [
+            "Intro", "Verse 1", "Chorus", "Chorus (2)", "Bridge 1", "Bridge 2", "Bridge 1", "Bridge 2 (2)",
+            "Chorus (2)", "Chorus (3)", "Ending"])
+    }
+
+    @Test func aNoteAfterADashIsANote() throws {
+        let heading = try #require(ShepherdChart.heading(of: "Chorus - Breakdown"))
+        #expect(heading.name == "Chorus" && heading.notes == ["Breakdown"])
+        #expect(ShepherdChart.heading(of: "Bridge 1 (2x) – Girl lead")?.repeatCount == 2)
+        #expect(ShepherdChart.heading(of: "Holy - Holy") == nil)
+        // A breakdown with words of its own is named for its note.
+        let chart = ShepherdChart.parse("Chorus\n[C]Loud\n\nChorus - Breakdown\n[C]Quiet")
+        #expect(chart.sections.map(\.name) == ["Chorus", "Chorus (Breakdown)"])
+    }
+
+    @Test func theSequenceFollowsTheChartAsWritten() {
+        let chart = ShepherdChart.parse(writtenOutChart)
+        let sequence = [
+            "Intro", "Verse 1", "Chorus", "Chorus", "Bridge 1", "Bridge 2", "Bridge 1", "Bridge 2",
+            "Chorus", "Chorus", "Ending",
+        ]
+        #expect(names(chart, chart.order(for: sequence)) == [
+            "Intro", "Verse 1", "Chorus", "Chorus (2)", "Bridge 1", "Bridge 2", "Bridge 1", "Bridge 2 (2)",
+            "Chorus (2)", "Chorus (3)", "Ending"])
+        // Sung again past the end of the chart: the version sung last.
+        #expect(names(chart, chart.order(for: ["Chorus", "Bridge 2", "Bridge 2", "Ending", "Bridge 2"])) == [
+            "Chorus", "Bridge 2", "Bridge 2", "Ending", "Bridge 2"])
+        // A part the sequence leaves out is skipped over, not shown.
+        #expect(names(chart, chart.order(for: ["Verse 1", "Bridge 1", "Chorus"])) == [
+            "Verse 1", "Bridge 1", "Chorus (2)"])
+    }
+
+    @Test func repeatsAndEndings() {
+        let chart = ShepherdChart.parse(endingsChart)
+        #expect(chart.sections.map(\.name) == ["Chorus", "Refrain", "Bridge", "Refrain (2)", "Bridge (2)", "Chorus (2)"])
+        let bridge = chart.sections[4]
+        // The second ending has the same words: sung once, the first's chords.
+        #expect(bridge.stanzas.joined().last == "Of Your [5/7] Name")
+        #expect(bridge.stanzas.joined().count == 3)
+        let order = chart.order(for: [
+            "Chorus", "Refrain", "Refrain", "Bridge", "Bridge", "Bridge", "Refrain", "Refrain",
+            "Bridge", "Bridge", "Refrain", "Refrain", "Chorus",
+        ])
+        #expect(names(chart, order) == [
+            "Chorus", "Refrain", "Refrain", "Bridge", "Bridge", "Bridge", "Refrain (2)", "Refrain (2)",
+            "Bridge (2)", "Bridge (2)", "Refrain (2)", "Refrain (2)", "Chorus (2)"])
+    }
+
+    @Test func onlyChartsReadDifferentlyGetANewHash() throws {
+        let plain = ShepherdClient.SongDetail(
+            id: "a", title: "Plain", arrangements: [], chordChart: iThankGodChart)
+        var versions = plain
+        versions.chordChart = writtenOutChart
+        let plainHash = ShepherdSongImport.chartHash(song: plain, arrangement: nil)
+        let imported = try #require(ShepherdSongImport.presentation(song: plain, arrangement: nil))
+        #expect(imported.shepherdChartHash == plainHash)
+        #expect(ShepherdChart.parse(writtenOutChart).revision == 2)
+        let built = try #require(ShepherdSongImport.presentation(song: versions, arrangement: nil))
+        let sectionNames = Dictionary(uniqueKeysWithValues: (built.sections ?? []).map { ($0.id, $0.name) })
+        let order = built.arrangements?.first?.sectionIds.compactMap { sectionNames[$0] }
+        #expect(order == [
+            "Intro", "Verse 1", "Chorus", "Chorus (2)", "Bridge 1", "Bridge 2", "Bridge 1", "Bridge 2 (2)",
+            "Chorus (2)", "Chorus (3)", "Ending"])
     }
 }

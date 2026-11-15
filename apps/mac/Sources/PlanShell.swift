@@ -32,6 +32,13 @@ struct PlanShell: View {
     /// scrolling page, in order; off, just the selected item's.
     @AppStorage(Self.wholePlanKey) private var showWholePlan = true
     @State private var itemID: String?
+
+    /// The plan panel's width, as the operator last dragged it.
+    @AppStorage(ShellMetrics.planWidthKey) private var planWidthSetting: Double = ShellMetrics.planWidth
+
+    private var planWidth: CGFloat {
+        min(max(planWidthSetting, ShellMetrics.planWidthRange.lowerBound), ShellMetrics.planWidthRange.upperBound)
+    }
     /// The slides area's height, which the media bin stays inside.
     @State private var slidesAreaHeight: CGFloat?
     /// Whether the page has already scrolled to the selected item, so a
@@ -293,7 +300,7 @@ struct PlanShell: View {
             }
             .frame(minWidth: 220, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
             .clipped()
-            .navigationSplitViewColumnWidth(min: 220, ideal: ShellMetrics.planWidth, max: 360)
+            .navigationSplitViewColumnWidth(min: 220, ideal: ShellMetrics.planWidth, max: ShellMetrics.planWidthRange.upperBound)
             // The top bar has its own sidebar button in Edit.
             .toolbar(removing: .sidebarToggle)
         } detail: {
@@ -312,7 +319,7 @@ struct PlanShell: View {
             // room clear.
             HStack(spacing: 0) {
                 if planDocked {
-                    Color.clear.frame(width: ShellMetrics.planWidth + ShellMetrics.inset)
+                    Color.clear.frame(width: planWidth + ShellMetrics.inset)
                 }
                 slidesArea
                 if screensDocked {
@@ -499,7 +506,8 @@ struct PlanShell: View {
         MorphingPanel(
             box: planBox, name: "plan",
             foldedWidth: ShellMetrics.bubbleWidth, foldedHeight: ShellMetrics.bubbleHeight,
-            foldedRadius: ShellMetrics.bubbleHeight / 2, openWidth: ShellMetrics.planWidth
+            foldedRadius: ShellMetrics.bubbleHeight / 2, openWidth: planWidth,
+            resize: ShellPanelResize(width: planWidth, range: ShellMetrics.planWidthRange) { planWidthSetting = $0 }
         ) {
             Button { clickPanel(.plans) } label: {
                 planHandle

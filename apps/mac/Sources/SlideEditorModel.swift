@@ -3161,6 +3161,8 @@ final class SlideEditorModel {
             carriedMedia: carriedMedia(for: slide)
         ).applyingMediaEffects {
             appModel.mediaSceneEffects(id: $0)
+        }.framingMedia {
+            appModel.mediaPixelSize(id: $0)
         }.remappingMediaIDs {
 
             LiveInputPlaceholder.remap($0) ?? (Self.editorMediaPrefix + $0)

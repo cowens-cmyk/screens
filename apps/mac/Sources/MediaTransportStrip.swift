@@ -121,8 +121,10 @@ struct MediaTransportStrip: View {
                         : (target.state.isPlaying ? "Pause" : "Play")
                 )
 
+                // 10 Hz is smooth enough for a bar a few hundred points wide, and
+                // every tick rebuilds the whole scrub bar.
                 TimelineView(
-                    .animation(minimumInterval: 1.0 / 30.0, paused: !target.state.isPlaying)
+                    .animation(minimumInterval: 1.0 / 10.0, paused: !target.state.isPlaying)
                 ) { context in
                     VStack(spacing: 1) {
                         nameCaption(target)
@@ -232,13 +234,11 @@ struct MediaTransportStrip: View {
         _ media: MediaTransportController, target: MediaTransportController.Row?
     ) -> some View {
 
-        TimelineView(.animation(minimumInterval: 1, paused: !media.rows.contains { $0.state.isPlaying })) { context in
-            pickerMenu(media, target: target, now: context.date)
-        }
+        pickerMenu(media, target: target)
     }
 
     private func pickerMenu(
-        _ media: MediaTransportController, target: MediaTransportController.Row?, now: Date
+        _ media: MediaTransportController, target: MediaTransportController.Row?
     ) -> some View {
         let byLayer = Dictionary(grouping: media.rows, by: \.candidate.layer)
 
@@ -258,7 +258,11 @@ struct MediaTransportStrip: View {
                             get: { media.pinnedID == row.id },
                             set: { _ in media.pin(row.id) }
                         )) {
-                            Text("\(row.name)  ·  \(ScrubBar.timecode(row.state.wallClockRemaining(at: now))) left")
+                            // Only the countdown sits in the timeline, so the menu
+                            // itself isn't rebuilt every second.
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                Text("\(row.name)  ·  \(ScrubBar.timecode(row.state.wallClockRemaining(at: context.date))) left")
+                            }
                         }
                     }
                 }

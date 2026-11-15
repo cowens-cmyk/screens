@@ -87,6 +87,10 @@ With Settings › Local API enabled, the app serves a REST and WebSocket API on 
 
 `apps/mac/Sources/MediaLibraryView.swift` is the media bin. Its categories are folders at the top of the Media library, and Worship Backgrounds holds packs: folders inside it, made by dropping a Finder folder there. See `docs/media-library.md`.
 
+### Smoothness
+
+The rules that keep the window smooth (the plan page measuring once per scroll frame, the selection kept out of the page's inputs, timers at 10 Hz or less around only what changes, no hidden materials) are in `docs/ui-smoothness.md`, with how to measure.
+
 ### Assistant
 
 Window › Assistant (⇧⌘A) is a chat with Claude that answers questions about Screens and changes plans and slides through tools that run on the Mac (`apps/mac/Sources/Assistant`; the request building, streaming, tool schemas and event matching are tested in `PresenterCore/Sources/PresenterCore/Assistant`). It uses the Anthropic API key from Settings › Network & API › Assistant, the same one Sermon import uses, and Claude Opus 5.5 unless Sonnet 5.5 is chosen there. What it knows about the app comes from `apps/mac/Sources/Assistant/ScreensGuide.md`, which is bundled and loaded into its system prompt. When a feature changes, update `ScreensGuide.md` so the in-app assistant stays current.

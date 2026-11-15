@@ -2264,8 +2264,9 @@ public struct TextLink: Codable, Sendable, Equatable {
     public var videoLayer: String?
     public var timerFormat: TimerTextFormat?
     public var timerPattern: String?
+    public var flowsLines: Bool?
 
-    public init(source: TextSourceKind, timerId: String? = nil, clockFormat: String? = nil, usesWarningColor: Bool? = nil, maxLines: Int? = nil, includeSteps: Bool? = nil, includeBuilds: Bool? = nil, sourceObjectName: String? = nil, showsVideoName: Bool? = nil, videoLayer: String? = nil, timerFormat: TimerTextFormat? = nil, timerPattern: String? = nil) {
+    public init(source: TextSourceKind, timerId: String? = nil, clockFormat: String? = nil, usesWarningColor: Bool? = nil, maxLines: Int? = nil, includeSteps: Bool? = nil, includeBuilds: Bool? = nil, sourceObjectName: String? = nil, showsVideoName: Bool? = nil, videoLayer: String? = nil, timerFormat: TimerTextFormat? = nil, timerPattern: String? = nil, flowsLines: Bool? = nil) {
         self.source = source
         self.timerId = timerId
         self.clockFormat = clockFormat
@@ -2278,6 +2279,7 @@ public struct TextLink: Codable, Sendable, Equatable {
         self.videoLayer = videoLayer
         self.timerFormat = timerFormat
         self.timerPattern = timerPattern
+        self.flowsLines = flowsLines
     }
 }
 
