@@ -79,6 +79,7 @@ private func stageBox(_ source: TextSourceKind, maxLines: Int? = nil, flows: Boo
         #expect(resolved.styleRuns?.first?.line == 0 && resolved.styleRuns?.first?.length == 6)
         #expect(resolved.styleRuns?.first?.fontSize == 140 && resolved.styleRuns?.first?.colorHex == "#40C8FFFF",
                 "the name is larger and blue")
+        #expect(resolved.styleRuns?.first?.fontName == "HelveticaNeue-BoldItalic")
         #expect(resolved.chords == nil, "the second line's chord goes with it")
 
         // The same song's next slide has no name over it.

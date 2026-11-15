@@ -109,7 +109,8 @@ public enum LinkedText {
                     // change of song stands out from across the platform.
                     let size = (object.textStyle?.fontSize ?? 0) > 0 ? object.textStyle!.fontSize! * headingScale : nil
                     resolved.styleRuns = (resolved.styleRuns ?? []) + [TextStyleRun(
-                        line: 0, column: 0, length: heading.count, fontSize: size, colorHex: headingColorHex)]
+                        line: 0, column: 0, length: heading.count, fontName: headingFontName,
+                        fontSize: size, colorHex: headingColorHex)]
                 }
 
                 chords = ChordMath.displayPlacements(
@@ -131,6 +132,8 @@ public enum LinkedText {
     /// The next song's name: bright blue, a quarter larger than the lines.
     static let headingColorHex = "#40C8FFFF"
     static let headingScale = 1.25
+    /// Bold italic, so it reads as a title rather than words to sing.
+    static let headingFontName = "HelveticaNeue-BoldItalic"
 
     /// A stage block filled with the current or next slide's section colour
     /// takes it now. With no colour known its own fill stays, so a section
