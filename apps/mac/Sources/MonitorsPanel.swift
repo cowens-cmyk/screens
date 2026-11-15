@@ -12,8 +12,11 @@ import SwiftUI
 struct MonitorsPanel: View {
     let render: RenderContext
     /// The docked cards are small; 15 fps reads the same at that size and
-    /// halves the drawing.
+    /// halves the drawing. The Audience card is where a playing video is
+    /// watched from the booth, so it draws at the display's own rate: at 15
+    /// a video looked as if the outputs were stuttering.
     private static let dockedPreviewFPS: Float = 15
+    private static let audiencePreviewFPS: Float = 60
     /// What's live on the audience screen; when it changes, that card's edge
     /// lights briefly, like a switcher's tally, to confirm the take.
     var liveKey: String? = nil
@@ -53,7 +56,7 @@ struct MonitorsPanel: View {
                 VStack(alignment: .leading, spacing: 12) {
                     if shows(audienceTarget) {
                         monitor("Audience", target: audienceTarget, color: HopeStyle.blue) { target in
-                            LiveSceneView(render: render, screenTargetID: target, maximumFramesPerSecond: Self.dockedPreviewFPS)
+                            LiveSceneView(render: render, screenTargetID: target, maximumFramesPerSecond: Self.audiencePreviewFPS)
                         }
                         .overlay {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)

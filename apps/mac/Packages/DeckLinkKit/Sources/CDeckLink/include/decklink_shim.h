@@ -64,6 +64,12 @@ bool dlk_output_display(
 
 void dlk_output_close(DLKOutput *output);
 
+/// BGRA to 8-bit YUV 4:2:2 ('2vuy', Cb Y Cr Y), Rec. 709 video range: how a
+/// frame goes out on a mode the card has only in YUV. Width must be even.
+bool dlk_bgra_to_2vuy(
+    const uint8_t *bgra, size_t bgraRowBytes, uint8_t *yuv, size_t yuvRowBytes,
+    int32_t width, int32_t height);
+
 // MARK: Capture
 
 typedef struct {

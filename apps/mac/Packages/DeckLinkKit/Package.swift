@@ -16,11 +16,12 @@ let package = Package(
                 .headerSearchPath("Vendor")
             ],
             linkerSettings: [
-                .linkedFramework("CoreFoundation")
+                .linkedFramework("CoreFoundation"),
+                .linkedFramework("Accelerate"),
             ]
         ),
         .target(name: "DeckLinkKit", dependencies: ["CDeckLink"]),
-        .testTarget(name: "DeckLinkKitTests", dependencies: ["DeckLinkKit"]),
+        .testTarget(name: "DeckLinkKitTests", dependencies: ["DeckLinkKit", "CDeckLink"]),
     ],
     cxxLanguageStandard: .cxx17
 )

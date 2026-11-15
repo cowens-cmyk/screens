@@ -9,6 +9,10 @@ public enum PerfScenario: Equatable, Sendable {
 
     case idle
 
+    /// A Sunday-shaped plan on the Present page, its items picked in turn
+    /// as plan-list clicks pick them (the "pick" signal).
+    case present
+
     public init?(_ spec: String) {
         let parts = spec.split(separator: ":", maxSplits: 1).map(String.init)
         let fields = parts.count == 2 ? parts[1].split(separator: "/", omittingEmptySubsequences: false).map(String.init) : []
@@ -20,6 +24,8 @@ public enum PerfScenario: Equatable, Sendable {
             self = .edit(deck: fields[0], slide: slide, object: fields[2])
         case "idle" where parts.count == 1:
             self = .idle
+        case "present" where parts.count == 1:
+            self = .present
         default:
             return nil
         }

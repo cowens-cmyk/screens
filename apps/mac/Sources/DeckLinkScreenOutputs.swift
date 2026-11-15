@@ -464,7 +464,13 @@ final class DeckLinkDeviceCatalog {
                 if known != modes, DeckLinkModeAsking.keeps(answerCount: modes.count, knownCount: known?.count) {
                     DiagnosticsStore.shared.note(
                         "decklink.modes",
-                        detail: "device \(devicePersistentID): \(modes.count) modes")
+                        detail: "device \(devicePersistentID): \(modes.count) modes: "
+                            + modes.map { mode in
+                                let rate = mode.timeScale > 0 && mode.frameDuration > 0
+                                    ? String(format: "%.3f", Double(mode.timeScale) / Double(mode.frameDuration)) : "?"
+                                return "\(mode.name) [\(mode.width)×\(mode.height) \(mode.progressive ? "p" : "i") \(rate) fps"
+                                    + (mode.supportsKeying ? ", key" : "") + "]"
+                            }.joined(separator: ", "))
                     self?.displayModes[devicePersistentID] = modes
                 }
                 self?.modesFetchInFlight.remove(devicePersistentID)

@@ -1,5 +1,6 @@
 #include "decklink_shim.h"
 
+#include <Accelerate/Accelerate.h>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -154,14 +155,24 @@ int32_t dlk_copy_display_modes(
             duration == 0)
             continue;
 
+        // A mode the card takes as BGRA, or only as 8-bit YUV: a DeckLink
+        // Quad 2 has 1080p50/59.94/60 in YUV alone, and leaving those out
+        // sent a 60 fps screen out as 1080i59.94.
         bool supported = false;
         BMDDisplayMode actualMode = 0;
-        if (output->DoesSupportVideoMode(
+        bool bgra = output->DoesSupportVideoMode(
                 bmdVideoConnectionUnspecified, candidateRef->GetDisplayMode(),
                 bmdFormat8BitBGRA, bmdNoVideoOutputConversion,
-                bmdSupportedVideoModeDefault, &actualMode, &supported) != S_OK ||
-            !supported)
-            continue;
+                bmdSupportedVideoModeDefault, &actualMode, &supported) == S_OK &&
+            supported;
+        supported = false;
+        bool yuv = !bgra &&
+            output->DoesSupportVideoMode(
+                bmdVideoConnectionUnspecified, candidateRef->GetDisplayMode(),
+                bmdFormat8BitYUV, bmdNoVideoOutputConversion,
+                bmdSupportedVideoModeDefault, &actualMode, &supported) == S_OK &&
+            supported;
+        if (!bgra && !yuv) continue;
 
         DLKDisplayModeInfo &info = out[written];
         memset(&info, 0, sizeof(info));
@@ -278,6 +289,14 @@ struct DLKOutput {
     BMDTimeScale timeScale = 0;
     bool playing = false;
 
+    // The card's frames are 8-bit YUV 4:2:2 ('2vuy', Rec. 709 video range)
+    // when the mode can't be sent as BGRA; each frame is converted from the
+    // BGRA the app draws.
+    bool yuv = false;
+    size_t rowBytes = 0;
+    uint8_t *scratch = nullptr;
+    vImage_ARGBToYpCbCr conversion;
+
     bool keyerLevelReasserted = false;
 
     std::chrono::steady_clock::time_point lastCompletion =
@@ -330,7 +349,7 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
             void *destination = nullptr;
             if (buffer->GetBytes(&destination) == S_OK && destination) {
                 memcpy(destination, output->latest,
-                       (size_t)output->width * 4 * output->height);
+                       output->rowBytes * output->height);
             }
             buffer->EndAccess(bmdBufferAccessWrite);
         }
@@ -350,6 +369,32 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
     }
     (void)result;
     return S_OK;
+}
+
+bool dlk_convert_bgra_to_2vuy(
+    const vImage_Buffer *source, const vImage_Buffer *destination,
+    const vImage_ARGBToYpCbCr *conversion) {
+    // BGRA in memory, read as ARGB.
+    const uint8_t permute[4] = {3, 2, 1, 0};
+    return vImageConvert_ARGB8888To422CbYpCrYp8(
+               source, destination, conversion, permute, kvImageNoFlags) ==
+        kvImageNoError;
+}
+
+bool dlk_bgra_to_2vuy(
+    const uint8_t *bgra, size_t bgraRowBytes, uint8_t *yuv, size_t yuvRowBytes,
+    int32_t width, int32_t height) {
+    vImage_YpCbCrPixelRange range = {16, 128, 235, 240, 235, 16, 240, 16};
+    vImage_ARGBToYpCbCr conversion;
+    if (vImageConvert_ARGBToYpCbCr_GenerateConversion(
+            kvImage_ARGBToYpCbCrMatrix_ITU_R_709_2, &range, &conversion,
+            kvImageARGB8888, kvImage422CbYpCrYp8, kvImageNoFlags) != kvImageNoError)
+        return false;
+    vImage_Buffer source = {(void *)bgra, (vImagePixelCount)height,
+                            (vImagePixelCount)width, bgraRowBytes};
+    vImage_Buffer destination = {yuv, (vImagePixelCount)height,
+                                 (vImagePixelCount)width, yuvRowBytes};
+    return dlk_convert_bgra_to_2vuy(&source, &destination, &conversion);
 }
 
 DLKOutput *dlk_output_open(
@@ -398,6 +443,7 @@ DLKOutput *dlk_output_open(
 
     bool supported = false;
     BMDDisplayMode actualMode = 0;
+    bool yuv = false;
     if (output->DoesSupportVideoMode(
             bmdVideoConnectionUnspecified, chosenMode, bmdFormat8BitBGRA,
             bmdNoVideoOutputConversion,
@@ -405,6 +451,16 @@ DLKOutput *dlk_output_open(
                                    : bmdSupportedVideoModeDefault,
             &actualMode, &supported) != S_OK ||
         !supported) {
+        // A keyed output needs BGRA's alpha; any other can go out as YUV.
+        supported = false;
+        yuv = keying == DLKKeyingOff &&
+            output->DoesSupportVideoMode(
+                bmdVideoConnectionUnspecified, chosenMode, bmdFormat8BitYUV,
+                bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault,
+                &actualMode, &supported) == S_OK &&
+            supported;
+    }
+    if (!supported) {
         writeError(error, errorLength,
                    keying != DLKKeyingOff
                        ? "this display mode cannot carry a keyed output on "
@@ -474,14 +530,30 @@ DLKOutput *dlk_output_open(
     handle->height = height;
     handle->frameDuration = frameDuration;
     handle->timeScale = timeScale;
-    handle->latest =
-        (uint8_t *)calloc((size_t)width * 4 * height, 1);
-
+    handle->yuv = yuv;
+    handle->rowBytes = (size_t)width * (yuv ? 2 : 4);
+    handle->latest = (uint8_t *)calloc(handle->rowBytes * height, 1);
     bool framesReady = handle->latest != nullptr;
+    if (yuv && framesReady) {
+        // Black in video range, not zeroes (which are green in YUV).
+        for (size_t index = 0; index + 1 < handle->rowBytes * height; index += 2) {
+            handle->latest[index] = 128;
+            handle->latest[index + 1] = 16;
+        }
+        handle->scratch = (uint8_t *)malloc(handle->rowBytes * height);
+        vImage_YpCbCrPixelRange range = {16, 128, 235, 240, 235, 16, 240, 16};
+        framesReady = handle->scratch != nullptr &&
+            vImageConvert_ARGBToYpCbCr_GenerateConversion(
+                kvImage_ARGBToYpCbCrMatrix_ITU_R_709_2, &range,
+                &handle->conversion, kvImageARGB8888, kvImage422CbYpCrYp8,
+                kvImageNoFlags) == kvImageNoError;
+    }
+
     for (int index = 0; framesReady && index < DLKOutput::kFrameCount;
          index += 1) {
         if (output->CreateVideoFrame(
-                width, height, width * 4, bmdFormat8BitBGRA,
+                width, height, (int32_t)handle->rowBytes,
+                yuv ? bmdFormat8BitYUV : bmdFormat8BitBGRA,
                 bmdFrameFlagDefault, &handle->frames[index]) != S_OK ||
             !handle->frames[index] ||
             handle->frames[index]->QueryInterface(
@@ -498,6 +570,7 @@ DLKOutput *dlk_output_open(
             if (handle->frames[index]) handle->frames[index]->Release();
         }
         free(handle->latest);
+        free(handle->scratch);
         delete handle;
         writeError(error, errorLength, "video frame allocation failed");
         return nullptr;
@@ -512,8 +585,7 @@ DLKOutput *dlk_output_open(
         if (buffer && buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
             void *destination = nullptr;
             if (buffer->GetBytes(&destination) == S_OK && destination) {
-                memcpy(destination, handle->latest,
-                       (size_t)width * 4 * height);
+                memcpy(destination, handle->latest, handle->rowBytes * height);
             }
             buffer->EndAccess(bmdBufferAccessWrite);
         }
@@ -532,6 +604,7 @@ DLKOutput *dlk_output_open(
         }
         handle->callback->Release();
         free(handle->latest);
+        free(handle->scratch);
         delete handle;
         writeError(error, errorLength, "scheduled playback failed to start");
         return nullptr;
@@ -546,6 +619,25 @@ DLKOutput *dlk_output_open(
 bool dlk_output_display(
     DLKOutput *output, const uint8_t *bgra, size_t bytesPerRow) {
     if (!output || !bgra) return false;
+    if (output->yuv) {
+        // Converted outside the lock, so the card's completion callback
+        // waits only for the copy. One caller per output.
+        vImage_Buffer source = {(void *)bgra, (vImagePixelCount)output->height,
+                                (vImagePixelCount)output->width, bytesPerRow};
+        vImage_Buffer destination = {output->scratch,
+                                     (vImagePixelCount)output->height,
+                                     (vImagePixelCount)output->width,
+                                     output->rowBytes};
+        if (!dlk_convert_bgra_to_2vuy(&source, &destination, &output->conversion))
+            return false;
+        std::lock_guard<std::mutex> guard(output->mutex);
+        if (!output->playing) return false;
+        if (std::chrono::steady_clock::now() - output->lastCompletion >
+            std::chrono::seconds(1))
+            return false;
+        memcpy(output->latest, output->scratch, output->rowBytes * output->height);
+        return true;
+    }
     std::lock_guard<std::mutex> guard(output->mutex);
     if (!output->playing) return false;
     if (std::chrono::steady_clock::now() - output->lastCompletion >
@@ -582,6 +674,7 @@ void dlk_output_close(DLKOutput *output) {
     output->output->Release();
     output->device->Release();
     free(output->latest);
+    free(output->scratch);
     delete output;
 }
 

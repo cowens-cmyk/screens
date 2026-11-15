@@ -58,8 +58,9 @@ import Testing
         #expect(try source("AppShell.swift").contains(
             "onReselect: { if mode == .present { presentFocusScroll.reselect() } }"))
         let surface = try source("ServiceContinuousView.swift")
-        let watch = try #require(surface.range(of: ".onChange(of: focusScroll.reselects)"))
+        let watch = try #require(surface.range(of: ".background(PlanPageReselectFollow(focusScroll: $focusScroll)"))
         #expect(surface[watch.upperBound...].prefix(200).contains("reason: \"reselect\""))
+        #expect(surface.contains(".onChange(of: focusScroll.reselects) { _, _ in onReselect() }"))
     }
 
     @Test func aResizeOrSlidesAcrossChangeKeepsThePlace() throws {
@@ -128,5 +129,29 @@ import Testing
         let fixed = try #require(body.range(of: ".fixedSize(horizontal: false, vertical: true)"))
         let reader = try #require(body.range(of: ".background(headerHeightReader(item))"))
         #expect(fixed.lowerBound < reader.lowerBound, "measured after it is held to its own height")
+    }
+}
+
+/// A plan-list pick must not re-run the plan page's body: each run rebuilt
+/// every grid on it, and a pick ran it twice (the picks counter and the
+/// shell's scroll state), stalling the main thread for 250–400 ms before the
+/// page moved. Measured with apps/mac/scripts/perf/present.sh.
+@Suite struct PlanPickSweepTests {
+    private func page() throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/ServiceContinuousView.swift")
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    @Test func aPickLeavesThePageBodyAlone() throws {
+        let page = try page()
+        #expect(page.contains("@State private var picks = PresentPicks()"))
+        #expect(page.contains("private final class PresentPicks"), "a reference, not page state")
+        #expect(page.contains(".scrollPosition($pageScroll.position)"))
+        #expect(page.contains("final class PlanPageScroll"))
+        #expect(!page.contains(".onChange(of: focusScroll.reselects) {\n"), "read in PlanPageReselectFollow only")
+        #expect(!page.contains("proxy.scrollTo(Self.anchor(for: target"), "a ScrollViewReader only moved when the page re-ran")
     }
 }
