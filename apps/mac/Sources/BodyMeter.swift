@@ -22,7 +22,7 @@ enum MeteredView: Int, CaseIterable {
         case .slideEditor: "SlideEditorView"
         case .slideObjectInspector: "SlideObjectInspector"
         case .animationTimelinePanel: "AnimationTimelinePanel"
-        case .serviceContinuous: "ServiceContinuousView"
+        case .serviceContinuous: "ServiceContinuousPage"
         case .slideGridBody: "SlideGridBody"
         case .slideTile: "SlideTile"
         case .slideThumbnail: "SlideThumbnailView"

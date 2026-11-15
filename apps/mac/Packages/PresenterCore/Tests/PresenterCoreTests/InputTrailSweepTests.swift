@@ -103,7 +103,8 @@ import Testing
         let row = try #require(surface.range(of: "ForEach(rows, id: \\.presentRowIdentity) { item in"))
         let rowBody = surface[row.upperBound...].prefix(900)
         #expect(rowBody.contains("PresentCardFrames.shared.noteDoc("), "every row, not only sticky cards, reports where it sits")
-        #expect(rowBody.contains("PresentCardFrames.shared.note("))
+        #expect(!rowBody.contains("GeometryReader"), "a row's place in the content, not a reader re-run every scroll frame")
+        #expect(surface.contains("PresentCardFrames.shared.contentOrigin = origin"), "one measurement per scroll frame")
         let recorderSource = try source("InputTrailRecorder.swift")
         let apply = try #require(recorderSource.range(of: "private func applyHold() {"))
         #expect(recorderSource[apply.upperBound...].prefix(1600).contains("holdPinnedUntil = ProcessInfo.processInfo.systemUptime + 0.4"),
@@ -120,8 +121,10 @@ import Testing
 
     @Test func theStickyHeaderTakesItsOwnHeight() throws {
         let surface = try source("ServiceContinuousView.swift")
-        let sticky = try #require(surface.range(of: "let stick = max(0, min(-frame.minY, geo.size.height - headerHeight))"))
-        let body = surface[sticky.upperBound...].prefix(700)
+        #expect(surface.contains("return max(0, min(-frame.minY, proxy.size.height - headerHeight))"),
+                "the header sticks within its own section")
+        let sticky = try #require(surface.range(of: "StickyHeader(headerHeight: headerHeight, margin: Self.pageMargin) {"))
+        let body = surface[sticky.upperBound...].prefix(300)
         let fixed = try #require(body.range(of: ".fixedSize(horizontal: false, vertical: true)"))
         let reader = try #require(body.range(of: ".background(headerHeightReader(item))"))
         #expect(fixed.lowerBound < reader.lowerBound, "measured after it is held to its own height")

@@ -28,7 +28,7 @@ import Testing
         let grid = try source("PresentGridView.swift")
         #expect(grid.contains("case \"a\": return .selectAll"), "the grid's key monitor hears ⌘A")
         #expect(grid.contains(".onChange(of: clipboardRequests.selectAlls) { _, _ in selectAllFromKeyboard() }"))
-        #expect(grid.contains("NewSlideRouter.shared.route.answers(contextID, contexts: contexts, isHostTarget: pastesAtEnd)"), "⌘A lands on the deck last pointed at, New Slide's rule")
+        #expect(grid.contains("NewSlideRouter.shared.route.answers(contextID, contexts: contexts, isHostTarget: hostsPaste)"), "⌘A lands on the deck last pointed at, New Slide's rule")
     }
 
     @Test func editorListsAndCanvasTakeCommandA() throws {

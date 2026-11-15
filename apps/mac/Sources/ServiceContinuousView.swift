@@ -81,7 +81,7 @@ private struct PlanPageFocusFollow: View {
     }
 }
 
-private struct ServiceContinuousPage: View, Equatable {
+struct ServiceContinuousPage: View, Equatable {
     let model: AppModel
     let render: RenderContext?
     let controls: ServiceControls?

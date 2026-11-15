@@ -467,7 +467,7 @@ struct StreamCoverageBadge: View {
                 while !Task.isCancelled {
                     let next = StreamCoverage.classify(provider())
                     if next != coverage { coverage = next }
-                    try? await Task.sleep(for: .seconds(1))
+                    try? await Task.sleep(for: .milliseconds(1000))
                 }
             }
     }
