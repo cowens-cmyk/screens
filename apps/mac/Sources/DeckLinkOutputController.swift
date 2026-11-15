@@ -62,6 +62,20 @@ final class DeckLinkOutputController {
     private var supervisor: Task<Void, Never>?
     private var lastLoggedProblem: String?
 
+    /// Frames the mirror had ready while two were still on their way to the
+    /// helper, so never sent. Written on the frame queue.
+    private var appSkips = Locked(0)
+    /// The helper's counts at the last `decklink.pace` line, and when.
+    private var lastPace: (counts: PaceCounts, skips: Int)?
+    private var lastPaceAt: TimeInterval = 0
+    private static let paceInterval: TimeInterval = 60
+
+    struct PaceCounts: Codable, Equatable {
+        var fresh: UInt64
+        var stutters: UInt64
+        var dropped: UInt64
+    }
+
     init(render: RenderContext) {
         self.render = render
     }
@@ -138,6 +152,41 @@ final class DeckLinkOutputController {
             at: Self.now, lastOffered: lastOffered.value, lastAccepted: lastAccepted.value)
         if !wasSending, keeper.isSending { noteSending() }
         perform(step)
+        notePaceIfDue()
+    }
+
+    /// Once a minute while sending, how the port's frames went out: new
+    /// frames shown, frames shown twice while the picture moved (a stutter
+    /// on the switcher), frames the helper let go for running ahead of the
+    /// card, and frames the app never sent because the helper was behind.
+    private func notePaceIfDue() {
+        guard keeper.isSending, Self.now - lastPaceAt >= Self.paceInterval,
+            let request,
+            let proxy = connection?.remoteObjectProxy as? DeckLinkHelperProtocol
+        else { return }
+        lastPaceAt = Self.now
+        let attemptID = attempt
+        let deviceName = request.deviceName
+        proxy.outputCounts { @Sendable [weak self] data in
+            guard let counts = try? JSONDecoder().decode(PaceCounts.self, from: data) else { return }
+            Task { @MainActor [weak self] in
+                self?.notePace(counts, attemptID: attemptID, deviceName: deviceName)
+            }
+        }
+    }
+
+    private func notePace(_ counts: PaceCounts, attemptID: Int, deviceName: String) {
+        guard attemptID == attempt else { return }
+        let skips = appSkips.value
+        let before = lastPace ?? (PaceCounts(fresh: 0, stutters: 0, dropped: 0), 0)
+        lastPace = (counts, skips)
+        guard counts.fresh >= before.counts.fresh else { return }
+        DiagnosticsStore.shared.note(
+            "decklink.pace",
+            detail: "\(deviceName): \(counts.fresh - before.counts.fresh) new, "
+                + "\(counts.stutters - before.counts.stutters) stutter, "
+                + "\(counts.dropped - before.counts.dropped) dropped, "
+                + "\(skips - before.skips) unsent")
     }
 
     private func perform(_ step: OutputKeeper.Step) {
@@ -247,6 +296,9 @@ final class DeckLinkOutputController {
         let accepted = Locked<TimeInterval?>(nil)
         lastOffered = offered
         lastAccepted = accepted
+        appSkips = Locked(0)
+        lastPace = nil
+        lastPaceAt = Self.now
 
         let connection = NSXPCConnection(serviceName: DeckLinkHelperIdentity.serviceName)
         connection.remoteObjectInterface = NSXPCInterface(with: DeckLinkHelperProtocol.self)
@@ -355,6 +407,7 @@ final class DeckLinkOutputController {
         nonisolated(unsafe) let remote = proxy
         let inFlight = Locked(0)
         let refusals = Locked(0)
+        let skips = appSkips
 
         let firstOutcomeLogged = Locked(!logging)
         let alphaProbed = Locked(!logging)
@@ -431,7 +484,10 @@ final class DeckLinkOutputController {
                     count += 1
                     return true
                 }
-                guard claimed else { return }
+                guard claimed else {
+                    skips.withLock { $0 += 1 }
+                    return
+                }
                 let surface = unsafeBitCast(surfaceRef, to: IOSurface.self)
                 remote.sendFrame(surface) { @Sendable delivered in
                     inFlight.withLock { $0 -= 1 }

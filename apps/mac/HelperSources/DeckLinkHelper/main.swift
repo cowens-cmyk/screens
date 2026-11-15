@@ -432,6 +432,16 @@ final class DeckLinkHelperService: NSObject, DeckLinkHelperProtocol, @unchecked 
     func ping(reply: @escaping (Bool) -> Void) {
         reply(true)
     }
+
+    func outputCounts(reply: @escaping (Data) -> Void) {
+        guard let device, let generation,
+            let output = DeckLinkOutputStore.shared.output(device: device, generation: generation)
+        else {
+            reply(Data())
+            return
+        }
+        reply((try? JSONEncoder().encode(output.paceCounts())) ?? Data())
+    }
 }
 
 final class Locked<Value>: @unchecked Sendable {

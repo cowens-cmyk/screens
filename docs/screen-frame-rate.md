@@ -19,10 +19,24 @@ with its own width, height and `framesPerSecond`, kept per Mac in
   `DeckLinkDisplayMode.automatic`, after leaving out modes that can't key
   when keying is on. In order: the card's own setting when it is progressive
   and at the screen's size and rate (so 1080p60 over 1080p59.94); the mode at
-  the screen's size and rate, progressive and fractional first (1080p59.94
-  for 1080p at 60); the card's setting at that size, whatever it is; the
-  fastest standard rate under the screen's. Left at its default the card says
-  1080i59.94, which is how a 1080p screen went out interlaced before.
+  the screen's size and rate, progressive and the exact rate first (1080p60
+  for 1080p at 60, the rate the switcher runs; 1080p59.94 where the port has
+  no 1080p60); the card's setting at that size, whatever it is; the fastest
+  standard rate under the screen's. Left at its default the card says
+  1080i59.94, which is how a 1080p screen went out interlaced before. A mode
+  the card has only in 8-bit YUV (1080p50/59.94/60 on a Quad 2) is sent as
+  YUV unless the port keys.
+- **DeckLink pacing.** The app's frames come on its own timer and over XPC,
+  a few ms early or late against the card's clock. The helper (`DLKPacer` in
+  `decklink_shim.cpp`) keeps them in order and gives the card the oldest
+  waiting one each time it asks, or the last one again when none has come;
+  more than two waiting and the oldest is let go. So each frame goes out
+  once. Copying only the newest frame when the card asked used to show one
+  frame twice and skip the next whenever the clocks crossed, which judders
+  moving video. Once a minute while sending, `decklink.pace` notes per port
+  the new frames shown, stutters (a frame shown again while the picture
+  moved), frames dropped for running ahead, and frames the app never sent
+  because two were still on their way to the helper.
 - **Each port's modes** (`DeckLinkDeviceCatalog.displayModes`) are asked of
   the helper once per port by the 8 s background look, again when a port
   comes back, on every look while a port's modes came back empty (a failed

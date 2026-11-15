@@ -5,7 +5,9 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <mutex>
+#include <vector>
 #include <string>
 
 #include "Vendor/DeckLinkAPI.h"
@@ -250,6 +252,81 @@ uint32_t dlk_configured_output_mode(int64_t persistentID) {
 
 struct DLKOutput;
 
+// Which of the output's picture buffers goes into each frame the card asks
+// for. The app's frames come on its own timer and over XPC, a few
+// milliseconds early or late against the card's clock; copying only the
+// newest one when the card asked showed one frame twice and skipped the next
+// whenever the two clocks crossed, which is the judder in moving video. So
+// frames wait in order, and each is shown once: the card takes the oldest
+// waiting frame, or shows the last one again when none has come. A short
+// wait absorbs the jitter; more than two waiting means the app runs ahead
+// (a 60 fps screen on a 59.94 port), and the oldest is let go.
+struct DLKPacer {
+    static const int kSlots = 5;
+    static const size_t kWaiting = 2;
+
+    std::deque<int> waiting;
+    std::vector<int> spare;
+    int shown = 0;
+    int repeatRun = 0;
+    bool anyFresh = false;
+    DLKPaceCounts counts = {};
+
+    DLKPacer() {
+        for (int slot = kSlots - 1; slot >= 1; slot -= 1) spare.push_back(slot);
+    }
+
+    /// A buffer to draw the next frame into, or -1. With none spare the
+    /// oldest waiting frame gives way.
+    int acquire() {
+        if (spare.empty()) {
+            if (waiting.empty()) return -1;
+            int slot = waiting.front();
+            waiting.pop_front();
+            counts.dropped += 1;
+            return slot;
+        }
+        int slot = spare.back();
+        spare.pop_back();
+        return slot;
+    }
+
+    void queue(int slot) {
+        waiting.push_back(slot);
+        while (waiting.size() > kWaiting) {
+            spare.push_back(waiting.front());
+            waiting.pop_front();
+            counts.dropped += 1;
+        }
+    }
+
+    void abandon(int slot) { spare.push_back(slot); }
+
+    /// The buffer for the card's next frame: the oldest waiting, or -1 to
+    /// show `shown` again.
+    int next() {
+        if (waiting.empty()) {
+            repeatRun += 1;
+            return -1;
+        }
+        int slot = waiting.front();
+        waiting.pop_front();
+        return slot;
+    }
+
+    /// `slot` went out. A repeat or two between new frames is a stutter in
+    /// moving pictures; a long run is a still picture held, which is how a
+    /// still is meant to go out.
+    void showed(int slot) {
+        if (anyFresh && repeatRun > 0 && repeatRun <= 2) counts.stutters += repeatRun;
+        repeatRun = 0;
+        anyFresh = true;
+        spare.push_back(shown);
+        shown = slot;
+        counts.fresh += 1;
+    }
+};
+
 class DLKScheduleCallback : public IDeckLinkVideoOutputCallback {
 public:
     explicit DLKScheduleCallback(DLKOutput *owner) : owner_(owner) {}
@@ -282,7 +359,8 @@ struct DLKOutput {
     IDeckLinkVideoBuffer *frameBuffers[kFrameCount] = {};
     DLKScheduleCallback *callback = nullptr;
 
-    uint8_t *latest = nullptr;
+    uint8_t *pictures[DLKPacer::kSlots] = {};
+    DLKPacer pacer;
     std::mutex mutex;
     BMDTimeValue streamTime = 0;
     BMDTimeValue frameDuration = 0;
@@ -294,7 +372,6 @@ struct DLKOutput {
     // BGRA the app draws.
     bool yuv = false;
     size_t rowBytes = 0;
-    uint8_t *scratch = nullptr;
     vImage_ARGBToYpCbCr conversion;
 
     bool keyerLevelReasserted = false;
@@ -303,6 +380,13 @@ struct DLKOutput {
         std::chrono::steady_clock::now();
     int32_t width = 0;
     int32_t height = 0;
+
+    void freePictures() {
+        for (int slot = 0; slot < DLKPacer::kSlots; slot += 1) {
+            free(pictures[slot]);
+            pictures[slot] = nullptr;
+        }
+    }
 
     IDeckLinkVideoBuffer *bufferFor(IDeckLinkVideoFrame *frame) {
         for (int index = 0; index < kFrameCount; index += 1) {
@@ -336,7 +420,9 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
     }
     BMDTimeValue scheduleAt = 0;
     {
-
+        // Copied under the lock, so a close can't free the pictures
+        // mid-copy; the app's side holds it only to take or hand back a
+        // buffer, never while drawing.
         std::lock_guard<std::mutex> guard(output->mutex);
         if (!output->playing) return S_OK;
         output->lastCompletion = std::chrono::steady_clock::now();
@@ -344,15 +430,18 @@ HRESULT DLKScheduleCallback::ScheduledFrameCompleted(
             output->streamTime < hardwareTime + output->frameDuration) {
             output->streamTime = hardwareTime + 2 * output->frameDuration;
         }
+        int slot = output->pacer.next();
+        const uint8_t *picture =
+            output->pictures[slot >= 0 ? slot : output->pacer.shown];
         IDeckLinkVideoBuffer *buffer = output->bufferFor(frame);
         if (buffer && buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
             void *destination = nullptr;
             if (buffer->GetBytes(&destination) == S_OK && destination) {
-                memcpy(destination, output->latest,
-                       output->rowBytes * output->height);
+                memcpy(destination, picture, output->rowBytes * output->height);
             }
             buffer->EndAccess(bmdBufferAccessWrite);
         }
+        if (slot >= 0) output->pacer.showed(slot);
         scheduleAt = output->streamTime;
         output->streamTime += output->frameDuration;
     }
@@ -532,17 +621,20 @@ DLKOutput *dlk_output_open(
     handle->timeScale = timeScale;
     handle->yuv = yuv;
     handle->rowBytes = (size_t)width * (yuv ? 2 : 4);
-    handle->latest = (uint8_t *)calloc(handle->rowBytes * height, 1);
-    bool framesReady = handle->latest != nullptr;
+    bool framesReady = true;
+    for (int slot = 0; slot < DLKPacer::kSlots; slot += 1) {
+        handle->pictures[slot] = (uint8_t *)calloc(handle->rowBytes * height, 1);
+        framesReady = framesReady && handle->pictures[slot] != nullptr;
+    }
+    uint8_t *black = handle->pictures[0];
     if (yuv && framesReady) {
         // Black in video range, not zeroes (which are green in YUV).
         for (size_t index = 0; index + 1 < handle->rowBytes * height; index += 2) {
-            handle->latest[index] = 128;
-            handle->latest[index + 1] = 16;
+            black[index] = 128;
+            black[index + 1] = 16;
         }
-        handle->scratch = (uint8_t *)malloc(handle->rowBytes * height);
         vImage_YpCbCrPixelRange range = {16, 128, 235, 240, 235, 16, 240, 16};
-        framesReady = handle->scratch != nullptr &&
+        framesReady =
             vImageConvert_ARGBToYpCbCr_GenerateConversion(
                 kvImage_ARGBToYpCbCrMatrix_ITU_R_709_2, &range,
                 &handle->conversion, kvImageARGB8888, kvImage422CbYpCrYp8,
@@ -569,8 +661,7 @@ DLKOutput *dlk_output_open(
             if (handle->frameBuffers[index]) handle->frameBuffers[index]->Release();
             if (handle->frames[index]) handle->frames[index]->Release();
         }
-        free(handle->latest);
-        free(handle->scratch);
+        handle->freePictures();
         delete handle;
         writeError(error, errorLength, "video frame allocation failed");
         return nullptr;
@@ -585,7 +676,7 @@ DLKOutput *dlk_output_open(
         if (buffer && buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
             void *destination = nullptr;
             if (buffer->GetBytes(&destination) == S_OK && destination) {
-                memcpy(destination, handle->latest, handle->rowBytes * height);
+                memcpy(destination, black, handle->rowBytes * height);
             }
             buffer->EndAccess(bmdBufferAccessWrite);
         }
@@ -603,8 +694,7 @@ DLKOutput *dlk_output_open(
             handle->frames[index]->Release();
         }
         handle->callback->Release();
-        free(handle->latest);
-        free(handle->scratch);
+        handle->freePictures();
         delete handle;
         writeError(error, errorLength, "scheduled playback failed to start");
         return nullptr;
@@ -619,38 +709,74 @@ DLKOutput *dlk_output_open(
 bool dlk_output_display(
     DLKOutput *output, const uint8_t *bgra, size_t bytesPerRow) {
     if (!output || !bgra) return false;
-    if (output->yuv) {
-        // Converted outside the lock, so the card's completion callback
-        // waits only for the copy. One caller per output.
-        vImage_Buffer source = {(void *)bgra, (vImagePixelCount)output->height,
-                                (vImagePixelCount)output->width, bytesPerRow};
-        vImage_Buffer destination = {output->scratch,
-                                     (vImagePixelCount)output->height,
-                                     (vImagePixelCount)output->width,
-                                     output->rowBytes};
-        if (!dlk_convert_bgra_to_2vuy(&source, &destination, &output->conversion))
-            return false;
+    int slot = -1;
+    {
         std::lock_guard<std::mutex> guard(output->mutex);
         if (!output->playing) return false;
         if (std::chrono::steady_clock::now() - output->lastCompletion >
             std::chrono::seconds(1))
             return false;
-        memcpy(output->latest, output->scratch, output->rowBytes * output->height);
-        return true;
+        slot = output->pacer.acquire();
+    }
+    if (slot < 0) return false;
+    // Drawn outside the lock, so the card's completion callback never waits
+    // on a conversion. One caller per output.
+    uint8_t *picture = output->pictures[slot];
+    bool drawn = true;
+    if (output->yuv) {
+        vImage_Buffer source = {(void *)bgra, (vImagePixelCount)output->height,
+                                (vImagePixelCount)output->width, bytesPerRow};
+        vImage_Buffer destination = {picture, (vImagePixelCount)output->height,
+                                     (vImagePixelCount)output->width,
+                                     output->rowBytes};
+        drawn = dlk_convert_bgra_to_2vuy(&source, &destination, &output->conversion);
+    } else {
+        const size_t destinationRow = output->rowBytes;
+        const size_t copyRow =
+            bytesPerRow < destinationRow ? bytesPerRow : destinationRow;
+        for (int32_t row = 0; row < output->height; row += 1) {
+            memcpy(picture + (size_t)row * destinationRow,
+                   bgra + (size_t)row * bytesPerRow, copyRow);
+        }
     }
     std::lock_guard<std::mutex> guard(output->mutex);
-    if (!output->playing) return false;
-    if (std::chrono::steady_clock::now() - output->lastCompletion >
-        std::chrono::seconds(1))
+    if (!drawn || !output->playing) {
+        output->pacer.abandon(slot);
         return false;
-    const size_t destinationRow = (size_t)output->width * 4;
-    const size_t copyRow =
-        bytesPerRow < destinationRow ? bytesPerRow : destinationRow;
-    for (int32_t row = 0; row < output->height; row += 1) {
-        memcpy(output->latest + (size_t)row * destinationRow,
-               bgra + (size_t)row * bytesPerRow, copyRow);
     }
+    output->pacer.queue(slot);
     return true;
+}
+
+void dlk_output_copy_counts(DLKOutput *output, DLKPaceCounts *out) {
+    if (!output || !out) return;
+    std::lock_guard<std::mutex> guard(output->mutex);
+    *out = output->pacer.counts;
+}
+
+int32_t dlk_pacer_run(
+    const char *events, int32_t *shown, int32_t capacity, DLKPaceCounts *counts) {
+    DLKPacer pacer;
+    int32_t frameIn[DLKPacer::kSlots] = {};
+    int32_t queued = 0;
+    int32_t completions = 0;
+    for (const char *event = events; event && *event; event += 1) {
+        if (*event == 'q') {
+            int slot = pacer.acquire();
+            if (slot < 0) continue;
+            queued += 1;
+            frameIn[slot] = queued;
+            pacer.queue(slot);
+        } else if (*event == 'c') {
+            int slot = pacer.next();
+            int32_t frame = frameIn[slot >= 0 ? slot : pacer.shown];
+            if (slot >= 0) pacer.showed(slot);
+            if (completions < capacity) shown[completions] = frame;
+            completions += 1;
+        }
+    }
+    if (counts) *counts = pacer.counts;
+    return completions;
 }
 
 void dlk_output_close(DLKOutput *output) {
@@ -673,8 +799,7 @@ void dlk_output_close(DLKOutput *output) {
     output->callback->Release();
     output->output->Release();
     output->device->Release();
-    free(output->latest);
-    free(output->scratch);
+    output->freePictures();
     delete output;
 }
 

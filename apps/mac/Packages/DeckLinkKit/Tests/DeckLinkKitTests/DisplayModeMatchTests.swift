@@ -12,8 +12,10 @@ import Testing
             frameDuration: duration, timeScale: scale, progressive: progressive)
     }
 
-    @Test func fractionalSiblingBeatsExactRate() {
-
+    @Test func exactRateBeatsFractionalSibling() {
+        // The switcher and the Macs run whole rates (1080p60), so a screen
+        // goes out at its own rate, not the 1000/1001 one beside it, which
+        // drifted a frame every 17 s against them.
         let modes = [
             mode("1080p29.97", duration: 1001, scale: 30000),
             mode("1080p30", duration: 1000, scale: 30000),
@@ -21,7 +23,7 @@ import Testing
         for ordering in [modes, Array(modes.reversed())] {
             let match = DeckLinkDisplayMode.bestMatch(
                 width: 1920, height: 1080, framesPerSecond: 30, in: ordering)
-            #expect(match?.name == "1080p29.97")
+            #expect(match?.name == "1080p30")
         }
     }
 
@@ -94,7 +96,7 @@ import Testing
         ]
         let sixty = DeckLinkDisplayMode.automatic(
             width: 1920, height: 1080, framesPerSecond: 60, configured: interlaced.modeID, in: modes)
-        #expect(sixty?.name == "1080p59.94")
+        #expect(sixty?.name == "1080p60", "the exact rate, as the switcher and the Macs run")
         // A screen set to 30 goes out progressive too.
         let thirty = DeckLinkDisplayMode.automatic(
             width: 1920, height: 1080, framesPerSecond: 30, configured: interlaced.modeID, in: modes)
