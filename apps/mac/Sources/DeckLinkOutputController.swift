@@ -165,24 +165,28 @@ final class DeckLinkOutputController {
     }
 
     private func refreshStatus() {
-        guard let request else {
-            status = .idle
-            return
-        }
+        // Runs about once a second; an unchanged assignment still notifies
+        // observers, so only set when the value differs.
+        let next = computeStatus()
+        if status != next { status = next }
+    }
+
+    private func computeStatus() -> Status {
+        guard let request else { return .idle }
         switch keeper.phase {
         case .stopped:
-            status = .idle
+            return .idle
         case .sending:
-            status = .sending(deviceName: request.deviceName)
+            return .sending(deviceName: request.deviceName)
         case .opening, .confirming, .waiting:
             // One fault is often just the driver settling at launch; from
             // the second the reason is worth showing.
             if keeper.failures >= 2, let problem = keeper.problem {
-                status = .failed("\(problem) — retrying")
+                return .failed("\(problem) — retrying")
             } else if keeper.hasSent {
-                status = .interrupted(deviceName: request.deviceName)
+                return .interrupted(deviceName: request.deviceName)
             } else {
-                status = .starting
+                return .starting
             }
         }
     }

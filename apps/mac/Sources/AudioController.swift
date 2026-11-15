@@ -328,8 +328,9 @@ final class AudioPlayer {
     var onTransportChanged: (() -> Void)?
 
     private func poll() {
-        refreshPosition()
-        onTransportChanged?()
+        // Paused or between tracks nothing moves; skip the observer
+        // notification and the transport callback then.
+        if refreshPosition() { onTransportChanged?() }
 
         guard isPlaying, crossfadeSeconds > 0, queue != nil, duration > 0,
               let entryID = currentEntryID, crossfadeArmedEntryID != entryID,
@@ -342,11 +343,16 @@ final class AudioPlayer {
 
     }
 
-    private func refreshPosition() {
-        if let position = engine.position {
-            elapsed = max(0, position.elapsed - currentTrimStart)
-            duration = max(0, position.duration - currentTrimStart)
-        }
+    /// True when elapsed or duration changed.
+    @discardableResult
+    private func refreshPosition() -> Bool {
+        guard let position = engine.position else { return false }
+        let newElapsed = max(0, position.elapsed - currentTrimStart)
+        let newDuration = max(0, position.duration - currentTrimStart)
+        var changed = false
+        if elapsed != newElapsed { elapsed = newElapsed; changed = true }
+        if duration != newDuration { duration = newDuration; changed = true }
+        return changed
     }
 
     private func audioItem(forEntry entryID: String) -> AudioItem? {

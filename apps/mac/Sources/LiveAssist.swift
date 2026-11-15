@@ -354,7 +354,11 @@ final class LiveAssist {
     /// Room noise sits well below this (about -46 dB); speech on a live mic
     /// is far above it.
     private func heardLevel(_ value: Float) {
-        level = value
+        // The meter is 20 steps wide, so a finer level would only repaint
+        // the same bar. Snap in the meter's dB scale and set only on a change.
+        let step = (LiveAssist.meterFill(value) * 20).rounded()
+        let snapped: Float = step <= 0 ? 0 : Float(pow(10, (step / 20 * 60 - 60) / 20))
+        if level != snapped { level = snapped }
         if value > 0.005 { lastSound = Date() }
     }
 

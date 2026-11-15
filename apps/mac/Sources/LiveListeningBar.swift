@@ -29,7 +29,7 @@ struct LiveListeningBar: View {
                     Text(title).font(.callout.weight(.semibold))
                     inputMenu
 
-                    LevelMeter(level: assist.level)
+                    LevelMeter(assist: assist)
                         .frame(width: 110, height: 8)
                         .help("Microphone level")
 
@@ -224,13 +224,16 @@ struct LiveListeningBar: View {
 
 /// The input level in decibels (see `LiveAssist.meterFill`). Green for
 /// speech, yellow when hot, red when clipping.
+///
+/// It reads the level in its own body, so the 10 Hz updates redraw only this
+/// bar and not the whole listening bar.
 private struct LevelMeter: View {
-    let level: Float
-
-    private var fill: CGFloat { CGFloat(LiveAssist.meterFill(level)) }
+    let assist: LiveAssist
 
     var body: some View {
-        GeometryReader { proxy in
+        let level = assist.level
+        let fill = CGFloat(LiveAssist.meterFill(level))
+        return GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule().fill(.quaternary)
                 Capsule()

@@ -141,7 +141,8 @@ final class MediaTransportController {
             poll = nil
         } else if poll == nil {
             let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.refresh() }
+                // The timer is on the main run loop, so no Task per tick.
+                MainActor.assumeIsolated { self?.refresh() }
             }
             RunLoop.main.add(timer, forMode: .common)
             poll = timer

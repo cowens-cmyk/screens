@@ -305,13 +305,24 @@ struct PanelSurface: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        ZStack {
-            Color.clear.glassEffect(.regular, in: shape)
-            shape.fill(.regularMaterial).opacity(folded ? 0 : 1)
+        // Only the surface showing is in the tree: glass under a material at
+        // opacity 0, or a shadow drawn clear, still costs a blur or an
+        // offscreen pass every frame the live previews under it change.
+        // Inside the panel's animation the two still cross-fade.
+        let surface = ZStack {
+            if folded {
+                Color.clear.glassEffect(.regular, in: shape).transition(.opacity)
+            } else {
+                shape.fill(.regularMaterial).transition(.opacity)
+            }
         }
         .overlay(shape.strokeBorder(.white.opacity(folded ? 0.06 : 0.09)))
-        .shadow(color: .black.opacity(floating && !folded ? 0.35 : 0), radius: 14, y: 6)
         .allowsHitTesting(false)
+        if floating && !folded {
+            surface.shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+        } else {
+            surface
+        }
     }
 }
 

@@ -11,6 +11,9 @@ import SwiftUI
 /// bar over the slides, so it's there even when this is folded away.
 struct MonitorsPanel: View {
     let render: RenderContext
+    /// The docked cards are small; 15 fps reads the same at that size and
+    /// halves the drawing.
+    private static let dockedPreviewFPS: Float = 15
     /// What's live on the audience screen; when it changes, that card's edge
     /// lights briefly, like a switcher's tally, to confirm the take.
     var liveKey: String? = nil
@@ -50,7 +53,7 @@ struct MonitorsPanel: View {
                 VStack(alignment: .leading, spacing: 12) {
                     if shows(audienceTarget) {
                         monitor("Audience", target: audienceTarget, color: HopeStyle.blue) { target in
-                            LiveSceneView(render: render, screenTargetID: target)
+                            LiveSceneView(render: render, screenTargetID: target, maximumFramesPerSecond: Self.dockedPreviewFPS)
                         }
                         .overlay {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -64,7 +67,7 @@ struct MonitorsPanel: View {
                     if shows(stageTarget) { stageMonitor }
                     ForEach(otherScreens.filter { shows($0.id) }, id: \.id) { screen in
                         monitor(screen.name, target: screen.id) { target in
-                            LiveSceneView(render: render, screenTargetID: target)
+                            LiveSceneView(render: render, screenTargetID: target, maximumFramesPerSecond: Self.dockedPreviewFPS)
                         }
                     }
                     if allHidden {
@@ -287,7 +290,7 @@ struct MonitorsPanel: View {
                 .help("Worship: lyrics, next slide, clock and key. Message: the sermon timer and the clock. Audience Screen: what the audience sees. A playing video shows on the stage with the time left.")
             }
             if let stageTarget {
-                LiveSceneView(render: render, screenTargetID: stageTarget)
+                LiveSceneView(render: render, screenTargetID: stageTarget, maximumFramesPerSecond: Self.dockedPreviewFPS)
                     .modifier(PreviewedLayoutKeeper(target: stageTarget))
                     .frame(width: previewSize(stageTarget).width, height: previewSize(stageTarget).height)
                     .frame(maxWidth: .infinity)
@@ -326,7 +329,7 @@ struct MonitorsPanel: View {
                 .fixedSize()
                 .help("How much larger the side TVs draw song lyrics than the audience screen. Other slides look the same.")
             }
-            LiveSceneView(render: render, screenTargetID: target)
+            LiveSceneView(render: render, screenTargetID: target, maximumFramesPerSecond: Self.dockedPreviewFPS)
                 .frame(width: previewSize(target).width, height: previewSize(target).height)
                 .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -380,7 +383,8 @@ struct MonitorsPanel: View {
                     Checkerboard()
                     TransparentScenePreview(
                         compositor: render.compositor,
-                        provider: render.outputs.previewProvider(for: streamTarget))
+                        provider: render.outputs.previewProvider(for: streamTarget),
+                        maximumFramesPerSecond: Self.dockedPreviewFPS)
                 }
                 .frame(width: previewSize(streamTarget).width, height: previewSize(streamTarget).height)
                 .frame(maxWidth: .infinity)
@@ -463,7 +467,7 @@ struct StreamCoverageBadge: View {
                 while !Task.isCancelled {
                     let next = StreamCoverage.classify(provider())
                     if next != coverage { coverage = next }
-                    try? await Task.sleep(for: .milliseconds(250))
+                    try? await Task.sleep(for: .seconds(1))
                 }
             }
     }
