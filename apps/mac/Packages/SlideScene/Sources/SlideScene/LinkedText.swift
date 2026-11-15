@@ -104,9 +104,12 @@ public enum LinkedText {
                 if let heading, !resolved.text.isEmpty {
                     resolved.text = heading + "\n" + resolved.text
                     chords = chords.map { ChordPlacement(line: $0.line + 1, column: $0.column, symbol: $0.symbol) }
-                    // White over the grey lines, so it reads as a name.
+                    // Larger and in a colour nothing else on the stage uses
+                    // (orange words, white chords, grey next lines), so the
+                    // change of song stands out from across the platform.
+                    let size = (object.textStyle?.fontSize ?? 0) > 0 ? object.textStyle!.fontSize! * headingScale : nil
                     resolved.styleRuns = (resolved.styleRuns ?? []) + [TextStyleRun(
-                        line: 0, column: 0, length: heading.count, colorHex: headingColorHex)]
+                        line: 0, column: 0, length: heading.count, fontSize: size, colorHex: headingColorHex)]
                 }
 
                 chords = ChordMath.displayPlacements(
@@ -125,7 +128,9 @@ public enum LinkedText {
         }
     }
 
-    static let headingColorHex = "#FFFFFFFF"
+    /// The next song's name: bright blue, a quarter larger than the lines.
+    static let headingColorHex = "#40C8FFFF"
+    static let headingScale = 1.25
 
     /// A stage block filled with the current or next slide's section colour
     /// takes it now. With no colour known its own fill stays, so a section
