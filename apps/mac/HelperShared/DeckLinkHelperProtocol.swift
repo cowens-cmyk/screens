@@ -24,6 +24,10 @@ import IOSurface
 
     func stopOutput()
 
+    /// JSON `{"fresh", "stutters", "dropped"}`: how the open output's frames
+    /// have gone out since it opened (empty data with none open).
+    func outputCounts(reply: @escaping (Data) -> Void)
+
     func ping(reply: @escaping (Bool) -> Void)
 
     // MARK: Capture — one input per connection. Frames come back over the connection's

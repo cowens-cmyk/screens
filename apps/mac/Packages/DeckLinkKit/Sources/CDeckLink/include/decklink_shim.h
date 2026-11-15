@@ -64,6 +64,25 @@ bool dlk_output_display(
 
 void dlk_output_close(DLKOutput *output);
 
+/// How an output's frames went out since it opened. `fresh`: new frames
+/// the card showed. `stutters`: a frame shown again for want of the next
+/// one while the picture was moving. `dropped`: frames let go because the
+/// app ran ahead of the card.
+typedef struct {
+    uint64_t fresh;
+    uint64_t stutters;
+    uint64_t dropped;
+} DLKPaceCounts;
+
+void dlk_output_copy_counts(DLKOutput *output, DLKPaceCounts *out);
+
+/// The output's frame pacing on its own, for tests: `events` is a string of
+/// 'q' (the app hands over a frame, numbered from 1) and 'c' (the card takes
+/// one). Writes the frame number each 'c' showed (0 is the opening black)
+/// and returns how many 'c' there were.
+int32_t dlk_pacer_run(
+    const char *events, int32_t *shown, int32_t capacity, DLKPaceCounts *counts);
+
 /// BGRA to 8-bit YUV 4:2:2 ('2vuy', Cb Y Cr Y), Rec. 709 video range: how a
 /// frame goes out on a mode the card has only in YUV. Width must be even.
 bool dlk_bgra_to_2vuy(
