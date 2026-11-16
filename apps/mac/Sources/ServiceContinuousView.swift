@@ -231,7 +231,10 @@ struct ServiceContinuousPage: View, Equatable {
                             }
                         }
                         .coordinateSpace(name: Self.scrollSpace)
-                        .scrollPosition($pageScroll.position)
+                        // Applied in a view of its own: here, each pick's
+                        // scroll (a write to the position) re-ran this
+                        // GeometryReader's content, every card on the page.
+                        .modifier(PlanPageScrollPosition(pageScroll: pageScroll))
                         .inputRegion("present")
                         .onAppear {
                             viewportHeight = viewport.size.height
@@ -1461,6 +1464,17 @@ private final class PresentPicks {
 @MainActor @Observable
 final class PlanPageScroll {
     var position = ScrollPosition()
+}
+
+/// Binds the page's scroll view to `PlanPageScroll`, reading the position
+/// here rather than in the page's content.
+private struct PlanPageScrollPosition: ViewModifier {
+    let pageScroll: PlanPageScroll
+
+    func body(content: Content) -> some View {
+        @Bindable var scroll = pageScroll
+        content.scrollPosition($scroll.position)
+    }
 }
 
 /// Clicking the item already selected in the plan list scrolls back to it.
