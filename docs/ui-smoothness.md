@@ -67,13 +67,29 @@ every item, so anything each item does per frame is multiplied by the plan.
     `PageGlideEnds` puts each grid back to its real place when it lands.
   - `RowBuildPacer` makes one row, in one grid, per frame for the whole
     page: the grid whose missing row is nearest the screen first, and rows
-    are let go only when none is waiting to be made. Only a row already on
-    screen is made at once.
+    are let go only when none is waiting to be made. A row costs about
+    30 ms to make, nearly all of it SwiftUI building the tiles' views (the
+    app's own code in that frame is about 1 ms), so when matters more than
+    how: rows on screen, or where a glide lands, are made at once a row a
+    frame; the rows around the screen wait until half a second after a
+    pick, a click or a fire, then come 50 ms apart, where a 30 ms frame
+    moves nothing. The operator's own scrolling doesn't hold them back:
+    the rows ahead of a scroll keep being made so it never reaches empty
+    cells. `perf.rows` (test builds) logs when rows were made and let go
+    after each glide.
   - Each row is a `GridRowSwitch` reading its own `GridRowFlag`. The built
     rows used to be a set in the grid's state: adding a row re-ran the grid
     and every tile already built in it (a tile takes a closure, so it never
     compares equal).
   - A row not built yet is a faint slide-shaped box.
+  - Tile frames (for drops and the selection box) come from the grid's
+    cell size; a tile measuring itself was revisited, per tile, on every
+    frame of a scroll.
+- **A pick's anchor is the top of its item's section** (`StickySection`),
+  not the item's header: stuck, the header sits at the bottom of its
+  section, and a jump up to an earlier item landed there, a grid's height
+  short of its top. `scripts/perf/landing.sh <label>` clicks down, up, down,
+  up and fails unless each lands with its item's top at the top.
 - **Tiles.** Anything a tile works out from its slide that takes more than a
   lookup is cached by slide (`TileStepCache` for animation steps), not done in
   `body`.
@@ -118,16 +134,18 @@ by the tiles: as `@State` on the bin each pointer move re-sorted the library.
 
 ## Measuring a click
 
-`scripts/perf/present.sh <label>` (plan-list picks) and
-`scripts/perf/fire.sh <label>` (the arrow key, through item changes) run the
-staged perf build; `perf.mark` counts the bodies each one re-ran. For where
+`scripts/perf/present.sh <label>` (plan-list picks),
+`scripts/perf/fire.sh <label>` (the arrow key, through item changes) and
+`scripts/perf/landing.sh <label>` (where far jumps land) run the staged perf
+build; `perf.mark` counts the bodies each one re-ran. For where
 the time goes, record the same run with `xcrun xctrace record --template
 'Time Profiler' --attach <pid>`: SwiftUI's own time shows up as layout and
 graph updates, so the long freezes, not the totals, are what to compare.
 For a real click's path (hit testing, the list's own mouse tracking,
 gestures) where no pointer can reach the window, such as a locked screen:
-write `click X Y [right|double] [cmd|shift]` or `key CODE` (window points,
-origin top left) to `perf-input.txt` in the sandbox home, then
+write `click X Y [right|double] [cmd|shift]`, `key CODE` or
+`scroll DY COUNT` (window points, origin top left; the scroll is wheel
+events to the plan page) to `perf-input.txt` in the sandbox home, then
 `notifyutil -p com.example.mxuslides.perf.input`; the app posts the event
 into its own queue (`PerfHooks.postInput`, test builds only).
 `screencapture -l <window id>` still captures the window behind the lock.
@@ -143,7 +161,10 @@ To find what re-runs a view, `let _ = Self._printChanges()` in its body
 (with stdout line-buffered) names the property; remove it before
 committing. As of 0.38.3 a plan click's longest freeze is about 30-45 ms
 (was 75-86), a fire within an item about 3 tiles, into the next item
-about 1 grid (was every grid on the page).
+about 1 grid (was every grid on the page). As of 0.38.4, against 0.38.3
+interleaved on the same Mac: a pick's first pass 28 to 23 ms; frames over
+9 ms per click 3.4 to 1.2 and over 17 ms 1.6 to 0.9, the ones left all
+half a second after the click (the idle rows), none inside the glide.
 
 ## Periodic work
 
