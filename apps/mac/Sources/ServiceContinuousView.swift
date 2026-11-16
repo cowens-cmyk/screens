@@ -23,6 +23,9 @@ struct ServiceContinuousView: View {
     var onShowItem: ((String) -> Void)? = nil
 
     @State private var focus: PlanPageFocus
+    /// The caller's own selection object, when it has one: nothing to
+    /// mirror, and the caller doesn't re-run when the selection moves.
+    private let sharedFocus: PlanPageFocus?
 
     /// The page's coordinate spaces, for the views on it that measure
     /// themselves.
@@ -43,17 +46,33 @@ struct ServiceContinuousView: View {
         // The first selection is there before the page appears, so it opens
         // on the item without a glide.
         _focus = State(initialValue: PlanPageFocus(itemID: focusItemID))
+        sharedFocus = nil
+    }
+
+    init(
+        model: AppModel, render: RenderContext?, controls: ServiceControls?, serviceID: String,
+        focus: PlanPageFocus, focusScroll: Binding<PresentFocusScroll>, onShowItem: ((String) -> Void)? = nil
+    ) {
+        self.model = model
+        self.render = render
+        self.controls = controls
+        self.serviceID = serviceID
+        focusItemID = nil
+        _focusScroll = focusScroll
+        self.onShowItem = onShowItem
+        _focus = State(initialValue: focus)
+        sharedFocus = focus
     }
 
     var body: some View {
         ServiceContinuousPage(
             model: model, render: render, controls: controls, serviceID: serviceID,
-            focus: focus, focusScroll: $focusScroll, onShowItem: onShowItem)
+            focus: sharedFocus ?? focus, focusScroll: $focusScroll, onShowItem: onShowItem)
             // Rebuilt only for another plan or library; the parent re-running
             // (a fire, a selection) leaves it alone.
             .equatable()
             .onChange(of: focusItemID, initial: true) { _, id in
-                if focus.itemID != id { focus.itemID = id }
+                if sharedFocus == nil, focus.itemID != id { focus.itemID = id }
             }
     }
 }
@@ -70,7 +89,7 @@ final class PlanPageFocus {
 
 /// Runs `onChange` when the selection moves. A view of its own so that
 /// only it, not the page, depends on the selection.
-private struct PlanPageFocusFollow: View {
+struct PlanPageFocusFollow: View {
     let focus: PlanPageFocus
     let onChange: (String?) -> Void
 

@@ -31,7 +31,17 @@ struct PlanShell: View {
     /// View › Show Whole Plan: Present shows every item's slides on one
     /// scrolling page, in order; off, just the selected item's.
     @AppStorage(Self.wholePlanKey) private var showWholePlan = true
-    @State private var itemID: String?
+    /// The selected plan item, in an object of its own. As `@State` here
+    /// every pick re-ran this view, and with it the top bar, both panels
+    /// and every button and menu in the window (36 buttons and 13 menus a
+    /// click in Instruments), before the page had moved. The views that
+    /// show the selection read it; this one only sets it.
+    @State private var selection = PlanPageFocus()
+
+    private var itemID: String? {
+        get { selection.itemID }
+        nonmutating set { if selection.itemID != newValue { selection.itemID = newValue } }
+    }
 
     /// The plan panel's width, as the operator last dragged it.
     @AppStorage(ShellMetrics.planWidthKey) private var planWidthSetting: Double = ShellMetrics.planWidth
@@ -43,7 +53,12 @@ struct PlanShell: View {
     @State private var slidesAreaHeight: CGFloat?
     /// Whether the page has already scrolled to the selected item, so a
     /// selection that came from the page itself doesn't jump it.
-    @State private var presentFocusScroll = PresentFocusScroll()
+    @State private var focusScrollBox = PresentFocusScrollBox()
+
+    private var presentFocusScroll: PresentFocusScroll {
+        get { focusScrollBox.core }
+        nonmutating set { focusScrollBox.set(newValue) }
+    }
     /// The bottom bar's room, measured: what fits beside the control bar.
     @State private var bottomBarWidth: CGFloat = 0
     /// In full screen the window has no title bar for the top bar to sit in,
@@ -125,6 +140,7 @@ struct PlanShell: View {
     private var runOnly: Bool { layout?.runOnly ?? false }
 
     var body: some View {
+        let _ = BodyMeter.tick(.planShell)
         withSheets
             .animation(HopeMotion.ui(reduced: reduceMotion), value: model.currentServiceID)
             .onChange(of: model.currentServiceID) { _, _ in
@@ -141,7 +157,10 @@ struct PlanShell: View {
             // and Words & Chords belong to the item they were chosen on, and
             // don't follow into another item, another trip into Edit, or a
             // slide's Edit….
-            .onChange(of: itemID) { _, _ in resetEditorFace() }
+            .background(PlanPageFocusFollow(focus: selection) { _ in
+                resetEditorFace()
+                syncSidebar()
+            })
             .onChange(of: model.selectedEntryID) { _, _ in resetEditorFace() }
             .onChange(of: modeRaw) { _, _ in resetEditorFace() }
             .onChange(of: model.pendingEditorSlideID) { _, slideID in
@@ -346,7 +365,6 @@ struct PlanShell: View {
                 planBox.update { $0.dismissPeek() }
                 screensBox.update { $0.dismissPeek() }
             }
-            .onChange(of: itemID) { syncSidebar() }
             .onChange(of: model.selectedEntryID) { syncSidebar() }
             .onChange(of: planBox.isPinned) { _, pinned in planPinnedStored = pinned }
             .onChange(of: screensBox.isPinned) { _, pinned in screensPinnedStored = pinned }
@@ -483,21 +501,8 @@ struct PlanShell: View {
         model.currentServiceID.flatMap { model.resident.services.value($0) }
     }
 
-    /// The item the show is on, else the one chosen in the list.
-    private var currentItem: ServiceItem? {
-        guard let plan = currentPlan else { return nil }
-        if let live = controls?.liveContextID, let item = plan.items.first(where: { $0.id == live }) {
-            return item
-        }
-        return itemID.flatMap { id in plan.items.first { $0.id == id } }
-    }
-
-    private var planHandle: PlanBubbleLabel {
-        let item = currentItem
-        return PlanBubbleLabel(
-            planName: currentPlan?.name,
-            itemName: item.map { $0.name.isEmpty ? "Untitled" : $0.name },
-            kind: item.map { HopeStyle.kind(of: $0, presentation: $0.itemKind == .presentation ? model.presentation($0.refId) : nil) })
+    private var planHandle: PlanHandle {
+        PlanHandle(model: model, controls: controls, selection: selection)
     }
 
     /// The bubble when folded, the whole panel when peeking or docked: one
@@ -888,7 +893,7 @@ struct PlanShell: View {
                 .padding(.vertical, 4)
                 RunOrderList(
                     model: model, controls: controls, serviceID: planID, render: render,
-                    currentItem: RunOrderCurrentItem($itemID),
+                    currentItem: RunOrderCurrentItem(Bindable(selection).itemID),
                     // Clicking the item already selected scrolls back to it.
                     onReselect: { if wholePlanShown { presentFocusScroll.reselect() } },
                     planAdds: PlanAddActions(
@@ -923,8 +928,8 @@ struct PlanShell: View {
                         // No background of its own: the window's backdrop shows through.
                         ServiceContinuousView(
                             model: model, render: render, controls: controls,
-                            serviceID: planID, focusItemID: itemID,
-                            focusScroll: $presentFocusScroll,
+                            serviceID: planID, focus: selection,
+                            focusScroll: focusScrollBox.binding,
                             onShowItem: { showItem($0) })
                             // A new plan starts at its top.
                             .id(planID)
@@ -1879,5 +1884,50 @@ private extension View {
 private struct SideClip: Shape {
     func path(in rect: CGRect) -> Path {
         Path(CGRect(x: rect.minX, y: rect.minY - 10_000, width: rect.width, height: rect.height + 20_000))
+    }
+}
+
+
+/// The plan bubble's words: the plan, and the item the show is on, else the
+/// one chosen in the list. Reads the selection and the live item itself, so
+/// a pick or a fire redraws this and not the window.
+private struct PlanHandle: View {
+    let model: AppModel
+    let controls: ServiceControls?
+    let selection: PlanPageFocus
+
+    var body: some View {
+        let plan = model.currentServiceID.flatMap { model.resident.services.value($0) }
+        let item = plan.flatMap { plan in
+            controls?.liveContextID.flatMap { live in plan.items.first { $0.id == live } }
+                ?? selection.itemID.flatMap { id in plan.items.first { $0.id == id } }
+        }
+        PlanBubbleLabel(
+            planName: plan?.name,
+            itemName: item.map { $0.name.isEmpty ? "Untitled" : $0.name },
+            kind: item.map { HopeStyle.kind(of: $0, presentation: $0.itemKind == .presentation ? model.presentation($0.refId) : nil) })
+    }
+}
+
+/// Whether the page has already scrolled to the selected item, kept where
+/// changing it doesn't re-run the window: every pick marks the item it
+/// scrolled to. Only a reselect (a click on the item already selected) is
+/// observed, by the page's PlanPageReselectFollow.
+@MainActor @Observable final class PresentFocusScrollBox {
+    @ObservationIgnored private(set) var core = PresentFocusScroll()
+    private(set) var reselects = 0
+
+    func set(_ value: PresentFocusScroll) {
+        core = value
+        if reselects != value.reselects { reselects = value.reselects }
+    }
+
+    var binding: Binding<PresentFocusScroll> {
+        Binding(
+            get: { [self] in
+                _ = reselects
+                return core
+            },
+            set: { [self] in set($0) })
     }
 }
