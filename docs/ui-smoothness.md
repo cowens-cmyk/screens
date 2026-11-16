@@ -37,6 +37,36 @@ every item, so anything each item does per frame is multiplied by the plan.
   for every view it can see: on Nov 13 that was a quarter of the sampled
   freezes and one 130 s stretch at full load.
 
+## The plan list
+
+`RunOrderList` (ServicePlannerView.swift) builds every row, its menus and
+lighting positions in one body, so that body should run for plan edits, not
+clicks. Measured with `scripts/perf/present.sh`: a plan click ran it twice
+(44 rows) before, none now (the List itself still redraws its 22 rows when
+its selection moves).
+
+- **Equatable.** PlanShell re-runs on every click and hands the list new
+  closures; `.equatable()` compares the model, controls, render context and
+  plan only. The closures read PlanShell's live state when called.
+- **No `@Binding` for the current item.** A stored `@Binding` re-runs its view
+  whenever the value changes, read or not (SwiftUI's `_printChanges` showed
+  `_selectedItemID changed` per click). The list holds `RunOrderCurrentItem`,
+  a plain value; `RunOrderCurrentFollow` binds to it.
+- **Marks.** Selection, current item, drop target and row frames are in
+  `RunOrderMarks`. The body reads only `multi` (the selection while more than
+  one is in it). Row backgrounds, the live badge (`RunOrderLive`), the drop
+  ring and the highlight read what they show.
+- **Row frames** go to a `RowFrameStore`, observed only for the followed row;
+  the marquee asks for them at each press.
+- **One container per row**, header or item: a bare `if` at the top of a
+  lazy row makes SwiftUI run every row to learn its shape.
+
+The media bin keeps its hovered and previewing tile in `MediaBinHover`, read
+by the tiles: as `@State` on the bin each pointer move re-sorted the library.
+
+`RunOrderList` and `MediaLibraryView` tick the body meter (`perf.mark`,
+`perf.bodyStorm`).
+
 ## Periodic work
 
 - A progress bar or countdown ticks in a `TimelineView` around only what

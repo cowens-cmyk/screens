@@ -14,10 +14,9 @@ enum MeteredView: Int, CaseIterable {
     case slideGridBody
     case slideTile
     case slideThumbnail
-    // The plan list and its rows: rows in the hundreds a second say the
-    // list rebuilt them all for one change.
+    // The plan list (a pass builds every row) and the media bin (a pass
+    // sorts and filters the whole library).
     case runOrderList
-    case runOrderRow
     case mediaBin
 
     var name: String {
@@ -32,7 +31,6 @@ enum MeteredView: Int, CaseIterable {
         case .slideTile: "SlideTile"
         case .slideThumbnail: "SlideThumbnailView"
         case .runOrderList: "RunOrderList"
-        case .runOrderRow: "RunOrderRow"
         case .mediaBin: "MediaLibraryView"
         }
     }
@@ -45,7 +43,6 @@ enum MeteredView: Int, CaseIterable {
         case .slideGridBody: 120
         case .slideTile, .slideThumbnail: 1500
         case .runOrderList, .mediaBin: 20
-        case .runOrderRow: 600
         }
     }
 }

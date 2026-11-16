@@ -80,6 +80,9 @@ struct RunOrderList: View, Equatable {
             && a.serviceID == b.serviceID && (a.planAdds == nil) == (b.planAdds == nil)
     }
 
+    /// Each row's frame, for clicks and the marquee (not observed).
+    private var rowFrames: [String: CGRect] { marks.frames.frames }
+
     private var selectedItemID: String? {
         get { currentItem.binding.wrappedValue }
         nonmutating set { currentItem.binding.wrappedValue = newValue }
@@ -306,7 +309,7 @@ struct RunOrderList: View, Equatable {
     private func rowPressed(
         _ point: CGPoint, _ modifiers: NSEvent.ModifierFlags, visible: [ServiceItem]
     ) -> (() -> Void)? {
-        let id = marks.frames.frames.first { $0.value.contains(point) }?.key
+        let id = rowFrames.first { $0.value.contains(point) }?.key
         let reselect = id.map {
             RunOrderSelection.isReselect(
                 pressed: $0, current: selectedItemID, command: modifiers.contains(.command),
@@ -332,7 +335,7 @@ struct RunOrderList: View, Equatable {
     private func headerCueClick(
         _ point: CGPoint, _ modifiers: NSEvent.ModifierFlags, visible: [ServiceItem]
     ) -> (() -> Void)? {
-        guard let hit = marks.frames.frames.first(where: { $0.value.contains(point) }),
+        guard let hit = rowFrames.first(where: { $0.value.contains(point) }),
               let header = visible.first(where: { $0.id == hit.key }),
               RunOrderSelection.isHeaderCueClick(
                   pressed: header, presenting: runOnly || appModeRaw == AppMode.present.rawValue,
@@ -347,7 +350,7 @@ struct RunOrderList: View, Equatable {
 
     private func marqueeChanged(_ band: CGRect) {
         marqueeRect = band
-        marks.selection = RunOrderSelection.swept(frames: marks.frames.frames, band: band, keeping: marqueeBase)
+        marks.selection = RunOrderSelection.swept(frames: rowFrames, band: band, keeping: marqueeBase)
     }
 
     private func marqueeEnded() {
@@ -409,7 +412,6 @@ struct RunOrderList: View, Equatable {
     }
 
     private func headerRow(_ item: ServiceItem, order: [String], service: Service) -> some View {
-        let _ = BodyMeter.tick(.runOrderRow)
         let collapsed = collapsedHeaders.contains(item.id)
         return HStack(spacing: 6) {
             Button {
@@ -512,8 +514,7 @@ struct RunOrderList: View, Equatable {
         _ item: ServiceItem, order: [String], changed: Bool,
         position: ServicePosition? = nil, service: Service? = nil
     ) -> some View {
-        let _ = BodyMeter.tick(.runOrderRow)
-        return HStack(spacing: 8) {
+        HStack(spacing: 8) {
             // An item's color, like a header's, shows as a stripe at its edge.
             if let tint = item.colorHex.flatMap(ColorHex.color) {
                 Capsule()
