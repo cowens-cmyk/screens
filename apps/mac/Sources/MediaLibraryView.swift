@@ -79,8 +79,8 @@ struct MediaLibraryView: View {
     @Environment(\.runOnly) private var runOnly
     @Environment(\.openWindow) private var openWindow
 
-    @AppStorage("mediaLibrary.category") private var shownRaw = Shown.all.rawValue
-    @AppStorage("mediaLibrary.tileWidth") private var tileWidth = 180.0
+    @HotDefault("mediaLibrary.category") private var shownRaw = Shown.all.rawValue
+    @HotDefault("mediaLibrary.tileWidth") private var tileWidth = 180.0
 
     @State private var searchText = ""
     @State private var selectedID: String?

@@ -26,7 +26,7 @@ enum AssistantPreferences {
 /// shares, the Assistant's model, and sermon import.
 struct AssistantSettingsPane: View {
     let model: AppModel?
-    @AppStorage(AssistantModel.defaultsKey) private var modelRaw = AssistantModel.opus.rawValue
+    @HotDefault(AssistantModel.defaultsKey) private var modelRaw = AssistantModel.opus.rawValue
 
     var body: some View {
         Form {

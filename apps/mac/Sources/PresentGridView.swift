@@ -16,10 +16,10 @@ struct PresentGridView: View {
     var serviceID: String? = nil
     var serviceItem: ServiceItem? = nil
 
-    @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
-    @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
+    @HotDefault("slideGrid.roundedCorners") private var roundedCorners = true
+    @HotDefault("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
+    @HotDefault("slideGrid.legibleText") private var legibleText = false
+    @HotDefault(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
     @FocusState private var focused: Bool
 
     @State private var deleteRequests = 0
@@ -2421,7 +2421,7 @@ struct SlideThumbnailView: View {
 
     var contentStamp: String? = nil
 
-    @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
+    @HotDefault("slideGrid.transparencyGrid") private var transparencyGrid = true
 
     /// The deck's listed stamp, read through the deck's own signal
     /// (AppModel.deckStamp) rather than entry(), which watches the whole

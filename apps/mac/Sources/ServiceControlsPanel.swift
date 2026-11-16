@@ -7,10 +7,10 @@ struct ServiceControlsPanel: View {
     let controls: ServiceControls?
     let layout: PresentLayoutController?
 
-    @AppStorage("serviceControls.module") private var moduleRaw = ServiceControlsModule.timers.rawValue
+    @HotDefault("serviceControls.module") private var moduleRaw = ServiceControlsModule.timers.rawValue
 
-    @AppStorage("serviceControls.moduleOrder") private var moduleOrderRaw = ""
-    @AppStorage("serviceControls.hiddenModules") private var hiddenModulesRaw = ""
+    @HotDefault("serviceControls.moduleOrder") private var moduleOrderRaw = ""
+    @HotDefault("serviceControls.hiddenModules") private var hiddenModulesRaw = ""
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.runOnly) private var runOnly

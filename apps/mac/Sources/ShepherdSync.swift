@@ -318,7 +318,7 @@ final class ShepherdSync {
 /// Settings › Integrations › Shepherd.
 struct ShepherdSettingsForm: View {
     @Bindable private var sync = ShepherdSync.shared
-    @AppStorage(LyricImportSettings.removePunctuationKey) private var removePunctuation = true
+    @HotDefault(LyricImportSettings.removePunctuationKey) private var removePunctuation = true
 
     var body: some View {
         Section {

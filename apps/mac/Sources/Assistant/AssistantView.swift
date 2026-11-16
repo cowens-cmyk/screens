@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 struct AssistantView: View {
     let session: AssistantSession
 
-    @AppStorage(AssistantModel.defaultsKey) private var modelRaw = AssistantModel.opus.rawValue
+    @HotDefault(AssistantModel.defaultsKey) private var modelRaw = AssistantModel.opus.rawValue
     @State private var draft = ""
     @State private var picking: Picking?
     @State private var askingSong = false

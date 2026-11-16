@@ -116,7 +116,7 @@ enum RunOnlyPINCopy {
 struct RunOnlyLockedPlaceholder: View {
     let surface: String
 
-    @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
+    @HotDefault("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
 
     var body: some View {
         VStack(spacing: 8) {

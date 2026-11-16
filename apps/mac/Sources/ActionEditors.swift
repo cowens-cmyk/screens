@@ -154,7 +154,7 @@ struct ActionParameterFields: View {
     @Environment(\.actionRouter) private var router
     @Environment(\.confidenceMonitor) private var confidenceMonitor
 
-    @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
+    @HotDefault("appMode") private var appModeRaw = AppMode.edit.rawValue
 
     var body: some View {
         parameters(action)

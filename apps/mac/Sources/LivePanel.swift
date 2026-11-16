@@ -15,7 +15,7 @@ struct LivePanel: View {
     @Environment(\.confidenceMonitor) private var confidenceMonitor
     @State private var previewHovering = false
 
-    @AppStorage("preview.screenTarget") private var previewTarget = ""
+    @HotDefault("preview.screenTarget") private var previewTarget = ""
 
     var body: some View {
 

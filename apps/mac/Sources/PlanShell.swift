@@ -17,20 +17,20 @@ struct PlanShell: View {
     let controls: ServiceControls?
     let layout: PresentLayoutController?
 
-    @AppStorage("appMode") private var modeRaw = AppMode.present.rawValue
-    @AppStorage(MediaDrawer.openKey) private var mediaBinOpen = false
-    @AppStorage(ShellPanel.Side.plans.defaultsKey) private var planPinnedStored = ShellPanel.Side.plans.pinnedByDefault
-    @AppStorage(ShellPanel.Side.screens.defaultsKey) private var screensPinnedStored = ShellPanel.Side.screens.pinnedByDefault
+    @HotDefault("appMode") private var modeRaw = AppMode.present.rawValue
+    @HotDefault(MediaDrawer.openKey) private var mediaBinOpen = false
+    @HotDefault(ShellPanel.Side.plans.defaultsKey) private var planPinnedStored = ShellPanel.Side.plans.pinnedByDefault
+    @HotDefault(ShellPanel.Side.screens.defaultsKey) private var screensPinnedStored = ShellPanel.Side.screens.pinnedByDefault
     /// The panels' states. The window reads only whether each is pinned;
     /// the pointer coming and going redraws the panel alone.
     @State private var planBox = ShellPanelBox(.plans)
     @State private var screensBox = ShellPanelBox(.screens)
     /// The screens hidden from the column (its eye menu); the strip leaves them out too.
-    @AppStorage("monitors.hidden") private var hiddenScreens = ""
-    @AppStorage("shell.topPane") private var topPane = TopPane.plans
+    @HotDefault("monitors.hidden") private var hiddenScreens = ""
+    @HotDefault("shell.topPane") private var topPane = TopPane.plans
     /// View › Show Whole Plan: Present shows every item's slides on one
     /// scrolling page, in order; off, just the selected item's.
-    @AppStorage(Self.wholePlanKey) private var showWholePlan = true
+    @HotDefault(Self.wholePlanKey) private var showWholePlan = true
     /// The selected plan item, in an object of its own. As `@State` here
     /// every pick re-ran this view, and with it the top bar, both panels
     /// and every button and menu in the window (36 buttons and 13 menus a
@@ -44,7 +44,7 @@ struct PlanShell: View {
     }
 
     /// The plan panel's width, as the operator last dragged it.
-    @AppStorage(ShellMetrics.planWidthKey) private var planWidthSetting: Double = ShellMetrics.planWidth
+    @HotDefault(ShellMetrics.planWidthKey) private var planWidthSetting: Double = ShellMetrics.planWidth
 
     private var planWidth: CGFloat {
         min(max(planWidthSetting, ShellMetrics.planWidthRange.lowerBound), ShellMetrics.planWidthRange.upperBound)
@@ -1825,7 +1825,7 @@ private struct MicrophoneAccessBanner: View {
 /// default, fits the slides to the page's width; dragging picks a size, and
 /// clicking Auto goes back to fitting.
 private struct SlideSizeControl: View {
-    @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
+    @HotDefault(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
     /// With its chip's padding; the control bar is centred against it.
     static let width: CGFloat = 214
 

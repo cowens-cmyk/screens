@@ -37,7 +37,7 @@ import Testing
         let focus = try #require(surface.range(of: "\"present.focus\", detail: \"scroll"))
         #expect(surface[focus.upperBound...].prefix(200).contains("InputTrailRecorder.shared.noteFocusScroll()"),
                 "a run-order jump is not an unprompted move")
-        #expect(surface[focus.upperBound...].prefix(400).contains("PresentCardFrames.shared.reportLanding("),
+        #expect(surface[focus.upperBound...].prefix(800).contains("PresentCardFrames.shared.reportLanding("),
                 "every jump says which card it landed on")
     }
 
@@ -116,7 +116,7 @@ import Testing
         #expect(recorder.contains("PresentHold.correction(heldTop: hold.top, nowTop: now.minY)"))
         #expect(recorder.contains("\"present.hold\""), "a hold says which card changed")
         let focus = try #require(surface.range(of: "\"present.focus\", detail: \"scroll"))
-        #expect(surface[focus.upperBound...].prefix(400).contains("PresentCardFrames.shared.holdCard(target)"),
+        #expect(surface[focus.upperBound...].prefix(800).contains("PresentCardFrames.shared.holdCard(target)"),
                 "a run-order jump holds the card it jumped to")
     }
 
@@ -167,6 +167,51 @@ import Testing
         #expect(page.contains("final class PlanPageScroll"))
         #expect(!page.contains(".onChange(of: focusScroll.reselects) {\n"), "read in PlanPageReselectFollow only")
         #expect(!page.contains("proxy.scrollTo(Self.anchor(for: target"), "a ScrollViewReader only moved when the page re-ran")
+    }
+
+    /// A glide builds the rows it lands on, one row a frame across the page,
+    /// and a row coming in makes only its own tiles. Measured with Time
+    /// Profiler over scripts/perf/present.sh: three or four rows made in one
+    /// frame was the 20-50 ms stutter in the middle of a glide.
+    @Test func aGlideBuildsWhereItLandsARowAtATime() throws {
+        let page = try page()
+        #expect(page.contains("PresentCardFrames.shared.beginGlide(to: target, duration: Self.jumpSeconds)"))
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/PresentGridView.swift")
+        let grid = try String(contentsOf: url, encoding: .utf8)
+        #expect(grid.contains("if let landing = PageGlide.shared.landingTop {"))
+        #expect(grid.contains("RowBuildPacer.shared.take()"), "one row a frame for the whole page")
+        #expect(grid.contains("GridRowSwitch(flag: rowQueue.flag("), "a row reads its own flag")
+        #expect(!grid.contains("@State private var builtRows"), "a set in the grid's state re-ran every built tile")
+    }
+
+    /// `@AppStorage` re-runs its view on any UserDefaults write, whatever
+    /// the key; `@HotDefault` only for its own. No view holds an
+    /// `@AppStorage`.
+    @Test func noViewHoldsAnAppStorage() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        var misses: [String] = []
+        let files = FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil)
+        while let file = files?.nextObject() as? URL {
+            guard file.pathExtension == "swift",
+                  let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
+            var owner = ""
+            for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+                if line.hasPrefix("struct ") || line.hasPrefix("private struct ") || line.hasPrefix("fileprivate struct ") {
+                    owner = String(line)
+                }
+                let code = line.trimmingCharacters(in: .whitespaces)
+                if code.hasPrefix("@AppStorage("), !owner.contains("Commands") {
+                    misses.append("\(file.lastPathComponent):\(index + 1)")
+                }
+            }
+        }
+        #expect(misses.isEmpty, "use @HotDefault: \(misses)")
     }
 
     /// A pick must not re-run the plan list's body (every row and menu):

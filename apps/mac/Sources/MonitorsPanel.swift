@@ -35,7 +35,7 @@ struct MonitorsPanel: View {
 
     /// Screens hidden from this column, by target id ("" separated by
     /// newlines). Kept per Mac: it's only about this window.
-    @AppStorage("monitors.hidden") private var hiddenList = ""
+    @HotDefault("monitors.hidden") private var hiddenList = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The column's width, measured outside the scroll view: previews get an
@@ -483,7 +483,7 @@ struct ShowControlsPanel: View {
     let controls: ServiceControls
 
     enum Tab: String, CaseIterable { case timers = "Timers", macros = "Macros", sermon = "Sermon" }
-    @AppStorage("show.controlsTab") private var tab: Tab = .timers
+    @HotDefault("show.controlsTab") private var tab: Tab = .timers
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {

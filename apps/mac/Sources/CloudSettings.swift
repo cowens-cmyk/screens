@@ -7,9 +7,9 @@ struct CloudSettingsForm: View {
     @State private var code = ""
     @State private var name = Host.current().localizedName ?? "This Mac"
     @State private var confirmingUnlink = false
-    @AppStorage(PhoneRemoteController.enabledKey) private var phoneRemote = true
-    @AppStorage(ClaudeRelay.enabledKey) private var claude = false
-    @AppStorage(ServiceStation.runsServiceKey) private var runsHere = false
+    @HotDefault(PhoneRemoteController.enabledKey) private var phoneRemote = true
+    @HotDefault(ClaudeRelay.enabledKey) private var claude = false
+    @HotDefault(ServiceStation.runsServiceKey) private var runsHere = false
 
     var body: some View {
         Form {

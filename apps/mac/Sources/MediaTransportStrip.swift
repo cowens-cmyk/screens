@@ -6,7 +6,7 @@ struct MediaTransportStrip: View {
 
     var floating = false
 
-    @AppStorage("transport.skipToEndOffset") private var skipToEndOffset = 30
+    @HotDefault("transport.skipToEndOffset") private var skipToEndOffset = 30
 
     @State private var nameHovering = false
 

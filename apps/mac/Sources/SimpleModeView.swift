@@ -151,7 +151,7 @@ private struct SimpleScreensBand: View {
     /// back to running the show.
     let keysBack: () -> Void
 
-    @AppStorage("monitors.hidden") private var hiddenScreens = ""
+    @HotDefault("monitors.hidden") private var hiddenScreens = ""
     @State private var width: CGFloat = 0
 
     private static let controlsWidth: CGFloat = 280

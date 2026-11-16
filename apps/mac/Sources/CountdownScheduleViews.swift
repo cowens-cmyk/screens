@@ -8,7 +8,7 @@ struct CountdownsCard: View {
     let scheduler: SchedulerController?
 
     @State private var editing = false
-    @AppStorage(ServiceStation.runsServiceKey) private var runsHere = false
+    @HotDefault(ServiceStation.runsServiceKey) private var runsHere = false
 
     private var today: String { ScheduleMath.localDayString(Date(), calendar: .current) }
     private var setup: WeeklyCountdown.Setup? {

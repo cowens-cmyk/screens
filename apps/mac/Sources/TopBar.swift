@@ -225,7 +225,7 @@ struct ScreenStatusCell: View {
 /// microphone. A red plate while it's on.
 struct TopBarListenCell: View {
     @Bindable private var assist = LiveAssist.shared
-    @AppStorage("show.controlsTab") private var tab: ShowControlsPanel.Tab = .timers
+    @HotDefault("show.controlsTab") private var tab: ShowControlsPanel.Tab = .timers
     @State private var inputs: [(uid: String, name: String, channels: Int)] = []
 
     private var on: Bool { assist.listening && assist.mode == .sermon }
@@ -521,7 +521,7 @@ struct TopBarActions {
 /// Clear, and the screens' lights. Everything else (Start Time, songs,
 /// points, the sermon notes, the stage display) is in More.
 struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
-    @AppStorage(MediaDrawer.openKey) private var mediaBinOpen = false
+    @HotDefault(MediaDrawer.openKey) private var mediaBinOpen = false
     let fit: TopBarFit
     /// The window's title bar height, so the bar is centred on the traffic lights.
     let height: CGFloat

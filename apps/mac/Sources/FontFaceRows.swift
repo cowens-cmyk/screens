@@ -60,7 +60,7 @@ private struct FontFamilyPicker: View {
     let resolved: FontCatalog.Resolved
     @Binding var selection: String
 
-    @AppStorage(FontCatalog.recentsKey) private var recentsRaw = ""
+    @HotDefault(FontCatalog.recentsKey) private var recentsRaw = ""
     @State private var open = false
     @State private var query = ""
     @FocusState private var searchFocused: Bool
