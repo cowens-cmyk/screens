@@ -486,6 +486,20 @@ struct SlideGridBody: View {
             width: measuredWidth, across: slidesAcross, aspect: SlideGridMetrics.tileAspect(for: presentation))
     }
 
+    @ViewBuilder
+    private func tiles(aspect: CGFloat, cell: CGSize?) -> some View {
+        if buildsRowsNearView {
+            tileRows(aspect: aspect, cell: cell)
+        } else {
+            LazyVGrid(columns: SlideGridMetrics.columns(across: slidesAcross, cellWidth: cell?.width), alignment: .leading, spacing: SlideGridMetrics.spacing) {
+                ForEach(Array(slides.enumerated()), id: \.offset) { index, slide in
+                    gridTile(index: index, slide: slide, aspect: aspect)
+                        .frame(width: cell?.width, height: cell?.height, alignment: .top)
+                }
+            }
+        }
+    }
+
     private func tileRows(aspect: CGFloat, cell: CGSize?) -> some View {
         let across = SlidesAcross.clamped(slidesAcross)
         return VStack(alignment: .leading, spacing: SlideGridMetrics.spacing) {
@@ -621,18 +635,18 @@ struct SlideGridBody: View {
 
     @State private var pendingEdit: PendingSectionEdit?
 
-    @State private var dropTargetIndex: Int?
+    /// Where a drop would land: a line before or after a tile, or a ring
+    /// on it. Watched by the one layer that draws it and not by the grid,
+    /// so a drag across the tiles doesn't re-run the grid for each one it
+    /// passes.
+    @State private var dropMarks = GridDropMarks()
 
-    @State private var dropTargetAfterIndex: Int?
+    /// The tile a right-click was over, for the grid's one menu.
+    @State private var menuPress = SlideGridMenuPress()
     @State private var renamingSlide: Slide?
     @State private var renameText = ""
 
     @State private var quickEditSlide: Slide?
-
-    @State private var backgroundDropIndex: Int?
-
-    /// Where a drop in the space around the tiles would land.
-    @State private var gapDropTarget: SlideDropPlacement.Target?
 
     @State private var mediaActionTarget: MediaActionTarget?
 
@@ -643,8 +657,6 @@ struct SlideGridBody: View {
     @State private var livestreamPrompt: LivestreamPromptRequest?
 
     @State private var autoAdvanceTarget: AutoAdvanceTarget?
-
-    @State private var dropSettleUntil = Date.distantPast
 
     @State private var selectedOccurrences: Set<Int> = []
 
@@ -742,16 +754,14 @@ struct SlideGridBody: View {
             let cell = self.cell
             if presentation.slides.isEmpty {
                 emptyDeckArea(aspect: aspect, cell: cell)
-            } else if buildsRowsNearView {
-                tileRows(aspect: aspect, cell: cell)
             } else {
-                LazyVGrid(columns: SlideGridMetrics.columns(across: slidesAcross, cellWidth: cell?.width), alignment: .leading, spacing: SlideGridMetrics.spacing) {
-                    ForEach(Array(slides.enumerated()), id: \.offset) { index, slide in
-                        gridTile(index: index, slide: slide, aspect: aspect)
-                            .frame(width: cell?.width, height: cell?.height, alignment: .top)
-                    }
-                }
+                tiles(aspect: aspect, cell: cell)
+                    // One menu for every tile, built for the tile the
+                    // right-click was over (SlideGridMenuPress). None in
+                    // run-only (tileMenu checks too, as it always has).
+                    .contextMenu { if !runOnly { GridMenuContent(grid: self, press: menuPress) } }
             }
+            GridDropMarkLayer(marks: dropMarks) { tileFrames[$0] }
             if let rect = marqueeRect {
                 Rectangle()
                     .fill(Color.accentColor.opacity(0.12))
@@ -765,21 +775,31 @@ struct SlideGridBody: View {
             }
         }
         .coordinateSpace(name: "slideGrid")
+        .background {
+            if !runOnly {
+                SlideGridAnchor(press: menuPress) { point in
+                    SlideDropPlacement.tile(at: point, among: tileFrames)?.index
+                }
+            }
+        }
         .modifier(PageMarqueeFollow(
             pageMarquee: pageMarquee, contextID: contextID, onBox: selectUnder, onOtherOwner: clearSelection))
 
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
-        // The gaps between tiles, under a row and past the last slide take
-        // pictures, videos and slides too; the tiles' own drops come first.
-        // The grid sits at this frame's top left, so a drop's point is in the
-        // tiles' own space.
-        .onDrop(of: [.plainText, .fileURL], delegate: GridGapDropDelegate(
+        // The grid's one drop target: its tiles, and the gaps between
+        // them, under a row and past the last slide (SlideGridDropDelegate).
+        // The grid sits at this frame's top left, so a drop's point is in
+        // the tiles' own space.
+        .onDrop(of: [.plainText, .fileURL], delegate: SlideGridDropDelegate(
             enabled: !runOnly && !slides.isEmpty,
-            target: { SlideDropPlacement.target(among: tileFrames, at: $0) },
-            accepts: { gapAccepts($0) },
-            show: { place in if gapDropTarget != place { gapDropTarget = place } },
-            performText: { payload, place in !runOnly && dropText(payload, at: place) },
-            performFiles: { urls, place in if !runOnly { insertMediaFiles(urls, at: place) } }
+            tile: { SlideDropPlacement.tile(at: $0, among: tileFrames) },
+            gap: { SlideDropPlacement.target(among: tileFrames, at: $0) },
+            gapAccepts: { gapAccepts($0) },
+            goesBeside: { model.media($0) != nil },
+            show: { dropMarks.show($0) },
+            dropStarted: { dropMarks.settle() },
+            performOnTile: { hit, place, payload in dropOnTile(hit, at: place, payload) },
+            performInGap: { place, payload in dropInGap(place, payload) }
         ))
         // Where the grid is, worked out as the page moves but acted on only
         // when something that matters changes: which rows are near the
@@ -1510,10 +1530,6 @@ struct SlideGridBody: View {
                 blank: { insertNewSlide(.blank, after: slide) }
             ))
 
-            .id("tileMenu|\(slide.id)|\(cueMediaIDs(of: slide).contains { model.media($0) == nil })|\(missingMedia(of: slide).isEmpty)")
-            // No menu in run-only (tileMenu checks too, as it always has).
-            .contextMenu { if !runOnly { TileMenuContent(grid: self, index: index, slide: slide) } }
-
             .id(Self.tileAnchor(contextID: contextID, index: index))
     }
 
@@ -1539,86 +1555,62 @@ struct SlideGridBody: View {
         .modifier(TileFrameReport(box: cell == nil ? tileFrameBox : nil, index: index))
         .draggablePayload(runOnly ? nil : SlideBulkEdit.slideDragPayload(
             presentationID: presentation.id, slideID: slide.id))
+        // The drag source stays on the tile. It is also what lets a click
+        // on a slide fire while another app is in front: with a drag source
+        // under the pointer SwiftUI takes the first click in a window that
+        // isn't active, and without one that click only brings the window
+        // forward. The drop target and the right-click menu are the grid's
+        // (SlideGridDropDelegate, SlideGridMenuPress).
+    }
 
-        .onDrop(of: [.plainText, .fileURL], delegate: GutterDropDelegate(
-            enabled: !runOnly,
-            dropStarted: {
-
-                dropSettleUntil = Date().addingTimeInterval(0.6)
-                dropTargetIndex = nil
-                dropTargetAfterIndex = nil
-                backgroundDropIndex = nil
-            },
-            setLine: { on in
-                if on {
-                    guard Date() >= dropSettleUntil else { return }
-                    dropTargetIndex = index
-                } else if dropTargetIndex == index {
-                    dropTargetIndex = nil
-                }
-            },
-            setRing: { on in
-                if on {
-                    guard Date() >= dropSettleUntil else { return }
-                    backgroundDropIndex = index
-                } else if backgroundDropIndex == index {
-                    backgroundDropIndex = nil
-                }
-            },
-            performText: { payload, insertZone in
-                handleTileText(payload, index: index, slide: slide, insertZone: insertZone)
-            },
-            performFiles: { urls, insertZone in
-                handleTileFiles(urls, index: index, slide: slide, insertZone: insertZone)
-            },
-            tileWidth: { cell?.width ?? tileFrameBox.frames[index]?.width ?? 0 },
-            setLineAfter: { on in
-                if on {
-                    guard Date() >= dropSettleUntil else { return }
-                    dropTargetAfterIndex = index
-                } else if dropTargetAfterIndex == index {
-                    dropTargetAfterIndex = nil
-                }
-            },
-            performTextAfter: { payload in
-                dropTargetIndex = nil
-                dropTargetAfterIndex = nil
-                backgroundDropIndex = nil
-                return !runOnly && dropSlide(payload, after: slide)
-            },
-            mediaAfter: { payload in
-                dropTargetAfterIndex = nil
-                return !runOnly && dropText(payload, at: .after(index))
-            },
-            filesAfter: { urls in
-                dropTargetAfterIndex = nil
-                if !runOnly { insertMediaFiles(urls, at: .after(index)) }
-            },
-            goesBeside: { model.media($0) != nil }
-        ))
-        // One overlay for the three drop marks: each modifier on a tile is
-        // made again for every tile of every row built.
-        .overlay {
-            TileDropMarks(
-                before: dropTargetIndex == index || gapDropTarget == .before(index),
-                after: dropTargetAfterIndex == index || gapDropTarget == .after(index),
-                onto: backgroundDropIndex == index)
+    /// A drop on a tile: the grid's drop target found the tile and the
+    /// place on it.
+    private func dropOnTile(
+        _ hit: SlideDropPlacement.TileHit, at place: SlideDropPlacement.Target, _ payload: DraggedPayload
+    ) -> Bool {
+        dropMarks.clear()
+        guard !runOnly, slides.indices.contains(hit.index) else { return false }
+        let index = hit.index
+        let slide = slides[index]
+        if let text = payload.text, GutterDropDelegate.forcesInsert(payload: text) {
+            // A slide dragged here goes after the tile from its far half,
+            // before it from its near half.
+            if place == .after(index) { return dropSlide(text, after: slide) }
+            return handleTileText(text, index: index, slide: slide, insertZone: hit.x < SlideDropPlacement.minimumEdge)
         }
+        if place == .after(index) {
+            if !payload.files.isEmpty {
+                insertMediaFiles(payload.files, at: .after(index))
+                return true
+            }
+            return payload.text.map { dropText($0, at: .after(index)) } ?? false
+        }
+        let beside = place == .before(index)
+        if !payload.files.isEmpty {
+            handleTileFiles(payload.files, index: index, slide: slide, insertZone: beside)
+            return true
+        }
+        return payload.text.map { handleTileText($0, index: index, slide: slide, insertZone: beside) } ?? false
+    }
+
+    /// A drop in the space around the tiles.
+    private func dropInGap(_ place: SlideDropPlacement.Target, _ payload: DraggedPayload) -> Bool {
+        dropMarks.clear()
+        guard !runOnly else { return false }
+        if !payload.files.isEmpty {
+            insertMediaFiles(payload.files, at: place)
+            return true
+        }
+        return payload.text.map { dropText($0, at: place) } ?? false
     }
 
     private func handleTileText(
         _ payload: String, index: Int, slide: Slide, insertZone: Bool
     ) -> Bool {
 
-        dropTargetIndex = nil
-        dropTargetAfterIndex = nil
-        backgroundDropIndex = nil
+        dropMarks.clear()
         defer {
-            Task { @MainActor in
-                dropTargetIndex = nil
-                dropTargetAfterIndex = nil
-                backgroundDropIndex = nil
-            }
+            Task { @MainActor in dropMarks.clear() }
         }
         guard !runOnly else { return false }
         if payload.hasPrefix("mxuslide::") {
@@ -1703,8 +1695,7 @@ struct SlideGridBody: View {
     }
 
     private func handleTileFiles(_ urls: [URL], index: Int, slide: Slide, insertZone: Bool) {
-        dropTargetIndex = nil
-        backgroundDropIndex = nil
+        dropMarks.clear()
         guard !runOnly, !urls.isEmpty else { return }
         if insertZone {
             insertMediaFiles(urls, at: .before(index))
@@ -3018,23 +3009,26 @@ struct FollowSuggestionOutline: View {
     }
 }
 
-/// A slide tile's right-click menu, built when the menu is opened. Written
-/// inline in `.contextMenu { … }`, SwiftUI calls that closure every time the
-/// tile updates, so every tile built its whole menu (screens, layouts,
-/// livestream designs, themes, actions) on every pass of the plan page:
-/// a tenth of the booth's tile-body time. Inside a view of its own, the
-/// closure only makes this small value and the menu's items are built from
-/// its body when the menu is shown. A probe (a SwiftUI host updating 20
-/// tiles 6 times) counted 120 calls of an inline menu closure and 0
-/// evaluations of a menu view's body. The items are the same code,
-/// SlideGridBody.tileMenu, so they match today's one for one.
-private struct TileMenuContent: View {
+/// A slide grid's right-click menu, built when it is opened, for the tile
+/// the click was over (SlideGridMenuPress). Written inline in
+/// `.contextMenu { … }`, SwiftUI calls that closure every time the view
+/// updates and built the whole menu (screens, layouts, livestream designs,
+/// themes, actions) on every pass: a tenth of the booth's tile-body time
+/// when each tile had its own. Inside a view of its own, the closure only
+/// makes this small value and the items are built from its body when the
+/// menu is shown. The items are SlideGridBody.tileMenu, as they always were.
+private struct GridMenuContent: View {
     let grid: SlideGridBody
-    let index: Int
-    let slide: Slide
+    let press: SlideGridMenuPress
 
     var body: some View {
-        grid.tileMenu(index: index, slide: slide)
+        if let index = press.tile(), grid.slides.indices.contains(index) {
+            #if DEBUG || MXU_PERF_HOOKS
+            let _ = DiagnosticsStore.shared.note(
+                "perf.menu.built", detail: "\(grid.contextID) tile \(index) \(grid.slides[index].id)")
+            #endif
+            grid.tileMenu(index: index, slide: grid.slides[index])
+        }
     }
 }
 
@@ -3434,6 +3428,50 @@ enum TileStepCache {
     }
 }
 
+
+/// Where a drop on a slide grid would land (SlideGridBody.dropMarks).
+@MainActor
+@Observable
+final class GridDropMarks {
+    private(set) var target: SlideDropPlacement.Target?
+    /// After a drop the grid moves under the pointer and the drag's last
+    /// updates can still arrive: no mark is shown for them.
+    @ObservationIgnored private var settleUntil = Date.distantPast
+
+    func show(_ target: SlideDropPlacement.Target?) {
+        if target != nil, Date() < settleUntil { return }
+        if self.target != target { self.target = target }
+    }
+
+    func clear() {
+        if target != nil { target = nil }
+    }
+
+    func settle() {
+        settleUntil = Date().addingTimeInterval(0.6)
+        clear()
+    }
+}
+
+/// The grid's drop mark, drawn over the tile it is for. One layer for the
+/// grid: an overlay on each tile was one more thing made for every tile of
+/// every row built.
+private struct GridDropMarkLayer: View {
+    let marks: GridDropMarks
+    let frame: (Int) -> CGRect?
+
+    var body: some View {
+        if let target = marks.target, let frame = frame(target.index) {
+            TileDropMarks(
+                before: target == .before(target.index),
+                after: target == .after(target.index),
+                onto: target == .onto(target.index))
+                .frame(width: frame.width, height: frame.height)
+                .offset(x: frame.minX, y: frame.minY)
+                .allowsHitTesting(false)
+        }
+    }
+}
 
 /// Where a dragged slide or picture would land on a tile: a line before or
 /// after it, or a ring for onto it.

@@ -12,6 +12,13 @@ public enum SlideDropPlacement {
         case before(Int)
         case onto(Int)
         case after(Int)
+
+        /// The tile the place is named by.
+        public var index: Int {
+            switch self {
+            case .before(let index), .onto(let index), .after(let index): index
+            }
+        }
     }
 
     /// The narrowest edge that counts as "beside" a tile: the strip the grid
@@ -31,6 +38,54 @@ public enum SlideDropPlacement {
         if x < edge { return .before(index) }
         if x > width - edge { return .after(index) }
         return .onto(index)
+    }
+
+    /// What is being dragged, as far as its place on a tile goes.
+    public enum Dragged: Equatable, Sendable {
+        /// A slide being moved or copied: it goes before or after the tile,
+        /// by the half it is over.
+        case slide
+        /// A picture or video, or files from the Finder: before, onto or
+        /// after the tile.
+        case media
+        /// Anything else (a macro, a track): only ever onto the tile.
+        case other
+    }
+
+    /// The place on a tile for what is dragged over it, `x` from the tile's
+    /// leading edge.
+    public static func target(overTile index: Int, x: CGFloat, width: CGFloat, dragged: Dragged) -> Target {
+        switch dragged {
+        case .slide: width > 0 && x > width / 2 ? .after(index) : .before(index)
+        case .media: target(overTile: index, x: x, width: width)
+        case .other: .onto(index)
+        }
+    }
+
+    /// The tile under a point, and where on it the point is. A slide grid
+    /// has one drop target and one right-click menu for all its tiles and
+    /// finds the tile itself: a target and a menu on every tile were half of
+    /// what a tile cost to make (docs/ui-smoothness.md).
+    public struct TileHit: Equatable, Sendable {
+        public var index: Int
+        /// The point's distance from the tile's leading edge.
+        public var x: CGFloat
+        public var width: CGFloat
+
+        public init(index: Int, x: CGFloat, width: CGFloat) {
+            self.index = index
+            self.x = x
+            self.width = width
+        }
+    }
+
+    /// `tiles` is each tile's frame by index, in the same space as `point`;
+    /// nil in the space around them. Where two frames meet, the lower index
+    /// has the point.
+    public static func tile(at point: CGPoint, among tiles: [Int: CGRect]) -> TileHit? {
+        tiles.filter { $0.value.contains(point) }.min { $0.key < $1.key }.map {
+            TileHit(index: $0.key, x: point.x - $0.value.minX, width: $0.value.width)
+        }
     }
 
     /// A drop in the space around the tiles: the gap between two, under a
