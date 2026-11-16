@@ -11,7 +11,11 @@ struct RunOrderList: View, Equatable {
     let serviceID: String
 
     var render: RenderContext?
-    @Binding var selectedItemID: String?
+    /// The plan's current item. Held, not bound: a `@Binding` here re-ran
+    /// the whole list whenever the item changed, though the body doesn't
+    /// read it (SwiftUI's own change report said so, a click at a time).
+    /// `RunOrderCurrentFollow` binds to it and passes changes on.
+    let currentItem: RunOrderCurrentItem
 
     var onReselect: () -> Void = {}
     /// The plan window's kinds of new item (song, message, …); without it
@@ -76,6 +80,11 @@ struct RunOrderList: View, Equatable {
             && a.serviceID == b.serviceID && (a.planAdds == nil) == (b.planAdds == nil)
     }
 
+    private var selectedItemID: String? {
+        get { currentItem.binding.wrappedValue }
+        nonmutating set { currentItem.binding.wrappedValue = newValue }
+    }
+
     private var renamingItemActive: Binding<Bool> {
         Binding(get: { renamingItem != nil }, set: { if !$0 { renamingItem = nil } })
     }
@@ -102,7 +111,7 @@ struct RunOrderList: View, Equatable {
                         // The whole-plan page moves the selection as it
                         // scrolls; keep that row in sight.
                         .modifier(RunOrderCurrentFollow(
-                            selectedItemID: $selectedItemID, marks: marks,
+                            selectedItemID: currentItem.binding, marks: marks,
                             scrollTo: { proxy.scrollTo($0) }, changed: surfaceItemChanged))
                 }
                 if !runOnly {
@@ -1612,4 +1621,11 @@ private struct RunOrderSelectionFollow: ViewModifier {
     func body(content: Content) -> some View {
         content.onChange(of: marks.selection) { _, selection in changed(selection) }
     }
+}
+
+/// The plan list's current item, carried as a plain value so the list
+/// isn't subscribed to it (see `RunOrderList.currentItem`).
+struct RunOrderCurrentItem {
+    let binding: Binding<String?>
+    init(_ binding: Binding<String?>) { self.binding = binding }
 }

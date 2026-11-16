@@ -888,7 +888,7 @@ struct PlanShell: View {
                 .padding(.vertical, 4)
                 RunOrderList(
                     model: model, controls: controls, serviceID: planID, render: render,
-                    selectedItemID: $itemID,
+                    currentItem: RunOrderCurrentItem($itemID),
                     // Clicking the item already selected scrolls back to it.
                     onReselect: { if wholePlanShown { presentFocusScroll.reselect() } },
                     planAdds: PlanAddActions(
