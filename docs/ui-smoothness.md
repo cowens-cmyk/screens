@@ -132,6 +132,43 @@ by the tiles: as `@State` on the bin each pointer move re-sorted the library.
 `RunOrderList` and `MediaLibraryView` tick the body meter (`perf.mark`,
 `perf.bodyStorm`).
 
+## What a tile costs
+
+Measured 2026-11-16 with Time Profiler on the perf plan (five across, M1
+Max), one build with the tile's pieces switchable, 12 picks each:
+
+| Tiles | Frames over 14 ms after the first pass | Their total |
+|---|---|---|
+| As shipped | 25 | 612 ms |
+| No drop target, right-click menu or drag source | 15 | 323 ms |
+| Picture and caption only | 14 | 316 ms |
+| Empty cells | 1 | 15 ms |
+
+- A tile takes about 5 ms to make, almost none of it the app's code: it is
+  SwiftUI building the tile's views (`_makeView` for the context menu, the
+  drop target, the drag source, gestures, accessibility), graph
+  bookkeeping, and generic metadata. Half is the three per-tile
+  interactions, half the picture and caption.
+- Every built tile is also revisited on each frame of a scroll (anything on
+  it that needs its place on screen: the drop target, an AppKit-backed
+  view), and adds to each update of the window.
+- Tried and not kept: making rows in one change instead of one a frame (same
+  total, one 60 ms frame instead of two of 30; a fire landing on it would
+  wait twice as long); laying a row's tiles over its empty cells as an
+  overlay so the page's layout doesn't change (no difference: the cost is
+  the tiles, not the layout); narrower bands of built rows (5-8% less work,
+  empty cells sooner when scrolling).
+- The next step is one drop handler, one drag source and one menu per grid,
+  finding the tile by arithmetic as the grid's gap drops already do, which
+  should halve what a row costs and take the tiles out of the per-frame
+  scroll work. It changes drag and drop, so it needs a real pointer to
+  test (not possible with the screen locked).
+
+Timing on this Mac drifts by half again for minutes after a build (the same
+build read 40 and 20 ms for a first pass in back-to-back rounds), so compare
+builds interleaved in one batch, twice, and wait for the load to settle
+first (`run.sh` has `await_quiet`).
+
 ## Measuring a click
 
 `scripts/perf/present.sh <label>` (plan-list picks),
