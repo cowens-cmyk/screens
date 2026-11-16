@@ -123,7 +123,12 @@ struct ServiceContinuousPage: View, Equatable {
 
     @State private var viewportHeight: CGFloat = 0
 
-    @State private var headerHeights: [String: CGFloat] = [:]
+    /// Each card's header height, for the scroll actions that keep a slide
+    /// clear of its stuck header. The card itself keeps its own in
+    /// `StickySection`: one dictionary here, read by every card as it was
+    /// built, re-ran every card on the page (grids and tiles with them)
+    /// whenever any header changed height, as it does on each plan click.
+    @State private var headerHeights = HeaderHeightBox()
 
     /// The page's width, for the media rows' automatic slides across (the
     /// slide grids measure their own).
@@ -986,7 +991,7 @@ struct ServiceContinuousPage: View, Equatable {
         )
         guard starts.indices.contains(pill), starts[pill] < slides.count else { return }
         let headerFraction = viewportHeight > 0
-            ? min(((headerHeights[item.id] ?? 44) + 12) / viewportHeight, 0.4) : 0
+            ? min(((headerHeights.values[item.id] ?? 44) + 12) / viewportHeight, 0.4) : 0
         withAnimation(.easeOut(duration: 0.2)) {
             proxy.scrollTo(
                 SlideGridBody.tileAnchor(contextID: item.id, index: starts[pill]),
@@ -1365,35 +1370,9 @@ extension ServiceContinuousPage {
         @ViewBuilder body: () -> Body,
         @ViewBuilder header: () -> Header
     ) -> some View {
-        let headerHeight = headerHeights[item.id] ?? 44
-        let headerView = header()
-        let bodyView = body()
-        return VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: headerHeight)
-            bodyView
-        }
-        .overlay(alignment: .topLeading) {
-            StickyHeader(headerHeight: headerHeight, margin: Self.pageMargin) {
-                headerView
-                    .fixedSize(horizontal: false, vertical: true)
-                    .background(headerHeightReader(item))
-            }
-        }
-    }
-
-    private func headerHeightReader(_ item: ServiceItem) -> some View {
-        GeometryReader { geo in
-            Color.clear
-                .onAppear { if headerHeights[item.id] != geo.size.height { headerHeights[item.id] = geo.size.height } }
-                .onChange(of: geo.size.height) { old, height in
-                    if headerHeights[item.id] != height { headerHeights[item.id] = height }
-
-                    if abs(height - old) > 300 {
-                        DiagnosticsStore.shared.note(
-                            "present.header", detail: "\"\(item.name)\" \(Int(old)) → \(Int(height)) pt")
-                    }
-                }
-        }
+        StickySection(
+            itemID: item.id, itemName: item.name, margin: Self.pageMargin, heights: headerHeights,
+            content: body(), header: header())
     }
 
     static func anchor(unlinked itemID: String) -> String { "unlinked|" + itemID }
@@ -1428,7 +1407,7 @@ extension ServiceContinuousPage {
         if let itemID = controls?.liveContextID, let occurrence = controls?.liveOccurrence,
            presentRows(service).contains(where: { $0.id == itemID }) {
             PresentCardFrames.shared.reveal(
-                itemID, slide: occurrence, headerHeight: headerHeights[itemID] ?? 44, cause: cause)
+                itemID, slide: occurrence, headerHeight: headerHeights.values[itemID] ?? 44, cause: cause)
         }
     }
 
@@ -2233,5 +2212,47 @@ struct SharedPreServiceBadge: View {
             .lineLimit(1)
             .fixedSize()
             .help("Every plan shows these same slides. Changes here change every plan.")
+    }
+}
+
+/// Every card's header height, mirrored for the page's scroll actions; not
+/// observed, so a height change re-runs only its own card.
+@MainActor final class HeaderHeightBox {
+    var values: [String: CGFloat] = [:]
+}
+
+/// A card under its sticky header, the body pushed down by the header's
+/// own measured height.
+private struct StickySection<Content: View, Header: View>: View {
+    let itemID: String
+    let itemName: String
+    let margin: CGFloat
+    let heights: HeaderHeightBox
+    let content: Content
+    let header: Header
+
+    @State private var measured: CGFloat?
+
+    var body: some View {
+        let headerHeight = measured ?? heights.values[itemID] ?? 44
+        VStack(alignment: .leading, spacing: 0) {
+            Color.clear.frame(height: headerHeight)
+            content
+        }
+        .overlay(alignment: .topLeading) {
+            StickyHeader(headerHeight: headerHeight, margin: margin) {
+                header
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        let old = measured ?? height
+                        heights.values[itemID] = height
+                        if measured != height { measured = height }
+                        if abs(height - old) > 300 {
+                            DiagnosticsStore.shared.note(
+                                "present.header", detail: "\"\(itemName)\" \(Int(old)) → \(Int(height)) pt")
+                        }
+                    }
+            }
+        }
     }
 }
