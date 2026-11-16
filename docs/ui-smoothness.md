@@ -38,11 +38,58 @@ every item, so anything each item does per frame is multiplied by the plan.
     for the scroll actions, unobserved.
   - A grid's tile frames are in `TileFrameBox`, not `@State`, reported with
     `onGeometryChange`.
-- **No `@AppStorage` in the page, the grids or the plan list.** It re-runs
-  its view on any write to UserDefaults, whatever the key, and the next item
-  going live writes the stage mode. The page reads its grid settings from
-  `HotDefaults`, which notifies only when one of them changes; views that
-  only set the app mode call `HotDefaults.setAppMode`.
+- **No `@AppStorage` in any view.** It re-runs every view holding one on any
+  write to UserDefaults, whatever the key, and the app writes defaults all
+  the time (the stage mode when the next item goes live, timers, the
+  scheduler, AppKit's window state). The window's root held nine and every
+  slide thumbnail one, so each write re-ran the window and every thumbnail.
+  `@HotDefault` (HotDefault.swift) is the same declaration over one observed
+  cell per key, which notifies only when that key's value changes; the page
+  reads its four grid settings from `HotDefaults`. Menu `Commands` keep
+  `@AppStorage`. A source sweep fails on an `@AppStorage` in a view.
+- **The window's root doesn't hold the selection.** `PlanShell` owned the
+  selected item and the page's scroll mark as `@State`, so every pick re-ran
+  it and with it the top bar, both panels and every button and menu (36
+  buttons and 13 menus a click in Instruments). The selection is a
+  `PlanPageFocus` it owns and only sets; `PlanHandle`, the plan list's
+  follower and the page read it. The scroll mark is in
+  `PresentFocusScrollBox`, observed only for a reselect. `PlanShell` ticks
+  the body meter: a pick or a fire shouldn't show it in `perf.mark`.
+- **A glide builds where it lands, a row a frame.** After a pick the page
+  glides for 0.3 s, and what stuttered was the glide, not one freeze: Time
+  Profiler showed 2.6 frames per click over 9 ms and 1.5 over 17 ms (worst
+  44-49 ms), each a frame where three or four rows of tiles were made at once
+  as they came near the screen, for every item the glide passed as well as
+  the one it was going to. A row of five tiles takes 10-14 ms to make.
+  - `PageGlide` holds where the page will land. While it is set, `GridPlace`
+    gives each grid its rows for the landing, not for where it is, so the
+    items passed stay empty cells and the landing's rows are made on the way.
+    `PageGlideEnds` puts each grid back to its real place when it lands.
+  - `RowBuildPacer` makes one row, in one grid, per frame for the whole
+    page: the grid whose missing row is nearest the screen first, and rows
+    are let go only when none is waiting to be made. A row costs about
+    30 ms to make, nearly all of it SwiftUI building the tiles' views (the
+    app's own code in that frame is about 1 ms), so when matters more than
+    how: rows on screen, or where a glide lands, are made at once a row a
+    frame; the rows around the screen wait until half a second after a
+    pick, a click or a fire, then come 50 ms apart, where a 30 ms frame
+    moves nothing. The operator's own scrolling doesn't hold them back:
+    the rows ahead of a scroll keep being made so it never reaches empty
+    cells. `perf.rows` (test builds) logs when rows were made and let go
+    after each glide.
+  - Each row is a `GridRowSwitch` reading its own `GridRowFlag`. The built
+    rows used to be a set in the grid's state: adding a row re-ran the grid
+    and every tile already built in it (a tile takes a closure, so it never
+    compares equal).
+  - A row not built yet is a faint slide-shaped box.
+  - Tile frames (for drops and the selection box) come from the grid's
+    cell size; a tile measuring itself was revisited, per tile, on every
+    frame of a scroll.
+- **A pick's anchor is the top of its item's section** (`StickySection`),
+  not the item's header: stuck, the header sits at the bottom of its
+  section, and a jump up to an earlier item landed there, a grid's height
+  short of its top. `scripts/perf/landing.sh <label>` clicks down, up, down,
+  up and fails unless each lands with its item's top at the top.
 - **Tiles.** Anything a tile works out from its slide that takes more than a
   lookup is cached by slide (`TileStepCache` for animation steps), not done in
   `body`.
@@ -87,24 +134,37 @@ by the tiles: as `@State` on the bin each pointer move re-sorted the library.
 
 ## Measuring a click
 
-`scripts/perf/present.sh <label>` (plan-list picks) and
-`scripts/perf/fire.sh <label>` (the arrow key, through item changes) run the
-staged perf build; `perf.mark` counts the bodies each one re-ran. For where
+`scripts/perf/present.sh <label>` (plan-list picks),
+`scripts/perf/fire.sh <label>` (the arrow key, through item changes) and
+`scripts/perf/landing.sh <label>` (where far jumps land) run the staged perf
+build; `perf.mark` counts the bodies each one re-ran. For where
 the time goes, record the same run with `xcrun xctrace record --template
 'Time Profiler' --attach <pid>`: SwiftUI's own time shows up as layout and
 graph updates, so the long freezes, not the totals, are what to compare.
 For a real click's path (hit testing, the list's own mouse tracking,
 gestures) where no pointer can reach the window, such as a locked screen:
-write `click X Y [right|double] [cmd|shift]` or `key CODE` (window points,
-origin top left) to `perf-input.txt` in the sandbox home, then
+write `click X Y [right|double] [cmd|shift]`, `key CODE` or
+`scroll DY COUNT` (window points, origin top left; the scroll is wheel
+events to the plan page) to `perf-input.txt` in the sandbox home, then
 `notifyutil -p com.example.mxuslides.perf.input`; the app posts the event
 into its own queue (`PerfHooks.postInput`, test builds only).
 `screencapture -l <window id>` still captures the window behind the lock.
+What to compare is each click as a sequence, not its longest freeze: the
+first pass, then every frame of the glide. From a Time Profiler export
+(`xctrace export … time-profile`), take the main thread's busy runs (samples
+not in `mach_msg`) in the 600 ms after each click: the first run is the
+click's own pass; count the later runs over 9 ms and over 17 ms (a dropped
+frame at 120 and 60 Hz) and note the worst. The SwiftUI template, recorded
+from launch (`xctrace record --template SwiftUI --launch -- sandbox-exec …`,
+so views have names), says which views those frames update.
 To find what re-runs a view, `let _ = Self._printChanges()` in its body
 (with stdout line-buffered) names the property; remove it before
 committing. As of 0.38.3 a plan click's longest freeze is about 30-45 ms
 (was 75-86), a fire within an item about 3 tiles, into the next item
-about 1 grid (was every grid on the page).
+about 1 grid (was every grid on the page). As of 0.38.4, against 0.38.3
+interleaved on the same Mac: a pick's first pass 28 to 23 ms; frames over
+9 ms per click 3.4 to 1.2 and over 17 ms 1.6 to 0.9, the ones left all
+half a second after the click (the idle rows), none inside the glide.
 
 ## Periodic work
 

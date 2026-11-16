@@ -237,7 +237,7 @@ struct LocalAPITokensButton: View {
 struct LocalAPITokensSheet: View {
     let api: LocalAPIController
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
+    @HotDefault("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
 
     private var tokens: [APIToken] { api.allKeys }
     @State private var newName = ""

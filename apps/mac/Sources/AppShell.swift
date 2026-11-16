@@ -131,7 +131,7 @@ struct ModeSwitcher: View {
     @Binding var modeRaw: String
     /// Media opens the media bin under the plan rather than taking over
     /// the window.
-    @AppStorage(MediaDrawer.openKey) private var mediaOpen = false
+    @HotDefault(MediaDrawer.openKey) private var mediaOpen = false
 
     var body: some View {
         HStack(spacing: 2) {
@@ -363,21 +363,21 @@ struct ShellView: View {
     }
 
 
-    @AppStorage("appMode") private var modeRaw = AppMode.edit.rawValue
-    @AppStorage("present.continuous") private var continuousPresent = true
+    @HotDefault("appMode") private var modeRaw = AppMode.edit.rawValue
+    @HotDefault("present.continuous") private var continuousPresent = true
 
-    @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
-    @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
-    @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
+    @HotDefault("slideGrid.roundedCorners") private var roundedCorners = true
+    @HotDefault("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
+    @HotDefault("slideGrid.legibleText") private var legibleText = false
+    @HotDefault("slideGrid.transparencyGrid") private var transparencyGrid = true
+    @HotDefault(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
 
-    @AppStorage("shell.sidebarVisible") private var sidebarVisible = true
-    @AppStorage("shell.sidebarSplit") private var splitFraction = 0.42
-    @AppStorage("shell.sidebarWidth") private var sidebarWidth = 272.0
+    @HotDefault("shell.sidebarVisible") private var sidebarVisible = true
+    @HotDefault("shell.sidebarSplit") private var splitFraction = 0.42
+    @HotDefault("shell.sidebarWidth") private var sidebarWidth = 272.0
 
-    @AppStorage("shell.sidebarWidthPresent") private var presentSidebarWidth = 272.0
-    @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
+    @HotDefault("shell.sidebarWidthPresent") private var presentSidebarWidth = 272.0
+    @HotDefault("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
     @State private var widthGripHovering = false
 
     @State private var draftSidebarWidth: Double?
@@ -390,14 +390,14 @@ struct ShellView: View {
     @State private var gripHovering = false
     @State private var gripDragging = false
 
-    @AppStorage("shell.rightSplit.monitors") private var rightSplit = 0.68
+    @HotDefault("shell.rightSplit.monitors") private var rightSplit = 0.68
     @State private var draftRightSplit: Double?
     @State private var rightGripHovering = false
     @State private var rightGripDragging = false
 
-    @AppStorage("shell.rightRailWidth.monitors") private var rightRailWidth = 340.0
+    @HotDefault("shell.rightRailWidth.monitors") private var rightRailWidth = 340.0
 
-    @AppStorage(PresentLayoutController.rightRailHiddenKey) private var rightRailHidden = false
+    @HotDefault(PresentLayoutController.rightRailHiddenKey) private var rightRailHidden = false
 
     @State private var shellWidth: CGFloat = 1480
     @State private var draftRightRailWidth: Double?
@@ -1900,7 +1900,7 @@ struct TopBarAddButton: View {
 /// Starts and stops sermon listening; red while it's on.
 struct SermonMicButton: View {
     @Bindable private var assist = LiveAssist.shared
-    @AppStorage("show.controlsTab") private var tab: ShowControlsPanel.Tab = .timers
+    @HotDefault("show.controlsTab") private var tab: ShowControlsPanel.Tab = .timers
 
     private var on: Bool { assist.listening && assist.mode == .sermon }
 

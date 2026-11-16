@@ -9,7 +9,7 @@ struct ConfidenceModule: View {
 
     @Environment(\.runOnly) private var runOnly
 
-    @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
+    @HotDefault("appMode") private var appModeRaw = AppMode.edit.rawValue
     @State private var messageDraft = ""
 
     var body: some View {

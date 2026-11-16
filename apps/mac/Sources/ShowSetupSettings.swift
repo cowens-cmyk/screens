@@ -49,7 +49,7 @@ struct StageSettingsPane: View {
     let model: AppModel?
     let controls: ServiceControls?
     @Bindable private var setup = ShowSetup.shared
-    @AppStorage(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
+    @HotDefault(ServiceControls.nextSkipsBlanksKey) private var nextSkipsBlanks = true
 
     var body: some View {
         Form {
@@ -103,7 +103,7 @@ struct StageSettingsPane: View {
 /// timer back on this Mac, and when that happens next.
 private struct SermonTimerResetSection: View {
     @Bindable var controls: ServiceControls
-    @AppStorage(ServiceStation.runsServiceKey) private var runsService = false
+    @HotDefault(ServiceStation.runsServiceKey) private var runsService = false
 
     var body: some View {
         Section {

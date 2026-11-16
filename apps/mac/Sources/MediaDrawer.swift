@@ -9,8 +9,8 @@ struct MediaDrawer: View {
     let model: AppModel
     /// The height of the area the bin rises into, once known.
     var roomHeight: CGFloat?
-    @AppStorage(Self.openKey) private var open = false
-    @AppStorage("mediaBin.height") private var height = 320.0
+    @HotDefault(Self.openKey) private var open = false
+    @HotDefault("mediaBin.height") private var height = 320.0
     @State private var dragStartHeight: Double?
 
     static let openKey = "mediaBin.open"

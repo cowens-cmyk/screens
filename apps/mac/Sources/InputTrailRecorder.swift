@@ -36,6 +36,14 @@ final class InputTrailRecorder {
         trail.record(what, at: ProcessInfo.processInfo.systemUptime)
     }
 
+    #if DEBUG || MXU_PERF_HOOKS
+    /// The perf scroll signal's wheel events go straight to the scroll
+    /// view, past the event monitor that notes a real one.
+    func notePerfPageScroll() {
+        lastPageScroll = ProcessInfo.processInfo.systemUptime
+    }
+    #endif
+
     func noteFocusScroll() {
         lastFocusScroll = ProcessInfo.processInfo.systemUptime
     }
@@ -314,6 +322,19 @@ final class PresentCardFrames {
     private var holdCorrections: [TimeInterval] = []
 
     private init() {}
+
+    /// The page is about to glide to `id`: tells the grids where it will
+    /// land (PageGlide), the top of that item, or as far as the page can
+    /// scroll when the item is near its end.
+    func beginGlide(to id: String, duration: TimeInterval) {
+        guard let top = docFrames[id]?.minY else { return }
+        var landing = top
+        if let scrollView, let document = scrollView.documentView {
+            landing = min(top, max(0, document.frame.height - scrollView.contentView.bounds.height))
+        }
+        PageGlide.shared.begin(landingTop: landing, duration: duration + 0.05)
+        PageGlideEnds.shared.expect(after: duration)
+    }
 
     func noteDoc(_ id: String, _ frame: CGRect) {
         if docFrames[id] != frame {

@@ -389,8 +389,8 @@ private struct ScreenOutputSection: View {
     let role: ShowScreen
     let render: RenderContext
 
-    @AppStorage(ScreenOutput.alphaKeyKey) private var alphaKey = false
-    @AppStorage(ScreenOutput.keyModeKey) private var keyModeRaw = Int(DeckLinkAlphaKey.externalKey.rawValue)
+    @HotDefault(ScreenOutput.alphaKeyKey) private var alphaKey = false
+    @HotDefault(ScreenOutput.keyModeKey) private var keyModeRaw = Int(DeckLinkAlphaKey.externalKey.rawValue)
     @Bindable private var setup = ShowSetup.shared
 
     private var outputs: OutputManager { render.outputs }

@@ -7,7 +7,7 @@ import SwiftUI
 /// time.
 struct StageEditorButton: View {
     let model: AppModel
-    @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
+    @HotDefault("appMode") private var appModeRaw = AppMode.edit.rawValue
 
     var body: some View {
         Button(action: open) {

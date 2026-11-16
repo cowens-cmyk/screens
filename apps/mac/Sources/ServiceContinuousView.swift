@@ -23,6 +23,9 @@ struct ServiceContinuousView: View {
     var onShowItem: ((String) -> Void)? = nil
 
     @State private var focus: PlanPageFocus
+    /// The caller's own selection object, when it has one: nothing to
+    /// mirror, and the caller doesn't re-run when the selection moves.
+    private let sharedFocus: PlanPageFocus?
 
     /// The page's coordinate spaces, for the views on it that measure
     /// themselves.
@@ -43,17 +46,33 @@ struct ServiceContinuousView: View {
         // The first selection is there before the page appears, so it opens
         // on the item without a glide.
         _focus = State(initialValue: PlanPageFocus(itemID: focusItemID))
+        sharedFocus = nil
+    }
+
+    init(
+        model: AppModel, render: RenderContext?, controls: ServiceControls?, serviceID: String,
+        focus: PlanPageFocus, focusScroll: Binding<PresentFocusScroll>, onShowItem: ((String) -> Void)? = nil
+    ) {
+        self.model = model
+        self.render = render
+        self.controls = controls
+        self.serviceID = serviceID
+        focusItemID = nil
+        _focusScroll = focusScroll
+        self.onShowItem = onShowItem
+        _focus = State(initialValue: focus)
+        sharedFocus = focus
     }
 
     var body: some View {
         ServiceContinuousPage(
             model: model, render: render, controls: controls, serviceID: serviceID,
-            focus: focus, focusScroll: $focusScroll, onShowItem: onShowItem)
+            focus: sharedFocus ?? focus, focusScroll: $focusScroll, onShowItem: onShowItem)
             // Rebuilt only for another plan or library; the parent re-running
             // (a fire, a selection) leaves it alone.
             .equatable()
             .onChange(of: focusItemID, initial: true) { _, id in
-                if focus.itemID != id { focus.itemID = id }
+                if sharedFocus == nil, focus.itemID != id { focus.itemID = id }
             }
     }
 }
@@ -70,7 +89,7 @@ final class PlanPageFocus {
 
 /// Runs `onChange` when the selection moves. A view of its own so that
 /// only it, not the page, depends on the selection.
-private struct PlanPageFocusFollow: View {
+struct PlanPageFocusFollow: View {
     let focus: PlanPageFocus
     let onChange: (String?) -> Void
 
@@ -983,7 +1002,10 @@ struct ServiceContinuousPage: View, Equatable {
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .top) { Self.hairline }
-        .id(item.id)
+        // The item's scroll anchor is the top of its section
+        // (StickySection), not this header: stuck, the header sits at the
+        // bottom of its section, and a jump up to the item landed there, a
+        // grid's height short of its top.
     }
 
     private func activeArrangementName(
@@ -1399,7 +1421,10 @@ extension ServiceContinuousPage {
         if let target = focusScroll.request(itemID) {
             DiagnosticsStore.shared.note("present.focus", detail: "scroll \(target) (\(reason))")
             InputTrailRecorder.shared.noteFocusScroll()
-            withAnimation(reason == "appear" ? nil : jump) {
+            let glides = reason != "appear" && jump != nil
+            // Before the page moves: the grids build for where it lands.
+            if glides { PresentCardFrames.shared.beginGlide(to: target, duration: Self.jumpSeconds) }
+            withAnimation(glides ? jump : nil) {
                 pageScroll.position.scrollTo(id: Self.anchor(for: target, in: service), anchor: .top)
             }
             PresentCardFrames.shared.holdCard(target)
@@ -1411,8 +1436,10 @@ extension ServiceContinuousPage {
 
     /// A plan-list click glides to its item; landing on the page doesn't.
     private var jump: Animation? {
-        reduceMotion ? nil : .easeInOut(duration: 0.3)
+        reduceMotion ? nil : .easeInOut(duration: Self.jumpSeconds)
     }
+
+    static let jumpSeconds: TimeInterval = 0.3
 
     private func revealLive(_ service: Service, cause: String = "keyboard") {
         if let itemID = controls?.liveContextID, let occurrence = controls?.liveOccurrence,
@@ -2258,7 +2285,9 @@ private struct StickySection<Content: View, Header: View>: View {
     var body: some View {
         let headerHeight = measured ?? heights.values[itemID] ?? 44
         VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: headerHeight)
+            // Where a pick scrolls to: the section's own top, which the
+            // header leaves when it sticks.
+            Color.clear.frame(height: headerHeight).id(itemID)
             content
         }
         .overlay(alignment: .topLeading) {

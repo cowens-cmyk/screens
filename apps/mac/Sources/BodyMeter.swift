@@ -17,6 +17,9 @@ enum MeteredView: Int, CaseIterable {
     // The plan list (a pass builds every row) and the media bin (a pass
     // sorts and filters the whole library).
     case runOrderList
+    // The window's root: a pass here re-runs the top bar, both panels and
+    // every button in the window. A pick or a fire shouldn't cause one.
+    case planShell
     case mediaBin
 
     var name: String {
@@ -31,6 +34,7 @@ enum MeteredView: Int, CaseIterable {
         case .slideTile: "SlideTile"
         case .slideThumbnail: "SlideThumbnailView"
         case .runOrderList: "RunOrderList"
+        case .planShell: "PlanShell"
         case .mediaBin: "MediaLibraryView"
         }
     }
@@ -42,7 +46,7 @@ enum MeteredView: Int, CaseIterable {
         // A storm line only when far past one pass over a whole plan a second.
         case .slideGridBody: 120
         case .slideTile, .slideThumbnail: 1500
-        case .runOrderList, .mediaBin: 20
+        case .runOrderList, .mediaBin, .planShell: 20
         }
     }
 }

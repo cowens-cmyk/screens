@@ -29,19 +29,19 @@ struct SlideEditorView: View {
     /// From Media Library… on an empty presentation.
     @State private var choosingMediaSlides = false
 
-    @AppStorage(PresentLayoutController.lockedKey) private var runOnly = false
+    @HotDefault(PresentLayoutController.lockedKey) private var runOnly = false
     @State private var showingBackgroundFill = false
 
     @State private var pendingThemeID: String?
 
     @Environment(\.actionRouter) private var actionRouter
 
-    @AppStorage("editor.inspectorWidth") private var inspectorWidth = PanelWidthGrip.minPanelWidth
+    @HotDefault("editor.inspectorWidth") private var inspectorWidth = PanelWidthGrip.minPanelWidth
 
-    @AppStorage("editor.timelineHeight") private var timelineHeight = 236.0
+    @HotDefault("editor.timelineHeight") private var timelineHeight = 236.0
     /// The Layers panel under the slide list: its top edge drags, as a
     /// Photoshop panel's does, and the height is remembered.
-    @AppStorage("editor.layersHeight") private var layersHeight = 300.0
+    @HotDefault("editor.layersHeight") private var layersHeight = 300.0
     @State private var quickEditTarget: QuickEditTarget?
     @State private var newSectionTarget: QuickEditTarget?
     @State private var newSectionName = ""
@@ -51,7 +51,7 @@ struct SlideEditorView: View {
     @State private var showingReflow = false
     @State private var showingChords = false
 
-    @AppStorage("shell.sidebarVisible") private var sidebarVisible = true
+    @HotDefault("shell.sidebarVisible") private var sidebarVisible = true
 
     @State private var dropTargetID: String?
 

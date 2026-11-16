@@ -1,6 +1,7 @@
 import PresenterCore
 import RenderEngine
 import SlideScene
+import os
 import SwiftUI
 
 struct PresentGridView: View {
@@ -15,10 +16,10 @@ struct PresentGridView: View {
     var serviceID: String? = nil
     var serviceItem: ServiceItem? = nil
 
-    @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
-    @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
+    @HotDefault("slideGrid.roundedCorners") private var roundedCorners = true
+    @HotDefault("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
+    @HotDefault("slideGrid.legibleText") private var legibleText = false
+    @HotDefault(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
     @FocusState private var focused: Bool
 
     @State private var deleteRequests = 0
@@ -473,7 +474,12 @@ struct SlideGridBody: View {
 
     @State private var gridWidth: CGFloat = 0
 
-    @State private var builtRows: Set<Int> = []
+    /// Which rows are built as tiles, the rows still to build and where
+    /// the grid last was (see buildRows). Each row reads its own flag, so
+    /// building a row makes that row and nothing else: as a set in the
+    /// grid's state, each row added re-ran the grid and every tile already
+    /// in it.
+    @State private var rowQueue = RowBuildQueue()
 
     private var cell: CGSize? {
         SlideGridMetrics.cell(
@@ -484,21 +490,26 @@ struct SlideGridBody: View {
         let across = SlidesAcross.clamped(slidesAcross)
         return VStack(alignment: .leading, spacing: SlideGridMetrics.spacing) {
             ForEach(SlidesAcross.rows(count: slides.count, across: across), id: \.indices.lowerBound) { row in
-                let built = cell != nil && builtRows.contains(row.indices.lowerBound / across)
-                HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
-                    ForEach(row.indices, id: \.self) { index in
-                        if built, let cell {
-                            gridTile(index: index, slide: slides[index], aspect: aspect)
-                                .frame(width: cell.width, height: cell.height, alignment: .top)
-                        } else {
+                GridRowSwitch(flag: rowQueue.flag(row.indices.lowerBound / across), ready: cell != nil) {
+                    HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
+                        ForEach(row.indices, id: \.self) { index in
+                            if let cell {
+                                gridTile(index: index, slide: slides[index], aspect: aspect)
+                                    .frame(width: cell.width, height: cell.height, alignment: .top)
+                            }
+                        }
+                    }
+                } empty: {
+                    HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
+                        ForEach(row.indices, id: \.self) { index in
                             placeholderCell(cell: cell, aspect: aspect)
                                 .id(Self.tileAnchor(contextID: contextID, index: index))
                         }
-                    }
 
-                    if cell == nil {
-                        ForEach(0 ..< row.fillers, id: \.self) { _ in
-                            placeholderCell(cell: nil, aspect: aspect)
+                        if cell == nil {
+                            ForEach(0 ..< row.fillers, id: \.self) { _ in
+                                placeholderCell(cell: nil, aspect: aspect)
+                            }
                         }
                     }
                 }
@@ -512,7 +523,13 @@ struct SlideGridBody: View {
     @ViewBuilder
     private func placeholderCell(cell: CGSize?, aspect: CGFloat) -> some View {
         if let cell {
-            Color.clear.frame(width: cell.width, height: cell.height)
+            // A faint slide-shaped box, so rows not built yet (a glide
+            // passing them, a fast scroll) read as slides on their way and
+            // not as a hole in the page.
+            Color.white.opacity(0.045)
+                .frame(width: cell.width, height: cell.width / max(aspect, 0.1))
+                .clipShape(.rect(cornerRadius: roundedCorners ? CornerStandard.element : 0))
+                .frame(width: cell.width, height: cell.height, alignment: .top)
         } else {
             VStack(spacing: SlideGridMetrics.labelGap) {
                 Color.clear.aspectRatio(aspect, contentMode: .fit)
@@ -538,7 +555,8 @@ struct SlideGridBody: View {
                 rowPitch: cell.height + SlideGridMetrics.spacing,
                 across: SlidesAcross.clamped(slidesAcross), count: slides.count))
         }
-        buildRows(place.near, keep: place.keep)
+        rowQueue.place = place
+        buildRows(place)
     }
 
     /// Builds the rows coming near the screen and lets go of those now more
@@ -549,17 +567,42 @@ struct SlideGridBody: View {
     /// re-ran all of them. A row let go is an empty cell of the same size,
     /// so nothing moves; coming back, its pictures come from
     /// ThumbnailStore's caches.
-    private func buildRows(_ near: Range<Int>, keep: Range<Int>) {
+    ///
+    /// A row of tiles takes several milliseconds to make, so rows come in
+    /// one per frame, nearest the screen first: three or four at once, as a
+    /// glide or a fast scroll brought them, was a 20 to 35 ms frame, the
+    /// stutter in the middle of a glide. Only a row already on screen is
+    /// built at once. While the page glides to a picked item the rows that
+    /// matter are the ones it will land on (PageGlide), so those are built
+    /// and the items it only passes stay empty cells; the rows around the
+    /// landing are filled in once it has landed (rowsAfterGlide).
+    private func buildRows(_ place: GridPlace) {
         let across = SlidesAcross.clamped(slidesAcross)
-        let selectedRows = Set(selectedOccurrences.map { $0 / across })
-        let rows = SlidesAcross.rowsToKeep(built: builtRows, near: near, keep: keep, selected: selectedRows)
-        // Never animated: rows come in while the page glides to an item, and
-        // inside that animation each new tile would fade in.
-        if rows != builtRows {
-            var plain = Transaction()
-            plain.disablesAnimations = true
-            withTransaction(plain) { builtRows = rows }
-        }
+        var keeping = Set(selectedOccurrences.map { $0 / across })
+        // What is on screen as the glide leaves stays until it has landed.
+        if place.gliding { keeping.formUnion(place.actualKeep) }
+        let target = SlidesAcross.rowsToKeep(
+            built: rowQueue.built, near: place.gliding ? place.visible : place.near, keep: place.keep,
+            selected: keeping)
+        rowQueue.target = target
+        rowQueue.focus = place.visible
+        // Even rows on screen come in at the page's pace, a row a frame:
+        // three made at once is a 90 ms frame where three frames of 30
+        // fill the screen in the same time and the page keeps moving.
+        RowBuildPacer.shared.request(rowQueue)
+    }
+
+    /// The glide has landed (or was cut short): back to the rows around
+    /// where the grid actually is.
+    private func rowsAfterGlide() {
+        var place = rowQueue.place
+        guard place.gliding else { return }
+        place.gliding = false
+        place.near = place.actualNear
+        place.keep = place.actualKeep
+        place.visible = place.actualVisible
+        rowQueue.place = place
+        buildRows(place)
     }
 
     private func measured(_ width: CGFloat) {
@@ -612,7 +655,24 @@ struct SlideGridBody: View {
     /// doesn't watch it: as `@State` each tile that came on screen wrote
     /// to it, and every write re-ran the whole grid, every tile with it.
     @State private var tileFrameBox = TileFrameBox()
-    private var tileFrames: [Int: CGRect] { tileFrameBox.frames }
+
+    /// Worked out from the grid's cell size once that is known: tiles sit
+    /// on a regular grid, and a tile that measures itself is one more thing
+    /// SwiftUI revisits, for every built tile, on every frame of a scroll.
+    /// Only a grid not yet measured asks its tiles.
+    private var tileFrames: [Int: CGRect] {
+        guard let cell else { return tileFrameBox.frames }
+        let across = SlidesAcross.clamped(slidesAcross)
+        var frames: [Int: CGRect] = [:]
+        frames.reserveCapacity(slides.count)
+        for index in slides.indices {
+            frames[index] = CGRect(
+                x: CGFloat(index % across) * (cell.width + SlideGridMetrics.spacing),
+                y: CGFloat(index / across) * (cell.height + SlideGridMetrics.spacing),
+                width: cell.width, height: cell.height)
+        }
+        return frames
+    }
 
     @State private var marqueeRect: CGRect?
     /// The plan page's selection box, when this grid is on the page: a box
@@ -738,6 +798,7 @@ struct SlideGridBody: View {
                     detail: "\(contextID) \(Int(old.height)) → \(Int(place.height)) pt, \(slides.count) slides, width \(Int(measuredWidth))")
             }
         }
+        .modifier(PageGlideEndFollow(active: buildsRowsNearView) { rowsAfterGlide() })
         .onChange(of: slides.count) { _, _ in
             clearSelection()
             DropLatency.relaid(count: slides.count)
@@ -1475,10 +1536,7 @@ struct SlideGridBody: View {
             handleTap(index: index, slide: slide)
         }
 
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("slideGrid")) } action: { [box = tileFrameBox] frame in
-            box.frames[index] = frame
-        }
-        .onDisappear { [box = tileFrameBox] in box.frames.removeValue(forKey: index) }
+        .modifier(TileFrameReport(box: cell == nil ? tileFrameBox : nil, index: index))
         .draggablePayload(runOnly ? nil : SlideBulkEdit.slideDragPayload(
             presentationID: presentation.id, slideID: slide.id))
 
@@ -1513,7 +1571,7 @@ struct SlideGridBody: View {
             performFiles: { urls, insertZone in
                 handleTileFiles(urls, index: index, slide: slide, insertZone: insertZone)
             },
-            tileWidth: { tileFrames[index]?.width ?? 0 },
+            tileWidth: { cell?.width ?? tileFrameBox.frames[index]?.width ?? 0 },
             setLineAfter: { on in
                 if on {
                     guard Date() >= dropSettleUntil else { return }
@@ -1538,31 +1596,13 @@ struct SlideGridBody: View {
             },
             goesBeside: { model.media($0) != nil }
         ))
-        .overlay(alignment: .leading) {
-            if dropTargetIndex == index || gapDropTarget == .before(index) {
-                Capsule()
-                    .fill(Color.accentColor)
-                    .frame(width: 3)
-                    .padding(.vertical, 14)
-                    .offset(x: -7.5)
-            }
-        }
-        .overlay(alignment: .trailing) {
-            if dropTargetAfterIndex == index || gapDropTarget == .after(index) {
-                Capsule()
-                    .fill(Color.accentColor)
-                    .frame(width: 3)
-                    .padding(.vertical, 14)
-                    .offset(x: 7.5)
-            }
-        }
+        // One overlay for the three drop marks: each modifier on a tile is
+        // made again for every tile of every row built.
         .overlay {
-            if backgroundDropIndex == index {
-
-                RoundedRectangle.standard(CornerStandard.element)
-                    .strokeBorder(
-                        Color(nsColor: .controlAccentColor).opacity(0.9), lineWidth: 2)
-            }
+            TileDropMarks(
+                before: dropTargetIndex == index || gapDropTarget == .before(index),
+                after: dropTargetAfterIndex == index || gapDropTarget == .after(index),
+                onto: backgroundDropIndex == index)
         }
     }
 
@@ -2332,7 +2372,7 @@ struct SlideThumbnailView: View {
 
     var contentStamp: String? = nil
 
-    @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
+    @HotDefault("slideGrid.transparencyGrid") private var transparencyGrid = true
 
     /// The deck's listed stamp, read through the deck's own signal
     /// (AppModel.deckStamp) rather than entry(), which watches the whole
@@ -3088,8 +3128,16 @@ struct GridPlace: Equatable, Sendable {
     var docTop: CGFloat = 0
     var width: CGFloat = 0
     var height: CGFloat = 0
+    /// The rows to build, to keep built, and on screen. While the page
+    /// glides to a picked item these are for where it will land.
     var near: Range<Int> = 0 ..< 0
     var keep: Range<Int> = 0 ..< 0
+    var visible: Range<Int> = 0 ..< 0
+    var gliding = false
+    /// The same for where the grid is now, glide or not.
+    var actualNear: Range<Int> = 0 ..< 0
+    var actualKeep: Range<Int> = 0 ..< 0
+    var actualVisible: Range<Int> = 0 ..< 0
 
     static func of(
         _ proxy: GeometryProxy, rowPitch: CGFloat?, across: Int, count: Int, buildsNear: Bool
@@ -3101,15 +3149,261 @@ struct GridPlace: Equatable, Sendable {
         // distance below the top of the screen, negated.
         if buildsNear, let rowPitch, let visible = proxy.bounds(of: .named(ServiceContinuousView.scrollSpace)) {
             let rows = (count + across - 1) / max(1, across)
-            func band(_ screens: CGFloat) -> Range<Int> {
+            func band(_ gridTop: CGFloat, _ screens: CGFloat) -> Range<Int> {
                 SlidesAcross.nearRows(
-                    gridTop: -visible.minY, rowPitch: rowPitch, rowCount: rows,
+                    gridTop: gridTop, rowPitch: rowPitch, rowCount: rows,
                     viewport: visible.height, margin: visible.height * screens)
             }
-            place.near = band(1)
-            place.keep = band(2)
+            place.actualVisible = band(-visible.minY, 0)
+            place.actualNear = band(-visible.minY, 1)
+            place.actualKeep = band(-visible.minY, 2)
+            if let landing = PageGlide.shared.landingTop {
+                // Where the grid will be once the page has landed.
+                let gridTop = place.docTop - landing
+                place.gliding = true
+                place.visible = band(gridTop, 0)
+                place.near = band(gridTop, 1)
+                place.keep = band(gridTop, 2)
+            } else {
+                place.visible = place.actualVisible
+                place.near = place.actualNear
+                place.keep = place.actualKeep
+            }
         }
         return place
+    }
+}
+
+/// A plan page grid's rows: which are built as tiles, which are wanted,
+/// and its turn at the page's pace (RowBuildPacer).
+@MainActor final class RowBuildQueue {
+    /// The rows built as tiles; each row's view reads its own flag.
+    private(set) var built: Set<Int> = []
+    private var flags: [Int: GridRowFlag] = [:]
+    /// The rows wanted built.
+    var target: Set<Int> = []
+    /// The rows on screen (or about to be): the nearest missing row to
+    /// these is built first.
+    var focus: Range<Int> = 0 ..< 0
+    var place = GridPlace()
+
+    func flag(_ row: Int) -> GridRowFlag {
+        if let flag = flags[row] { return flag }
+        let flag = GridRowFlag()
+        flags[row] = flag
+        return flag
+    }
+
+    /// Never animated: rows come in while the page glides to an item, and
+    /// inside that animation each new tile would fade in.
+    func setBuilt(_ rows: Set<Int>) {
+        guard rows != built else { return }
+        var plain = Transaction()
+        plain.disablesAnimations = true
+        withTransaction(plain) {
+            for row in built.symmetricDifference(rows) { flag(row).built = rows.contains(row) }
+        }
+        #if DEBUG || MXU_PERF_HOOKS
+        RowBuildLog.note(added: rows.subtracting(built).count, removed: built.subtracting(rows).count)
+        #endif
+        built = rows
+    }
+
+    var settled: Bool { built == target }
+
+    /// How far the nearest missing row is from the screen, in rows; nil
+    /// with none missing. A grid nowhere near the screen comes after any
+    /// that is.
+    var buildDistance: Int? {
+        nearest(of: target.subtracting(built)).map { (focus.isEmpty ? 10_000 : 0) + distance($0) }
+    }
+
+    /// One change toward the rows wanted: the nearest missing row built
+    /// or, with none missing, the farthest row no longer wanted let go.
+    func step() {
+        if let next = nearest(of: target.subtracting(built)) {
+            setBuilt(built.union([next]))
+        } else if let last = farthest(of: built.subtracting(target)) {
+            setBuilt(built.subtracting([last]))
+        }
+    }
+
+    private func nearest(of rows: Set<Int>) -> Int? {
+        rows.min { distance($0) < distance($1) || (distance($0) == distance($1) && $0 < $1) }
+    }
+
+    private func farthest(of rows: Set<Int>) -> Int? {
+        rows.max { distance($0) < distance($1) || (distance($0) == distance($1) && $0 < $1) }
+    }
+
+    private func distance(_ row: Int) -> Int {
+        if focus.isEmpty { return row }
+        if row < focus.lowerBound { return focus.lowerBound - row }
+        if row >= focus.upperBound { return row - focus.upperBound + 1 }
+        return 0
+    }
+}
+
+/// Whether one row of a plan page grid is built as tiles.
+@MainActor @Observable final class GridRowFlag {
+    var built = false
+}
+
+/// One row of a slide grid: its tiles once built, else empty cells of the
+/// same size. Reads only its own flag.
+private struct GridRowSwitch<Built: View, Empty: View>: View {
+    let flag: GridRowFlag
+    /// The grid knows its cell size (it has been measured).
+    let ready: Bool
+    @ViewBuilder let built: () -> Built
+    @ViewBuilder let empty: () -> Empty
+
+    var body: some View {
+        if ready, flag.built {
+            built()
+        } else {
+            empty()
+        }
+    }
+}
+
+/// The plan page's pace for making and letting go of rows of tiles: one
+/// row, in one grid, per frame. A row of tiles takes several milliseconds
+/// to make; grids stepping on their own made a 30 to 50 ms frame wherever
+/// several had rows to make at once (a glide landing among them). The grid
+/// with a missing row nearest the screen goes first; rows are let go only
+/// when none is waiting to be made, so tidying up behind a glide never
+/// holds up the rows it is landing on.
+@MainActor final class RowBuildPacer {
+    static let shared = RowBuildPacer()
+
+    /// About a frame at 60 Hz.
+    static let pace: TimeInterval = 0.016
+    /// Rows around the screen, not on it, are made once the operator has
+    /// paused this long, and this far apart: making a row is a 30 ms
+    /// frame, which nobody sees with nothing moving.
+    static let idleAfter: TimeInterval = 0.5
+    static let idlePace: TimeInterval = 0.05
+    private var waiting: [RowBuildQueue] = []
+    private var scheduled = false
+    private var last: TimeInterval = 0
+
+    func request(_ queue: RowBuildQueue) {
+        guard !queue.settled else { return }
+        if !waiting.contains(where: { $0 === queue }) { waiting.append(queue) }
+        schedule(after: Self.pace)
+    }
+
+    /// Never run at once: every grid on the page asks in the same frame,
+    /// and the nearest should go first, not the first to ask.
+    private func schedule(after gap: TimeInterval) {
+        guard !scheduled else { return }
+        scheduled = true
+        let wait = max(0.001, last + gap - ProcessInfo.processInfo.systemUptime)
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [self] in
+            scheduled = false
+            run()
+        }
+    }
+
+    /// The page gliding to a pick, or picked, clicked or fired on a moment
+    /// ago: the rows around the screen can wait. Not the operator's own
+    /// scrolling: there the rows ahead are what is coming next, and they
+    /// keep being made, a row a frame, so the scroll never reaches empty
+    /// cells.
+    private var operatorBusy: Bool {
+        if PageGlide.shared.landingTop != nil { return true }
+        let input = InputTrailRecorder.shared
+        if let scroll = input.sincePageScroll(), scroll < 0.2 { return false }
+        return [input.sinceKey(), input.sinceClick(), input.sinceFocusScroll()]
+            .contains { ($0 ?? .infinity) < Self.idleAfter }
+    }
+
+    private func run() {
+        waiting.removeAll { $0.settled }
+        let next = waiting.min { (a, b) in
+            (a.buildDistance ?? .max) < (b.buildDistance ?? .max)
+        }
+        guard let next else { return }
+        // A missing row on screen (or where a glide lands) is made now;
+        // anything else waits for a pause.
+        let urgent = next.buildDistance == 0
+        if !urgent, operatorBusy {
+            last = ProcessInfo.processInfo.systemUptime
+            schedule(after: 0.1)
+            return
+        }
+        last = ProcessInfo.processInfo.systemUptime
+        next.step()
+        waiting.removeAll { $0.settled }
+        let scrolling = (InputTrailRecorder.shared.sincePageScroll() ?? .infinity) < 0.2
+        if !waiting.isEmpty { schedule(after: urgent || scrolling ? Self.pace : Self.idlePace) }
+    }
+}
+
+/// The page's glide to a picked item: where it will land, until it has.
+/// The grids read it as they are placed (their geometry closures can run
+/// off the main thread, hence the lock), so they build the rows the page
+/// is going to rather than every row it passes on the way.
+final class PageGlide: Sendable {
+    static let shared = PageGlide()
+
+    private let state = OSAllocatedUnfairLock<(top: CGFloat, until: TimeInterval)?>(initialState: nil)
+
+    /// The top of the screen, in the page's content, where the glide lands.
+    var landingTop: CGFloat? {
+        state.withLock { glide in
+            guard let glide, ProcessInfo.processInfo.systemUptime < glide.until else { return nil }
+            return glide.top
+        }
+    }
+
+    func begin(landingTop: CGFloat, duration: TimeInterval) {
+        state.withLock { $0 = (landingTop, ProcessInfo.processInfo.systemUptime + duration) }
+        #if DEBUG || MXU_PERF_HOOKS
+        Task { @MainActor in RowBuildLog.begin() }
+        #endif
+    }
+
+    func end() {
+        state.withLock { $0 = nil }
+    }
+}
+
+/// Counts the page's glides as they end, for the grids to put their rows
+/// back around where they are.
+@MainActor @Observable final class PageGlideEnds {
+    static let shared = PageGlideEnds()
+    private(set) var count = 0
+    @ObservationIgnored private var task: Task<Void, Never>?
+
+    /// The glide just begun is over after `duration` (and a frame or two).
+    func expect(after duration: TimeInterval) {
+        task?.cancel()
+        task = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(duration + 0.05))
+            guard !Task.isCancelled else { return }
+            PageGlide.shared.end()
+            #if DEBUG || MXU_PERF_HOOKS
+            RowBuildLog.landed()
+            #endif
+            self?.count += 1
+        }
+    }
+}
+
+/// Runs `ended` when a glide ends; a modifier of its own so the grid's body
+/// doesn't read the count.
+private struct PageGlideEndFollow: ViewModifier {
+    let active: Bool
+    let ended: () -> Void
+
+    func body(content: Content) -> some View {
+        if active {
+            content.onChange(of: PageGlideEnds.shared.count) { _, _ in ended() }
+        } else {
+            content
+        }
     }
 }
 
@@ -3141,7 +3435,97 @@ enum TileStepCache {
 }
 
 
+/// Where a dragged slide or picture would land on a tile: a line before or
+/// after it, or a ring for onto it.
+private struct TileDropMarks: View {
+    let before: Bool
+    let after: Bool
+    let onto: Bool
+
+    var body: some View {
+        if before || after || onto {
+            ZStack {
+                if before {
+                    Capsule()
+                        .fill(Color.accentColor)
+                        .frame(width: 3)
+                        .padding(.vertical, 14)
+                        .offset(x: -7.5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if after {
+                    Capsule()
+                        .fill(Color.accentColor)
+                        .frame(width: 3)
+                        .padding(.vertical, 14)
+                        .offset(x: 7.5)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                if onto {
+                    RoundedRectangle.standard(CornerStandard.element)
+                        .strokeBorder(Color(nsColor: .controlAccentColor).opacity(0.9), lineWidth: 2)
+                }
+            }
+        }
+    }
+}
+
+/// A tile telling its grid where it is, for a grid that can't work it out
+/// (no cell size yet).
+private struct TileFrameReport: ViewModifier {
+    let box: TileFrameBox?
+    let index: Int
+
+    func body(content: Content) -> some View {
+        if let box {
+            content
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("slideGrid")) } action: { frame in
+                    box.frames[index] = frame
+                }
+                .onDisappear { box.frames.removeValue(forKey: index) }
+        } else {
+            content
+        }
+    }
+}
+
 /// A slide grid's tile frames (see `SlideGridBody.tileFrameBox`).
 @MainActor final class TileFrameBox {
     var frames: [Int: CGRect] = [:]
 }
+
+#if DEBUG || MXU_PERF_HOOKS
+/// When rows of tiles were made and let go after each glide began, for the
+/// perf scenarios: "perf.rows — 18:+1 34:+1 … | 352:landed | 368:+1 -0".
+@MainActor enum RowBuildLog {
+    private static var start: TimeInterval = 0
+    private static var entries: [String] = []
+    private static var flush: Task<Void, Never>?
+
+    static func begin() {
+        dump()
+        start = ProcessInfo.processInfo.systemUptime
+        flush?.cancel()
+        flush = Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            if !Task.isCancelled { dump() }
+        }
+    }
+
+    static func note(added: Int, removed: Int) {
+        guard start > 0 else { return }
+        let ms = Int((ProcessInfo.processInfo.systemUptime - start) * 1000)
+        entries.append("\(ms):" + (added > 0 ? "+\(added)" : "") + (removed > 0 ? "-\(removed)" : ""))
+    }
+
+    static func landed() {
+        guard start > 0 else { return }
+        entries.append("\(Int((ProcessInfo.processInfo.systemUptime - start) * 1000)):landed")
+    }
+
+    private static func dump() {
+        if !entries.isEmpty { DiagnosticsStore.shared.note("perf.rows", detail: entries.joined(separator: " ")) }
+        entries = []
+    }
+}
+#endif

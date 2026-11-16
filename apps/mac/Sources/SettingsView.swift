@@ -23,10 +23,10 @@ struct AppSettingsView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
 
-    @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
+    @HotDefault("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
     /// The section shown last, so Settings opens where it was left.
-    @AppStorage("settings.lastSection") private var lastSection = SettingsCategory.general.rawValue
-    @AppStorage(IntegrationTab.defaultsKey) private var integrationTabRaw = IntegrationTab.anthem.rawValue
+    @HotDefault("settings.lastSection") private var lastSection = SettingsCategory.general.rawValue
+    @HotDefault(IntegrationTab.defaultsKey) private var integrationTabRaw = IntegrationTab.anthem.rawValue
 
     @State private var query = ""
     /// The row a search result (or another window) asked for; it is
@@ -218,9 +218,9 @@ struct AppSettingsView: View {
 
     // MARK: General
 
-    @AppStorage("present.continuous") private var continuousPresent = true
-    @AppStorage(ServiceStation.runsServiceKey) private var runsService = false
-    @AppStorage(MessageCleanupRunner.enabledKey) private var removeOldMessages = true
+    @HotDefault("present.continuous") private var continuousPresent = true
+    @HotDefault(ServiceStation.runsServiceKey) private var runsService = false
+    @HotDefault(MessageCleanupRunner.enabledKey) private var removeOldMessages = true
 
     private var generalPane: some View {
         Form {

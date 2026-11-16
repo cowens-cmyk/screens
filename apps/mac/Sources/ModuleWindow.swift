@@ -7,7 +7,7 @@ struct ModuleWindowView: View {
     let controls: ServiceControls?
     let layout: PresentLayoutController?
 
-    @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
+    @HotDefault("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
     @State private var viewportHeight: CGFloat = 0
 
     var body: some View {
@@ -67,7 +67,7 @@ struct ServiceControlsWindowView: View {
     let controls: ServiceControls?
     let layout: PresentLayoutController?
 
-    @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
+    @HotDefault("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -100,7 +100,7 @@ struct PreviewWindowView: View {
 
     let target: String
 
-    @AppStorage("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
+    @HotDefault("app.appearance") private var appearanceRaw = AppAppearance.dark.rawValue
     @Environment(\.confidenceMonitor) private var confidenceMonitor
 
     static func autosaveName(for target: String) -> String {

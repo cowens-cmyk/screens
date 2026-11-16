@@ -12,11 +12,11 @@ import SwiftUI
 struct SlidesSettingsPane: View {
     let model: AppModel?
 
-    @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.transparencyGrid") private var transparencyGrid = true
-    @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
+    @HotDefault("slideGrid.roundedCorners") private var roundedCorners = true
+    @HotDefault("slideGrid.legibleText") private var legibleText = false
+    @HotDefault("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
+    @HotDefault("slideGrid.transparencyGrid") private var transparencyGrid = true
+    @HotDefault(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
 
     var body: some View {
         Form {
@@ -218,7 +218,7 @@ private struct LocalAPISettingsForm: View {
 /// Settings › Advanced: updates and the diagnostics log.
 struct AdvancedSettingsPane: View {
     @Bindable private var updater = AppUpdater.shared
-    @AppStorage(PanelMotionMeter.enabledKey) private var measurePanelMotion = false
+    @HotDefault(PanelMotionMeter.enabledKey) private var measurePanelMotion = false
 
     var body: some View {
         Form {

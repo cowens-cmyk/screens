@@ -647,7 +647,7 @@ struct MediaEditorView: View {
     @State private var presetNamePrompt = false
     @State private var presetNameDraft = ""
 
-    @AppStorage("editor.inspectorWidth") private var inspectorWidth = PanelWidthGrip.minPanelWidth
+    @HotDefault("editor.inspectorWidth") private var inspectorWidth = PanelWidthGrip.minPanelWidth
 
     @State private var cachedMedia: MediaItem?
     @State private var cachedAudio: AudioItem?

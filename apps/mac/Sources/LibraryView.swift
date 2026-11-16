@@ -9,7 +9,7 @@ struct LibrarySidebar: View {
     @Bindable var model: AppModel
     var render: RenderContext?
 
-    @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
+    @HotDefault("appMode") private var appModeRaw = AppMode.edit.rawValue
 
     @State private var folderPath: [String]? = []
 
@@ -418,8 +418,8 @@ struct LibrarySidebar: View {
         }
     }
 
-    @AppStorage("library.tabOrder") private var tabOrderRaw = ""
-    @AppStorage("library.hiddenTabs") private var hiddenTabsRaw = ""
+    @HotDefault("library.tabOrder") private var tabOrderRaw = ""
+    @HotDefault("library.hiddenTabs") private var hiddenTabsRaw = ""
 
     private var orderedTabs: [LibrarySection] {
         let stored = tabOrderRaw.split(separator: ",").compactMap {
