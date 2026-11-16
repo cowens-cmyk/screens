@@ -286,6 +286,13 @@ struct ServiceContinuousPage: View, Equatable {
                     fireStep($0, positions, order: order)
                     controls?.noteKeyboardFire()
                 }
+                #if DEBUG || MXU_PERF_HOOKS
+                .onReceive(NotificationCenter.default.publisher(for: PerfHooks.fireNext)) { _ in
+                    DiagnosticsStore.shared.note("perf.fire", detail: controls?.liveContextID ?? "-")
+                    fireStep(1, positions, order: order)
+                    controls?.noteKeyboardFire()
+                }
+                #endif
 
                 .background(KeyboardFireFollow(controls: controls) { revealLive(service) })
                 // Everything else that puts a slide up: the remote, Anthem,

@@ -11,6 +11,8 @@ enum PerfHooks {
 
     /// The plan list picks the next item, as a click on it does.
     static let pickNext = Notification.Name("PerfHooks.pickNext")
+    /// The Present page puts the next slide up, as the right arrow does.
+    static let fireNext = Notification.Name("PerfHooks.fireNext")
 
     static func start(model: AppModel) {
         guard let spec = ProcessInfo.processInfo.environment[PerfScenario.environmentKey] else { return }
@@ -18,7 +20,7 @@ enum PerfHooks {
             DiagnosticsStore.shared.note("perf.scenario.failed", detail: "cannot read \(spec)")
             return
         }
-        observe(["mark", "targets", "play", "stop", "pick"])
+        observe(["mark", "targets", "play", "stop", "pick", "fire"])
         Task { await run(scenario, spec: spec, model: model) }
     }
 
@@ -173,6 +175,8 @@ enum PerfHooks {
             editor?.stopAnimationPreview()
         case "pick":
             NotificationCenter.default.post(name: pickNext, object: nil)
+        case "fire":
+            NotificationCenter.default.post(name: fireNext, object: nil)
         default:
             break
         }
