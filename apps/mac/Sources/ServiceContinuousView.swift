@@ -1002,7 +1002,10 @@ struct ServiceContinuousPage: View, Equatable {
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .top) { Self.hairline }
-        .id(item.id)
+        // The item's scroll anchor is the top of its section
+        // (StickySection), not this header: stuck, the header sits at the
+        // bottom of its section, and a jump up to the item landed there, a
+        // grid's height short of its top.
     }
 
     private func activeArrangementName(
@@ -2282,7 +2285,9 @@ private struct StickySection<Content: View, Header: View>: View {
     var body: some View {
         let headerHeight = measured ?? heights.values[itemID] ?? 44
         VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(height: headerHeight)
+            // Where a pick scrolls to: the section's own top, which the
+            // header leaves when it sticks.
+            Color.clear.frame(height: headerHeight).id(itemID)
             content
         }
         .overlay(alignment: .topLeading) {

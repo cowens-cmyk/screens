@@ -131,6 +131,18 @@ import Testing
         #expect(fixed.lowerBound < reader.lowerBound, "measured after it is held to its own height")
     }
 
+    /// A pick scrolls to the top of the item's section, not to its header:
+    /// stuck, the header sits at the bottom of its section, and a jump up
+    /// to an item landed there, a grid's height short of its top
+    /// (scripts/perf/landing.sh).
+    @Test func thePicksAnchorIsTheSectionsTopNotItsStickyHeader() throws {
+        let surface = try source("ServiceContinuousView.swift")
+        #expect(surface.contains("Color.clear.frame(height: headerHeight).id(itemID)"))
+        let header = try #require(surface.range(of: "private func cardHeader("))
+        let body = surface[header.upperBound...].prefix(2600)
+        #expect(!body.contains(".id(item.id)"), "the header moves when it sticks")
+    }
+
     /// Each card measures its own header. One dictionary of header heights
     /// on the page, read by every card as it was built, re-ran every card,
     /// grid and tile whenever a header changed height, as on each pick.
