@@ -2,6 +2,7 @@ import CoreVideo
 import Foundation
 import Metal
 import QuartzCore
+import RenderEngine
 
 /// Turns a rendered frame (half-float, linear Display P3, premultiplied) into
 /// an 8-bit Display P3 BGRA pixel buffer on the GPU, writing straight into the
@@ -47,18 +48,33 @@ final class GPUFrameConverter: @unchecked Sendable {
     }
     """
 
-    init?(device: MTLDevice, straightAlpha: Bool = false) {
-        guard let queue = device.makeCommandQueue(),
-              let library = try? device.makeLibrary(source: Self.source, options: nil),
+    /// One compiled kernel per GPU, shared by every feed: each feed used to
+    /// compile the source and build its own pipeline (and command queue)
+    /// when it started.
+    private static let pipelines = Locked<[UInt64: MTLComputePipelineState]>([:])
+    private static let queues = Locked<[UInt64: MTLCommandQueue]>([:])
+
+    private static func shared(for device: MTLDevice) -> (MTLComputePipelineState, MTLCommandQueue)? {
+        let key = device.registryID
+        if let pipeline = pipelines.value[key], let queue = queues.value[key] { return (pipeline, queue) }
+        guard let library = try? device.makeLibrary(source: source, options: nil),
               let function = library.makeFunction(name: "linearToDisplayP3"),
-              let pipeline = try? device.makeComputePipelineState(function: function)
+              let pipeline = try? device.makeComputePipelineState(function: function),
+              let queue = device.makeCommandQueue()
         else { return nil }
+        queue.label = "outputEngine.mirror.gpuConvert"
+        pipelines.withLock { $0[key] = $0[key] ?? pipeline }
+        queues.withLock { $0[key] = $0[key] ?? queue }
+        return (pipelines.value[key]!, queues.value[key]!)
+    }
+
+    init?(device: MTLDevice, straightAlpha: Bool = false) {
+        guard let (pipeline, queue) = Self.shared(for: device) else { return nil }
         var cache: CVMetalTextureCache?
         guard CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &cache)
                 == kCVReturnSuccess,
               let cache
         else { return nil }
-        queue.label = "outputEngine.mirror.gpuConvert"
         self.device = device
         self.queue = queue
         self.pipeline = pipeline
@@ -66,10 +82,10 @@ final class GPUFrameConverter: @unchecked Sendable {
         self.straightAlpha = straightAlpha
     }
 
-    /// Writes `texture` into `pixelBuffer` (32BGRA, IOSurface-backed) and
-    /// waits for the GPU. Returns the GPU wall time in milliseconds, or nil
-    /// when the buffer could not be wrapped as a texture.
-    func convert(texture: MTLTexture, into pixelBuffer: CVPixelBuffer) -> Double? {
+    /// `pixelBuffer` as a texture the kernel can write, kept alive by the
+    /// returned wrapper until the GPU is done with it.
+    private func destination(for pixelBuffer: CVPixelBuffer, matching texture: MTLTexture)
+        -> (texture: MTLTexture, wrapper: CVMetalTexture)? {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         guard width == texture.width, height == texture.height,
@@ -83,15 +99,25 @@ final class GPUFrameConverter: @unchecked Sendable {
             kCFAllocatorDefault, textureCache, pixelBuffer, attributes,
             .bgra8Unorm, width, height, 0, &wrapped) == kCVReturnSuccess,
               let wrapped,
-              let destination = CVMetalTextureGetTexture(wrapped),
-              let commandBuffer = queue.makeCommandBuffer(),
+              let destination = CVMetalTextureGetTexture(wrapped)
+        else { return nil }
+        return (destination, wrapped)
+    }
+
+    /// Adds the conversion of `texture` into `pixelBuffer` to work already
+    /// on its way to the GPU (the frame's own render), so a feed's frame is
+    /// one submission and nothing waits for it. The returned wrapper must
+    /// be kept until `commandBuffer` completes; nil when the buffer could
+    /// not be wrapped, and nothing was added.
+    func encode(texture: MTLTexture, into pixelBuffer: CVPixelBuffer, on commandBuffer: MTLCommandBuffer)
+        -> CVMetalTexture? {
+        guard let target = destination(for: pixelBuffer, matching: texture),
               let encoder = commandBuffer.makeComputeCommandEncoder()
         else { return nil }
-        let start = CACurrentMediaTime()
-        commandBuffer.label = "outputEngine.mirror.gpuConvert"
+        encoder.label = "outputEngine.mirror.gpuConvert"
         encoder.setComputePipelineState(pipeline)
         encoder.setTexture(texture, index: 0)
-        encoder.setTexture(destination, index: 1)
+        encoder.setTexture(target.texture, index: 1)
         var straight: UInt32 = straightAlpha ? 1 : 0
         encoder.setBytes(&straight, length: MemoryLayout<UInt32>.size, index: 0)
         let group = MTLSize(
@@ -99,8 +125,20 @@ final class GPUFrameConverter: @unchecked Sendable {
             height: max(1, pipeline.maxTotalThreadsPerThreadgroup / pipeline.threadExecutionWidth),
             depth: 1)
         encoder.dispatchThreads(
-            MTLSize(width: width, height: height, depth: 1), threadsPerThreadgroup: group)
+            MTLSize(width: texture.width, height: texture.height, depth: 1), threadsPerThreadgroup: group)
         encoder.endEncoding()
+        return target.wrapper
+    }
+
+    /// Writes `texture` into `pixelBuffer` (32BGRA, IOSurface-backed) and
+    /// waits for the GPU. Returns the GPU wall time in milliseconds, or nil
+    /// when the buffer could not be wrapped as a texture.
+    func convert(texture: MTLTexture, into pixelBuffer: CVPixelBuffer) -> Double? {
+        guard let commandBuffer = GPUFaults.makeCommandBuffer(
+            on: queue, label: "outputEngine.mirror.gpuConvert")
+        else { return nil }
+        let start = CACurrentMediaTime()
+        guard let wrapped = encode(texture: texture, into: pixelBuffer, on: commandBuffer) else { return nil }
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
         // The wrapper has to outlive the GPU's writes into the surface.

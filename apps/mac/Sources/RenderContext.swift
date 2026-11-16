@@ -147,6 +147,9 @@ final class RenderContext {
         guard let compositor = try? Compositor(),
               let media = try? MediaEngine(device: compositor.device)
         else { return nil }
+        // A command buffer the GPU failed shows on screen only as a black or
+        // stale frame; this puts its name and the error in the breadcrumbs.
+        GPUFaults.note.value = { DiagnosticsStore.shared.note("gpu.error", detail: $0) }
         self.compositor = compositor
         self.media = media
         self.outputs = OutputManager(compositor: compositor)

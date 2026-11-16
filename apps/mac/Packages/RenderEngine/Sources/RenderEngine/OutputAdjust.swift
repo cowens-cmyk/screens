@@ -225,7 +225,7 @@ extension Compositor {
             )
         )
 
-        encoder.setRenderPipelineState(outputAdjustPipeline)
+        setPipeline(outputAdjustPipeline, on: encoder)
         encoder.setVertexBytes(
             &vertices, length: MemoryLayout<OutputWarpVertexData>.stride * 6, index: 0)
         encoder.setFragmentBytes(

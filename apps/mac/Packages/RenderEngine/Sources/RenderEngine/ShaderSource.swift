@@ -140,8 +140,7 @@ enum ShaderSource {
     }
 
     fragment float4 compositor_invert(VertexOut in [[stage_in]],
-                                      texture2d<float> tex [[texture(0)]],
-                                      constant float4 &params [[buffer(0)]]) {
+                                      texture2d<float> tex [[texture(0)]]) {
         constexpr sampler s(coord::normalized, address::clamp_to_edge,
                             mag_filter::linear, min_filter::linear);
         float4 c = tex.sample(s, in.uv);
