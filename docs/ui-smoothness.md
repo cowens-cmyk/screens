@@ -51,6 +51,8 @@ every item, so anything each item does per frame is multiplied by the plan.
 
 ## Drawing
 
+Metal specifics (command buffers, feeds, validation): `docs/metal.md`.
+
 - Docked screen previews draw at 15 fps; floating panels at 10.
 - A material, glass or shadow that isn't showing is left out of the tree, not
   drawn at opacity 0: each still costs a blur or an offscreen pass every frame
