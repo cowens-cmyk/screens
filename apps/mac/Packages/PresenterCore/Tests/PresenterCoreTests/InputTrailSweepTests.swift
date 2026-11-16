@@ -124,11 +124,21 @@ import Testing
         let surface = try source("ServiceContinuousView.swift")
         #expect(surface.contains("return max(0, min(-frame.minY, proxy.size.height - headerHeight))"),
                 "the header sticks within its own section")
-        let sticky = try #require(surface.range(of: "StickyHeader(headerHeight: headerHeight, margin: Self.pageMargin) {"))
+        let sticky = try #require(surface.range(of: "StickyHeader(headerHeight: headerHeight, margin: margin) {"))
         let body = surface[sticky.upperBound...].prefix(300)
         let fixed = try #require(body.range(of: ".fixedSize(horizontal: false, vertical: true)"))
-        let reader = try #require(body.range(of: ".background(headerHeightReader(item))"))
+        let reader = try #require(body.range(of: ".onGeometryChange(for: CGFloat.self) { $0.size.height }"))
         #expect(fixed.lowerBound < reader.lowerBound, "measured after it is held to its own height")
+    }
+
+    /// Each card measures its own header. One dictionary of header heights
+    /// on the page, read by every card as it was built, re-ran every card,
+    /// grid and tile whenever a header changed height, as on each pick.
+    @Test func eachCardKeepsItsOwnHeaderHeight() throws {
+        let surface = try source("ServiceContinuousView.swift")
+        #expect(surface.contains("private struct StickySection<Content: View, Header: View>: View"))
+        #expect(surface.contains("@State private var measured: CGFloat?"))
+        #expect(!surface.contains("@State private var headerHeights: [String: CGFloat]"), "a mirror, not page state")
     }
 }
 
@@ -149,9 +159,29 @@ import Testing
         let page = try page()
         #expect(page.contains("@State private var picks = PresentPicks()"))
         #expect(page.contains("private final class PresentPicks"), "a reference, not page state")
-        #expect(page.contains(".scrollPosition($pageScroll.position)"))
+        // Read in a modifier of its own: in the page's GeometryReader, each
+        // pick's write to the position re-ran every card under it.
+        #expect(page.contains(".modifier(PlanPageScrollPosition(pageScroll: pageScroll))"))
+        #expect(page.contains("content.scrollPosition($scroll.position)"))
+        #expect(!page.contains(".scrollPosition($pageScroll.position)"))
         #expect(page.contains("final class PlanPageScroll"))
         #expect(!page.contains(".onChange(of: focusScroll.reselects) {\n"), "read in PlanPageReselectFollow only")
         #expect(!page.contains("proxy.scrollTo(Self.anchor(for: target"), "a ScrollViewReader only moved when the page re-ran")
+    }
+
+    /// A pick must not re-run the plan list's body (every row and menu):
+    /// a stored @Binding re-runs its view on every change, read or not.
+    @Test func aPickLeavesThePlanListBodyAlone() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/ServicePlannerView.swift")
+        let list = try String(contentsOf: url, encoding: .utf8)
+        #expect(list.contains("struct RunOrderList: View, Equatable {"))
+        #expect(list.contains("let currentItem: RunOrderCurrentItem"))
+        #expect(!list.contains("@Binding var selectedItemID: String?\n    /// The plan"), "held, not bound")
+        #expect(list.contains("@State private var marks = RunOrderMarks()"))
+        #expect(!list.contains("@State private var rowFrames"), "frames live in RowFrameStore")
+        #expect(list.contains("RunOrderMenu { itemMenu("), "a row's menu is built when it opens")
     }
 }

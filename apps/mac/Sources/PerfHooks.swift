@@ -11,6 +11,8 @@ enum PerfHooks {
 
     /// The plan list picks the next item, as a click on it does.
     static let pickNext = Notification.Name("PerfHooks.pickNext")
+    /// The Present page puts the next slide up, as the right arrow does.
+    static let fireNext = Notification.Name("PerfHooks.fireNext")
 
     static func start(model: AppModel) {
         guard let spec = ProcessInfo.processInfo.environment[PerfScenario.environmentKey] else { return }
@@ -18,7 +20,7 @@ enum PerfHooks {
             DiagnosticsStore.shared.note("perf.scenario.failed", detail: "cannot read \(spec)")
             return
         }
-        observe(["mark", "targets", "play", "stop", "pick"])
+        observe(["mark", "targets", "play", "stop", "pick", "fire", "input"])
         Task { await run(scenario, spec: spec, model: model) }
     }
 
@@ -148,6 +150,62 @@ enum PerfHooks {
         }
     }
 
+    /// Posts the mouse or key event described in ~/perf-input.txt into the
+    /// app's own event queue, so it takes the path a real one does (hit
+    /// testing, the list's own mouse tracking, gestures, key handlers). For
+    /// measuring and checking clicks where no real pointer can reach the
+    /// window (a locked screen, a headless run). One line:
+    ///   click X Y [left|right|double] [cmd|shift]   (window points, origin top left)
+    ///   key KEYCODE [cmd|shift]
+    private static func postInput() {
+        let path = NSHomeDirectory() + "/perf-input.txt"
+        guard let line = (try? String(contentsOfFile: path, encoding: .utf8))?
+            .split(whereSeparator: \.isNewline).first,
+            let window = NSApp.windows.first(where: { $0.isVisible && $0.styleMask.contains(.titled) })
+        else {
+            DiagnosticsStore.shared.note("perf.input", detail: "nothing to post")
+            return
+        }
+        let parts = line.split(separator: " ").map(String.init)
+        var flags: NSEvent.ModifierFlags = []
+        if parts.contains("cmd") { flags.insert(.command) }
+        if parts.contains("shift") { flags.insert(.shift) }
+        let now = ProcessInfo.processInfo.systemUptime
+        if !NSApp.isActive { NSApp.activate() }
+        if !window.isKeyWindow { window.makeKeyAndOrderFront(nil) }
+        switch parts.first {
+        case "click":
+            guard parts.count >= 3, let x = Double(parts[1]), let y = Double(parts[2]) else { return }
+            let point = NSPoint(x: x, y: window.frame.height - y)
+            let right = parts.contains("right")
+            let clicks = parts.contains("double") ? 2 : 1
+            for click in 1...clicks {
+                for type in right ? [NSEvent.EventType.rightMouseDown, .rightMouseUp] : [.leftMouseDown, .leftMouseUp] {
+                    if let event = NSEvent.mouseEvent(
+                        with: type, location: point, modifierFlags: flags, timestamp: now,
+                        windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                        clickCount: click, pressure: type == .leftMouseDown || type == .rightMouseDown ? 1 : 0) {
+                        NSApp.postEvent(event, atStart: false)
+                    }
+                }
+            }
+        case "key":
+            guard parts.count >= 2, let code = UInt16(parts[1]) else { return }
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                if let event = NSEvent.keyEvent(
+                    with: type, location: .zero, modifierFlags: flags, timestamp: now,
+                    windowNumber: window.windowNumber, context: nil, characters: "",
+                    charactersIgnoringModifiers: "", isARepeat: false, keyCode: code) {
+                    NSApp.postEvent(event, atStart: false)
+                }
+            }
+        default:
+            return
+        }
+        DiagnosticsStore.shared.note(
+            "perf.input", detail: "\(line) (active \(NSApp.isActive), key \(window.isKeyWindow))")
+    }
+
     private static func signal(_ name: String) {
         switch name {
         case "mark":
@@ -173,6 +231,10 @@ enum PerfHooks {
             editor?.stopAnimationPreview()
         case "pick":
             NotificationCenter.default.post(name: pickNext, object: nil)
+        case "fire":
+            NotificationCenter.default.post(name: fireNext, object: nil)
+        case "input":
+            postInput()
         default:
             break
         }

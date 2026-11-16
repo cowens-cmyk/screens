@@ -84,8 +84,10 @@ struct MediaLibraryView: View {
 
     @State private var searchText = ""
     @State private var selectedID: String?
-    @State private var hoveredID: String?
-    @State private var previewID: String?
+    /// The tile under the pointer and the one previewing, read only by the
+    /// tiles: as `@State` here every pointer move over the grid re-ran the
+    /// whole bin, its sorting and filtering included.
+    @State private var hover = MediaBinHover()
     @State private var dropTarget: String?
     @State private var renameTarget: LibraryIndex.Entry?
     @State private var renameText = ""
@@ -139,6 +141,7 @@ struct MediaLibraryView: View {
     }
 
     var body: some View {
+        let _ = BodyMeter.tick(.mediaBin)
         let media = model.entries(in: .media)
         let audio = model.entries(in: .audio)
         let browse = browsing(members(of: shown, media: media, audio: audio))
@@ -167,14 +170,7 @@ struct MediaLibraryView: View {
             }
         }
         .frame(width: picking == nil ? nil : 880, height: picking == nil ? nil : 580)
-        .task(id: hoveredID) {
-            // A preview starts only once the pointer rests on a tile, so
-            // sweeping across the grid never opens a video.
-            previewID = nil
-            guard let id = hoveredID else { return }
-            try? await Task.sleep(for: .milliseconds(400))
-            if !Task.isCancelled { previewID = id }
-        }
+        .modifier(MediaBinPreviewDelay(hover: hover))
         .alert("Rename", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })) {
             TextField("Name", text: $renameText)
             Button("Rename") {
@@ -505,7 +501,10 @@ struct MediaLibraryView: View {
                         packTile(pack)
                     }
                     ForEach(entries) { entry in
-                        tile(entry, packs: browse.allPacks)
+                        // One container per tile: tile() picks between two
+                        // shapes, and a bare branch in a lazy grid's row
+                        // makes SwiftUI run every tile to find its shape.
+                        ZStack { tile(entry, packs: browse.allPacks) }
                     }
                 }
                 .padding(16)
@@ -691,7 +690,7 @@ struct MediaLibraryView: View {
         let order = picked.firstIndex(of: entry.id)
         let base = MediaLibraryTile(
             model: model, entry: entry,
-            previewing: previewID == entry.id,
+            hover: hover,
             selected: picking == nil ? selectedID == entry.id : order != nil)
         .overlay(alignment: .topLeading) {
             if let order, picked.count > 1 {
@@ -705,9 +704,9 @@ struct MediaLibraryView: View {
         }
         .onHover { inside in
             if inside {
-                hoveredID = entry.id
-            } else if hoveredID == entry.id {
-                hoveredID = nil
+                hover.hoveredID = entry.id
+            } else if hover.hoveredID == entry.id {
+                hover.hoveredID = nil
             }
         }
         if let picking {
@@ -721,7 +720,8 @@ struct MediaLibraryView: View {
                 // Pointing at a file shows a trash button for it: the same
                 // Delete… as its right-click menu, which asks first.
                 .overlay(alignment: .topTrailing) {
-                    if !runOnly, hoveredID == entry.id {
+                    if !runOnly {
+                        MediaBinHoverOnly(hover: hover, id: entry.id) {
                         Button { requestDelete(entry) } label: {
                             Image(systemName: "trash")
                                 .font(.system(size: 11, weight: .semibold))
@@ -732,6 +732,7 @@ struct MediaLibraryView: View {
                         .buttonStyle(.plain)
                         .padding(5)
                         .help("Delete \u{201C}\(entry.name)\u{201D}…")
+                        }
                     }
                 }
                 .onTapGesture { selectedID = entry.id }
@@ -962,10 +963,11 @@ private struct BackgroundPackTile: View {
 private struct MediaLibraryTile: View {
     let model: AppModel
     let entry: LibraryIndex.Entry
-    let previewing: Bool
+    let hover: MediaBinHover
     let selected: Bool
 
     var body: some View {
+        let previewing = hover.previewID == entry.id
         let item = entry.kind == .media ? model.media(entry.id) : nil
         VStack(alignment: .leading, spacing: 5) {
             ZStack {
@@ -1109,5 +1111,40 @@ private struct MediaLibraryDropDelegate: DropDelegate {
             return entryID(text)
         }
         return false
+    }
+}
+
+
+/// The media bin's pointer: which tile it rests on, and which one plays a
+/// preview. Its own object so a pointer move re-runs the tiles that read it,
+/// not the bin.
+@MainActor @Observable final class MediaBinHover {
+    var hoveredID: String?
+    var previewID: String?
+}
+
+/// A preview starts only once the pointer rests on a tile, so sweeping
+/// across the grid never opens a video.
+private struct MediaBinPreviewDelay: ViewModifier {
+    let hover: MediaBinHover
+
+    func body(content: Content) -> some View {
+        content.task(id: hover.hoveredID) {
+            hover.previewID = nil
+            guard let id = hover.hoveredID else { return }
+            try? await Task.sleep(for: .milliseconds(400))
+            if !Task.isCancelled { hover.previewID = id }
+        }
+    }
+}
+
+/// Shows `content` only while the pointer is on tile `id`.
+private struct MediaBinHoverOnly<Content: View>: View {
+    let hover: MediaBinHover
+    let id: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if hover.hoveredID == id { content() }
     }
 }

@@ -11,6 +11,21 @@ extension View {
         pressedRow: @escaping (CGPoint, NSEvent.ModifierFlags) -> (() -> Void)? = { _, _ in nil },
         listening: @escaping () -> Bool = { true }
     ) -> some View {
+        listMarquee(
+            active: active, rowFrames: { rowFrames }, began: began, changed: changed,
+            ended: ended, pressedRow: pressedRow, listening: listening)
+    }
+
+    /// The row frames are asked for at each press, so a list can keep them
+    /// out of its own state (see `RowFrameStore`).
+    func listMarquee(
+        active: Bool, rowFrames: @escaping () -> [CGRect],
+        began: @escaping (NSEvent.ModifierFlags) -> Void,
+        changed: @escaping (CGRect) -> Void,
+        ended: @escaping () -> Void,
+        pressedRow: @escaping (CGPoint, NSEvent.ModifierFlags) -> (() -> Void)? = { _, _ in nil },
+        listening: @escaping () -> Bool = { true }
+    ) -> some View {
         background {
             GeometryReader { proxy in
                 ListMarqueeMonitor(
@@ -34,6 +49,41 @@ extension View {
                     .onDisappear { frames.wrappedValue.removeValue(forKey: id) }
             }
         }
+    }
+
+    func reportingGlobalFrame(id: String, into store: RowFrameStore) -> some View {
+        background {
+            GeometryReader { proxy in
+                let frame = proxy.frame(in: .global)
+                Color.clear
+                    .onAppear { store.set(id, frame) }
+                    .onChange(of: frame) { _, frame in store.set(id, frame) }
+                    .onDisappear { store.set(id, nil) }
+            }
+        }
+    }
+}
+
+/// Each row's frame in a list, kept out of the list's own state. Every row
+/// writes its frame as the list scrolls, folds or gains a row; as `@State`
+/// each of those writes re-ran the whole list. Only the frame of the row
+/// being followed (the current item, for its highlight) is observed.
+@MainActor @Observable final class RowFrameStore {
+    @ObservationIgnored private(set) var frames: [String: CGRect] = [:]
+    @ObservationIgnored var followedID: String? {
+        didSet { follow() }
+    }
+    private(set) var followedFrame: CGRect?
+
+    func set(_ id: String, _ frame: CGRect?) {
+        guard frames[id] != frame else { return }
+        frames[id] = frame
+        if id == followedID { follow() }
+    }
+
+    private func follow() {
+        let frame = followedID.flatMap { frames[$0] }
+        if followedFrame != frame { followedFrame = frame }
     }
 }
 
@@ -62,7 +112,7 @@ private struct ListMarqueeMonitor: NSViewRepresentable {
     let active: Bool
 
     let origin: CGPoint
-    let rowFrames: [CGRect]
+    let rowFrames: () -> [CGRect]
     let began: (NSEvent.ModifierFlags) -> Void
     let changed: (CGRect) -> Void
     let ended: () -> Void
@@ -84,7 +134,7 @@ private struct ListMarqueeMonitor: NSViewRepresentable {
         var monitor: Any?
         var active = false
         var origin = CGPoint.zero
-        var rowFrames: [CGRect] = []
+        var rowFrames: () -> [CGRect] = { [] }
         var began: (NSEvent.ModifierFlags) -> Void = { _ in }
         var changed: (CGRect) -> Void = { _ in }
         var ended: () -> Void = {}
@@ -123,7 +173,7 @@ private struct ListMarqueeMonitor: NSViewRepresentable {
                 let local = view.convert(event.locationInWindow, from: nil)
                 let point = local.applying(.init(translationX: origin.x, y: origin.y))
                 guard view.bounds.contains(local) else { return event }
-                if rowFrames.contains(where: { $0.contains(point) }) {
+                if rowFrames().contains(where: { $0.contains(point) }) {
                     if let click = pressedRow(point, event.modifierFlags) {
                         runIfClick(click, pressedAt: NSEvent.mouseLocation)
                     }

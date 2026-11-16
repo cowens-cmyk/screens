@@ -252,6 +252,19 @@ public final class Compositor: @unchecked Sendable {
 
     private let encodeLock = NSLock()
 
+    /// The pipeline last set on the encoder last drawn with. Items in a row
+    /// that draw with the same one don't set it again: Metal's validation
+    /// layer flagged every repeat, and each is work for the driver. The
+    /// encoder is held, not just its address, so a new encoder never passes
+    /// for the old one. Read and written under `encodeLock`.
+    private var boundPipeline: (encoder: MTLRenderCommandEncoder, pipeline: MTLRenderPipelineState)?
+
+    func setPipeline(_ state: MTLRenderPipelineState, on encoder: MTLRenderCommandEncoder) {
+        if let bound = boundPipeline, bound.encoder === encoder, bound.pipeline === state { return }
+        encoder.setRenderPipelineState(state)
+        boundPipeline = (encoder, state)
+    }
+
     public var mediaSource: (any MediaTextureSource)? {
         get { mediaSourceBox.value.value }
         set { mediaSourceBox.value = WeakSource(value: newValue) }
@@ -290,6 +303,7 @@ public final class Compositor: @unchecked Sendable {
         guard let queue = device.makeCommandQueue() else {
             throw CompositorError.pipelineCreationFailed("makeCommandQueue returned nil")
         }
+        queue.label = "compositor"
         commandQueue = queue
 
         let library: MTLLibrary
@@ -424,7 +438,7 @@ public final class Compositor: @unchecked Sendable {
     ) {
         encodeLock.lock()
         defer { encodeLock.unlock() }
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        guard let commandBuffer = GPUFaults.makeCommandBuffer(on: commandQueue, label: "compositor.render.drawable") else { return }
         if let plan = outputPassPlan(
                adjustments: adjustments, sourceRect: sourceRect,
                placement: placement, mask: mask, canvasSize: scene.canvasSize,
@@ -492,7 +506,7 @@ public final class Compositor: @unchecked Sendable {
     ) {
         encodeLock.lock()
         defer { encodeLock.unlock() }
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        guard let commandBuffer = GPUFaults.makeCommandBuffer(on: commandQueue, label: "compositor.render.texture") else { return }
         if let plan = outputPassPlan(
                adjustments: adjustments, sourceRect: sourceRect,
                placement: placement, mask: mask, canvasSize: scene.canvasSize,
@@ -534,11 +548,15 @@ public final class Compositor: @unchecked Sendable {
         sourceRect: CGRect? = nil,
         placement: CGRect? = nil,
         mask: MTLTexture? = nil,
+        encodingAfter: ((MTLCommandBuffer) -> Void)? = nil,
         completion: @escaping @Sendable () -> Void
     ) {
         encodeLock.lock()
         defer { encodeLock.unlock() }
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        guard let commandBuffer = GPUFaults.makeCommandBuffer(on: commandQueue, label: "compositor.render.texture") else {
+            completion()
+            return
+        }
         if let plan = outputPassPlan(
                adjustments: adjustments, sourceRect: sourceRect,
                placement: placement, mask: mask, canvasSize: scene.canvasSize,
@@ -558,6 +576,7 @@ public final class Compositor: @unchecked Sendable {
                 scene: scene, into: texture, commandBuffer: commandBuffer,
                 hostTime: hostTime, transparentBackground: transparentBackground)
         }
+        encodingAfter?(commandBuffer)
         commandBuffer.addCompletedHandler { _ in completion() }
         commandBuffer.commit()
     }
@@ -588,7 +607,7 @@ public final class Compositor: @unchecked Sendable {
     ) {
         encodeLock.lock()
         defer { encodeLock.unlock() }
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        guard let commandBuffer = GPUFaults.makeCommandBuffer(on: commandQueue, label: "compositor.render.composite.drawable") else { return }
         encodeComposite(layers, into: drawable.texture, commandBuffer: commandBuffer, hostTime: hostTime)
         commandBuffer.present(drawable)
         commandBuffer.commit()
@@ -598,12 +617,17 @@ public final class Compositor: @unchecked Sendable {
         composite layers: [OutputCompositeLayer],
         into texture: MTLTexture,
         at hostTime: CFTimeInterval,
+        encodingAfter: ((MTLCommandBuffer) -> Void)? = nil,
         completion: @escaping @Sendable () -> Void
     ) {
         encodeLock.lock()
         defer { encodeLock.unlock() }
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        guard let commandBuffer = GPUFaults.makeCommandBuffer(on: commandQueue, label: "compositor.render.composite.texture") else {
+            completion()
+            return
+        }
         encodeComposite(layers, into: texture, commandBuffer: commandBuffer, hostTime: hostTime)
+        encodingAfter?(commandBuffer)
         commandBuffer.addCompletedHandler { _ in completion() }
         commandBuffer.commit()
     }
@@ -658,7 +682,7 @@ public final class Compositor: @unchecked Sendable {
     ) {
         encodeLock.lock()
         defer { encodeLock.unlock() }
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        guard let commandBuffer = GPUFaults.makeCommandBuffer(on: commandQueue, label: "compositor.render.drawable") else { return }
         let target = drawable.texture
         let fraction = viewScale > 0 ? min(max(rasterScale / viewScale, 0.05), 1) : 1
         if fraction < 0.999,
@@ -686,7 +710,9 @@ public final class Compositor: @unchecked Sendable {
     public func present(
         texture: MTLTexture, into drawable: CAMetalDrawable, sourceRect: CGRect? = nil
     ) {
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        encodeLock.lock()
+        defer { encodeLock.unlock() }
+        guard let commandBuffer = GPUFaults.makeCommandBuffer(on: commandQueue, label: "compositor.present.drawable") else { return }
         encodePresent(
             texture: texture, into: drawable.texture,
             sourceRect: sourceRect, commandBuffer: commandBuffer)
@@ -695,7 +721,9 @@ public final class Compositor: @unchecked Sendable {
     }
 
     public func present(texture: MTLTexture, into target: MTLTexture) {
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        encodeLock.lock()
+        defer { encodeLock.unlock() }
+        guard let commandBuffer = GPUFaults.makeCommandBuffer(on: commandQueue, label: "compositor.present.texture") else { return }
         encodePresent(texture: texture, into: target, commandBuffer: commandBuffer)
         commandBuffer.commit()
     }
@@ -732,7 +760,7 @@ public final class Compositor: @unchecked Sendable {
         var vertices = Self.quadVertices(
             pixelRect: pixelRect, targetSize: targetSize, uvRect: uv)
         var opacity = Float(1)
-        encoder.setRenderPipelineState(pipeline(.textured, .normal))
+        setPipeline(pipeline(.textured, .normal), on: encoder)
         encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
         encoder.setFragmentBytes(&opacity, length: MemoryLayout<Float>.stride, index: 0)
         encoder.setFragmentTexture(texture, index: 0)
@@ -741,7 +769,7 @@ public final class Compositor: @unchecked Sendable {
     }
 
     public func readback(texture: MTLTexture) throws -> RenderedFrame {
-        if let fence = commandQueue.makeCommandBuffer() {
+        if let fence = GPUFaults.makeCommandBuffer(on: commandQueue, label: "compositor.readback.fence") {
             fence.commit()
             fence.waitUntilCompleted()
         }
@@ -777,7 +805,7 @@ public final class Compositor: @unchecked Sendable {
         descriptor.usage = .renderTarget
         descriptor.storageMode = .shared
         guard let texture = device.makeTexture(descriptor: descriptor),
-              let commandBuffer = commandQueue.makeCommandBuffer()
+              let commandBuffer = GPUFaults.makeCommandBuffer(on: commandQueue, label: "compositor.renderFrame")
         else {
             throw CompositorError.renderFailed("could not create offscreen target")
         }
@@ -1023,7 +1051,7 @@ public final class Compositor: @unchecked Sendable {
     }
 
     private func encodeFragmentEffect(
-        _ kind: FragmentKind, params: SIMD4<Float>, params2: SIMD4<Float>? = nil,
+        _ kind: FragmentKind, params: SIMD4<Float>?, params2: SIMD4<Float>? = nil,
         source: MTLTexture, secondary: MTLTexture? = nil, commandBuffer: MTLCommandBuffer
     ) -> MTLTexture? {
         guard let dest = acquireScratch(width: source.width, height: source.height),
@@ -1036,10 +1064,13 @@ public final class Compositor: @unchecked Sendable {
         var vertices = Self.quadVertices(
             pixelRect: CGRect(origin: .zero, size: size), targetSize: size
         )
-        var params = params
-        encoder.setRenderPipelineState(pipeline(kind, .normal))
+        setPipeline(pipeline(kind, .normal), on: encoder)
         encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
-        encoder.setFragmentBytes(&params, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+        // Invert reads no values; binding some anyway is what Metal's
+        // validation layer reported as an unused binding.
+        if var params {
+            encoder.setFragmentBytes(&params, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+        }
         if var params2 {
             encoder.setFragmentBytes(&params2, length: MemoryLayout<SIMD4<Float>>.stride, index: 1)
         }
@@ -1214,7 +1245,7 @@ public final class Compositor: @unchecked Sendable {
                 )
             case .invert:
                 processed = encodeFragmentEffect(
-                    .invert, params: SIMD4(repeating: 0),
+                    .invert, params: nil,
                     source: current, commandBuffer: commandBuffer
                 )
             case .posterize(let levels):
@@ -1254,7 +1285,7 @@ public final class Compositor: @unchecked Sendable {
                         pixelRect: CGRect(origin: .zero, size: size), targetSize: size
                     )
                     var opacity = Float(effect.opacity)
-                    encoder.setRenderPipelineState(pipeline(.textured, .normal))
+                    setPipeline(pipeline(.textured, .normal), on: encoder)
                     encoder.setVertexBytes(
                         &vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0
                     )
@@ -1317,7 +1348,7 @@ public final class Compositor: @unchecked Sendable {
         var vertices = Self.quadVertices(pixelRect: region, targetSize: targetSize)
         var opacity = Float(1)
 
-        resumed.setRenderPipelineState(replacePipeline)
+        setPipeline(replacePipeline, on: resumed)
         resumed.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
         resumed.setFragmentBytes(&opacity, length: MemoryLayout<Float>.stride, index: 0)
         resumed.setFragmentTexture(processed, index: 0)
@@ -1460,7 +1491,7 @@ public final class Compositor: @unchecked Sendable {
         guard let matte = prepared.matte else {
 
             var opacity = Float(item.opacity)
-            encoder.setRenderPipelineState(pipeline(.textured, item.blendMode))
+            setPipeline(pipeline(.textured, item.blendMode), on: encoder)
             encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
             encoder.setFragmentBytes(&opacity, length: MemoryLayout<Float>.stride, index: 0)
             encoder.setFragmentTexture(prepared.content, index: 0)
@@ -1474,7 +1505,7 @@ public final class Compositor: @unchecked Sendable {
             Float((prepared.contentRect.minY - prepared.matteRect.minY) / prepared.matteRect.height)
         )
         var params = SIMD4<Float>(prepared.knockout ? 1 : 0, Float(item.opacity), 0, 0)
-        encoder.setRenderPipelineState(pipeline(.maskedComposite, item.blendMode))
+        setPipeline(pipeline(.maskedComposite, item.blendMode), on: encoder)
         encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
         encoder.setFragmentBytes(&uvMap, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
         encoder.setFragmentBytes(&params, length: MemoryLayout<SIMD4<Float>>.stride, index: 1)
@@ -1657,7 +1688,7 @@ public final class Compositor: @unchecked Sendable {
             wipeFeather: feather,
             wipeFeatherMax: featherMax
         )
-        encoder.setRenderPipelineState(buildPipelines[item.blendMode]!)
+        setPipeline(buildPipelines[item.blendMode]!, on: encoder)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<BuildUniformsData>.stride, index: 0)
         encoder.setFragmentTexture(prepared.content, index: 0)
         encoder.setFragmentTexture(prepared.matte ?? prepared.content, index: 1)
@@ -1760,7 +1791,7 @@ public final class Compositor: @unchecked Sendable {
         )
 
         var color = color.linearPremultiplied * Float(item.opacity)
-        encoder.setRenderPipelineState(pipeline(.solid, item.blendMode))
+        setPipeline(pipeline(.solid, item.blendMode), on: encoder)
         encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
         encoder.setFragmentBytes(&color, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
@@ -1829,7 +1860,7 @@ public final class Compositor: @unchecked Sendable {
             flipHorizontal: item.flipHorizontal, flipVertical: item.flipVertical
         )
         var opacity = Float(item.opacity)
-        encoder.setRenderPipelineState(pipeline(.textured, item.blendMode))
+        setPipeline(pipeline(.textured, item.blendMode), on: encoder)
         encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
         encoder.setFragmentBytes(&opacity, length: MemoryLayout<Float>.stride, index: 0)
         encoder.setFragmentTexture(texture, index: 0)
@@ -1914,7 +1945,7 @@ public final class Compositor: @unchecked Sendable {
                 case .ycbcrBiplanar(let luma, let chroma, let colorTransform, _):
 
                     var uniforms = VideoUniformsGPU(colorTransform, opacity: item.opacity * style.fillOpacity)
-                    encoder.setRenderPipelineState(pipeline(.videoYCbCrMasked, item.blendMode))
+                    setPipeline(pipeline(.videoYCbCrMasked, item.blendMode), on: encoder)
                     encoder.setFragmentBytes(
                         &uniforms, length: MemoryLayout<VideoUniformsGPU>.stride, index: 0
                     )
@@ -1925,7 +1956,7 @@ public final class Compositor: @unchecked Sendable {
                     encoder.setFragmentTexture(maskTexture, index: 2)
                 case .bgra(let texture, let colorTransform, _):
                     var uniforms = VideoUniformsGPU(colorTransform, opacity: item.opacity * style.fillOpacity)
-                    encoder.setRenderPipelineState(pipeline(.videoRGBAMasked, item.blendMode))
+                    setPipeline(pipeline(.videoRGBAMasked, item.blendMode), on: encoder)
                     encoder.setFragmentBytes(
                         &uniforms, length: MemoryLayout<VideoUniformsGPU>.stride, index: 0
                     )
@@ -1964,7 +1995,7 @@ public final class Compositor: @unchecked Sendable {
             flipHorizontal: item.flipHorizontal, flipVertical: item.flipVertical
         )
         var opacity = Float(item.opacity)
-        encoder.setRenderPipelineState(pipeline(.textured, item.blendMode))
+        setPipeline(pipeline(.textured, item.blendMode), on: encoder)
         encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
         encoder.setFragmentBytes(&opacity, length: MemoryLayout<Float>.stride, index: 0)
         encoder.setFragmentTexture(chromeTexture, index: 0)
@@ -2027,7 +2058,7 @@ public final class Compositor: @unchecked Sendable {
             flipHorizontal: item.flipHorizontal, flipVertical: item.flipVertical
         )
         var opacity = Float(item.opacity)
-        encoder.setRenderPipelineState(pipeline(.textured, item.blendMode))
+        setPipeline(pipeline(.textured, item.blendMode), on: encoder)
         encoder.setVertexBytes(&vertices, length: MemoryLayout<SIMD4<Float>>.stride * 6, index: 0)
         encoder.setFragmentBytes(&opacity, length: MemoryLayout<Float>.stride, index: 0)
         encoder.setFragmentTexture(texture, index: 0)
@@ -2118,7 +2149,7 @@ public final class Compositor: @unchecked Sendable {
         guard !placed.isEmpty else { return }
 
         var opacity = Float(item.opacity)
-        encoder.setRenderPipelineState(pipeline(.textured, item.blendMode))
+        setPipeline(pipeline(.textured, item.blendMode), on: encoder)
         encoder.setFragmentBytes(&opacity, length: MemoryLayout<Float>.stride, index: 0)
         encoder.setFragmentTexture(strip.texture, index: 0)
 
@@ -2177,13 +2208,13 @@ public final class Compositor: @unchecked Sendable {
         switch surface {
         case .ycbcrBiplanar(let luma, let chroma, let transform, _):
             var uniforms = VideoUniformsGPU(transform, opacity: item.opacity)
-            encoder.setRenderPipelineState(pipeline(.videoYCbCr, item.blendMode))
+            setPipeline(pipeline(.videoYCbCr, item.blendMode), on: encoder)
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<VideoUniformsGPU>.stride, index: 0)
             encoder.setFragmentTexture(luma, index: 0)
             encoder.setFragmentTexture(chroma, index: 1)
         case .bgra(let texture, let transform, _):
             var uniforms = VideoUniformsGPU(transform, opacity: item.opacity)
-            encoder.setRenderPipelineState(pipeline(.videoRGBA, item.blendMode))
+            setPipeline(pipeline(.videoRGBA, item.blendMode), on: encoder)
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<VideoUniformsGPU>.stride, index: 0)
             encoder.setFragmentTexture(texture, index: 0)
         }

@@ -14,6 +14,10 @@ enum MeteredView: Int, CaseIterable {
     case slideGridBody
     case slideTile
     case slideThumbnail
+    // The plan list (a pass builds every row) and the media bin (a pass
+    // sorts and filters the whole library).
+    case runOrderList
+    case mediaBin
 
     var name: String {
         switch self {
@@ -26,6 +30,8 @@ enum MeteredView: Int, CaseIterable {
         case .slideGridBody: "SlideGridBody"
         case .slideTile: "SlideTile"
         case .slideThumbnail: "SlideThumbnailView"
+        case .runOrderList: "RunOrderList"
+        case .mediaBin: "MediaLibraryView"
         }
     }
 
@@ -36,6 +42,7 @@ enum MeteredView: Int, CaseIterable {
         // A storm line only when far past one pass over a whole plan a second.
         case .slideGridBody: 120
         case .slideTile, .slideThumbnail: 1500
+        case .runOrderList, .mediaBin: 20
         }
     }
 }

@@ -310,6 +310,12 @@ public final class OutputMirror: @unchecked Sendable {
             return
         }
 
+        // SDR frames are converted on the GPU in the render's own command
+        // buffer: one submission per frame, and nothing waits on the GPU.
+        let direct = converter.directFrame()
+        let encodeConversion: (MTLCommandBuffer) -> Void = { [converter] commandBuffer in
+            if let direct { converter.encode(direct, from: slot.texture, on: commandBuffer) }
+        }
         let converted: @Sendable () -> Void = { [weak self] in
             guard let self else {
                 slot.busy.value = false
@@ -317,9 +323,12 @@ public final class OutputMirror: @unchecked Sendable {
             }
             self.convertQueue.async {
                 defer { slot.busy.value = false }
-                guard self.running.value,
-                      let pixelBuffer = self.converter.convert(texture: slot.texture)
-                else {
+                let pixelBuffer: CVPixelBuffer? = if let direct, direct.encoded {
+                    self.converter.finish(direct)
+                } else {
+                    self.converter.convert(texture: slot.texture)
+                }
+                guard self.running.value, let pixelBuffer else {
                     self.counters.withLock { $0.dropped += 1 }
                     RenderPulse.shared.mirrorDrop()
                     return
@@ -338,6 +347,7 @@ public final class OutputMirror: @unchecked Sendable {
                 sourceRect: sourceRect,
                 placement: placement,
                 mask: currentMasks[0],
+                encodingAfter: encodeConversion,
                 completion: converted
             )
         } else {
@@ -351,7 +361,9 @@ public final class OutputMirror: @unchecked Sendable {
                         mask: values.1.1
                     )
                 }
-            compositor.render(composite: layers, into: slot.texture, at: hostTime, completion: converted)
+            compositor.render(
+                composite: layers, into: slot.texture, at: hostTime,
+                encodingAfter: encodeConversion, completion: converted)
         }
     }
 
@@ -495,6 +507,55 @@ public final class PixelBufferConverter: @unchecked Sendable {
                 sourceFormat: sourceFormat, destinationFormat: destinationFormat)
         else { return nil }
         self.converter = converter
+    }
+
+    /// A frame converted on the GPU inside its own render's command buffer.
+    final class DirectFrame: @unchecked Sendable {
+        let pixelBuffer: CVPixelBuffer
+        fileprivate var wrapper: CVMetalTexture?
+        fileprivate var commandBuffer: MTLCommandBuffer?
+        /// The conversion went into the render, so the texture is not to be
+        /// read again on the CPU whatever happens.
+        var encoded: Bool { wrapper != nil }
+        fileprivate init(pixelBuffer: CVPixelBuffer) { self.pixelBuffer = pixelBuffer }
+    }
+
+    /// A pixel buffer for the next frame, when frames are converted on the
+    /// GPU (SDR); nil sends the frame through `convert(texture:)` instead.
+    func directFrame() -> DirectFrame? {
+        guard gpu != nil else { return nil }
+        var pixelBuffer: CVPixelBuffer?
+        let auxiliary: [CFString: Any] = [kCVPixelBufferPoolAllocationThresholdKey: poolCeiling]
+        guard CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(
+            kCFAllocatorDefault, pool, auxiliary as CFDictionary, &pixelBuffer) == kCVReturnSuccess,
+            let pixelBuffer
+        else { return nil }
+        return DirectFrame(pixelBuffer: pixelBuffer)
+    }
+
+    /// Adds the conversion to the render's command buffer, after the frame
+    /// is drawn into `texture`.
+    func encode(_ frame: DirectFrame, from texture: MTLTexture, on commandBuffer: MTLCommandBuffer) {
+        guard let gpu, texture.width == width, texture.height == height else { return }
+        frame.wrapper = gpu.encode(texture: texture, into: frame.pixelBuffer, on: commandBuffer)
+        frame.commandBuffer = commandBuffer
+    }
+
+    /// Once the render completed: the converted buffer, or nil if the GPU
+    /// failed it. The "convert" time in the pulse is the whole frame's GPU
+    /// time here, render and conversion.
+    func finish(_ frame: DirectFrame) -> CVPixelBuffer? {
+        defer {
+            frame.wrapper = nil
+            frame.commandBuffer = nil
+        }
+        guard frame.encoded, let commandBuffer = frame.commandBuffer,
+              commandBuffer.status == .completed
+        else { return nil }
+        let gpuMS = max(0, commandBuffer.gpuEndTime - commandBuffer.gpuStartTime) * 1000
+        RenderPulse.shared.mirrorFrame(readbackMS: 0, convertMS: gpuMS)
+        tag(frame.pixelBuffer)
+        return frame.pixelBuffer
     }
 
     func convert(texture: MTLTexture) -> CVPixelBuffer? {

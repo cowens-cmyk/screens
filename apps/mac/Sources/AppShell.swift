@@ -859,10 +859,11 @@ struct ShellView: View {
             VStack(spacing: 0) {
                 RunOrderList(
                     model: model, controls: controls, serviceID: serviceID, render: render,
-                    selectedItemID: $serviceItemID,
+                    currentItem: RunOrderCurrentItem($serviceItemID),
 
                     onReselect: { if mode == .present { presentFocusScroll.reselect() } }
                 )
+                .equatable()
             }
         } else {
             ContentUnavailableView(
