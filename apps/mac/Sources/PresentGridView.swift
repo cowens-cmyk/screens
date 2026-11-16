@@ -474,8 +474,11 @@ struct SlideGridBody: View {
 
     @State private var gridWidth: CGFloat = 0
 
-    @State private var builtRows: Set<Int> = []
-    /// The rows still to build and where the grid last was (see buildRows).
+    /// Which rows are built as tiles, the rows still to build and where
+    /// the grid last was (see buildRows). Each row reads its own flag, so
+    /// building a row makes that row and nothing else: as a set in the
+    /// grid's state, each row added re-ran the grid and every tile already
+    /// in it.
     @State private var rowQueue = RowBuildQueue()
 
     private var cell: CGSize? {
@@ -487,21 +490,26 @@ struct SlideGridBody: View {
         let across = SlidesAcross.clamped(slidesAcross)
         return VStack(alignment: .leading, spacing: SlideGridMetrics.spacing) {
             ForEach(SlidesAcross.rows(count: slides.count, across: across), id: \.indices.lowerBound) { row in
-                let built = cell != nil && builtRows.contains(row.indices.lowerBound / across)
-                HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
-                    ForEach(row.indices, id: \.self) { index in
-                        if built, let cell {
-                            gridTile(index: index, slide: slides[index], aspect: aspect)
-                                .frame(width: cell.width, height: cell.height, alignment: .top)
-                        } else {
+                GridRowSwitch(flag: rowQueue.flag(row.indices.lowerBound / across), ready: cell != nil) {
+                    HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
+                        ForEach(row.indices, id: \.self) { index in
+                            if let cell {
+                                gridTile(index: index, slide: slides[index], aspect: aspect)
+                                    .frame(width: cell.width, height: cell.height, alignment: .top)
+                            }
+                        }
+                    }
+                } empty: {
+                    HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
+                        ForEach(row.indices, id: \.self) { index in
                             placeholderCell(cell: cell, aspect: aspect)
                                 .id(Self.tileAnchor(contextID: contextID, index: index))
                         }
-                    }
 
-                    if cell == nil {
-                        ForEach(0 ..< row.fillers, id: \.self) { _ in
-                            placeholderCell(cell: nil, aspect: aspect)
+                        if cell == nil {
+                            ForEach(0 ..< row.fillers, id: \.self) { _ in
+                                placeholderCell(cell: nil, aspect: aspect)
+                            }
                         }
                     }
                 }
@@ -574,11 +582,11 @@ struct SlideGridBody: View {
         // What is on screen as the glide leaves stays until it has landed.
         if place.gliding { keeping.formUnion(place.actualKeep) }
         let target = SlidesAcross.rowsToKeep(
-            built: builtRows, near: place.gliding ? place.visible : place.near, keep: place.keep,
+            built: rowQueue.built, near: place.gliding ? place.visible : place.near, keep: place.keep,
             selected: keeping)
         rowQueue.target = target
         rowQueue.focus = place.visible
-        var rows = builtRows
+        var rows = rowQueue.built
         if !place.gliding {
             // On screen and not built: at once, whatever the pace.
             rows.formUnion(target.subtracting(rows).filter(place.visible.contains))
@@ -611,10 +619,10 @@ struct SlideGridBody: View {
     /// Never animated: rows come in while the page glides to an item, and
     /// inside that animation each new tile would fade in.
     private func setBuiltRows(_ rows: Set<Int>) {
-        if rows != builtRows {
+        if rows != rowQueue.built {
             var plain = Transaction()
             plain.disablesAnimations = true
-            withTransaction(plain) { builtRows = rows }
+            withTransaction(plain) { rowQueue.setBuilt(rows) }
         }
     }
 
@@ -623,7 +631,7 @@ struct SlideGridBody: View {
         rowQueue.ticking = true
         DispatchQueue.main.asyncAfter(deadline: .now() + RowBuildPacer.shared.wait) {
             rowQueue.ticking = false
-            let rows = stepped(builtRows)
+            let rows = stepped(rowQueue.built)
             setBuiltRows(rows)
             if rows != rowQueue.target { scheduleRowTick() }
         }
@@ -3217,6 +3225,22 @@ struct GridPlace: Equatable, Sendable {
 
 /// A plan page grid's rows waiting to be built, one a frame.
 @MainActor final class RowBuildQueue {
+    /// The rows built as tiles; each row's view reads its own flag.
+    private(set) var built: Set<Int> = []
+    private var flags: [Int: GridRowFlag] = [:]
+
+    func flag(_ row: Int) -> GridRowFlag {
+        if let flag = flags[row] { return flag }
+        let flag = GridRowFlag()
+        flags[row] = flag
+        return flag
+    }
+
+    func setBuilt(_ rows: Set<Int>) {
+        for row in built.symmetricDifference(rows) { flag(row).built = rows.contains(row) }
+        built = rows
+    }
+
     var target: Set<Int> = []
     /// The rows on screen (or about to be): the nearest missing row to
     /// these is built first.
@@ -3237,6 +3261,29 @@ struct GridPlace: Equatable, Sendable {
         if row < focus.lowerBound { return focus.lowerBound - row }
         if row >= focus.upperBound { return row - focus.upperBound + 1 }
         return 0
+    }
+}
+
+/// Whether one row of a plan page grid is built as tiles.
+@MainActor @Observable final class GridRowFlag {
+    var built = false
+}
+
+/// One row of a slide grid: its tiles once built, else empty cells of the
+/// same size. Reads only its own flag.
+private struct GridRowSwitch<Built: View, Empty: View>: View {
+    let flag: GridRowFlag
+    /// The grid knows its cell size (it has been measured).
+    let ready: Bool
+    @ViewBuilder let built: () -> Built
+    @ViewBuilder let empty: () -> Empty
+
+    var body: some View {
+        if ready, flag.built {
+            built()
+        } else {
+            empty()
+        }
     }
 }
 
