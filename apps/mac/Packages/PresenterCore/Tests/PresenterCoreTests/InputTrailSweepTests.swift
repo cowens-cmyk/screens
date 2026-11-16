@@ -182,7 +182,7 @@ import Testing
             .appendingPathComponent("Sources/PresentGridView.swift")
         let grid = try String(contentsOf: url, encoding: .utf8)
         #expect(grid.contains("if let landing = PageGlide.shared.landingTop {"))
-        #expect(grid.contains("RowBuildPacer.shared.take()"), "one row a frame for the whole page")
+        #expect(grid.contains("RowBuildPacer.shared.request(rowQueue)"), "one row a frame for the whole page")
         #expect(grid.contains("GridRowSwitch(flag: rowQueue.flag("), "a row reads its own flag")
         #expect(!grid.contains("@State private var builtRows"), "a set in the grid's state re-ran every built tile")
     }

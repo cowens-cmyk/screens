@@ -586,55 +586,12 @@ struct SlideGridBody: View {
             selected: keeping)
         rowQueue.target = target
         rowQueue.focus = place.visible
-        var rows = rowQueue.built
         if !place.gliding {
             // On screen and not built: at once, whatever the pace.
-            rows.formUnion(target.subtracting(rows).filter(place.visible.contains))
+            let onScreen = target.subtracting(rowQueue.built).filter(place.visible.contains)
+            if !onScreen.isEmpty { rowQueue.setBuilt(rowQueue.built.union(onScreen)) }
         }
-        rows = stepped(rows)
-        setBuiltRows(rows)
-        if rows != target { scheduleRowTick() }
-    }
-
-    /// One paced change toward the rows wanted: the nearest missing row
-    /// built or, with none missing, the farthest row no longer wanted let
-    /// go. The pace is the page's, shared by every grid on it
-    /// (RowBuildPacer): each grid stepping on its own still made a 30 to
-    /// 40 ms frame when a glide landed among several of them.
-    private func stepped(_ rows: Set<Int>) -> Set<Int> {
-        let missing = rowQueue.target.subtracting(rows)
-        let extra = rows.subtracting(rowQueue.target)
-        guard !(missing.isEmpty && extra.isEmpty), !rowQueue.ticking, RowBuildPacer.shared.take() else {
-            return rows
-        }
-        var rows = rows
-        if let next = rowQueue.nearest(of: missing) {
-            rows.insert(next)
-        } else if let last = rowQueue.farthest(of: extra) {
-            rows.remove(last)
-        }
-        return rows
-    }
-
-    /// Never animated: rows come in while the page glides to an item, and
-    /// inside that animation each new tile would fade in.
-    private func setBuiltRows(_ rows: Set<Int>) {
-        if rows != rowQueue.built {
-            var plain = Transaction()
-            plain.disablesAnimations = true
-            withTransaction(plain) { rowQueue.setBuilt(rows) }
-        }
-    }
-
-    private func scheduleRowTick() {
-        guard !rowQueue.ticking else { return }
-        rowQueue.ticking = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + RowBuildPacer.shared.wait) {
-            rowQueue.ticking = false
-            let rows = stepped(rowQueue.built)
-            setBuiltRows(rows)
-            if rows != rowQueue.target { scheduleRowTick() }
-        }
+        RowBuildPacer.shared.request(rowQueue)
     }
 
     /// The glide has landed (or was cut short): back to the rows around
@@ -3223,11 +3180,18 @@ struct GridPlace: Equatable, Sendable {
     }
 }
 
-/// A plan page grid's rows waiting to be built, one a frame.
+/// A plan page grid's rows: which are built as tiles, which are wanted,
+/// and its turn at the page's pace (RowBuildPacer).
 @MainActor final class RowBuildQueue {
     /// The rows built as tiles; each row's view reads its own flag.
     private(set) var built: Set<Int> = []
     private var flags: [Int: GridRowFlag] = [:]
+    /// The rows wanted built.
+    var target: Set<Int> = []
+    /// The rows on screen (or about to be): the nearest missing row to
+    /// these is built first.
+    var focus: Range<Int> = 0 ..< 0
+    var place = GridPlace()
 
     func flag(_ row: Int) -> GridRowFlag {
         if let flag = flags[row] { return flag }
@@ -3236,23 +3200,42 @@ struct GridPlace: Equatable, Sendable {
         return flag
     }
 
+    /// Never animated: rows come in while the page glides to an item, and
+    /// inside that animation each new tile would fade in.
     func setBuilt(_ rows: Set<Int>) {
-        for row in built.symmetricDifference(rows) { flag(row).built = rows.contains(row) }
+        guard rows != built else { return }
+        var plain = Transaction()
+        plain.disablesAnimations = true
+        withTransaction(plain) {
+            for row in built.symmetricDifference(rows) { flag(row).built = rows.contains(row) }
+        }
         built = rows
     }
 
-    var target: Set<Int> = []
-    /// The rows on screen (or about to be): the nearest missing row to
-    /// these is built first.
-    var focus: Range<Int> = 0 ..< 0
-    var place = GridPlace()
-    var ticking = false
+    var settled: Bool { built == target }
 
-    func nearest(of rows: Set<Int>) -> Int? {
+    /// How far the nearest missing row is from the screen, in rows; nil
+    /// with none missing. A grid nowhere near the screen comes after any
+    /// that is.
+    var buildDistance: Int? {
+        nearest(of: target.subtracting(built)).map { (focus.isEmpty ? 10_000 : 0) + distance($0) }
+    }
+
+    /// One change toward the rows wanted: the nearest missing row built
+    /// or, with none missing, the farthest row no longer wanted let go.
+    func step() {
+        if let next = nearest(of: target.subtracting(built)) {
+            setBuilt(built.union([next]))
+        } else if let last = farthest(of: built.subtracting(target)) {
+            setBuilt(built.subtracting([last]))
+        }
+    }
+
+    private func nearest(of rows: Set<Int>) -> Int? {
         rows.min { distance($0) < distance($1) || (distance($0) == distance($1) && $0 < $1) }
     }
 
-    func farthest(of rows: Set<Int>) -> Int? {
+    private func farthest(of rows: Set<Int>) -> Int? {
         rows.max { distance($0) < distance($1) || (distance($0) == distance($1) && $0 < $1) }
     }
 
@@ -3288,25 +3271,49 @@ private struct GridRowSwitch<Built: View, Empty: View>: View {
 }
 
 /// The plan page's pace for making and letting go of rows of tiles: one
-/// row, in one grid, per frame.
+/// row, in one grid, per frame. A row of tiles takes several milliseconds
+/// to make; grids stepping on their own made a 30 to 50 ms frame wherever
+/// several had rows to make at once (a glide landing among them). The grid
+/// with a missing row nearest the screen goes first; rows are let go only
+/// when none is waiting to be made, so tidying up behind a glide never
+/// holds up the rows it is landing on.
 @MainActor final class RowBuildPacer {
     static let shared = RowBuildPacer()
 
     /// About a frame at 60 Hz.
     static let pace: TimeInterval = 0.016
+    private var waiting: [RowBuildQueue] = []
+    private var scheduled = false
     private var last: TimeInterval = 0
 
-    /// Whether a row may be made or let go now; if so, the next waits.
-    func take() -> Bool {
-        let now = ProcessInfo.processInfo.systemUptime
-        guard now - last >= Self.pace else { return false }
-        last = now
-        return true
+    func request(_ queue: RowBuildQueue) {
+        guard !queue.settled else { return }
+        if !waiting.contains(where: { $0 === queue }) { waiting.append(queue) }
+        schedule()
     }
 
-    /// How long until the next row's turn.
-    var wait: TimeInterval {
-        max(0.002, last + Self.pace - ProcessInfo.processInfo.systemUptime)
+    /// Never run at once: every grid on the page asks in the same frame,
+    /// and the nearest should go first, not the first to ask.
+    private func schedule() {
+        guard !scheduled else { return }
+        scheduled = true
+        let wait = max(0.001, last + Self.pace - ProcessInfo.processInfo.systemUptime)
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [self] in
+            scheduled = false
+            run()
+        }
+    }
+
+    private func run() {
+        waiting.removeAll { $0.settled }
+        let next = waiting.min { (a, b) in
+            (a.buildDistance ?? .max) < (b.buildDistance ?? .max)
+        }
+        guard let next else { return }
+        last = ProcessInfo.processInfo.systemUptime
+        next.step()
+        waiting.removeAll { $0.settled }
+        if !waiting.isEmpty { schedule() }
     }
 }
 
