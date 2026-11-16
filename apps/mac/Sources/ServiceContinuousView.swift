@@ -102,11 +102,12 @@ struct ServiceContinuousPage: View, Equatable {
 
     private var focusItemID: String? { focus.itemID }
 
-    @AppStorage("slideGrid.roundedCorners") private var roundedCorners = true
-    @AppStorage("appMode") private var appModeRaw = AppMode.present.rawValue
-    @AppStorage("slideGrid.hideScopedBackgrounds") private var hideScopedBackgrounds = false
-    @AppStorage("slideGrid.legibleText") private var legibleText = false
-    @AppStorage(SlidesAcross.key) private var slidesAcross = SlidesAcross.fallback
+    // From HotDefaults, not @AppStorage: that re-ran the page, every grid on
+    // it, on any write to UserDefaults (the stage mode, on each new item).
+    private var roundedCorners: Bool { HotDefaults.shared.roundedCorners }
+    private var hideScopedBackgrounds: Bool { HotDefaults.shared.hideScopedBackgrounds }
+    private var legibleText: Bool { HotDefaults.shared.legibleText }
+    private var slidesAcross: Int { HotDefaults.shared.slidesAcross }
 
     @Environment(\.runOnly) private var runOnly
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -788,7 +789,7 @@ struct ServiceContinuousPage: View, Equatable {
                     if PreServiceSlides.isShared(item) {
                         Button("Edit Pre-Service Slides\u{2026}") {
                             model.openInEditor(entryID: presentation.id)
-                            appModeRaw = AppMode.edit.rawValue
+                            HotDefaults.setAppMode(.edit)
                         }
                         Divider()
                     }

@@ -27,7 +27,6 @@ struct RunOrderList: View, Equatable {
     /// comes, so the panel opening and folding doesn't redraw the list.
     @Environment(\.shellPanel) private var shellPanel
 
-    @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
 
     @State private var addingHeader = false
     @State private var headerText = ""
@@ -338,7 +337,7 @@ struct RunOrderList: View, Equatable {
         guard let hit = rowFrames.first(where: { $0.value.contains(point) }),
               let header = visible.first(where: { $0.id == hit.key }),
               RunOrderSelection.isHeaderCueClick(
-                  pressed: header, presenting: runOnly || appModeRaw == AppMode.present.rawValue,
+                  pressed: header, presenting: runOnly || HotDefaults.appModeRaw == AppMode.present.rawValue,
                   command: modifiers.contains(.command), shift: modifiers.contains(.shift),
                   control: modifiers.contains(.control), onDisclosure: point.x < hit.value.minX + 20)
         else { return nil }
@@ -614,7 +613,7 @@ struct RunOrderList: View, Equatable {
             if let entry = model.entry(item.refId), entry.kind.opensInEditor {
                 Button("Edit…") {
                     model.openInEditor(entryID: entry.id)
-                    appModeRaw = AppMode.edit.rawValue
+                    HotDefaults.setAppMode(.edit)
                 }
                 Divider()
             }
@@ -1333,7 +1332,6 @@ struct SongLyricsMenuItems: View {
     let model: AppModel
     let serviceID: String
     let item: ServiceItem
-    @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
 
     var body: some View {
         if item.itemKind == .info, item.refId.isEmpty, item.mxuSongTitle != nil {
@@ -1350,7 +1348,7 @@ struct SongLyricsMenuItems: View {
 
     private func open(_ id: String) {
         model.openInEditor(entryID: id)
-        appModeRaw = AppMode.edit.rawValue
+        HotDefaults.setAppMode(.edit)
     }
 }
 

@@ -575,7 +575,6 @@ struct SlideGridBody: View {
 
     @Environment(\.runOnly) private var runOnly
 
-    @AppStorage("appMode") private var appModeRaw = AppMode.edit.rawValue
 
     @State private var pendingEdit: PendingSectionEdit?
 
@@ -1182,7 +1181,7 @@ struct SlideGridBody: View {
             model.openInEditor(
                 entryID: presentation.id, slideID: slide.id
             )
-            appModeRaw = AppMode.edit.rawValue
+            HotDefaults.setAppMode(.edit)
         }
         Button("Quick Edit…") { quickEditSlide = slide }
         Button("Rename Slide…") {
