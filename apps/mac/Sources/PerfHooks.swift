@@ -158,6 +158,33 @@ enum PerfHooks {
     ///   click X Y [left|right|double] [cmd|shift]   (window points, origin top left)
     ///   key KEYCODE [cmd|shift]
     ///   scroll DY COUNT          (COUNT wheel events of DY points, a frame apart, to the plan page)
+    ///   menu X Y                 (the right-click menu SwiftUI gives at that point; its items go to perf.menu)
+    ///   dragover X Y PAYLOAD     (a drag carrying PAYLOAD, or file:PATH, held over that point)
+    ///   drop X Y PAYLOAD         (the same drag, dropped there; what the drop target answered goes to perf.drop)
+    ///   dragend                  (the held drag leaves)
+    /// For menu, dragover and drop, `tile N ACROSS` in place of X Y is a
+    /// point on tile N of the topmost slide grid showing it whole: ACROSS
+    /// of its width from its leading edge (0.5 the middle, 0.1 and 0.9 its
+    /// edges, 1.03 the gap after it).
+    /// A point on a slide tile, in window points from the top left.
+    private static func pointOnTile(_ tile: Int, across: Double, in window: NSWindow) -> CGPoint? {
+        let showing = SlideGridClicks.shared.grids.compactMap { grid -> CGRect? in
+            guard grid.window === window, !grid.isHiddenOrHasHiddenAncestor,
+                  let frame = grid.frames?()[tile], grid.visibleRect.contains(frame)
+            else { return nil }
+            let inWindow = grid.convert(frame, to: nil)
+            return CGRect(
+                x: inWindow.minX, y: window.frame.height - inWindow.maxY,
+                width: inWindow.width, height: inWindow.height)
+        }
+        return showing.min { $0.minY < $1.minY }.map {
+            CGPoint(x: $0.minX + $0.width * across, y: $0.minY + $0.height * 0.4)
+        }
+    }
+
+    private static var heldDrag: PerfDrag?
+    private static weak var heldTarget: NSView?
+
     private static func postInput() {
         let path = NSHomeDirectory() + "/perf-input.txt"
         guard let line = (try? String(contentsOfFile: path, encoding: .utf8))?
@@ -167,7 +194,14 @@ enum PerfHooks {
             DiagnosticsStore.shared.note("perf.input", detail: "nothing to post")
             return
         }
-        let parts = line.split(separator: " ").map(String.init)
+        var parts = line.split(separator: " ").map(String.init)
+        if parts.count >= 4, parts[1] == "tile", let tile = Int(parts[2]), let across = Double(parts[3]) {
+            guard let point = pointOnTile(tile, across: across, in: window) else {
+                DiagnosticsStore.shared.note("perf.input", detail: "\(line): no grid shows tile \(tile) whole")
+                return
+            }
+            parts.replaceSubrange(1...3, with: [String(Double(point.x)), String(Double(point.y))])
+        }
         var flags: NSEvent.ModifierFlags = []
         if parts.contains("cmd") { flags.insert(.command) }
         if parts.contains("shift") { flags.insert(.shift) }
@@ -205,6 +239,86 @@ enum PerfHooks {
                     }
                     try? await Task.sleep(for: .milliseconds(16))
                 }
+            }
+        case "menu":
+            guard parts.count >= 3, let x = Double(parts[1]), let y = Double(parts[2]) else { return }
+            let point = NSPoint(x: x, y: window.frame.height - y)
+            guard let event = NSEvent.mouseEvent(
+                with: .rightMouseDown, location: point, modifierFlags: flags, timestamp: now,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+            else { return }
+            // What a real right-click goes through: the click watcher sees
+            // it first, then the view under it is asked for its menu.
+            SlideGridClicks.shared.saw(event)
+            var view = window.contentView?.superview?.hitTest(point) ?? window.contentView
+            var menu: NSMenu?
+            while let candidate = view, menu == nil {
+                menu = candidate.menu(for: event)
+                view = candidate.superview
+            }
+            let titles = menu?.items.map { $0.isSeparatorItem ? "—" : $0.title } ?? []
+            DiagnosticsStore.shared.note(
+                "perf.menu", detail: "\(Int(x)) \(Int(y)): \(titles.count) items: \(titles.prefix(8).joined(separator: " | "))")
+        case "dragover", "drop", "dragend":
+            // The view AppKit would send the drag to: the one under the
+            // point that takes dragged types (SwiftUI lays one, which no
+            // click can hit, over each drop target). The smallest wins, as
+            // the innermost drop target does.
+            let dragPoint: NSPoint? = parts.count >= 3
+                ? Double(parts[1]).flatMap { x in Double(parts[2]).map { NSPoint(x: x, y: window.frame.height - $0) } }
+                : nil
+            var takers: [NSView] = []
+            func walk(_ view: NSView) {
+                if !view.registeredDraggedTypes.isEmpty, !view.isHiddenOrHasHiddenAncestor,
+                   let dragPoint, view.convert(view.bounds, to: nil).contains(dragPoint) {
+                    takers.append(view)
+                }
+                view.subviews.forEach(walk)
+            }
+            var root: NSView? = window.contentView
+            while let up = root?.superview { root = up }
+            if let root { walk(root) }
+            let under = takers.min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+            guard let target = under ?? (parts.first == "dragend" ? heldTarget : nil) else {
+                if let held = heldDrag, let heldTarget { heldTarget.draggingExited(held) }
+                heldDrag = nil
+                DiagnosticsStore.shared.note("perf.drop", detail: "\(parts[1]) \(parts[2]): nothing there takes a drag")
+                return
+            }
+            if let held = heldDrag, let heldTarget, heldTarget !== target {
+                heldTarget.draggingExited(held)
+                heldDrag = nil
+            }
+            heldTarget = target
+            if parts.first == "dragend" {
+                if let held = heldDrag { target.draggingExited(held) }
+                heldDrag = nil
+                break
+            }
+            guard parts.count >= 4, let x = Double(parts[1]), let y = Double(parts[2]) else { return }
+            let payload = parts[3...].joined(separator: " ")
+            let pasteboard = NSPasteboard(name: .drag)
+            pasteboard.clearContents()
+            if payload.hasPrefix("file:") {
+                pasteboard.writeObjects([URL(fileURLWithPath: String(payload.dropFirst(5))) as NSURL])
+            } else {
+                pasteboard.setString(payload, forType: .string)
+            }
+            let drag = PerfDrag(window: window, location: NSPoint(x: x, y: window.frame.height - y))
+            let entered = heldDrag == nil ? target.draggingEntered(drag) : target.draggingUpdated(drag)
+            let updated = target.draggingUpdated(drag)
+            heldDrag = drag
+            if parts.first == "drop" {
+                let prepared = target.prepareForDragOperation(drag)
+                let performed = prepared && target.performDragOperation(drag)
+                target.concludeDragOperation(drag)
+                heldDrag = nil
+                DiagnosticsStore.shared.note(
+                    "perf.drop",
+                    detail: "\(Int(x)) \(Int(y)): entered \(entered.rawValue) updated \(updated.rawValue) performed \(performed)")
+            } else {
+                DiagnosticsStore.shared.note(
+                    "perf.drop", detail: "\(Int(x)) \(Int(y)): entered \(entered.rawValue) updated \(updated.rawValue) held by \(Int(target.frame.width))x\(Int(target.frame.height))")
             }
         case "key":
             guard parts.count >= 2, let code = UInt16(parts[1]) else { return }
@@ -256,5 +370,43 @@ enum PerfHooks {
             break
         }
     }
+}
+
+/// A drag that isn't one, for the `dragover` and `drop` inputs: what a drop
+/// target is told about a drag, with what it carries on the drag pasteboard.
+final class PerfDrag: NSObject, NSDraggingInfo {
+    private let window: NSWindow
+    private let location: NSPoint
+
+    init(window: NSWindow, location: NSPoint) {
+        self.window = window
+        self.location = location
+    }
+
+    var draggingDestinationWindow: NSWindow? { window }
+    var draggingSourceOperationMask: NSDragOperation { [.copy, .move, .generic] }
+    var draggingLocation: NSPoint { location }
+    var draggedImageLocation: NSPoint { location }
+    var draggedImage: NSImage? { nil }
+    var draggingPasteboard: NSPasteboard { NSPasteboard(name: .drag) }
+    var draggingSource: Any? { nil }
+    var draggingSequenceNumber: Int { 1 }
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    var draggingFormation: NSDraggingFormation = .default
+    var animatesToDestination = false
+    var numberOfValidItemsForDrop = 1
+    func enumerateDraggingItems(
+        options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?,
+        classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+        using block: @escaping (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
+    ) {}
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+    func resetSpringLoading() {}
+
+    // What AppKit's own drag keeps for a drop target between its calls;
+    // SwiftUI's hosting view asks for it.
+    private var lastOperation: UInt = 0
+    @objc func _lastDragDestinationOperation() -> UInt { lastOperation }
+    @objc func _setLastDragDestinationOperation(_ operation: UInt) { lastOperation = operation }
 }
 #endif

@@ -250,44 +250,115 @@ struct DraggedPayload {
     }
 }
 
-/// The space around a slide grid's tiles: the gaps between them, under a
-/// row, and past the last one. A picture or video, or a slide, dropped there
-/// goes in beside the nearest tile, shown by the same line the tiles use.
-struct GridGapDropDelegate: DropDelegate {
+/// A slide grid's one drop target, for its tiles and the space around them.
+/// Each tile used to carry its own, and making one for every tile was a large
+/// part of what a row of tiles cost to build during a glide; a drop target
+/// also needs its place on screen, so SwiftUI came back to every built tile
+/// on each frame of a scroll. The grid knows where its tiles are, so it finds
+/// the tile under the pointer itself.
+///
+/// On a tile: a slide goes before or after it by the half it is over; a
+/// picture, a video or files go before, onto or after it; anything else (a
+/// macro, a track) goes onto it. Around the tiles: a picture, a video or a
+/// slide goes in beside the nearest tile, and nothing else is taken.
+struct SlideGridDropDelegate: DropDelegate {
     let enabled: Bool
-    /// The place for a point in the grid's own space.
-    let target: (CGPoint) -> SlideDropPlacement.Target?
-    let accepts: (DraggedPayload) -> Bool
+    /// The tile under a point in the grid's own space.
+    let tile: (CGPoint) -> SlideDropPlacement.TileHit?
+    /// The place beside the nearest tile, for a point in the space around them.
+    let gap: (CGPoint) -> SlideDropPlacement.Target?
+    let gapAccepts: (DraggedPayload) -> Bool
+    /// Whether a dragged id can go in beside a tile (a picture or video).
+    let goesBeside: (String) -> Bool
     let show: (SlideDropPlacement.Target?) -> Void
-    let performText: (String, SlideDropPlacement.Target) -> Bool
-    let performFiles: ([URL], SlideDropPlacement.Target) -> Void
+    let dropStarted: () -> Void
+    let performOnTile: (SlideDropPlacement.TileHit, SlideDropPlacement.Target, DraggedPayload) -> Bool
+    let performInGap: (SlideDropPlacement.Target, DraggedPayload) -> Bool
 
-    func validateDrop(info: DropInfo) -> Bool {
-        enabled && info.hasItemsConforming(to: [.plainText, .fileURL]) && accepts(.current)
+    private struct Place {
+        var target: SlideDropPlacement.Target
+        var hit: SlideDropPlacement.TileHit?
     }
 
-    func dropEntered(info: DropInfo) { show(target(info.location)) }
+    private var draggedText: String? { NSPasteboard(name: .drag).string(forType: .string) }
+
+    private func dragged(_ info: DropInfo) -> SlideDropPlacement.Dragged {
+        let text = draggedText
+        if GutterDropDelegate.forcesInsert(payload: text) { return .slide }
+        if !info.hasItemsConforming(to: [.fileURL]), let text, !goesBeside(text) { return .other }
+        return .media
+    }
+
+    private func place(_ info: DropInfo) -> Place? {
+        if let hit = tile(info.location) {
+            let target = SlideDropPlacement.target(
+                overTile: hit.index, x: hit.x, width: hit.width, dragged: dragged(info))
+            return Place(target: target, hit: hit)
+        }
+        guard gapAccepts(.current), let target = gap(info.location) else { return nil }
+        return Place(target: target, hit: nil)
+    }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        enabled && info.hasItemsConforming(to: [.plainText, .fileURL])
+    }
+
+    func dropEntered(info: DropInfo) { show(place(info)?.target) }
     func dropExited(info: DropInfo) { show(nil) }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        show(target(info.location))
-        let text = NSPasteboard(name: .drag).string(forType: .string)
-        return DropProposal(operation: GutterDropDelegate.forcesInsert(payload: text) ? .move : .copy)
+        guard let place = place(info) else {
+            show(nil)
+            return DropProposal(operation: .cancel)
+        }
+        show(place.target)
+        return DropProposal(operation: GutterDropDelegate.forcesInsert(payload: draggedText) ? .move : .copy)
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        show(nil)
-        guard enabled, let place = target(info.location) else { return false }
+        let described = info.itemProviders(for: [.plainText, .fileURL])
+            .map { $0.registeredTypeIdentifiers.joined(separator: "+") }
+            .joined(separator: " | ")
+        MainActor.assumeIsolated { DropLatency.performed() }
+        DiagnosticsStore.shared.note("grid.drop.perform", detail: described)
         let payload = DraggedPayload.current
-        DiagnosticsStore.shared.note("grid.gapDrop", detail: "\(place) files=\(payload.files.count)")
-        if !payload.files.isEmpty {
-            performFiles(payload.files, place)
-            return true
+        let place = place(info)
+        dropStarted()
+        guard enabled, let place else { return false }
+        guard let hit = place.hit else {
+            DiagnosticsStore.shared.note("grid.gapDrop", detail: "\(place.target) files=\(payload.files.count)")
+            return performInGap(place.target, payload)
         }
-        if let text = payload.text {
-            return performText(text, place)
+        DiagnosticsStore.shared.note(
+            "grid.drop.tile",
+            detail: "\(place.target) files=\(payload.files.count) \(payload.text?.prefix(40) ?? "")")
+        if payload.text != nil || !payload.files.isEmpty {
+            return performOnTile(hit, place.target, payload)
         }
-        return false
+        // Nothing on the drag pasteboard: the id comes from the drop itself.
+        // Never for a place after the tile, which only media gets.
+        if case .after = place.target { return false }
+        guard let provider = info.itemProviders(for: [.plainText]).first else {
+            DiagnosticsStore.shared.note("grid.drop.noTextProvider")
+            return false
+        }
+        let typeIdentifier = provider.registeredTypeIdentifiers.first ?? "public.utf8-plain-text"
+        // Runs on the main actor, as every drop here does.
+        nonisolated(unsafe) let performOnTile = performOnTile
+        let target = place.target
+        provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
+            DispatchQueue.main.async {
+                DiagnosticsStore.shared.note(
+                    "grid.drop.loadCallback",
+                    detail: "bytes=\(data?.count ?? -1) error=\(error.map(String.init(describing:)) ?? "nil")")
+                guard let data, let text = String(data: data, encoding: .utf8), !text.isEmpty else {
+                    DiagnosticsStore.shared.note("grid.drop.textLoadFailed", detail: typeIdentifier)
+                    return
+                }
+                _ = performOnTile(hit, target, DraggedPayload(text: text, files: []))
+            }
+        }
+        return true
     }
 }
 

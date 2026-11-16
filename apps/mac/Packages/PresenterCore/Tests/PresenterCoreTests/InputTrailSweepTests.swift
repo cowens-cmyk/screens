@@ -241,4 +241,68 @@ import Testing
         #expect(!list.contains("@State private var rowFrames"), "frames live in RowFrameStore")
         #expect(list.contains("RunOrderMenu { itemMenu("), "a row's menu is built when it opens")
     }
+
+    private func appSource(_ name: String) throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/\(name)")
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    /// The text of a function in `source`, from its `func` to the next
+    /// member at the same indent.
+    private func member(_ signature: String, in source: String) throws -> String {
+        let start = try #require(source.range(of: signature))
+        let rest = source[start.upperBound...]
+        let end = rest.range(of: "\n    }\n")?.upperBound ?? rest.endIndex
+        return String(rest[..<end])
+    }
+
+    /// A drop target and a right-click menu on every tile were half of what
+    /// a tile cost to make. The grid has one of each and finds the tile.
+    @Test func aSlideGridHasOneDropTargetAndOneMenuForAllItsTiles() throws {
+        let grid = try appSource("PresentGridView.swift")
+        #expect(grid.components(separatedBy: "delegate: SlideGridDropDelegate(").count == 2, "one drop target")
+        #expect(!grid.contains("GutterDropDelegate("), "no drop target per tile")
+        #expect(
+            grid.components(separatedBy: ".contextMenu { if !runOnly { GridMenuContent(grid: self, press: menuPress) } }").count == 2,
+            "one menu, built for the tile the click was over")
+        for signature in [
+            "private func tile(index: Int, slide: Slide, aspect: CGFloat) -> some View {",
+            "private func gridTile(index: Int, slide: Slide, aspect: CGFloat) -> some View {",
+        ] {
+            let tile = try member(signature, in: grid)
+            for perTile in [".contextMenu", ".onDrop(", ".dropDestination(", ".overlay"] {
+                #expect(!tile.contains(perTile), "\(perTile) on every tile")
+            }
+        }
+        #expect(grid.contains("GridDropMarkLayer(marks: dropMarks)"), "one layer draws the drop mark")
+        #expect(!grid.contains("@State private var dropTargetIndex"), "a drag over the tiles doesn't re-run the grid")
+    }
+
+    /// With a drag source under the pointer SwiftUI takes the first click in
+    /// a window that isn't active; without one the click only brings the
+    /// window forward. A click on a slide has to fire with another app in
+    /// front, so the drag source stays on the tile.
+    @Test func aTileKeepsItsDragSourceSoAClickFiresFromBehindAnotherApp() throws {
+        let grid = try appSource("PresentGridView.swift")
+        let tile = try member("private func tile(index: Int, slide: Slide, aspect: CGFloat) -> some View {", in: grid)
+        #expect(tile.contains(".draggablePayload(runOnly ? nil : SlideBulkEdit.slideDragPayload("))
+    }
+
+    /// SwiftUI hears of the tile a right-click named a moment later; asked
+    /// for the menu before then, it gives the last one it built, for
+    /// another slide. Pending work is flushed first, the menu is only built
+    /// for the click that named its tile, and every other click forgets it.
+    @Test func theGridsMenuIsAlwaysForTheSlideUnderTheClick() throws {
+        let menu = try appSource("SlideGridMenu.swift")
+        let saw = try member("func saw(_ event: NSEvent) {", in: menu)
+        #expect(saw.contains("if named { CATransaction.flush() }"))
+        #expect(saw.contains("press.forget()"), "every other grid, and every plain click, forgets its tile")
+        let tile = try member("func tile() -> Int? {", in: menu)
+        #expect(tile.contains("_ = presses"), "each right-click builds the menu again")
+        #expect(tile.contains("systemUptime - pressedAt < Self.window"), "no menu without a click that named a tile")
+        #expect(menu.contains("override func hitTest(_ point: NSPoint) -> NSView? { nil }"), "the anchor takes no clicks")
+    }
 }

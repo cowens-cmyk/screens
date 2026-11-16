@@ -28,6 +28,27 @@ struct SlideDropPlacementTests {
         #expect(SlideDropPlacement.target(overTile: 2, x: 80, width: 0) == .onto(2))
     }
 
+    @Test func whatIsDraggedDecidesItsPlaceOnATile() {
+        // A slide: before from the near half, after from the far half.
+        #expect(SlideDropPlacement.target(overTile: 4, x: 99, width: 200, dragged: .slide) == .before(4))
+        #expect(SlideDropPlacement.target(overTile: 4, x: 101, width: 200, dragged: .slide) == .after(4))
+        #expect(SlideDropPlacement.target(overTile: 4, x: 150, width: 0, dragged: .slide) == .before(4), "not measured yet")
+        // A picture, a video or files: the edges and the middle.
+        #expect(SlideDropPlacement.target(overTile: 4, x: 5, width: 200, dragged: .media) == .before(4))
+        #expect(SlideDropPlacement.target(overTile: 4, x: 100, width: 200, dragged: .media) == .onto(4))
+        #expect(SlideDropPlacement.target(overTile: 4, x: 195, width: 200, dragged: .media) == .after(4))
+        // A macro or a track: only ever onto it.
+        for x in [CGFloat(2), 100, 198] {
+            #expect(SlideDropPlacement.target(overTile: 4, x: x, width: 200, dragged: .other) == .onto(4))
+        }
+    }
+
+    @Test func aPlaceNamesItsTile() {
+        #expect(SlideDropPlacement.Target.before(3).index == 3)
+        #expect(SlideDropPlacement.Target.onto(5).index == 5)
+        #expect(SlideDropPlacement.Target.after(0).index == 0)
+    }
+
     // MARK: Between tiles
 
     /// Two rows of three 100×80 tiles, 10 apart, then one more on a third row.
@@ -194,5 +215,33 @@ struct SlideDropPlacementTests {
         #expect(ServiceCountdown.videoFile(in: urls)?.lastPathComponent == "Countdown Nov 16.mp4")
         #expect(ServiceCountdown.videoFile(in: Array(urls.prefix(2))) == nil)
         #expect(ServiceCountdown.videoFile(in: []) == nil)
+    }
+
+    // MARK: The tile under a point
+
+    @Test func aPointOnATileFindsItAndWhereOnItItIs() {
+        // Tile 4 is the middle of the second row: x 110..<210, y 90..<170.
+        #expect(SlideDropPlacement.tile(at: CGPoint(x: 150, y: 100), among: grid)
+            == SlideDropPlacement.TileHit(index: 4, x: 40, width: 100))
+        #expect(SlideDropPlacement.tile(at: CGPoint(x: 110, y: 90), among: grid)?.index == 4, "its corner")
+        #expect(SlideDropPlacement.tile(at: CGPoint(x: 0, y: 0), among: grid)?.index == 0)
+        #expect(SlideDropPlacement.tile(at: CGPoint(x: 50, y: 200), among: grid)?.index == 6, "the short last row")
+    }
+
+    @Test func theSpaceAroundTheTilesIsNoTile() {
+        #expect(SlideDropPlacement.tile(at: CGPoint(x: 105, y: 40), among: grid) == nil, "between two tiles")
+        #expect(SlideDropPlacement.tile(at: CGPoint(x: 50, y: 85), among: grid) == nil, "between two rows")
+        #expect(SlideDropPlacement.tile(at: CGPoint(x: 150, y: 200), among: grid) == nil, "past the last tile")
+        #expect(SlideDropPlacement.tile(at: CGPoint(x: 400, y: 40), among: grid) == nil, "past the row's end")
+        #expect(SlideDropPlacement.tile(at: CGPoint(x: -5, y: 40), among: grid) == nil)
+        #expect(SlideDropPlacement.tile(at: CGPoint(x: 50, y: 40), among: [:]) == nil, "nothing laid out")
+    }
+
+    @Test func everyPointOfEveryTileFindsThatTile() {
+        for (index, frame) in grid {
+            for point in [frame.origin, CGPoint(x: frame.midX, y: frame.midY), CGPoint(x: frame.maxX - 0.5, y: frame.maxY - 0.5)] {
+                #expect(SlideDropPlacement.tile(at: point, among: grid)?.index == index)
+            }
+        }
     }
 }
