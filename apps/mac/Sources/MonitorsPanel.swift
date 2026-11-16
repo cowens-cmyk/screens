@@ -32,6 +32,7 @@ struct MonitorsPanel: View {
     @State private var tally = false
     @Bindable private var setup = ShowSetup.shared
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.runOnly) private var runOnly
 
     /// Screens hidden from this column, by target id ("" separated by
     /// newlines). Kept per Mac: it's only about this window.
@@ -122,6 +123,12 @@ struct MonitorsPanel: View {
                 }
                 Divider()
                 Button("Show All") { hiddenList = "" }
+                // The side TVs are a screen of their own, off until a Mac
+                // wants them. Turned on here as well as in Settings, so the
+                // screen can be had from where the screens are.
+                if !setup.sideTVsOn, !runOnly {
+                    Button("Turn On \(ShowScreen.sideTVs.name)") { turnOnSideTVs() }
+                }
             } label: {
                 PanelHeaderGlyph(symbol: "eye")
             }
@@ -175,6 +182,13 @@ struct MonitorsPanel: View {
 
     private var hidden: Set<String> {
         Set(hiddenList.split(separator: "\n").map(String.init))
+    }
+
+    /// Makes the Side TVs screen (as Settings › Screens › Use side TVs does)
+    /// and shows its preview here, hidden before or not.
+    private func turnOnSideTVs() {
+        ShowScreens.setSideTVs(true, render: render)
+        if setup.sideTVsOn { setHidden(setup.sideTVsTarget, false) }
     }
 
     private func setHidden(_ id: String, _ hide: Bool) {
@@ -324,6 +338,10 @@ struct MonitorsPanel: View {
                         }
                     }
                     .pickerStyle(.inline)
+                    if !runOnly {
+                        Divider()
+                        Button("Choose Its Output…") { openSettings() }
+                    }
                 } label: {
                     Text("Lyrics \(Self.scaleTitle(setup.sideTVsLyricScale))")
                 }

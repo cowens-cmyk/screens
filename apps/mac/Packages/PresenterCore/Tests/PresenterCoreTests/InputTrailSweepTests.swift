@@ -305,4 +305,27 @@ import Testing
         #expect(tile.contains("systemUptime - pressedAt < Self.window"), "no menu without a click that named a tile")
         #expect(menu.contains("override func hitTest(_ point: NSPoint) -> NSView? { nil }"), "the anchor takes no clicks")
     }
+
+    /// A song's arrangement, kept whole beside its name, took the row's
+    /// room first: "I Speak Jesus" read "I S…sus". The name has the row and
+    /// the arrangement sits under it.
+    @Test func aPlanRowsNameHasTheRow() throws {
+        let list = try appSource("ServicePlannerView.swift")
+        let row = try member("private func itemRow(", in: list)
+        #expect(row.contains("            .layoutPriority(1)\n            Spacer(minLength: 4)"), "the name takes what the rest leaves")
+        #expect(!row.contains(".layoutPriority(2)"), "nothing beside the name outranks it")
+        let name = try #require(row.range(of: "Text(displayName(item))"))
+        let under = try #require(row.range(of: "Text(override)"))
+        let between = row[name.upperBound..<under.lowerBound]
+        #expect(!between.contains("Spacer("), "the arrangement is under the name, in its column")
+    }
+
+    /// The side TVs are a screen of their own, off until a Mac wants them;
+    /// the screens panel can turn them on, as Settings can.
+    @Test func theScreensPanelCanTurnOnTheSideTVs() throws {
+        let panel = try appSource("MonitorsPanel.swift")
+        #expect(panel.contains("if !setup.sideTVsOn, !runOnly {\n                    Button(\"Turn On \\(ShowScreen.sideTVs.name)\") { turnOnSideTVs() }"))
+        let turnOn = try member("private func turnOnSideTVs() {", in: panel)
+        #expect(turnOn.contains("ShowScreens.setSideTVs(true, render: render)"))
+    }
 }
