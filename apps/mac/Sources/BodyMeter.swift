@@ -14,6 +14,11 @@ enum MeteredView: Int, CaseIterable {
     case slideGridBody
     case slideTile
     case slideThumbnail
+    // The plan list and its rows: rows in the hundreds a second say the
+    // list rebuilt them all for one change.
+    case runOrderList
+    case runOrderRow
+    case mediaBin
 
     var name: String {
         switch self {
@@ -26,6 +31,9 @@ enum MeteredView: Int, CaseIterable {
         case .slideGridBody: "SlideGridBody"
         case .slideTile: "SlideTile"
         case .slideThumbnail: "SlideThumbnailView"
+        case .runOrderList: "RunOrderList"
+        case .runOrderRow: "RunOrderRow"
+        case .mediaBin: "MediaLibraryView"
         }
     }
 
@@ -36,6 +44,8 @@ enum MeteredView: Int, CaseIterable {
         // A storm line only when far past one pass over a whole plan a second.
         case .slideGridBody: 120
         case .slideTile, .slideThumbnail: 1500
+        case .runOrderList, .mediaBin: 20
+        case .runOrderRow: 600
         }
     }
 }

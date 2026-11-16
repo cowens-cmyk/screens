@@ -70,6 +70,7 @@ struct RunOrderList: View {
     }
 
     var body: some View {
+        let _ = BodyMeter.tick(.runOrderList)
         if let service = try? model.service(serviceID) {
             let visible = visibleItems(service)
             let order = visible.map(\.id)
@@ -398,6 +399,7 @@ struct RunOrderList: View {
     }
 
     private func headerRow(_ item: ServiceItem, order: [String], service: Service) -> some View {
+        let _ = BodyMeter.tick(.runOrderRow)
         let collapsed = collapsedHeaders.contains(item.id)
         return HStack(spacing: 6) {
             Button {
@@ -500,7 +502,8 @@ struct RunOrderList: View {
         _ item: ServiceItem, order: [String], changed: Bool,
         position: ServicePosition? = nil, service: Service? = nil
     ) -> some View {
-        HStack(spacing: 8) {
+        let _ = BodyMeter.tick(.runOrderRow)
+        return HStack(spacing: 8) {
             // An item's color, like a header's, shows as a stripe at its edge.
             if let tint = item.colorHex.flatMap(ColorHex.color) {
                 Capsule()

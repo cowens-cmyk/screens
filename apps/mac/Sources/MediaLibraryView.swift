@@ -139,6 +139,7 @@ struct MediaLibraryView: View {
     }
 
     var body: some View {
+        let _ = BodyMeter.tick(.mediaBin)
         let media = model.entries(in: .media)
         let audio = model.entries(in: .audio)
         let browse = browsing(members(of: shown, media: media, audio: audio))
