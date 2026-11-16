@@ -608,7 +608,12 @@ struct SlideGridBody: View {
 
     @State private var selectionAnchor: Int?
 
-    @State private var tileFrames: [Int: CGRect] = [:]
+    /// Each tile's frame in the grid, for drops, the marquee and a tile's
+    /// width. Read only in those handlers, so it's kept where SwiftUI
+    /// doesn't watch it: as `@State` each tile that came on screen wrote
+    /// to it, and every write re-ran the whole grid, every tile with it.
+    @State private var tileFrameBox = TileFrameBox()
+    private var tileFrames: [Int: CGRect] { tileFrameBox.frames }
 
     @State private var marqueeRect: CGRect?
     /// The plan page's selection box, when this grid is on the page: a box
@@ -1471,18 +1476,10 @@ struct SlideGridBody: View {
             handleTap(index: index, slide: slide)
         }
 
-        .background {
-            GeometryReader { proxy in
-                let frame = proxy.frame(in: .named("slideGrid"))
-                Color.clear
-
-                    .onAppear { if tileFrames[index] != frame { tileFrames[index] = frame } }
-                    .onChange(of: frame) { _, frame in
-                        if tileFrames[index] != frame { tileFrames[index] = frame }
-                    }
-                    .onDisappear { tileFrames.removeValue(forKey: index) }
-            }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("slideGrid")) } action: { [box = tileFrameBox] frame in
+            box.frames[index] = frame
         }
+        .onDisappear { [box = tileFrameBox] in box.frames.removeValue(forKey: index) }
         .draggablePayload(runOnly ? nil : SlideBulkEdit.slideDragPayload(
             presentationID: presentation.id, slideID: slide.id))
 
@@ -3144,3 +3141,8 @@ enum TileStepCache {
     }
 }
 
+
+/// A slide grid's tile frames (see `SlideGridBody.tileFrameBox`).
+@MainActor final class TileFrameBox {
+    var frames: [Int: CGRect] = [:]
+}
