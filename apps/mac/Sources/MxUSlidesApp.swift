@@ -176,7 +176,7 @@ struct MxUSlidesApp: App {
         let model = AppModel()
         #if DEBUG || MXU_PERF_HOOKS
 
-        PerfHooks.start(model: model)
+        PerfHooks.start(model: model, render: render)
         #endif
         #if DEBUG
         SettingsLayoutProbe.start()

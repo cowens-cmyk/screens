@@ -28,12 +28,18 @@ public enum SideScreenLyrics {
         return PresentationTypes.screensType(of: presentation) == PresentationTypes.worship
     }
 
-    /// The scene for the Side TVs while `presentation` is live.
+    /// How far the background behind a song's words can be darkened.
+    public static let dimRange: ClosedRange<Double> = 0...0.6
+    /// The id of the darkening laid over the background during a song.
+    static let dimID = "side-tvs-dim"
+
+    /// The scene for the Side TVs while `presentation` is live. `dim`
+    /// darkens the background behind a song's words (0 leaves it).
     public static func scene(
-        _ scene: RenderScene, presentation: Presentation?, scale: Double
+        _ scene: RenderScene, presentation: Presentation?, scale: Double, dim: Double = 0
     ) -> RenderScene {
         guard carriesLyrics(presentation) else { return scene }
-        return Self.scene(enlargingTextOf: scene, scale: scale)
+        return Self.scene(enlargingTextOf: scene, scale: scale, dim: dim)
     }
 
     /// The scene with the slide's own text drawn `scale` times the size.
@@ -44,18 +50,25 @@ public enum SideScreenLyrics {
     /// the wall's size, the same picture as the room's. Several boxes each
     /// grow around their own centre so they don't cover each other. Every
     /// other layer and item is left as it is.
-    public static func scene(enlargingTextOf scene: RenderScene, scale: Double) -> RenderScene {
+    public static func scene(enlargingTextOf scene: RenderScene, scale: Double, dim: Double = 0) -> RenderScene {
         let factor = min(max(scale, scaleRange.lowerBound), scaleRange.upperBound)
-        guard factor > 1.001,
-              let index = scene.layers.firstIndex(where: { $0.kind == .slide })
-        else { return scene }
+        guard let index = scene.layers.firstIndex(where: { $0.kind == .slide }) else { return scene }
         var out = scene
         let canvas = scene.canvasSize
-        let fills = scene.layers[index].items.filter(enlarges).count == 1
+        let lyrics = scene.layers[index].items.filter(enlarges)
+        // The lyrics alone on the slide go to the middle of the TV, so a
+        // band the theme drew behind them at the top of the wall would be
+        // left there empty: it stays on the wall, not the TVs.
+        if lyrics.count == 1, let lyricFrame = lyrics.first?.frame {
+            out.layers[index].items.removeAll { backsLyrics($0, lyricFrame: lyricFrame, canvas: canvas) }
+        }
+        out = dimmed(out, by: dim, slideLayer: index)
+        guard factor > 1.001 || lyrics.count == 1 else { return out }
+        let fills = lyrics.count == 1
         func grow(_ item: RenderItem) -> RenderItem {
             fills ? filling(item, by: factor, canvas: canvas) : enlarged(item, by: factor, canvas: canvas)
         }
-        out.layers[index].items = scene.layers[index].items.map { item in
+        out.layers[index].items = out.layers[index].items.map { item in
             guard enlarges(item) else { return item }
             var grown = grow(item)
             // A page turn or a build carries the box's other states; they
@@ -86,6 +99,30 @@ public enum SideScreenLyrics {
         return true
     }
 
+    /// A piece of the theme drawn behind the lyrics: a bar or band (not its
+    /// words, such as the CCLI line) that overlaps the lyrics' box and covers
+    /// less than half the picture. A backdrop that fills the screen stays.
+    static func backsLyrics(_ item: RenderItem, lyricFrame: CGRect, canvas: CGSize) -> Bool {
+        guard item.id.hasPrefix("theme-"), canvas.width > 0, canvas.height > 0 else { return false }
+        if case .text = item.content { return false }
+        let overlap = item.frame.intersection(lyricFrame)
+        guard !overlap.isNull, overlap.width * overlap.height > 0 else { return false }
+        return item.frame.width * item.frame.height < canvas.width * canvas.height * 0.5
+    }
+
+    /// The background darkened behind the words: a black layer over every
+    /// media and background layer, under the slide's own pieces.
+    static func dimmed(_ scene: RenderScene, by dim: Double, slideLayer index: Int) -> RenderScene {
+        let amount = min(max(dim, dimRange.lowerBound), dimRange.upperBound)
+        guard amount > 0.001 else { return scene }
+        var out = scene
+        let veil = RenderItem(
+            id: dimID, frame: CGRect(origin: .zero, size: scene.canvasSize),
+            content: .solid(SceneColor(red: 0, green: 0, blue: 0, alpha: amount)))
+        out.layers[index].items.insert(veil, at: 0)
+        return out
+    }
+
     static func enlarged(_ item: RenderItem, by factor: Double, canvas: CGSize) -> RenderItem {
         guard case .text(let text) = item.content else { return item }
         var out = item
@@ -94,15 +131,31 @@ public enum SideScreenLyrics {
         return out
     }
 
-    /// The lyrics box given the whole safe area (and any of the canvas the
-    /// theme already put it in), its words `factor` times the size.
+    /// The lyrics box given the whole safe area, its words `factor` times
+    /// the size and in the middle of the TV, across and down: on the wall
+    /// they sit in a band at the top, where a TV beside it reads them worst.
     static func filling(_ item: RenderItem, by factor: Double, canvas: CGSize) -> RenderItem {
         guard case .text(let text) = item.content, canvas.width > 0, canvas.height > 0 else { return item }
         let whole = CGRect(origin: .zero, size: canvas)
         let safe = whole.insetBy(dx: canvas.width * safeMargin, dy: canvas.height * safeMargin)
         var out = item
-        out.frame = safe.union(item.frame).intersection(whole)
-        out.content = .text(styled(text, scaledBy: factor))
+        out.frame = safe
+        var styled = styled(text, scaledBy: factor)
+        styled.alignment = .center
+        styled.verticalAlignment = .middle
+        out.content = .text(readable(styled, canvas: canvas))
+        return out
+    }
+
+    /// A soft shadow under words that have none, so they read over a
+    /// moving background on a TV. A theme's own shadow or outline is kept.
+    static func readable(_ text: StyledText, canvas: CGSize) -> StyledText {
+        guard text.shadow == nil, text.outline == nil else { return text }
+        var out = text
+        let unit = canvas.height / 1080
+        out.shadow = TextShadow(
+            color: SceneColor(red: 0, green: 0, blue: 0, alpha: 0.7),
+            blurRadius: 10 * unit, offsetX: 0, offsetY: 3 * unit)
         return out
     }
 

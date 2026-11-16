@@ -31,6 +31,7 @@ struct ScreensSettingsPane: View {
             } footer: {
                 Text("Drag a screen onto a display, or click a display and choose below. A display shows one screen. Right-click a display to identify it.")
             }
+            OutputsSection(render: render)
             if let display = selectedDisplay {
                 SelectedDisplaySection(display: display, render: render)
             }
@@ -136,7 +137,7 @@ struct DisplayArrangementView: View {
                 Text("Drag to a display:")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                ForEach(ShowScreen.inUse) { role in
+                ForEach(ShowScreen.allCases) { role in
                     RoleChip(role: role)
                         .draggable(role.rawValue) { RoleChip(role: role) }
                         .help("Drag onto a display to show \(role.name) there")
@@ -200,7 +201,7 @@ struct DisplayArrangementView: View {
         .contentShape(Rectangle())
         .onTapGesture { selection = display.uuid }
         .contextMenu {
-            ForEach(ShowScreen.inUse) { candidate in
+            ForEach(ShowScreen.allCases) { candidate in
                 Toggle(candidate.name, isOn: Binding(
                     get: { role == candidate },
                     set: { _ in ScreenRouting.assignAsking(display: display.uuid, to: candidate, render: render) }))
@@ -361,7 +362,7 @@ private struct SelectedDisplaySection: View {
             )) {
                 Text("None").tag(ShowScreen?.none)
                 Divider()
-                ForEach(ShowScreen.inUse) { Text($0.name).tag(ShowScreen?.some($0)) }
+                ForEach(ShowScreen.allCases) { Text($0.name).tag(ShowScreen?.some($0)) }
             }
             .frame(maxWidth: 360)
             LabeledContent("Resolution") {
@@ -564,6 +565,17 @@ private struct ScreenOutputSection: View {
             }
         }
         .settingsAnchor("screens.sideTVs.size")
+        LabeledContent("Darken background") {
+            HStack(spacing: 8) {
+                Slider(value: $setup.sideTVsDim, in: SideScreenLyrics.dimRange, step: 0.05)
+                    .frame(maxWidth: 220)
+                Text(setup.sideTVsDim < 0.001 ? "Off" : "\(Int((setup.sideTVsDim * 100).rounded()))%")
+                    .monospacedDigit()
+                    .frame(width: 40, alignment: .trailing)
+            }
+        }
+        .help("Darkens the background behind a song's words on the side TVs, so they read in a bright room. Other slides look the same as the audience screen.")
+        .settingsAnchor("screens.sideTVs.dim")
         Picker("Second display", selection: Binding(
             get: { output.mirrorDisplay ?? "" },
             set: { uuid in
@@ -611,7 +623,7 @@ private struct ScreenOutputSection: View {
 private struct SideTVsOffSection: View {
     let render: RenderContext
 
-    static let caption = "Only songs change: their lyrics are drawn larger and shrink to fit, never smaller than on the audience screen. Everything else matches the audience screen."
+    static let caption = "During songs the lyrics are drawn larger in the middle of the TVs. Everything else matches the audience screen. Choosing Side TVs for an output under Outputs turns them on too."
 
     static func scaleText(_ scale: Double) -> String {
         String(format: "%.1f\u{D7}", scale)
@@ -639,30 +651,130 @@ private struct SideTVsOffSection: View {
     }
 }
 
+// MARK: - Outputs
+
+/// Every output this Mac can see, displays and DeckLink ports, each with the
+/// screen it shows beside it. One list for the question the booth asks
+/// ("what is on that port?"), saved as it is chosen: the displays with the
+/// screens (RenderContext.savePlaceholderScreens), the ports in
+/// DeckLinkScreenOutputs, so a quit or a restart brings each one back.
+private struct OutputsSection: View {
+    let render: RenderContext
+
+    @State private var catalog = DeckLinkDeviceCatalog.shared
+
+    private var outputs: OutputManager { render.outputs }
+
+    /// Every port that can send, and any port a screen already uses, found
+    /// by the driver or not: at launch, or with the card's driver slow to
+    /// start, a port chosen for a screen still shows what it's for.
+    private var ports: [DeckLinkHelperDevice] {
+        var list = catalog.devices.filter { device in
+            catalog.displayModes[device.persistentID]?.isEmpty != true
+                || !ScreenRouting.roles(onDeckLink: device.persistentID, render: render).isEmpty
+        }
+        let found = Set(list.map(\.persistentID))
+        let chosen = ShowScreen.allCases
+            .flatMap { ScreenOutput($0, render: render)?.deckLinkBackings ?? [] }
+            .filter { !found.contains($0.devicePersistentID) }
+        for backing in chosen where !list.contains(where: { $0.persistentID == backing.devicePersistentID }) {
+            list.append(DeckLinkHelperDevice(
+                name: backing.deviceName, persistentID: backing.devicePersistentID,
+                supportsPlayback: true, supportsInternalKeying: false, supportsExternalKeying: false))
+        }
+        // The booth's ports are named for their connector, "LED Wall - 1":
+        // in connector order, as on the back of the Mac.
+        func number(_ device: DeckLinkHelperDevice) -> Int {
+            device.name.split(separator: " ").last.flatMap { Int($0) } ?? Int.max
+        }
+        return list.sorted {
+            (number($0), $0.name) < (number($1), $1.name)
+        }
+    }
+
+    private func isFound(_ device: DeckLinkHelperDevice) -> Bool {
+        catalog.devices.contains { $0.persistentID == device.persistentID }
+    }
+
+    var body: some View {
+        Section {
+            ForEach(outputs.displays) { display in
+                let role = ScreenRouting.role(on: display.uuid, render: render)
+                OutputShowsPicker(
+                    title: display.isMain ? "\(display.name) (main display)" : display.name,
+                    detail: "Display",
+                    current: role,
+                    choose: { ScreenRouting.assignAsking(display: display.uuid, to: $0, render: render) })
+            }
+            ForEach(ports) { device in
+                let carried = ScreenRouting.roles(onDeckLink: device.persistentID, render: render)
+                OutputShowsPicker(
+                    title: device.name, detail: isFound(device) ? "DeckLink" : "DeckLink, not found yet",
+                    current: carried.first,
+                    choose: { ScreenRouting.setPort(device, to: $0, render: render) })
+            }
+            if outputs.displays.isEmpty && ports.isEmpty {
+                Text("No displays or DeckLink ports found.").foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Outputs").settingsAnchor("screens.outputs")
+        } footer: {
+            Text("What each display and DeckLink port shows. Choices are kept on this Mac and come back when Screens opens again.")
+        }
+    }
+}
+
+/// One output's name and the screen it shows, as a menu.
+private struct OutputShowsPicker: View {
+    let title: String
+    let detail: String
+    let current: ShowScreen?
+    let choose: (ShowScreen?) -> Void
+
+    var body: some View {
+        LabeledContent {
+            Picker("Shows", selection: Binding(get: { current }, set: { choose($0) })) {
+                Text("Nothing").tag(ShowScreen?.none)
+                Divider()
+                ForEach(ShowScreen.allCases) { role in
+                    Label {
+                        Text(role.name)
+                    } icon: {
+                        Image(systemName: "circle.fill").foregroundStyle(role.tint)
+                    }
+                    .tag(ShowScreen?.some(role))
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+        } label: {
+            HStack(spacing: 6) {
+                Circle().fill(current?.tint ?? Color.secondary.opacity(0.4)).frame(width: 8, height: 8)
+                Text(title)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 // MARK: - NDI and DeckLink
 
-/// NDI and the DeckLink ports alongside the displays: which screens each
-/// carries, the NDI network, and what the DeckLink driver reports.
+/// NDI alongside the displays (which screens go out over it, and the
+/// network), and what the DeckLink driver reports. Which screen each port
+/// carries is chosen under Outputs.
 private struct NetworkOutputsSections: View {
     let render: RenderContext
 
     @State private var catalog = DeckLinkDeviceCatalog.shared
 
-    /// Every port that can send, and any port a screen already uses.
-    private var ports: [DeckLinkHelperDevice] {
-        catalog.devices.filter { device in
-            catalog.displayModes[device.persistentID]?.isEmpty != true
-                || !ScreenRouting.roles(onDeckLink: device.persistentID, render: render).isEmpty
-        }
-    }
-
     var body: some View {
         Section {
             LabeledContent {
                 HStack(spacing: 6) {
-                    ForEach(ShowScreen.inUse) { role in
+                    ForEach(ShowScreen.allCases) { role in
                         roleToggle(role, isOn: ScreenOutput(role, render: render)?.ndiOn == true) { on in
-                            ScreenOutput(role, render: render)?.choose(on ? "ndi" : "none")
+                            (on ? ScreenOutput.making(role, render: render) : ScreenOutput(role, render: render))?
+                                .choose(on ? "ndi" : "none")
                         }
                     }
                 }
@@ -680,23 +792,11 @@ private struct NetworkOutputsSections: View {
             Text("NDI\u{AE} is a registered trademark of Vizrt NDI AB")
         }
         Section {
-            ForEach(ports) { device in
-                LabeledContent(device.name) {
-                    HStack(spacing: 6) {
-                        let carried = ScreenRouting.roles(onDeckLink: device.persistentID, render: render)
-                        ForEach(ShowScreen.inUse) { role in
-                            roleToggle(role, isOn: carried.contains(role)) { on in
-                                ScreenOutput(role, render: render)?.setDeckLink(device, on: on)
-                            }
-                        }
-                    }
-                }
-            }
             DeckLinkSetupForm()
         } header: {
             Text("Blackmagic DeckLink")
         } footer: {
-            Text("A port carries the screens switched on beside it, and a screen can go out of more than one port. Ports mapped as inputs in Desktop Video Setup are left for capture.")
+            Text("Each port's screen is chosen under Outputs above, and a screen can go out of more than one port. Ports mapped as inputs in Desktop Video Setup are left for capture.")
         }
     }
 

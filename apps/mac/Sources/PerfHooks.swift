@@ -8,13 +8,16 @@ enum PerfHooks {
     nonisolated static let notificationPrefix = "com.example.mxuslides.perf."
 
     private static weak var editor: SlideEditorModel?
+    /// The app's render context, for the inputs that set screens' outputs.
+    private static weak var render: RenderContext?
 
     /// The plan list picks the next item, as a click on it does.
     static let pickNext = Notification.Name("PerfHooks.pickNext")
     /// The Present page puts the next slide up, as the right arrow does.
     static let fireNext = Notification.Name("PerfHooks.fireNext")
 
-    static func start(model: AppModel) {
+    static func start(model: AppModel, render: RenderContext? = nil) {
+        self.render = render
         guard let spec = ProcessInfo.processInfo.environment[PerfScenario.environmentKey] else { return }
         guard let scenario = PerfScenario(spec) else {
             DiagnosticsStore.shared.note("perf.scenario.failed", detail: "cannot read \(spec)")
@@ -162,6 +165,10 @@ enum PerfHooks {
     ///   dragover X Y PAYLOAD     (a drag carrying PAYLOAD, or file:PATH, held over that point)
     ///   drop X Y PAYLOAD         (the same drag, dropped there; what the drop target answered goes to perf.drop)
     ///   dragend                  (the held drag leaves)
+    ///   port NAME ID SCREEN      (a DeckLink port, real or not, given a screen: audience, sideTVs, livestream, stage, none)
+    ///   display UUID SCREEN      (a display, connected or not, given a screen)
+    ///   routes                   (every screen's outputs, to perf.routes)
+    ///   quit                     (quits as the menu does, without asking)
     /// For menu, dragover and drop, `tile N ACROSS` in place of X Y is a
     /// point on tile N of the topmost slide grid showing it whole: ACROSS
     /// of its width from its leading edge (0.5 the middle, 0.1 and 0.9 its
@@ -240,6 +247,29 @@ enum PerfHooks {
                     try? await Task.sleep(for: .milliseconds(16))
                 }
             }
+        case "port":
+            guard parts.count >= 4, let id = Int64(parts[2]), let render = Self.render else { return }
+            let device = DeckLinkHelperDevice(
+                name: parts[1].replacingOccurrences(of: "_", with: " "), persistentID: id,
+                supportsPlayback: true, supportsInternalKeying: true, supportsExternalKeying: true)
+            ScreenRouting.setPort(device, to: ShowScreen(rawValue: parts[3]), render: render)
+        case "display":
+            guard parts.count >= 3, let render = Self.render else { return }
+            ScreenRouting.assign(display: parts[1], to: ShowScreen(rawValue: parts[2]), render: render)
+        case "routes":
+            guard let render = Self.render else { return }
+            let routes = ShowScreen.allCases.map { role -> String in
+                guard let output = ScreenOutput(role, render: render) else { return "\(role.rawValue)=off" }
+                var ways: [String] = []
+                if let display = output.display { ways.append("display:\(display)") }
+                ways += output.deckLinkBackings.map { "port:\($0.deviceName.replacingOccurrences(of: " ", with: "_"))" }
+                if output.ndiOn { ways.append("ndi") }
+                return "\(role.rawValue)=" + (ways.isEmpty ? "none" : ways.sorted().joined(separator: "+"))
+            }
+            DiagnosticsStore.shared.note("perf.routes", detail: routes.joined(separator: " "))
+        case "quit":
+            AppDelegate.quitsWithoutAsking = true
+            NSApp.terminate(nil)
         case "menu":
             guard parts.count >= 3, let x = Double(parts[1]), let y = Double(parts[2]) else { return }
             let point = NSPoint(x: x, y: window.frame.height - y)

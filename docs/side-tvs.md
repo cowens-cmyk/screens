@@ -1,36 +1,69 @@
-# Side TVs: the audience slides with larger lyrics
+# Side TVs: the audience slides with larger lyrics in the middle
 
-Settings › Screens › Side TVs. Per Mac, off until **Use side TVs** is turned on.
+A fourth screen beside Audience, Livestream and Stage, for the TVs beside the
+centre LED wall. At Hope it goes out of the DeckLink port **EXTRA - 4**.
 
-The room has a large centre LED wall (the Audience screen: the worship
-background with two lines of lyrics small at the top) and TVs beside it.
-Mirroring the Audience screen onto the TVs makes those lyrics a fraction of
-the size. Side TVs is a fourth screen that shows the Audience screen's scene
-with a song's lyrics drawn larger, and everything else as the room has it.
+The wall (the Audience screen) has the worship background with two lines of
+lyrics small at the top. Mirrored onto the TVs those lyrics are a fraction
+of the size. The Side TVs show the Audience screen's scene with a song's
+lyrics larger and in the middle of the TV, and everything else as the room
+has it.
+
+## Turning it on
+
+Side TVs is offered everywhere a screen is chosen: Settings › Screens ›
+**Outputs** (the menu beside each display and DeckLink port), the
+**Displays** chips and right-click menu, NDI, and the screens panel's eye
+menu (**Turn On Side TVs**). Choosing it for an output makes the screen
+(`ScreenOutput.making`), so no separate switch is needed. **Use side TVs**
+in its section still turns it off, which takes it off every output so the
+Mac stops drawing it.
 
 ## What it shows
 
 - **Songs** (any presentation whose Screens-by-Type row is Worship: a song,
-  or a deck typed Worship): each of the slide's own plain text boxes is
-  drawn **Lyrics size** times larger (1.0–2.5×, 1.6× to start). The box grows
-  around its centre and stays inside a 5% safe margin (a box the theme
-  already put past that line keeps its own edge, so lyrics at the top of the
-  wall grow downward). The text shrinks to fit when the box can't grow as
-  far as the type, never below the Audience screen's own size, and each
-  written line stays on one line, so two lines on the wall are two lines on
-  the TVs.
-- Left as the room has it: the background and every media layer, the
-  theme's own pieces (ids `theme-…`: a bar, the song title or CCLI line),
-  text inside shapes, text on a path, tickers and scrolling text, masked
-  text, overlays and alerts.
+  or a deck typed Worship), when the slide's lyrics are one text box (the
+  usual case):
+  - The words are drawn **Lyrics size** times larger (1.0–2.5×, 1.6× to
+    start) in the whole safe area of the TV (5% margins), centred across
+    and down. They wrap in lines of about equal length and shrink to fit,
+    never below 1.25× the wall's size.
+  - A bar or band of the theme's (an id `theme-…` that isn't text, overlaps
+    the wall's lyrics box and covers less than half the picture) is left
+    off: it sits behind the lyrics at the top of the wall and would be
+    empty there once the words move to the middle. A full-screen backdrop
+    and the theme's words (the CCLI line, a song title) stay.
+  - Words with no shadow or outline of their own get a soft shadow, so they
+    read over a moving background.
+  - **Darken background** (0–60%, off to start) lays black over the
+    background and media, under the words.
+- Several text boxes on a slide each grow around their own centre, so they
+  don't cover each other; nothing is moved to the middle or left off.
+- Left as the room has it: the background and media, text inside shapes,
+  text on a path, tickers and scrolling text, masked text, overlays and
+  alerts.
 - **Anything else** (message, scripture, announcements, videos, a cleared
   slide): exactly the Audience screen.
+
+## Every output comes back
+
+Each output's screen is saved as it is chosen: displays with the screens
+(`RenderContext.savePlaceholderScreens`), DeckLink ports in
+`DeckLinkScreenOutputs` (`decklink.screenPorts`), NDI in `ndi.screenBackings`,
+and Side TVs being on in `show.sideTVs.on`. At launch the screens are made
+first (`ShowScreens.ensure`), then NDI and DeckLink restore onto them, so a
+quit, a restart or a crash brings each screen back on the outputs it had. A
+port or display that isn't there yet (the card's driver still starting)
+keeps its choice and is listed under Outputs as "not found yet".
+`scripts/perf/outputs.sh` checks this with the booth's four ports, through
+a quit and a kill.
 
 ## How it works
 
 - `SlideScene/SideScreenLyrics.swift` turns the room's live scene into the
-  Side TVs' scene. It's a pure function of the scene, the live presentation
-  and the scale; tests in `SlideSceneTests/SideScreenLyricsTests.swift`.
+  Side TVs' scene. It's a pure function of the scene, the live presentation,
+  the scale and the darkening; tests in
+  `SlideSceneTests/SideScreenLyricsTests.swift`.
 - `ServiceControls.apply()` makes it from the same base scene it gives the
   room, every time the room's scene is made, as one of the live scene
   variants (key `side-tvs-lyrics`). Each variant has its own transition
@@ -39,12 +72,14 @@ with a song's lyrics drawn larger, and everything else as the room has it.
   the output manager's slide-theme routing, beside the livestream's designs.
   The Side TVs carry every layer.
 - `ShowScreen.sideTVs` (`ThreeScreens.swift`) is the screen itself, with the
-  role Audience. `ShowScreen.inUse` lists it only while it's on, so the
-  arrangement, Output menus, NDI and DeckLink buttons and the top bar's
-  status dots show it only then. `ShowScreens.setSideTVs(_:render:)` makes
-  the screen or takes it away with its displays, NDI and DeckLink ports.
+  role Audience. Every menu that chooses a screen for an output lists it;
+  `ShowScreen.inUse` (the screens made at launch, the per-screen sections
+  and the top bar's status dots) has it only while it's on.
+  `ShowScreens.setSideTVs(_:render:)` makes the screen or takes it away with
+  its displays, NDI and DeckLink ports; `ScreenOutput.making` calls it when
+  Side TVs is chosen for an output.
 - Settings live in `ShowSetup` (UserDefaults, per Mac): `show.sideTVs.on`,
-  `show.sideTVs.lyricScale`, `show.sideTVsTarget`.
+  `show.sideTVs.lyricScale`, `show.sideTVs.dim`, `show.sideTVsTarget`.
 
 ## Two TVs
 
@@ -56,17 +91,17 @@ with a song's lyrics drawn larger, and everything else as the room has it.
   while the Side TVs are on a display; moving them to NDI, DeckLink or None
   removes it. Giving the second display to another screen takes it off the
   Side TVs.
-- DeckLink: switch **Side TVs** on beside each port, as for any screen.
+- DeckLink: choose **Side TVs** beside each port under **Outputs**, as for
+  any screen.
 
 ## Setting it up
 
-1. Settings › Screens › Side TVs › **Use side TVs**, or in the screens
-   panel beside the slides: the eye menu › **Turn On Side TVs**. Either way
-   the Side TVs get a preview there, between Audience and Livestream, and in
-   the folded strip.
-2. Drag **Side TVs** onto the TVs' display in **Displays** (or pick it in
-   **Output**). For a second TV on its own cable, pick it in **Second
-   display**.
+1. Settings › Screens › **Outputs**: beside **EXTRA - 4** (or the TVs'
+   display), choose **Side TVs**. That turns them on, and they get a preview
+   in the screens panel between Audience and Livestream. For a second TV on
+   its own cable, pick it in the Side TVs section's **Second display**.
+2. Set **Darken background** if the words are hard to read on a bright
+   background.
 3. Fire a song and set **Lyrics size** while looking at the TVs (also in the
    screens panel: the Side TVs card's **Lyrics** menu, which has **Choose Its
    Output…** too).
