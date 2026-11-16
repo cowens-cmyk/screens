@@ -157,6 +157,7 @@ enum PerfHooks {
     /// window (a locked screen, a headless run). One line:
     ///   click X Y [left|right|double] [cmd|shift]   (window points, origin top left)
     ///   key KEYCODE [cmd|shift]
+    ///   scroll DY COUNT          (COUNT wheel events of DY points, a frame apart, to the plan page)
     private static func postInput() {
         let path = NSHomeDirectory() + "/perf-input.txt"
         guard let line = (try? String(contentsOfFile: path, encoding: .utf8))?
@@ -187,6 +188,22 @@ enum PerfHooks {
                         clickCount: click, pressure: type == .leftMouseDown || type == .rightMouseDown ? 1 : 0) {
                         NSApp.postEvent(event, atStart: false)
                     }
+                }
+            }
+        case "scroll":
+            guard parts.count >= 3, let dy = Int32(parts[1]), let count = Int(parts[2]),
+                  let scrollView = PresentCardFrames.shared.scrollView
+            else { return }
+            RowBuildLog.begin()
+            Task { @MainActor in
+                for _ in 0 ..< count {
+                    if let wheel = CGEvent(
+                        scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: dy, wheel2: 0, wheel3: 0),
+                       let event = NSEvent(cgEvent: wheel) {
+                        InputTrailRecorder.shared.notePerfPageScroll()
+                        scrollView.scrollWheel(with: event)
+                    }
+                    try? await Task.sleep(for: .milliseconds(16))
                 }
             }
         case "key":

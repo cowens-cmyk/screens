@@ -36,6 +36,14 @@ final class InputTrailRecorder {
         trail.record(what, at: ProcessInfo.processInfo.systemUptime)
     }
 
+    #if DEBUG || MXU_PERF_HOOKS
+    /// The perf scroll signal's wheel events go straight to the scroll
+    /// view, past the event monitor that notes a real one.
+    func notePerfPageScroll() {
+        lastPageScroll = ProcessInfo.processInfo.systemUptime
+    }
+    #endif
+
     func noteFocusScroll() {
         lastFocusScroll = ProcessInfo.processInfo.systemUptime
     }

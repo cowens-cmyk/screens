@@ -3306,11 +3306,16 @@ private struct GridRowSwitch<Built: View, Empty: View>: View {
         }
     }
 
-    /// The page gliding, scrolled, clicked or fired on a moment ago.
+    /// The page gliding to a pick, or picked, clicked or fired on a moment
+    /// ago: the rows around the screen can wait. Not the operator's own
+    /// scrolling: there the rows ahead are what is coming next, and they
+    /// keep being made, a row a frame, so the scroll never reaches empty
+    /// cells.
     private var operatorBusy: Bool {
         if PageGlide.shared.landingTop != nil { return true }
         let input = InputTrailRecorder.shared
-        return [input.sincePageScroll(), input.sinceKey(), input.sinceClick(), input.sinceFocusScroll()]
+        if let scroll = input.sincePageScroll(), scroll < 0.2 { return false }
+        return [input.sinceKey(), input.sinceClick(), input.sinceFocusScroll()]
             .contains { ($0 ?? .infinity) < Self.idleAfter }
     }
 
@@ -3331,7 +3336,8 @@ private struct GridRowSwitch<Built: View, Empty: View>: View {
         last = ProcessInfo.processInfo.systemUptime
         next.step()
         waiting.removeAll { $0.settled }
-        if !waiting.isEmpty { schedule(after: urgent ? Self.pace : Self.idlePace) }
+        let scrolling = (InputTrailRecorder.shared.sincePageScroll() ?? .infinity) < 0.2
+        if !waiting.isEmpty { schedule(after: urgent || scrolling ? Self.pace : Self.idlePace) }
     }
 }
 
