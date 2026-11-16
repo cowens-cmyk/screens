@@ -93,6 +93,13 @@ staged perf build; `perf.mark` counts the bodies each one re-ran. For where
 the time goes, record the same run with `xcrun xctrace record --template
 'Time Profiler' --attach <pid>`: SwiftUI's own time shows up as layout and
 graph updates, so the long freezes, not the totals, are what to compare.
+For a real click's path (hit testing, the list's own mouse tracking,
+gestures) where no pointer can reach the window, such as a locked screen:
+write `click X Y [right|double] [cmd|shift]` or `key CODE` (window points,
+origin top left) to `perf-input.txt` in the sandbox home, then
+`notifyutil -p com.example.mxuslides.perf.input`; the app posts the event
+into its own queue (`PerfHooks.postInput`, test builds only).
+`screencapture -l <window id>` still captures the window behind the lock.
 To find what re-runs a view, `let _ = Self._printChanges()` in its body
 (with stdout line-buffered) names the property; remove it before
 committing. As of 0.38.3 a plan click's longest freeze is about 30-45 ms
