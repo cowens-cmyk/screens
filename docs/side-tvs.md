@@ -60,9 +60,13 @@ with a song's lyrics drawn larger, and everything else as the room has it.
 
 ## Setting it up
 
-1. Settings › Screens › Side TVs › **Use side TVs**.
+1. Settings › Screens › Side TVs › **Use side TVs**, or in the screens
+   panel beside the slides: the eye menu › **Turn On Side TVs**. Either way
+   the Side TVs get a preview there, between Audience and Livestream, and in
+   the folded strip.
 2. Drag **Side TVs** onto the TVs' display in **Displays** (or pick it in
    **Output**). For a second TV on its own cable, pick it in **Second
    display**.
 3. Fire a song and set **Lyrics size** while looking at the TVs (also in the
-   screens panel: the Side TVs card's **Lyrics** menu).
+   screens panel: the Side TVs card's **Lyrics** menu, which has **Choose Its
+   Output…** too).

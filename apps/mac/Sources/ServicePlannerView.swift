@@ -512,15 +512,29 @@ struct RunOrderList: View, Equatable {
                     of: item, presentation: item.itemKind == .presentation ? model.presentation(item.refId) : nil),
                 live: liveCheck(item))
 
-            // Shrinks a little to fit the panel's width before it cuts the
-            // name, and never below 10 pt so it reads from the booth chair.
-            Text(displayName(item))
-                .font(.system(size: 12))
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-                .truncationMode(.middle)
-                .foregroundStyle(item.itemKind == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                .layoutPriority(item.isCountdown == true ? 1 : 0)
+            // The name has the row: everything after it keeps its own size
+            // and the name takes the rest. A song's arrangement sits under
+            // the name, not beside it. Beside it, and kept whole, it took
+            // the room first, and "I Speak Jesus" read "I S…sus" in a panel
+            // of the usual width.
+            VStack(alignment: .leading, spacing: 0) {
+                // Shrinks a little to fit the panel's width before it cuts
+                // the name, and never below 10 pt so it reads from the
+                // booth chair.
+                Text(displayName(item))
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .truncationMode(.middle)
+                    .foregroundStyle(item.itemKind == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                if item.itemKind == .presentation, let override = arrangementName(item) {
+                    Text(override)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .layoutPriority(1)
             Spacer(minLength: 4)
 
             // A planned song with no presentation in the library: flag it so
@@ -541,18 +555,8 @@ struct RunOrderList: View, Equatable {
                     .background(Color.secondary.opacity(0.12), in: Capsule())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .fixedSize()
                     .help("Changed in this version. Right-click and choose Use Main's to undo it.")
-            }
-
-            if item.itemKind == .presentation,
-               let override = arrangementName(item) {
-                // Kept whole: the name gives way first. Fixed sizes here
-                // pushed the row past its cell, which cut the end off.
-                Text(override)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .layoutPriority(2)
             }
             AnthemMismatchBadge(model: model, serviceID: serviceID, itemID: item.id)
             if let service, let tags = model.stageStreamTags(for: item, in: service) {
