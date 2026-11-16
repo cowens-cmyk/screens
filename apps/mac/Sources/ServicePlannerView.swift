@@ -443,21 +443,8 @@ struct RunOrderList: View, Equatable {
             Spacer(minLength: 0)
         }
         .contentShape(Rectangle())
-        .contextMenu {
-            if !runOnly {
-                let batch = ListMultiSelect.batch(clicked: item.id, selection: marks.multi, order: order)
-                if batch.count > 1 {
-                    bulkMenu(batch)
-                } else {
-                    headerColorMenu(item)
-                    lightingMenu(item, service: service)
-                    Divider()
-
-                    Button("Hide") { hide([item.id]) }
-                    removeButton(item)
-                }
-            }
-        }
+        // Built when it opens (see RunOrderMenu), not with every row.
+        .contextMenu { if !runOnly { RunOrderMenu { headerMenu(item, order: order, service: service) } } }
 
         .id("runOrderHeaderMenu|\(item.id)|\(inMultiSelection(item.id))|\(item.lightingCue ?? "")")
     }
@@ -591,62 +578,86 @@ struct RunOrderList: View, Equatable {
             }
         ))
         .contextMenu {
-            let batch = ListMultiSelect.batch(clicked: item.id, selection: marks.multi, order: order)
-            if !runOnly, batch.count > 1 {
-                bulkMenu(batch)
-            } else if !runOnly {
-                SongLyricsMenuItems(model: model, serviceID: serviceID, item: item)
-
-                if let entry = model.entry(item.refId), entry.kind.opensInEditor {
-                    Button("Edit…") {
-                        model.openInEditor(entryID: entry.id)
-                        appModeRaw = AppMode.edit.rawValue
-                    }
-                    Divider()
-                }
-                headerColorMenu(item)
-                if let service {
-                    lightingMenu(item, service: service, position: position)
-                }
-                if item.actions?.isEmpty == false {
-                    Button("Remove Macros") { setActions(nil, on: item.id) }
-                }
-                Divider()
-
-                if item.itemKind == .presentation {
-                    SlideshowMenu(model: model, presentationID: item.refId)
-                }
-                if item.itemKind == .media {
-                    // When Video Ends heads this menu for a video.
-                    MediaCueMenuItems(
-                        model: model, actionRouter: controls?.actionRouter,
-                        mediaID: item.refId, state: mediaMenuState,
-                        fallbackName: item.name
-                    )
-                } else if item.itemKind != .info {
-
-                    Button("Rename…") {
-                        renamingItem = item
-                        itemRenameText = displayName(item)
-                    }
-                    if item.itemKind == .presentation {
-                        arrangementMenu(item)
-
-                        Button("Apply Theme…") {
-                            applyThemeTarget = ApplyThemeTarget(presentationID: item.refId, slideIDs: nil)
-                        }
-                    }
-                }
-                Divider()
-                Button("Hide") { hide([item.id]) }
-                if changed {
-                    Button("Use Main's") { model.useMainForServiceItem(serviceID, itemID: item.id) }
-                }
-                removeButton(item)
+            if !runOnly {
+                RunOrderMenu { itemMenu(item, order: order, changed: changed, position: position, service: service) }
             }
         }
 
         .id("runOrderRowMenu|\(item.id)|\(item.itemKind.rawValue)|\(item.itemKind == .media && model.media(item.refId) == nil)|\(inMultiSelection(item.id))|\(item.lightingCue ?? "")|\(item.actions?.count ?? 0)")
+    }
+
+    @ViewBuilder
+    fileprivate func headerMenu(_ item: ServiceItem, order: [String], service: Service) -> some View {
+        let batch = ListMultiSelect.batch(clicked: item.id, selection: marks.multi, order: order)
+        if batch.count > 1 {
+            bulkMenu(batch)
+        } else {
+            headerColorMenu(item)
+            lightingMenu(item, service: service)
+            Divider()
+
+            Button("Hide") { hide([item.id]) }
+            removeButton(item)
+        }
+    }
+
+    @ViewBuilder
+    fileprivate func itemMenu(
+        _ item: ServiceItem, order: [String], changed: Bool, position: ServicePosition?, service: Service?
+    ) -> some View {
+        let batch = ListMultiSelect.batch(clicked: item.id, selection: marks.multi, order: order)
+        if !runOnly, batch.count > 1 {
+            bulkMenu(batch)
+        } else if !runOnly {
+            SongLyricsMenuItems(model: model, serviceID: serviceID, item: item)
+
+            if let entry = model.entry(item.refId), entry.kind.opensInEditor {
+                Button("Edit…") {
+                    model.openInEditor(entryID: entry.id)
+                    appModeRaw = AppMode.edit.rawValue
+                }
+                Divider()
+            }
+            headerColorMenu(item)
+            if let service {
+                lightingMenu(item, service: service, position: position)
+            }
+            if item.actions?.isEmpty == false {
+                Button("Remove Macros") { setActions(nil, on: item.id) }
+            }
+            Divider()
+
+            if item.itemKind == .presentation {
+                SlideshowMenu(model: model, presentationID: item.refId)
+            }
+            if item.itemKind == .media {
+                // When Video Ends heads this menu for a video.
+                MediaCueMenuItems(
+                    model: model, actionRouter: controls?.actionRouter,
+                    mediaID: item.refId, state: mediaMenuState,
+                    fallbackName: item.name
+                )
+            } else if item.itemKind != .info {
+
+                Button("Rename…") {
+                    renamingItem = item
+                    itemRenameText = displayName(item)
+                }
+                if item.itemKind == .presentation {
+                    arrangementMenu(item)
+
+                    Button("Apply Theme…") {
+                        applyThemeTarget = ApplyThemeTarget(presentationID: item.refId, slideIDs: nil)
+                    }
+                }
+            }
+            Divider()
+            Button("Hide") { hide([item.id]) }
+            if changed {
+                Button("Use Main's") { model.useMainForServiceItem(serviceID, itemID: item.id) }
+            }
+            removeButton(item)
+        }
     }
 
     // MARK: Lighting cues and plan-item macros
@@ -1629,4 +1640,13 @@ private struct RunOrderSelectionFollow: ViewModifier {
 struct RunOrderCurrentItem {
     let binding: Binding<String?>
     init(_ binding: Binding<String?>) { self.binding = binding }
+}
+
+/// A plan row's right-click menu, built when it opens. Built inline, every
+/// row's menu (its lighting choices, arrangements, media cues) was made
+/// again each time the list redrew its rows, as it does on every click.
+private struct RunOrderMenu<Content: View>: View {
+    let content: () -> Content
+
+    var body: some View { content() }
 }
