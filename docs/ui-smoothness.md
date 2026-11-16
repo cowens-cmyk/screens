@@ -27,6 +27,22 @@ every item, so anything each item does per frame is multiplied by the plan.
   else that re-runs PlanShell doesn't rebuild the page, its grids or tiles;
   `PlanPageFocusFollow` scrolls, and grids ask `pastesAtEndCheck` when a
   paste comes.
+- **Nothing a pick writes is read where the cards are built.** Measured
+  with `scripts/perf/present.sh` and Instruments (SwiftUI and Time Profiler
+  templates against the staged perf build), each of these re-ran every card,
+  grid and tile on a pick, an 80 ms freeze per click:
+  - The `ScrollPosition` binding sat in the GeometryReader that holds the
+    whole page; a pick writes it. `PlanPageScrollPosition` reads it.
+  - One `headerHeights` dictionary was read by every card. Each card's
+    `StickySection` measures its own header; `HeaderHeightBox` mirrors them
+    for the scroll actions, unobserved.
+  - A grid's tile frames are in `TileFrameBox`, not `@State`, reported with
+    `onGeometryChange`.
+- **No `@AppStorage` in the page, the grids or the plan list.** It re-runs
+  its view on any write to UserDefaults, whatever the key, and the next item
+  going live writes the stage mode. The page reads its grid settings from
+  `HotDefaults`, which notifies only when one of them changes; views that
+  only set the app mode call `HotDefaults.setAppMode`.
 - **Tiles.** Anything a tile works out from its slide that takes more than a
   lookup is cached by slide (`TileStepCache` for animation steps), not done in
   `body`.
@@ -58,6 +74,8 @@ its selection moves).
   ring and the highlight read what they show.
 - **Row frames** go to a `RowFrameStore`, observed only for the followed row;
   the marquee asks for them at each press.
+- **Menus are built when they open** (`RunOrderMenu`), not with every row:
+  the List redraws its rows on each click.
 - **One container per row**, header or item: a bare `if` at the top of a
   lazy row makes SwiftUI run every row to learn its shape.
 
@@ -66,6 +84,20 @@ by the tiles: as `@State` on the bin each pointer move re-sorted the library.
 
 `RunOrderList` and `MediaLibraryView` tick the body meter (`perf.mark`,
 `perf.bodyStorm`).
+
+## Measuring a click
+
+`scripts/perf/present.sh <label>` (plan-list picks) and
+`scripts/perf/fire.sh <label>` (the arrow key, through item changes) run the
+staged perf build; `perf.mark` counts the bodies each one re-ran. For where
+the time goes, record the same run with `xcrun xctrace record --template
+'Time Profiler' --attach <pid>`: SwiftUI's own time shows up as layout and
+graph updates, so the long freezes, not the totals, are what to compare.
+To find what re-runs a view, `let _ = Self._printChanges()` in its body
+(with stdout line-buffered) names the property; remove it before
+committing. As of 0.38.3 a plan click's longest freeze is about 30-45 ms
+(was 75-86), a fire within an item about 3 tiles, into the next item
+about 1 grid (was every grid on the page).
 
 ## Periodic work
 
