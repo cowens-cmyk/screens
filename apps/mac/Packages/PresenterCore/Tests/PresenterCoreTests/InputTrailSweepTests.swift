@@ -328,4 +328,36 @@ import Testing
         let turnOn = try member("private func turnOnSideTVs() {", in: panel)
         #expect(turnOn.contains("ShowScreens.setSideTVs(true, render: render)"))
     }
+
+    /// Settings › Screens lists every display and DeckLink port with the
+    /// screen it shows beside it, Side TVs among them, and choosing Side TVs
+    /// for an output turns them on.
+    @Test func everyOutputHasAShowsMenuWithEveryScreen() throws {
+        let settings = try appSource("ScreensSettings.swift")
+        #expect(settings.contains("OutputsSection(render: render)"))
+        let section = try #require(settings.range(of: "private struct OutputsSection: View {"))
+        let body = settings[section.upperBound...].prefix(4000)
+        #expect(body.contains("ForEach(outputs.displays)"), "every display")
+        #expect(body.contains("ForEach(ports)"), "every DeckLink port")
+        #expect(body.contains("ScreenRouting.setPort(device, to: $0, render: render)"))
+        #expect(body.contains("not found yet"), "a chosen port is listed before the driver reports it")
+        let picker = try #require(settings.range(of: "private struct OutputShowsPicker: View {"))
+        #expect(settings[picker.upperBound...].prefix(1500).contains("ForEach(ShowScreen.allCases)"), "Side TVs offered even while off")
+        let screens = try appSource("ThreeScreens.swift")
+        let making = try member("static func making(_ role: ShowScreen, render: RenderContext) -> ScreenOutput? {", in: screens)
+        #expect(making.contains("ShowScreens.setSideTVs(true, render: render)"))
+        let assign = try member("static func setPort(_ device: DeckLinkHelperDevice, to role: ShowScreen?, render: RenderContext) {", in: screens)
+        #expect(assign.contains("ScreenOutput.making(role, render: render)"))
+    }
+
+    /// At launch the screens are made before NDI and DeckLink restore onto
+    /// them: a port restored onto a screen not made yet is skipped, and the
+    /// next save would forget it.
+    @Test func screensAreMadeBeforeTheirOutputsComeBack() throws {
+        let controls = try appSource("ServiceControls.swift")
+        let ensure = try #require(controls.range(of: "ShowScreens.ensure(render: render)"))
+        let ndi = try #require(controls.range(of: "NDIScreenOutputs.shared.restore(render: render)"))
+        let deckLink = try #require(controls.range(of: "DeckLinkScreenOutputs.shared.restore(render: render)"))
+        #expect(ensure.lowerBound < ndi.lowerBound && ndi.lowerBound < deckLink.lowerBound)
+    }
 }

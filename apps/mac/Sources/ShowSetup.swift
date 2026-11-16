@@ -142,6 +142,19 @@ final class ShowSetup {
         }
     }
 
+    /// How much the side TVs darken the background behind a song's words,
+    /// 0 to 0.6 (SideScreenLyrics.dimRange); 0 leaves it as the room has it.
+    var sideTVsDim: Double {
+        didSet {
+            let range = SideScreenLyrics.dimRange
+            let clamped = sideTVsDim.isFinite
+                ? (min(max(sideTVsDim, range.lowerBound), range.upperBound) * 20).rounded() / 20 : 0
+            if clamped != sideTVsDim { sideTVsDim = clamped; return }
+            UserDefaults.standard.set(sideTVsDim, forKey: "show.sideTVs.dim")
+            sideTVsChanged()
+        }
+    }
+
     static func clampedLyricScale(_ value: Double) -> Double {
         let range = SideScreenLyrics.scaleRange
         guard value.isFinite else { return SideScreenLyrics.defaultScale }
@@ -198,6 +211,8 @@ final class ShowSetup {
             defaults.object(forKey: StreamLowerThirdDissolve.key) as? Double ?? StreamLowerThirdDissolve.defaultSeconds)
         sideTVsLyricScale = Self.clampedLyricScale(
             defaults.object(forKey: "show.sideTVs.lyricScale") as? Double ?? SideScreenLyrics.defaultScale)
+        let dim = defaults.double(forKey: "show.sideTVs.dim")
+        sideTVsDim = dim.isFinite ? min(max(dim, SideScreenLyrics.dimRange.lowerBound), SideScreenLyrics.dimRange.upperBound) : 0
         // Full Screen or Transparent was once kept from one run to the next
         // and then held every presentation after it; each run now starts
         // following the presentations.

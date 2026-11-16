@@ -85,6 +85,11 @@ enum SettingsIndex {
             caption: "Drag Audience, Livestream, Stage or Side TVs onto a display, or click a display to choose.",
             keywords: "display arrangement monitor projector tv connected resolution refresh hz identify drag outputs screen configuration setup"),
         SettingsEntry(
+            id: "screens.outputs", category: .screens,
+            title: "Outputs",
+            caption: "What each display and DeckLink port shows, chosen from a menu beside it. Kept on this Mac through a quit or restart.",
+            keywords: "outputs output port decklink sdi display shows assign route extra side tvs audience stage livestream key fill restart remember"),
+        SettingsEntry(
             id: "screens.audience", category: .screens,
             title: "Audience",
             caption: ShowScreen.audience.summary,
@@ -119,6 +124,11 @@ enum SettingsIndex {
             title: "Side TVs lyrics size",
             caption: "How many times larger the side TVs draw a song's lyrics than the audience screen.",
             keywords: "side tvs lyrics size scale larger bigger text font"),
+        SettingsEntry(
+            id: "screens.sideTVs.dim", category: .screens,
+            title: "Side TVs darken background",
+            caption: "Darkens the background behind a song's words on the side TVs, so they read in a bright room.",
+            keywords: "side tvs darken dim background contrast readable bright lyrics"),
         SettingsEntry(
             id: "screens.ndi", category: .screens,
             title: "Send over NDI",

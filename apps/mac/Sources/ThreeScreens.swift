@@ -30,7 +30,7 @@ enum ShowScreen: String, CaseIterable, Identifiable {
         case .audience: "The slides, media and alerts the room sees."
         case .livestream: "Laid over the camera: transparent, a lower third, or the full slide."
         case .stage: "Lyrics, the next slide, clock and timers for the platform."
-        case .sideTVs: "The audience slides with song lyrics drawn larger, for TVs beside the main screen."
+        case .sideTVs: "The audience slides, with a song's lyrics larger and in the middle, for TVs beside the main screen."
         }
     }
 
@@ -221,6 +221,16 @@ struct ScreenOutput {
     let role: ShowScreen
     let screen: PlaceholderScreen
     let render: RenderContext
+
+    /// The screen's output, making the side TVs first while they're off:
+    /// choosing them for a display or a port is how they're turned on, as
+    /// any other screen is just chosen.
+    static func making(_ role: ShowScreen, render: RenderContext) -> ScreenOutput? {
+        if role == .sideTVs, !ShowSetup.shared.sideTVsOn {
+            ShowScreens.setSideTVs(true, render: render)
+        }
+        return ScreenOutput(role, render: render)
+    }
 
     init?(_ role: ShowScreen, render: RenderContext) {
         guard let screen = role.screen(in: render.outputs) else { return nil }
@@ -503,7 +513,7 @@ enum ScreenRouting {
     /// TVs' second display, just that copy).
     static func assign(display: DisplayUUID, to role: ShowScreen?, render: RenderContext) {
         if let role {
-            ScreenOutput(role, render: render)?.choose("display:\(display)")
+            ScreenOutput.making(role, render: render)?.choose("display:\(display)")
         } else if let current = Self.role(on: display, render: render),
                   let output = ScreenOutput(current, render: render) {
             if output.mirrorDisplay == display {
@@ -512,6 +522,20 @@ enum ScreenRouting {
                 output.choose("none")
             }
         }
+    }
+
+    /// Puts `role` on a DeckLink port in place of whatever it carried, or
+    /// clears the port (nil). The screen keeps its other ports.
+    static func setPort(_ device: DeckLinkHelperDevice, to role: ShowScreen?, render: RenderContext) {
+        let carried = roles(onDeckLink: device.persistentID, render: render)
+        guard carried != (role.map { [$0] } ?? []) else { return }
+        if let role {
+            ScreenOutput.making(role, render: render)?.setDeckLink(device, on: true)
+        }
+        for other in carried where other != role {
+            ScreenOutput(other, render: render)?.setDeckLink(device, on: false)
+        }
+        DiagnosticsStore.shared.note("screens.port", detail: "\(device.name): \(role?.name ?? "nothing")")
     }
 
     static func roles(onDeckLink id: Int64, render: RenderContext) -> [ShowScreen] {

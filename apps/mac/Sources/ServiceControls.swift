@@ -2164,7 +2164,8 @@ final class ServiceControls {
         let setup = ShowSetup.shared
         if setup.sideTVsOn {
             variants[SideScreenLyrics.variantKey] = SideScreenLyrics.scene(
-                base, presentation: state.liveSlide?.presentation, scale: setup.sideTVsLyricScale)
+                base, presentation: state.liveSlide?.presentation, scale: setup.sideTVsLyricScale,
+                dim: setup.sideTVsDim)
         }
         render.setLiveScenes(
             base, variants: variants,

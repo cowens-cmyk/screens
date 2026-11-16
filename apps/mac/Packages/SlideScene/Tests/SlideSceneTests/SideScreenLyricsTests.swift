@@ -67,12 +67,13 @@ private func text(of item: RenderItem?) -> StyledText? {
     #expect(abs(sideText.minFontSize - roomText.fontSize * 1.25) < 0.001, "always larger than the wall's")
     #expect(!sideText.keepLinesWhole && sideText.balancedWrap, "a long line wraps evenly")
 
-    // The lyrics alone on the slide get the TV's whole safe area; the theme
-    // put the box above the safe line, so it keeps that top edge.
-    let roomFrame = try #require(item("lyrics", in: room)?.frame)
+    // The lyrics alone on the slide get the TV's whole safe area, in the
+    // middle of it, across and down, wherever the wall has them.
     let sideFrame = try #require(item("lyrics", in: side)?.frame)
     let safe = CGRect(origin: .zero, size: canvas).insetBy(dx: 96, dy: 54)
-    #expect(sideFrame == safe.union(roomFrame))
+    #expect(sideFrame == safe)
+    #expect(sideText.alignment == .center && sideText.verticalAlignment == .middle)
+    #expect(sideText.shadow != nil, "a soft shadow under words that had none")
     #expect(!TextRasterizer.overflows(sideText, sceneFrame: sideFrame.size), "the larger words fit their box")
 }
 
@@ -128,11 +129,13 @@ private func text(of item: RenderItem?) -> StyledText? {
     #expect(roomLoop == "worship-loop", "the fixture has its worship background")
     let roomSlide = room.layers.first { $0.kind == .slide }!.items
     let sideSlide = side.layers.first { $0.kind == .slide }!.items
-    #expect(sideSlide.map(\.id) == roomSlide.map(\.id), "same items in the same order")
     #expect(roomSlide.contains { $0.id == "theme-bar" } && roomSlide.contains { $0.id == "theme-ccli" },
             "the fixture has the theme's bar and CCLI line")
-    for (before, after) in zip(roomSlide, sideSlide) where before.id != "lyrics" {
-        #expect(after == before, "\(before.id) is the room's")
+    // The bar behind the wall's lyrics would be left empty at the top once
+    // the words move to the middle: the TVs leave it out.
+    #expect(sideSlide.map(\.id) == roomSlide.map(\.id).filter { $0 != "theme-bar" }, "the rest in the same order")
+    for after in sideSlide where after.id != "lyrics" {
+        #expect(after == roomSlide.first { $0.id == after.id }, "\(after.id) is the room's")
     }
 }
 
@@ -154,11 +157,57 @@ private func text(of item: RenderItem?) -> StyledText? {
     #expect(SideScreenLyrics.scene(room, presentation: nil, scale: 1.6) == room, "media fired on its own")
 }
 
-@Test func aScaleOfOneLeavesTheSceneAlone() {
+@Test func atTheRoomsOwnSizeTheWordsAreStillCentred() throws {
     let song = presentation(kind: .song)
     let room = roomScene(song)
-    #expect(SideScreenLyrics.scene(room, presentation: song, scale: 1) == room)
-    #expect(SideScreenLyrics.scene(room, presentation: song, scale: 0.5) == room, "never smaller than the room")
+    let roomText = try #require(text(of: item("lyrics", in: room)))
+    for scale in [1.0, 0.5] {
+        let side = SideScreenLyrics.scene(room, presentation: song, scale: scale)
+        let sideText = try #require(text(of: item("lyrics", in: side)))
+        #expect(sideText.fontSize == roomText.fontSize, "never smaller than the room (\(scale))")
+        #expect(sideText.verticalAlignment == .middle)
+    }
+}
+
+@Test func aThemesOwnShadowIsKept() throws {
+    var styled = StyledText(string: "Grace", fontName: "Helvetica", fontSize: 50)
+    let own = TextShadow(color: .black, blurRadius: 2, offsetX: 0, offsetY: 1)
+    styled.shadow = own
+    #expect(SideScreenLyrics.readable(styled, canvas: canvas).shadow == own)
+    styled.shadow = nil
+    styled.outline = TextOutline(color: .black, width: 2)
+    #expect(SideScreenLyrics.readable(styled, canvas: canvas).shadow == nil, "an outline is the theme's choice")
+}
+
+@Test func theBackgroundCanBeDarkenedBehindASongsWords() throws {
+    let song = presentation(kind: .song)
+    let room = roomScene(song)
+    let plain = SideScreenLyrics.scene(room, presentation: song, scale: 1.6)
+    #expect(item(SideScreenLyrics.dimID, in: plain) == nil, "off to start")
+    let dark = SideScreenLyrics.scene(room, presentation: song, scale: 1.6, dim: 0.3)
+    let slide = try #require(dark.layers.first { $0.kind == .slide })
+    #expect(slide.items.first?.id == SideScreenLyrics.dimID, "under every piece of the slide")
+    #expect(slide.items.first?.frame == CGRect(origin: .zero, size: canvas))
+    #expect(slide.items.first?.content == .solid(SceneColor(red: 0, green: 0, blue: 0, alpha: 0.3)))
+    let tooDark = SideScreenLyrics.scene(room, presentation: song, scale: 1.6, dim: 5)
+    #expect(tooDark.layers.first { $0.kind == .slide }?.items.first?.content
+        == .solid(SceneColor(red: 0, green: 0, blue: 0, alpha: SideScreenLyrics.dimRange.upperBound)))
+    let talk = presentation(kind: .deck, category: PresentationTypes.sermon)
+    #expect(SideScreenLyrics.scene(roomScene(talk), presentation: talk, scale: 1.6, dim: 0.3) == roomScene(talk),
+            "only during songs")
+}
+
+@Test func aFullScreenBackdropStaysBehindTheWords() {
+    let lyrics = CGRect(x: 160, y: 40, width: 1600, height: 180)
+    func themeItem(_ frame: CGRect) -> RenderItem {
+        RenderItem(id: "theme-shape", frame: frame, content: .solid(SceneColor(red: 0, green: 0, blue: 0)))
+    }
+    #expect(SideScreenLyrics.backsLyrics(themeItem(CGRect(x: 0, y: 20, width: 1920, height: 220)), lyricFrame: lyrics, canvas: canvas))
+    #expect(!SideScreenLyrics.backsLyrics(themeItem(CGRect(origin: .zero, size: canvas)), lyricFrame: lyrics, canvas: canvas))
+    #expect(!SideScreenLyrics.backsLyrics(themeItem(CGRect(x: 0, y: 900, width: 1920, height: 180)), lyricFrame: lyrics, canvas: canvas),
+            "a band elsewhere on the picture stays")
+    let slideBar = RenderItem(id: "bar", frame: CGRect(x: 0, y: 20, width: 1920, height: 220), content: .solid(SceneColor(red: 0, green: 0, blue: 0)))
+    #expect(!SideScreenLyrics.backsLyrics(slideBar, lyricFrame: lyrics, canvas: canvas), "only the theme's own pieces")
 }
 
 @Test func aBoxAtTheTopGrowsDownIntoThePicture() {
