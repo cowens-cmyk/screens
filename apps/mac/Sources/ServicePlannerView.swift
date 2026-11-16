@@ -4,7 +4,7 @@ import SlideScene
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct RunOrderList: View {
+struct RunOrderList: View, Equatable {
     let model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var controls: ServiceControls?
@@ -48,9 +48,11 @@ struct RunOrderList: View {
 
     @State private var applyThemeTarget: ApplyThemeTarget?
 
-    @State private var selection: Set<String> = []
-
-    @State private var rowFrames: [String: CGRect] = [:]
+    /// The list's selection, row frames and drop target. Its own object:
+    /// as `@State` read here, each click, each row's frame as the list
+    /// scrolled, and each drag over a row re-ran the whole list, every row
+    /// and its menus with it. Small views read what they show from it.
+    @State private var marks = RunOrderMarks()
 
     @State private var marqueeRect: CGRect?
 
@@ -58,12 +60,21 @@ struct RunOrderList: View {
 
     @State private var addingFromLibrary = false
 
-    @State private var dropTargetItemID: String?
 
     /// Series art dropped on the plan, building a new series for it.
     @State private var seriesArt: SeriesArtDrop?
 
     @State private var mediaMenuState = MediaCueMenuState()
+
+    /// The plan shell re-runs on every click (it reads the current item)
+    /// and hands over new closures each time, so the list used to re-run
+    /// with it, every row and menu. What it shows comes from these and its
+    /// own state; the closures read the shell's live state when called, so
+    /// one kept from an earlier pass does the same.
+    nonisolated static func == (a: Self, b: Self) -> Bool {
+        a.model === b.model && a.controls === b.controls && a.render === b.render
+            && a.serviceID == b.serviceID && (a.planAdds == nil) == (b.planAdds == nil)
+    }
 
     private var renamingItemActive: Binding<Bool> {
         Binding(get: { renamingItem != nil }, set: { if !$0 { renamingItem = nil } })
@@ -77,25 +88,22 @@ struct RunOrderList: View {
             let changed = model.versionChangedItemIDs(serviceID)
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
-                    let current = selectedItemID.flatMap { rowFrames[$0] }
                     runOrderList(service: service, visible: visible, order: order, changed: changed)
                         .animation(HopeMotion.ui(reduced: reduceMotion), value: order)
                         // One highlight, the list's own selection hidden:
                         // its fill under the rows, its edge over them, so it
                         // also rings a header's colored band.
                         .background {
-                            CurrentItemHighlight(
-                                layer: .fill, frame: current, itemID: selectedItemID, reduceMotion: reduceMotion)
+                            RunOrderHighlight(layer: .fill, marks: marks, reduceMotion: reduceMotion)
                         }
                         .overlay {
-                            CurrentItemHighlight(
-                                layer: .edge, frame: current, itemID: selectedItemID, reduceMotion: reduceMotion)
+                            RunOrderHighlight(layer: .edge, marks: marks, reduceMotion: reduceMotion)
                         }
                         // The whole-plan page moves the selection as it
                         // scrolls; keep that row in sight.
-                        .onChange(of: selectedItemID) { _, id in
-                            if let id { proxy.scrollTo(id) }
-                        }
+                        .modifier(RunOrderCurrentFollow(
+                            selectedItemID: $selectedItemID, marks: marks,
+                            scrollTo: { proxy.scrollTo($0) }, changed: surfaceItemChanged))
                 }
                 if !runOnly {
                     Divider()
@@ -132,19 +140,18 @@ struct RunOrderList: View {
             }
             .onAppear {
                 loadCollapsed()
-                if let id = selectedItemID { selection = [id] }
+                if let id = selectedItemID { marks.selection = [id] }
             }
-            .onChange(of: selection) { _, selection in selectionChanged(selection, visible: visible) }
+            .modifier(RunOrderSelectionFollow(marks: marks) { selectionChanged($0, visible: visible) })
             #if DEBUG || MXU_PERF_HOOKS
             .onReceive(NotificationCenter.default.publisher(for: PerfHooks.pickNext)) { _ in
                 let items = visible.filter { $0.itemKind != .header }
                 guard !items.isEmpty else { return }
                 let at = items.firstIndex { $0.id == selectedItemID }.map { ($0 + 1) % items.count } ?? 0
                 DiagnosticsStore.shared.note("perf.pick", detail: "\(items[at].id) \"\(items[at].name)\"")
-                selection = [items[at].id]
+                marks.selection = [items[at].id]
             }
             #endif
-            .onChange(of: selectedItemID) { _, id in surfaceItemChanged(id) }
             .alert("Add Header", isPresented: $addingHeader) {
                 TextField("Header", text: $headerText)
                 Button("Add") {
@@ -189,37 +196,31 @@ struct RunOrderList: View {
         service: Service, visible: [ServiceItem], order: [String], changed: Set<String>
     ) -> some View {
         let positions = ServiceLighting.positions(in: service, model: model)
-        return List(selection: $selection) {
+        @Bindable var marks = marks
+        return List(selection: $marks.selection) {
             ForEach(visible, id: \.id) { item in
-                if item.itemKind == .header {
-
-                    headerRow(item, order: order, service: service)
-                        .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
-                        .tag(item.id)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(Self.rowInsets)
-                        .listRowBackground(
-                            Self.rowShape
-                                .fill(headerColor(item))
-                                .overlay(Self.rowShape.strokeBorder(
-                                    Color.accentColor.opacity(extraSelected(item.id) ? 0.8 : 0), lineWidth: 1.5))
-                                .padding(Self.rowBackgroundInsets))
-                        .reportingGlobalFrame(id: item.id, into: $rowFrames)
-
-                        .draggablePayload(runOnly ? nil : "svc::" + item.id)
-                } else {
-                    itemRow(
-                        item, order: order, changed: changed.contains(item.id),
-                        position: positions[item.id], service: service)
-                        .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
-                        .transition(.scale(scale: 0.92, anchor: .top).combined(with: .opacity))
-                        .tag(item.id)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(Self.rowInsets)
-                        .listRowBackground(rowBackground(item))
-                        .reportingGlobalFrame(id: item.id, into: $rowFrames)
-                        .draggablePayload(runOnly ? nil : "svc::" + item.id)
+                let header = item.itemKind == .header
+                // One container whatever the row is: a bare if here made
+                // SwiftUI run every row to learn its shape on each update.
+                VStack(spacing: 0) {
+                    if header {
+                        headerRow(item, order: order, service: service)
+                    } else {
+                        itemRow(
+                            item, order: order, changed: changed.contains(item.id),
+                            position: positions[item.id], service: service)
+                    }
                 }
+                .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
+                .transition(header ? .identity : .scale(scale: 0.92, anchor: .top).combined(with: .opacity))
+                .tag(item.id)
+                .listRowSeparator(.hidden)
+                .listRowInsets(Self.rowInsets)
+                .listRowBackground(RunOrderRowBackground(
+                    itemID: item.id, band: header ? headerColor(item) : nil,
+                    live: header ? nil : liveCheck(item), marks: marks))
+                .reportingGlobalFrame(id: item.id, into: marks.frames)
+                .draggablePayload(runOnly ? nil : "svc::" + item.id)
             }
             .onInsert(of: [.plainText, .text, .fileURL]) { index, providers in
                 guard !runOnly else { return }
@@ -273,11 +274,11 @@ struct RunOrderList: View {
         .background { NativeSelectionHidden() }
 
         .onDeleteCommand {
-            guard !runOnly, !selection.isEmpty else { return }
-            requestRemoval(order.filter(selection.contains))
+            guard !runOnly, !marks.selection.isEmpty else { return }
+            requestRemoval(order.filter(marks.selection.contains))
         }
         .listMarquee(
-            active: !runOnly, rowFrames: Array(rowFrames.values),
+            active: !runOnly, rowFrames: { [frames = marks.frames] in Array(frames.frames.values) },
             began: marqueeBegan, changed: marqueeChanged, ended: marqueeEnded,
             pressedRow: { rowPressed($0, $1, visible: visible) },
             listening: { [shellPanel] in shellPanel?.panel.showsOpenFace ?? true })
@@ -287,16 +288,16 @@ struct RunOrderList: View {
 
     private func marqueeBegan(_ modifiers: NSEvent.ModifierFlags) {
         InputTrailRecorder.shared.record("marquee in run order")
-        marqueeBase = modifiers.contains(.shift) ? selection : []
+        marqueeBase = modifiers.contains(.shift) ? marks.selection : []
         if !modifiers.contains(.shift), !modifiers.contains(.command) {
-            selection = []
+            marks.selection = []
         }
     }
 
     private func rowPressed(
         _ point: CGPoint, _ modifiers: NSEvent.ModifierFlags, visible: [ServiceItem]
     ) -> (() -> Void)? {
-        let id = rowFrames.first { $0.value.contains(point) }?.key
+        let id = marks.frames.frames.first { $0.value.contains(point) }?.key
         let reselect = id.map {
             RunOrderSelection.isReselect(
                 pressed: $0, current: selectedItemID, command: modifiers.contains(.command),
@@ -322,7 +323,7 @@ struct RunOrderList: View {
     private func headerCueClick(
         _ point: CGPoint, _ modifiers: NSEvent.ModifierFlags, visible: [ServiceItem]
     ) -> (() -> Void)? {
-        guard let hit = rowFrames.first(where: { $0.value.contains(point) }),
+        guard let hit = marks.frames.frames.first(where: { $0.value.contains(point) }),
               let header = visible.first(where: { $0.id == hit.key }),
               RunOrderSelection.isHeaderCueClick(
                   pressed: header, presenting: runOnly || appModeRaw == AppMode.present.rawValue,
@@ -337,7 +338,7 @@ struct RunOrderList: View {
 
     private func marqueeChanged(_ band: CGRect) {
         marqueeRect = band
-        selection = RunOrderSelection.swept(frames: rowFrames, band: band, keeping: marqueeBase)
+        marks.selection = RunOrderSelection.swept(frames: marks.frames.frames, band: band, keeping: marqueeBase)
     }
 
     private func marqueeEnded() {
@@ -361,9 +362,9 @@ struct RunOrderList: View {
 
     private func surfaceItemChanged(_ id: String?) {
         if let id {
-            if !selection.contains(id) { selection = [id] }
-        } else if !selection.isEmpty {
-            selection = []
+            if !marks.selection.contains(id) { marks.selection = [id] }
+        } else if !marks.selection.isEmpty {
+            marks.selection = []
         }
     }
 
@@ -433,7 +434,7 @@ struct RunOrderList: View {
         .contentShape(Rectangle())
         .contextMenu {
             if !runOnly {
-                let batch = ListMultiSelect.batch(clicked: item.id, selection: selection, order: order)
+                let batch = ListMultiSelect.batch(clicked: item.id, selection: marks.multi, order: order)
                 if batch.count > 1 {
                     bulkMenu(batch)
                 } else {
@@ -462,7 +463,7 @@ struct RunOrderList: View {
     }
 
     private func inMultiSelection(_ id: String) -> Bool {
-        selection.count > 1 && selection.contains(id)
+        marks.multi.contains(id)
     }
 
     @ViewBuilder
@@ -510,9 +511,10 @@ struct RunOrderList: View {
                     .fill(Color(red: tint.red, green: tint.green, blue: tint.blue))
                     .frame(width: 3, height: 16)
             }
-            ItemKindBadge(kind: HopeStyle.kind(
-                of: item, presentation: item.itemKind == .presentation ? model.presentation(item.refId) : nil),
-                live: isItemLive(item))
+            LiveItemKindBadge(
+                kind: HopeStyle.kind(
+                    of: item, presentation: item.itemKind == .presentation ? model.presentation(item.refId) : nil),
+                live: liveCheck(item))
 
             // Shrinks a little to fit the panel's width before it cuts the
             // name, and never below 10 pt so it reads from the booth chair.
@@ -562,12 +564,7 @@ struct RunOrderList: View {
             }
             lightingBadges(item, position: position)
         }
-        .overlay(
-            RoundedRectangle.standard(CornerStandard.element)
-                .strokeBorder(Color.accentColor, lineWidth: 1.5)
-                .padding(-4)
-                .opacity(dropTargetItemID == item.id ? 1 : 0)
-        )
+        .overlay(RunOrderDropRing(itemID: item.id, marks: marks))
         .modifier(PlanRowDrop(
             runOnly: runOnly,
             isCountdown: item.isCountdown == true,
@@ -577,14 +574,14 @@ struct RunOrderList: View {
             performFiles: { !runOnly && model.dropCountdownVideoFile($0, on: item, planID: serviceID) },
             targeted: { over in
                 if over {
-                    dropTargetItemID = item.id
-                } else if dropTargetItemID == item.id {
-                    dropTargetItemID = nil
+                    marks.dropTarget = item.id
+                } else if marks.dropTarget == item.id {
+                    marks.dropTarget = nil
                 }
             }
         ))
         .contextMenu {
-            let batch = ListMultiSelect.batch(clicked: item.id, selection: selection, order: order)
+            let batch = ListMultiSelect.batch(clicked: item.id, selection: marks.multi, order: order)
             if !runOnly, batch.count > 1 {
                 bulkMenu(batch)
             } else if !runOnly {
@@ -773,36 +770,10 @@ struct RunOrderList: View {
             height: content.height - rowBackgroundInsets.top - rowBackgroundInsets.bottom)
     }
 
-    /// Selected along with others, for a multi-item action: a lighter fill
-    /// than the highlight, which stays on the one item the slides follow.
-    private func extraSelected(_ id: String) -> Bool {
-        selection.count > 1 && selection.contains(id) && id != selectedItemID
-    }
-
-    /// A row's own background: the lighter fill when it's one of several
-    /// selected, else a faint one while it's live.
-    @ViewBuilder
-    private func rowBackground(_ item: ServiceItem) -> some View {
-        if extraSelected(item.id) {
-            Self.rowShape
-                .fill(Color.accentColor.opacity(0.16))
-                .padding(Self.rowBackgroundInsets)
-        } else if isItemLive(item) {
-            Self.rowShape
-                .fill(Color.primary.opacity(0.08))
-                .padding(Self.rowBackgroundInsets)
-        }
-    }
-
-    private func isItemLive(_ item: ServiceItem) -> Bool {
-        guard let controls else { return false }
-        switch item.itemKind {
-        case .presentation: return controls.liveContextID == item.id
-        case .media: return controls.isMediaLive(item.refId)
-        case .audio: return controls.state.liveAudio.contains { $0.audioItemId == item.refId }
-        case .playlist: return controls.state.liveAudio.contains { $0.playlistId == item.refId }
-        case .header, .info: return false
-        }
+    /// Whether `item` is live, asked by the row's badge and background
+    /// when they draw: read here, every fire or clear re-ran the whole list.
+    private func liveCheck(_ item: ServiceItem) -> RunOrderLive {
+        RunOrderLive(controls: controls, kind: item.itemKind, itemID: item.id, refID: item.refId)
     }
 
     private func rule(_ tint: Color?) -> some View {
@@ -938,8 +909,8 @@ struct RunOrderList: View {
     }
 
     private func deselect(_ ids: [String]) {
-        let wasSelected = !selection.isDisjoint(with: ids)
-        selection.subtract(ids)
+        let wasSelected = !marks.selection.isDisjoint(with: ids)
+        marks.selection.subtract(ids)
         if !wasSelected, let current = selectedItemID, ids.contains(current) {
             selectedItemID = nil
         }
@@ -1502,5 +1473,143 @@ private struct PlanRowDrop: ViewModifier {
                 targeted(over && accepts(NSPasteboard(name: .drag).string(forType: .string)))
             }
         }
+    }
+}
+
+// MARK: What the plan list's rows read for themselves
+
+/// The plan list's selection, the current item, the row under a drag and
+/// each row's frame. The list's body reads only `multi`, which changes when
+/// a multi-selection starts or ends, not on each click.
+@MainActor @Observable final class RunOrderMarks {
+    var selection: Set<String> = [] {
+        didSet {
+            let next = selection.count > 1 ? selection : []
+            if next != multi { multi = next }
+        }
+    }
+    /// The selection while more than one item is in it, else empty: what a
+    /// row's menu and a bulk action go by.
+    private(set) var multi: Set<String> = []
+    /// The item the slides follow (the list's `selectedItemID`).
+    var current: String?
+    var dropTarget: String?
+    let frames = RowFrameStore()
+}
+
+/// Whether a plan row's item is live, asked by the views that show it.
+struct RunOrderLive {
+    let controls: ServiceControls?
+    let kind: ServiceItemKind
+    let itemID: String
+    let refID: String
+
+    @MainActor var isLive: Bool {
+        guard let controls else { return false }
+        switch kind {
+        case .presentation: return controls.liveContextID == itemID
+        case .media: return controls.isMediaLive(refID)
+        case .audio: return controls.state.liveAudio.contains { $0.audioItemId == refID }
+        case .playlist: return controls.state.liveAudio.contains { $0.playlistId == refID }
+        case .header, .info: return false
+        }
+    }
+}
+
+/// A plan row's background. A header's colored band, ringed while it's one
+/// of several selected; an item's lighter fill while one of several
+/// selected, else a faint one while it's live.
+private struct RunOrderRowBackground: View {
+    let itemID: String
+    /// A header's band color; nil for an item.
+    let band: Color?
+    let live: RunOrderLive?
+    let marks: RunOrderMarks
+
+    var body: some View {
+        // Selected along with others, for a multi-item action: lighter than
+        // the highlight, which stays on the one item the slides follow.
+        let extra = marks.multi.contains(itemID) && itemID != marks.current
+        if let band {
+            RunOrderList.rowShape
+                .fill(band)
+                .overlay(RunOrderList.rowShape.strokeBorder(
+                    Color.accentColor.opacity(extra ? 0.8 : 0), lineWidth: 1.5))
+                .padding(RunOrderList.rowBackgroundInsets)
+        } else if extra {
+            RunOrderList.rowShape
+                .fill(Color.accentColor.opacity(0.16))
+                .padding(RunOrderList.rowBackgroundInsets)
+        } else if live?.isLive == true {
+            RunOrderList.rowShape
+                .fill(Color.primary.opacity(0.08))
+                .padding(RunOrderList.rowBackgroundInsets)
+        }
+    }
+}
+
+private struct LiveItemKindBadge: View {
+    let kind: HopeStyle.ItemKind
+    let live: RunOrderLive
+
+    var body: some View {
+        ItemKindBadge(kind: kind, live: live.isLive)
+    }
+}
+
+/// The ring round the row a drag is over.
+private struct RunOrderDropRing: View {
+    let itemID: String
+    let marks: RunOrderMarks
+
+    var body: some View {
+        RoundedRectangle.standard(CornerStandard.element)
+            .strokeBorder(Color.accentColor, lineWidth: 1.5)
+            .padding(-4)
+            .opacity(marks.dropTarget == itemID ? 1 : 0)
+    }
+}
+
+/// The current item's highlight, following its row's frame.
+private struct RunOrderHighlight: View {
+    let layer: CurrentItemHighlight.Layer
+    let marks: RunOrderMarks
+    let reduceMotion: Bool
+
+    var body: some View {
+        CurrentItemHighlight(
+            layer: layer, frame: marks.frames.followedFrame, itemID: marks.current,
+            reduceMotion: reduceMotion)
+    }
+}
+
+/// Follows the list's current item: mirrors it into the marks for the
+/// highlight and backgrounds, scrolls to it when it moves, and passes the
+/// change on. Here, so the list's body doesn't read it.
+private struct RunOrderCurrentFollow: ViewModifier {
+    @Binding var selectedItemID: String?
+    let marks: RunOrderMarks
+    let scrollTo: (String) -> Void
+    let changed: (String?) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: selectedItemID, initial: true) { _, id in
+                marks.current = id
+                marks.frames.followedID = id
+            }
+            .onChange(of: selectedItemID) { _, id in
+                if let id { scrollTo(id) }
+                changed(id)
+            }
+    }
+}
+
+private struct RunOrderSelectionFollow: ViewModifier {
+    let marks: RunOrderMarks
+    let changed: (Set<String>) -> Void
+
+    func body(content: Content) -> some View {
+        content.onChange(of: marks.selection) { _, selection in changed(selection) }
     }
 }

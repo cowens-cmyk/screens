@@ -897,6 +897,7 @@ struct PlanShell: View {
                         slideshow: { addPresentation(planID, kind: .slideshow) },
                         media: { addingVideo = true },
                         message: { notesPlanID = planID }))
+                .equatable()
             }
         } else {
             HopeEmptyState(title: "No Plan", symbol: "list.bullet.rectangle.portrait",

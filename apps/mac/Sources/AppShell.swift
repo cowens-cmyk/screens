@@ -863,6 +863,7 @@ struct ShellView: View {
 
                     onReselect: { if mode == .present { presentFocusScroll.reselect() } }
                 )
+                .equatable()
             }
         } else {
             ContentUnavailableView(
