@@ -315,6 +315,19 @@ final class PresentCardFrames {
 
     private init() {}
 
+    /// The page is about to glide to `id`: tells the grids where it will
+    /// land (PageGlide), the top of that item, or as far as the page can
+    /// scroll when the item is near its end.
+    func beginGlide(to id: String, duration: TimeInterval) {
+        guard let top = docFrames[id]?.minY else { return }
+        var landing = top
+        if let scrollView, let document = scrollView.documentView {
+            landing = min(top, max(0, document.frame.height - scrollView.contentView.bounds.height))
+        }
+        PageGlide.shared.begin(landingTop: landing, duration: duration + 0.05)
+        PageGlideEnds.shared.expect(after: duration)
+    }
+
     func noteDoc(_ id: String, _ frame: CGRect) {
         if docFrames[id] != frame {
             docFrames[id] = frame

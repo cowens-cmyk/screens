@@ -1399,7 +1399,10 @@ extension ServiceContinuousPage {
         if let target = focusScroll.request(itemID) {
             DiagnosticsStore.shared.note("present.focus", detail: "scroll \(target) (\(reason))")
             InputTrailRecorder.shared.noteFocusScroll()
-            withAnimation(reason == "appear" ? nil : jump) {
+            let glides = reason != "appear" && jump != nil
+            // Before the page moves: the grids build for where it lands.
+            if glides { PresentCardFrames.shared.beginGlide(to: target, duration: Self.jumpSeconds) }
+            withAnimation(glides ? jump : nil) {
                 pageScroll.position.scrollTo(id: Self.anchor(for: target, in: service), anchor: .top)
             }
             PresentCardFrames.shared.holdCard(target)
@@ -1411,8 +1414,10 @@ extension ServiceContinuousPage {
 
     /// A plan-list click glides to its item; landing on the page doesn't.
     private var jump: Animation? {
-        reduceMotion ? nil : .easeInOut(duration: 0.3)
+        reduceMotion ? nil : .easeInOut(duration: Self.jumpSeconds)
     }
+
+    static let jumpSeconds: TimeInterval = 0.3
 
     private func revealLive(_ service: Service, cause: String = "keyboard") {
         if let itemID = controls?.liveContextID, let occurrence = controls?.liveOccurrence,

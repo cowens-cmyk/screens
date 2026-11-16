@@ -1,6 +1,7 @@
 import PresenterCore
 import RenderEngine
 import SlideScene
+import os
 import SwiftUI
 
 struct PresentGridView: View {
@@ -474,6 +475,8 @@ struct SlideGridBody: View {
     @State private var gridWidth: CGFloat = 0
 
     @State private var builtRows: Set<Int> = []
+    /// The rows still to build and where the grid last was (see buildRows).
+    @State private var rowQueue = RowBuildQueue()
 
     private var cell: CGSize? {
         SlideGridMetrics.cell(
@@ -512,7 +515,13 @@ struct SlideGridBody: View {
     @ViewBuilder
     private func placeholderCell(cell: CGSize?, aspect: CGFloat) -> some View {
         if let cell {
-            Color.clear.frame(width: cell.width, height: cell.height)
+            // A faint slide-shaped box, so rows not built yet (a glide
+            // passing them, a fast scroll) read as slides on their way and
+            // not as a hole in the page.
+            Color.white.opacity(0.045)
+                .frame(width: cell.width, height: cell.width / max(aspect, 0.1))
+                .clipShape(.rect(cornerRadius: roundedCorners ? CornerStandard.element : 0))
+                .frame(width: cell.width, height: cell.height, alignment: .top)
         } else {
             VStack(spacing: SlideGridMetrics.labelGap) {
                 Color.clear.aspectRatio(aspect, contentMode: .fit)
@@ -538,7 +547,8 @@ struct SlideGridBody: View {
                 rowPitch: cell.height + SlideGridMetrics.spacing,
                 across: SlidesAcross.clamped(slidesAcross), count: slides.count))
         }
-        buildRows(place.near, keep: place.keep)
+        rowQueue.place = place
+        buildRows(place)
     }
 
     /// Builds the rows coming near the screen and lets go of those now more
@@ -549,17 +559,74 @@ struct SlideGridBody: View {
     /// re-ran all of them. A row let go is an empty cell of the same size,
     /// so nothing moves; coming back, its pictures come from
     /// ThumbnailStore's caches.
-    private func buildRows(_ near: Range<Int>, keep: Range<Int>) {
+    ///
+    /// A row of tiles takes several milliseconds to make, so rows come in
+    /// one per frame, nearest the screen first: three or four at once, as a
+    /// glide or a fast scroll brought them, was a 20 to 35 ms frame, the
+    /// stutter in the middle of a glide. Only a row already on screen is
+    /// built at once. While the page glides to a picked item the rows that
+    /// matter are the ones it will land on (PageGlide), so those are built
+    /// and the items it only passes stay empty cells; the rows around the
+    /// landing are filled in once it has landed (rowsAfterGlide).
+    private func buildRows(_ place: GridPlace) {
         let across = SlidesAcross.clamped(slidesAcross)
-        let selectedRows = Set(selectedOccurrences.map { $0 / across })
-        let rows = SlidesAcross.rowsToKeep(built: builtRows, near: near, keep: keep, selected: selectedRows)
-        // Never animated: rows come in while the page glides to an item, and
-        // inside that animation each new tile would fade in.
+        var keeping = Set(selectedOccurrences.map { $0 / across })
+        // What is on screen as the glide leaves stays until it has landed.
+        if place.gliding { keeping.formUnion(place.actualKeep) }
+        let target = SlidesAcross.rowsToKeep(
+            built: builtRows, near: place.gliding ? place.visible : place.near, keep: place.keep,
+            selected: keeping)
+        rowQueue.target = target
+        rowQueue.focus = place.visible
+        var rows = builtRows.intersection(target)
+        var missing = target.subtracting(builtRows)
+        if !place.gliding {
+            let onScreen = missing.filter(place.visible.contains)
+            rows.formUnion(onScreen)
+            missing.subtract(onScreen)
+        }
+        if !rowQueue.ticking, let next = rowQueue.nearest(of: missing) {
+            rows.insert(next)
+            missing.remove(next)
+        }
+        setBuiltRows(rows)
+        if !missing.isEmpty { scheduleRowTick() }
+    }
+
+    /// Never animated: rows come in while the page glides to an item, and
+    /// inside that animation each new tile would fade in.
+    private func setBuiltRows(_ rows: Set<Int>) {
         if rows != builtRows {
             var plain = Transaction()
             plain.disablesAnimations = true
             withTransaction(plain) { builtRows = rows }
         }
+    }
+
+    private func scheduleRowTick() {
+        guard !rowQueue.ticking else { return }
+        rowQueue.ticking = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + RowBuildQueue.pace) {
+            rowQueue.ticking = false
+            let missing = rowQueue.target.subtracting(builtRows)
+            if let next = rowQueue.nearest(of: missing) {
+                setBuiltRows(builtRows.union([next]))
+                if missing.count > 1 { scheduleRowTick() }
+            }
+        }
+    }
+
+    /// The glide has landed (or was cut short): back to the rows around
+    /// where the grid actually is.
+    private func rowsAfterGlide() {
+        var place = rowQueue.place
+        guard place.gliding else { return }
+        place.gliding = false
+        place.near = place.actualNear
+        place.keep = place.actualKeep
+        place.visible = place.actualVisible
+        rowQueue.place = place
+        buildRows(place)
     }
 
     private func measured(_ width: CGFloat) {
@@ -738,6 +805,7 @@ struct SlideGridBody: View {
                     detail: "\(contextID) \(Int(old.height)) → \(Int(place.height)) pt, \(slides.count) slides, width \(Int(measuredWidth))")
             }
         }
+        .modifier(PageGlideEndFollow(active: buildsRowsNearView) { rowsAfterGlide() })
         .onChange(of: slides.count) { _, _ in
             clearSelection()
             DropLatency.relaid(count: slides.count)
@@ -3088,8 +3156,16 @@ struct GridPlace: Equatable, Sendable {
     var docTop: CGFloat = 0
     var width: CGFloat = 0
     var height: CGFloat = 0
+    /// The rows to build, to keep built, and on screen. While the page
+    /// glides to a picked item these are for where it will land.
     var near: Range<Int> = 0 ..< 0
     var keep: Range<Int> = 0 ..< 0
+    var visible: Range<Int> = 0 ..< 0
+    var gliding = false
+    /// The same for where the grid is now, glide or not.
+    var actualNear: Range<Int> = 0 ..< 0
+    var actualKeep: Range<Int> = 0 ..< 0
+    var actualVisible: Range<Int> = 0 ..< 0
 
     static func of(
         _ proxy: GeometryProxy, rowPitch: CGFloat?, across: Int, count: Int, buildsNear: Bool
@@ -3101,15 +3177,111 @@ struct GridPlace: Equatable, Sendable {
         // distance below the top of the screen, negated.
         if buildsNear, let rowPitch, let visible = proxy.bounds(of: .named(ServiceContinuousView.scrollSpace)) {
             let rows = (count + across - 1) / max(1, across)
-            func band(_ screens: CGFloat) -> Range<Int> {
+            func band(_ gridTop: CGFloat, _ screens: CGFloat) -> Range<Int> {
                 SlidesAcross.nearRows(
-                    gridTop: -visible.minY, rowPitch: rowPitch, rowCount: rows,
+                    gridTop: gridTop, rowPitch: rowPitch, rowCount: rows,
                     viewport: visible.height, margin: visible.height * screens)
             }
-            place.near = band(1)
-            place.keep = band(2)
+            place.actualVisible = band(-visible.minY, 0)
+            place.actualNear = band(-visible.minY, 1)
+            place.actualKeep = band(-visible.minY, 2)
+            if let landing = PageGlide.shared.landingTop {
+                // Where the grid will be once the page has landed.
+                let gridTop = place.docTop - landing
+                place.gliding = true
+                place.visible = band(gridTop, 0)
+                place.near = band(gridTop, 1)
+                place.keep = band(gridTop, 2)
+            } else {
+                place.visible = place.actualVisible
+                place.near = place.actualNear
+                place.keep = place.actualKeep
+            }
         }
         return place
+    }
+}
+
+/// A plan page grid's rows waiting to be built, one a frame.
+@MainActor final class RowBuildQueue {
+    /// About a frame at 60 Hz: one row of tiles is made per tick.
+    static let pace: TimeInterval = 0.016
+    var target: Set<Int> = []
+    /// The rows on screen (or about to be): the nearest missing row to
+    /// these is built first.
+    var focus: Range<Int> = 0 ..< 0
+    var place = GridPlace()
+    var ticking = false
+
+    func nearest(of rows: Set<Int>) -> Int? {
+        rows.min { distance($0) < distance($1) || (distance($0) == distance($1) && $0 < $1) }
+    }
+
+    private func distance(_ row: Int) -> Int {
+        if focus.isEmpty { return row }
+        if row < focus.lowerBound { return focus.lowerBound - row }
+        if row >= focus.upperBound { return row - focus.upperBound + 1 }
+        return 0
+    }
+}
+
+/// The page's glide to a picked item: where it will land, until it has.
+/// The grids read it as they are placed (their geometry closures can run
+/// off the main thread, hence the lock), so they build the rows the page
+/// is going to rather than every row it passes on the way.
+final class PageGlide: Sendable {
+    static let shared = PageGlide()
+
+    private let state = OSAllocatedUnfairLock<(top: CGFloat, until: TimeInterval)?>(initialState: nil)
+
+    /// The top of the screen, in the page's content, where the glide lands.
+    var landingTop: CGFloat? {
+        state.withLock { glide in
+            guard let glide, ProcessInfo.processInfo.systemUptime < glide.until else { return nil }
+            return glide.top
+        }
+    }
+
+    func begin(landingTop: CGFloat, duration: TimeInterval) {
+        state.withLock { $0 = (landingTop, ProcessInfo.processInfo.systemUptime + duration) }
+    }
+
+    func end() {
+        state.withLock { $0 = nil }
+    }
+}
+
+/// Counts the page's glides as they end, for the grids to put their rows
+/// back around where they are.
+@MainActor @Observable final class PageGlideEnds {
+    static let shared = PageGlideEnds()
+    private(set) var count = 0
+    @ObservationIgnored private var task: Task<Void, Never>?
+
+    /// The glide just begun is over after `duration` (and a frame or two).
+    func expect(after duration: TimeInterval) {
+        task?.cancel()
+        task = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(duration + 0.05))
+            guard !Task.isCancelled else { return }
+            PageGlide.shared.end()
+            self?.count += 1
+        }
+    }
+}
+
+/// Runs `ended` when a glide ends; a modifier of its own so the grid's body
+/// doesn't read the count.
+private struct PageGlideEndFollow: ViewModifier {
+    let active: Bool
+    let ended: () -> Void
+
+    func body(content: Content) -> some View {
+        if active {
+            content.onChange(of: PageGlideEnds.shared.count) { _, _ in ended() }
+        } else {
+            content
+        }
     }
 }
 
