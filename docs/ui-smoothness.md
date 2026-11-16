@@ -158,23 +158,72 @@ Max), one build with the tile's pieces switchable, 12 picks each:
   overlay so the page's layout doesn't change (no difference: the cost is
   the tiles, not the layout); narrower bands of built rows (5-8% less work,
   empty cells sooner when scrolling).
-- The next step is one drop handler, one drag source and one menu per grid,
-  finding the tile by arithmetic as the grid's gap drops already do, which
-  should halve what a row costs and take the tiles out of the per-frame
-  scroll work. It changes drag and drop, so it needs a real pointer to
-  test (not possible with the screen locked).
+- Done since (see the next section): one drop target and one menu per grid.
+  The drag source stays on the tile. What is left of a tile's cost is its
+  picture and caption.
 
 Timing on this Mac drifts by half again for minutes after a build (the same
 build read 40 and 20 ms for a first pass in back-to-back rounds), so compare
 builds interleaved in one batch, twice, and wait for the load to settle
 first (`run.sh` has `await_quiet`).
 
+## One drop target and one menu per grid
+
+A slide grid has one drop target (`SlideGridDropDelegate`) and one
+right-click menu (`GridMenuContent`) for all its tiles, and works out the
+tile under the pointer from the tiles' frames (`SlideDropPlacement.tile`),
+as it already did for drops in the gaps. `scripts/perf/grid.sh <label>`
+checks both through the app's own drop and menu code.
+
+- **Why.** SwiftUI lays a real AppKit view (`_PlatformDraggingDestinationView`)
+  over every `.onDrop`, and builds a context menu's machinery for every view
+  that has one, so each tile paid for both when its row was built, and each
+  drop view was one more thing to place on every frame of a scroll.
+- **What it bought**, against 0.38.4, interleaved, three rounds of twelve
+  picks: main-thread work in the 0.6 s after a plan click 247 to 215 ms
+  (13% less), frames over 9 ms in the glide 1.9 to 1.2 a click, the first
+  pass and the frames over 17 ms unchanged (25 ms; 0.9 a click, the rows
+  built once the page is still). A wheel scroll down the page and back:
+  3.9 to 3.35 s of work in 9.5 s (14% less), frames over 17 ms 56 to 45.
+  Less than the switch-off experiment above suggested: turning the
+  pieces off also skipped work the grid still does once.
+- **The drop mark** (a line before or after a tile, a ring on it) is one
+  layer over the grid reading `GridDropMarks`. As `@State` on the grid, a
+  drag across the tiles re-ran the grid for each tile it passed.
+- **The menu** is on the tiles' container. SwiftUI doesn't say where in a
+  view a right-click was, so `SlideGridClicks` watches the app's clicks: a
+  right-click or Control-click over a tile names that tile to its grid
+  (`SlideGridMenuPress`) before SwiftUI sees the event, and the menu is
+  built for it. Three rules keep it on the right slide:
+  - SwiftUI learns of an observed change a moment later, not as it is made.
+    Asked for the menu straight after the tile was named, it gave the menu
+    built the time before, for another slide: 133 times in 200 in a probe,
+    and never once `CATransaction.flush()` came first. Keep the flush.
+  - The menu has items only for half a second after the click that named
+    its tile; any other click forgets the tile. A menu asked for some other
+    way (VoiceOver's, say) is empty and doesn't open. No menu is better than
+    one for the wrong slide.
+  - Every right-click counts as a change, so the menu is built again each
+    time and shows what the last choice changed.
+- **The drag source stays on the tile**, for two reasons found in a probe:
+  - It is what makes a click on a slide fire while another app is in front.
+    With a SwiftUI drag source under the pointer the window takes the first
+    click (`acceptsFirstMouse` is true); without one that click only brings
+    the window forward. An AppKit drag started from an event monitor fails
+    the same way, and leaves SwiftUI's click handling waiting for a mouse-up
+    it never gets.
+  - A drag source on a container draws its picture in the middle of the
+    container: SwiftUI centres a custom preview in the source view's frame,
+    not on the pointer, and without one drags a picture of the whole grid.
+  And there is nothing left to win there: a build with no drag source at
+  all measured the same as one with it on the tile (216 and 215 ms a click).
+
 ## Measuring a click
 
 `scripts/perf/present.sh <label>` (plan-list picks),
 `scripts/perf/fire.sh <label>` (the arrow key, through item changes) and
 `scripts/perf/landing.sh <label>` (where far jumps land) run the staged perf
-build; `perf.mark` counts the bodies each one re-ran. For where
+build, and `scripts/perf/grid.sh <label>` checks a grid's drops and menus; `perf.mark` counts the bodies each one re-ran. For where
 the time goes, record the same run with `xcrun xctrace record --template
 'Time Profiler' --attach <pid>`: SwiftUI's own time shows up as layout and
 graph updates, so the long freezes, not the totals, are what to compare.
@@ -184,7 +233,15 @@ write `click X Y [right|double] [cmd|shift]`, `key CODE` or
 `scroll DY COUNT` (window points, origin top left; the scroll is wheel
 events to the plan page) to `perf-input.txt` in the sandbox home, then
 `notifyutil -p com.example.mxuslides.perf.input`; the app posts the event
-into its own queue (`PerfHooks.postInput`, test builds only).
+into its own queue (`PerfHooks.postInput`, test builds only). `menu X Y`
+asks SwiftUI for the right-click menu at a point (its items go to
+`perf.menu`), and `dragover X Y PAYLOAD`, `drop X Y PAYLOAD` and `dragend`
+hold, drop and take away a drag that isn't one: the calls AppKit makes for
+a real drag, sent to the view SwiftUI lays over the drop target, so the
+app's own drop code runs (PAYLOAD is a library id, a slide drag's text or
+`file:PATH`). In place of X Y, `tile N ACROSS` is a point on tile N of the
+topmost grid showing it. What these can't show is the drag source: picking
+a slide up needs a real pointer.
 `screencapture -l <window id>` still captures the window behind the lock.
 What to compare is each click as a sequence, not its longest freeze: the
 first pass, then every frame of the glide. From a Time Profiler export

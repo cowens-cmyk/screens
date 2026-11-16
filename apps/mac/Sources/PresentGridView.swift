@@ -777,9 +777,7 @@ struct SlideGridBody: View {
         .coordinateSpace(name: "slideGrid")
         .background {
             if !runOnly {
-                SlideGridAnchor(press: menuPress) { point in
-                    SlideDropPlacement.tile(at: point, among: tileFrames)?.index
-                }
+                SlideGridAnchor(press: menuPress) { tileFrames }
             }
         }
         .modifier(PageMarqueeFollow(

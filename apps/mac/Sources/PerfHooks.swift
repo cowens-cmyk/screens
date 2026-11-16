@@ -162,6 +162,26 @@ enum PerfHooks {
     ///   dragover X Y PAYLOAD     (a drag carrying PAYLOAD, or file:PATH, held over that point)
     ///   drop X Y PAYLOAD         (the same drag, dropped there; what the drop target answered goes to perf.drop)
     ///   dragend                  (the held drag leaves)
+    /// For menu, dragover and drop, `tile N ACROSS` in place of X Y is a
+    /// point on tile N of the topmost slide grid showing it whole: ACROSS
+    /// of its width from its leading edge (0.5 the middle, 0.1 and 0.9 its
+    /// edges, 1.03 the gap after it).
+    /// A point on a slide tile, in window points from the top left.
+    private static func pointOnTile(_ tile: Int, across: Double, in window: NSWindow) -> CGPoint? {
+        let showing = SlideGridClicks.shared.grids.compactMap { grid -> CGRect? in
+            guard grid.window === window, !grid.isHiddenOrHasHiddenAncestor,
+                  let frame = grid.frames?()[tile], grid.visibleRect.contains(frame)
+            else { return nil }
+            let inWindow = grid.convert(frame, to: nil)
+            return CGRect(
+                x: inWindow.minX, y: window.frame.height - inWindow.maxY,
+                width: inWindow.width, height: inWindow.height)
+        }
+        return showing.min { $0.minY < $1.minY }.map {
+            CGPoint(x: $0.minX + $0.width * across, y: $0.minY + $0.height * 0.4)
+        }
+    }
+
     private static var heldDrag: PerfDrag?
     private static weak var heldTarget: NSView?
 
@@ -174,7 +194,14 @@ enum PerfHooks {
             DiagnosticsStore.shared.note("perf.input", detail: "nothing to post")
             return
         }
-        let parts = line.split(separator: " ").map(String.init)
+        var parts = line.split(separator: " ").map(String.init)
+        if parts.count >= 4, parts[1] == "tile", let tile = Int(parts[2]), let across = Double(parts[3]) {
+            guard let point = pointOnTile(tile, across: across, in: window) else {
+                DiagnosticsStore.shared.note("perf.input", detail: "\(line): no grid shows tile \(tile) whole")
+                return
+            }
+            parts.replaceSubrange(1...3, with: [String(Double(point.x)), String(Double(point.y))])
+        }
         var flags: NSEvent.ModifierFlags = []
         if parts.contains("cmd") { flags.insert(.command) }
         if parts.contains("shift") { flags.insert(.shift) }

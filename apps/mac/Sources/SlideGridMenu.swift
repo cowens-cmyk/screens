@@ -1,4 +1,5 @@
 import AppKit
+import PresenterCore
 import SwiftUI
 
 /// One right-click menu for a whole slide grid.
@@ -59,8 +60,8 @@ final class SlideGridMenuPress {
 /// place in the window becomes a place in the grid.
 struct SlideGridAnchor: NSViewRepresentable {
     let press: SlideGridMenuPress
-    /// The tile under a point in the grid's own space.
-    let tile: (CGPoint) -> Int?
+    /// Each tile's frame by index, in the grid's own space.
+    let frames: () -> [Int: CGRect]
 
     func makeNSView(context: Context) -> SlideGridAnchorView {
         let view = SlideGridAnchorView()
@@ -70,13 +71,13 @@ struct SlideGridAnchor: NSViewRepresentable {
 
     func updateNSView(_ view: SlideGridAnchorView, context: Context) {
         view.press = press
-        view.tile = tile
+        view.frames = frames
     }
 }
 
 final class SlideGridAnchorView: NSView {
     var press: SlideGridMenuPress?
-    var tile: ((CGPoint) -> Int?)?
+    var frames: (() -> [Int: CGRect])?
 
     /// Top-left origin, as the grid's own space is.
     override var isFlipped: Bool { true }
@@ -88,8 +89,8 @@ final class SlideGridAnchorView: NSView {
     func tile(under event: NSEvent) -> Int? {
         guard let window, window === event.window, !isHiddenOrHasHiddenAncestor else { return nil }
         let point = convert(event.locationInWindow, from: nil)
-        guard visibleRect.contains(point) else { return nil }
-        return tile?(point)
+        guard visibleRect.contains(point), let frames else { return nil }
+        return SlideDropPlacement.tile(at: point, among: frames())?.index
     }
 }
 
@@ -102,6 +103,9 @@ final class SlideGridClicks {
     private var monitor: Any?
 
     private init() {}
+
+    /// The grids in the app's windows now.
+    var grids: [SlideGridAnchorView] { anchors.allObjects }
 
     func watch(_ view: SlideGridAnchorView) {
         anchors.add(view)
