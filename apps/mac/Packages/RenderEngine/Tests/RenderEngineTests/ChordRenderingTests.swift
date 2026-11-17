@@ -123,6 +123,19 @@ final class ChordRenderingTests: XCTestCase {
         }
     }
 
+    /// A Shepherd intro of two chord lines: no words, a chord row per line.
+    func testTwoWordlessLinesLayOutTwoChordRows() throws {
+        let text = StyledText(
+            string: "\n", fontSize: 60,
+            chords: [
+                ChordRun(line: 0, column: 0, symbol: "G"), ChordRun(line: 0, column: 0, symbol: "D"),
+                ChordRun(line: 1, column: 0, symbol: "Em"), ChordRun(line: 1, column: 0, symbol: "C"),
+            ]
+        )
+        let chorded = try XCTUnwrap(TextRasterizer.chordedLayout(for: text, sceneWidth: 1600, fontScale: 1))
+        XCTAssertEqual(chorded.rows.map { $0.chords.map(\.symbol) }, [["G", "D"], ["Em", "C"]])
+    }
+
     func testMeasuredHeightGrowsWithChords() {
         let plain = StyledText(string: "Amazing grace", fontSize: 96, autoShrink: true, minFontSize: 10)
         var chorded = plain

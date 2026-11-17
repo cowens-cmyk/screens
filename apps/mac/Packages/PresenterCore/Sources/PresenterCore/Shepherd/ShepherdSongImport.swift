@@ -79,7 +79,12 @@ public enum ShepherdSongImport {
         // other words, "Chorus - Breakdown", first and second endings) gets
         // a new hash, so those songs are built again; every other song's
         // hash stays as it was.
-        if source?.isChart == true, ShepherdChart.parse(text).revision > 1 { parts.append("chart-revision-2") }
+        if source?.isChart == true {
+            let chart = ShepherdChart.parse(text)
+            if chart.revision > 1 { parts.append("chart-revision-2") }
+            // Parts with chords and no words now carry their chords.
+            if chart.hasChordOnlySections { parts.append("chord-only-sections") }
+        }
         return sha256(parts.joined(separator: "\u{1F}"))
     }
 
@@ -135,6 +140,15 @@ public enum ShepherdSongImport {
         // blank slide, so it has a place in the order.
         for index in parsed.sections.indices where parsed.sections[index].slides.isEmpty {
             parsed.sections[index].slides = [""]
+        }
+        // That slide carries the part's chords and no words: the audience
+        // still sees a blank slide, and the stage display shows the chords.
+        // Added after the opening blank is chosen, so an Intro of chords is
+        // still the slide a song opens on.
+        let shift = parsed.sections.count - before
+        for (index, section) in chart.sections.enumerated() {
+            let rows = chart.chordRows(section)
+            if !rows.isEmpty { parsed.sections[index + shift].slides = [rows.joined(separator: "\n")] }
         }
 
         let built = Reflow.build(parsed)
