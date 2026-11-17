@@ -164,7 +164,7 @@ struct IntegrationsSettingsPane: View {
             Form { ATEMSettingsForm() }
                 .settingsForm()
         case .shepherd:
-            Form { ShepherdSettingsForm() }
+            Form { ShepherdSettingsForm(model: model) }
                 .settingsForm()
         case .website:
             WebsiteEventsSettingsForm(model: model)

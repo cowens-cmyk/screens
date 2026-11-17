@@ -422,8 +422,8 @@ struct ShepherdTests {
         var summary = try #require(ShepherdClient.decoder().decode(
             ShepherdClient.Plans.self, from: Data(shepherdPlansJSON.utf8)).plans.first)
         #expect(ShepherdPlanSync.origin == "shepherd")
-        #expect(ShepherdPlanSync.serviceName(for: plan) == "2026-10-18 — Living Water")
-        #expect(ShepherdPlanSync.serviceName(for: summary) == "2026-10-18 — Living Water")
+        #expect(ShepherdPlanSync.serviceName(for: plan) == "October 18, 2026 — Living Water")
+        #expect(ShepherdPlanSync.serviceName(for: summary) == "October 18, 2026 — Living Water")
         for (timestamp, date) in [
             ("2026-01-19T04:30:00Z", "2026-01-18"),
             ("2026-07-19T04:30:00Z", "2026-07-19"),
@@ -435,7 +435,10 @@ struct ShepherdTests {
             #expect(ShepherdPlanSync.serviceDate(for: summary) == date)
         }
         plan.title = " \n"
-        #expect(ShepherdPlanSync.serviceName(for: plan) == "2026-07-18 — Sunday Worship")
+        #expect(ShepherdPlanSync.serviceName(for: plan) == "July 18, 2026 — Sunday Worship")
+        #expect(ShepherdPlanSync.planName(date: "2026-11-18", label: "Hope Students") == "November 18, 2026 — Hope Students")
+        #expect(ShepherdPlanSync.readableDate("2026-01-04") == "January 4, 2026")
+        #expect(ShepherdPlanSync.planName(date: "", label: "Hope Students") == "Hope Students")
         plan.startsAt = nil
         #expect(ShepherdPlanSync.serviceDate(for: plan).isEmpty)
         #expect(ShepherdPlanSync.serviceName(for: plan) == "Sunday Worship")

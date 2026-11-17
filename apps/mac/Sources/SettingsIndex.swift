@@ -346,8 +346,8 @@ enum SettingsIndex {
         SettingsEntry(
             id: "shepherd.sync", category: .integrations, tab: .shepherd,
             title: "Shepherd",
-            caption: "Upcoming Sunday plans from Shepherd become services. Songs link to presentations already in the library.",
-            keywords: "shepherd hope plan sunday service sync song flag api key"),
+            caption: "Upcoming Sunday and Wednesday Night plans from Shepherd become services. Songs link to presentations already in the library.",
+            keywords: "shepherd hope plan sunday wednesday students midweek template service sync song flag api key"),
         SettingsEntry(
             id: "shepherd.songs", category: .integrations, tab: .shepherd,
             title: "Import lyrics and chords from Shepherd",

@@ -744,14 +744,17 @@ struct PlanShell: View {
     }
 
     private func planRow(_ plan: Service) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(plan.name).lineLimit(1)
-            if plan.isTemplate != true, let date = Self.dateLabel(plan.serviceDate) {
-                HStack(spacing: 4) {
-                    if plan.id == plans.upcoming.first?.id {
-                        NextTag()
+        HStack(spacing: 7) {
+            planLogo(plan)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(plan.name).lineLimit(1)
+                if plan.isTemplate != true, let date = Self.dateLabel(plan.serviceDate) {
+                    HStack(spacing: 4) {
+                        if plan.id == plans.upcoming.first?.id {
+                            NextTag()
+                        }
+                        Text(date).font(.caption).foregroundStyle(HopeStyle.lightBlue)
                     }
-                    Text(date).font(.caption).foregroundStyle(HopeStyle.lightBlue)
                 }
             }
         }
@@ -772,6 +775,21 @@ struct PlanShell: View {
                 }
             }
         }
+    }
+
+    /// The Hope logo beside a Sunday plan, the Hope Students logo beside a
+    /// Wednesday Night one (PlanBrand). The Students mark is one color, drawn
+    /// in the text color so it shows in light and dark mode; the Hope mark
+    /// keeps its blues.
+    private func planLogo(_ plan: Service) -> some View {
+        let brand = PlanBrand.of(plan, midweekServiceType: ShepherdSync.shared.midweekServiceType)
+        return Image(brand == .students ? "StudentsLogo" : "HopeLogo")
+            .resizable()
+            .interpolation(.high)
+            .aspectRatio(contentMode: .fit)
+            .foregroundStyle(.primary)
+            .frame(width: 20, height: 20)
+            .accessibilityLabel(brand == .students ? "Hope Students" : "Hope")
     }
 
     /// A template copy of a plan: the same order, headers and colors, with
@@ -798,32 +816,13 @@ struct PlanShell: View {
     /// Next Sunday's plan from a template. Each plan gets a message of its
     /// own (empty, in the template's series) instead of sharing one.
     private func newPlan(from template: Service) {
-        var plan = template
-        plan.id = UUID().uuidString
-        plan.isTemplate = nil
-        plan.name = template.name.replacingOccurrences(of: " Template", with: "")
-        plan.serviceDate = Self.dayFormatter.string(from: NewServiceSheet.nextSunday())
-        plan.messagePresentationId = nil
-        // The pre-service slideshow is never copied: the new plan links to
-        // the same one every plan shows.
-        let copied = PlanTemplate.planItems(from: template) { item in
+        let plan = model.plan(
+            fromTemplate: template, id: UUID().uuidString,
+            date: Self.dayFormatter.string(from: NewServiceSheet.nextSunday())
+        ) { item in
             item.itemKind == .presentation && model.presentation(item.refId)
                 .map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
         }
-        plan.items = copied.items
-        for itemID in copied.messageItemIDs {
-            guard let index = plan.items.firstIndex(where: { $0.id == itemID }) else { continue }
-            var message = Presentation(
-                id: UUID().uuidString, name: "Message", presentationKind: .deck,
-                themeId: template.sermonThemeId ?? model.slideBuilding.sermonThemeId ?? BasicTemplates.pointsThemeID,
-                slides: [])
-            message.category = PresentationTypes.sermon
-            message.sermonTimerSeconds = TemplateSermonLength.seconds(in: template, model: model)
-            model.createInDrive(message)
-            plan.items[index].refId = message.id
-            plan.messagePresentationId = message.id
-        }
-        if let ensured = PreServiceSlides.ensuring(plan, sharedID: model.preServiceSlideshowID()) { plan = ensured }
         model.createInDrive(plan)
         model.currentServiceID = plan.id
     }
