@@ -5,8 +5,8 @@ import Foundation
 /// 1920×1080 pictures only, ten seconds a slide, round and round. The website
 /// events sync keeps it as it keeps the pre-service slideshow
 /// (WebsiteEvents), and a Wednesday Night plan's "Students Hang Time" item
-/// links to it with the Walk-in lighting look, so Prism goes to its Walk-in
-/// preset when it goes up.
+/// links to it with the Walk-in lighting look and full screen on the
+/// livestream (StudentsNight).
 ///
 /// There is one for the whole library, with a fixed id, so two Macs that
 /// make it at once make one.
@@ -44,27 +44,6 @@ public enum StudentsHangTime {
     /// Whether a picture is the size the slideshow takes.
     public static func fits(width: Int?, height: Int?) -> Bool {
         width == Self.width && height == Self.height
-    }
-
-    /// The plan's hang time items linked to the slideshow, with the Walk-in
-    /// look unless another was chosen for them. One linked to something
-    /// else by hand is left as it is. Nil when nothing changes.
-    public static func linking(_ items: [ServiceItem], to slideshowID: String?) -> [ServiceItem]? {
-        guard let slideshowID, !slideshowID.isEmpty else { return nil }
-        var out = items
-        var changed = false
-        for index in out.indices where isHangTimeItem(out[index]) {
-            if out[index].refId.isEmpty {
-                out[index].itemKind = .presentation
-                out[index].refId = slideshowID
-                changed = true
-            }
-            if out[index].refId == slideshowID, out[index].lightingCue == nil {
-                out[index].lightingCue = ServicePosition.walkIn.key
-                changed = true
-            }
-        }
-        return changed ? out : nil
     }
 
     private static func letters(_ text: String) -> String {

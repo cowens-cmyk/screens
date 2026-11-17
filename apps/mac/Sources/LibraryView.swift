@@ -1432,11 +1432,14 @@ struct LibraryCommands: Commands {
             Menu("Import") {
                 Button("Theme…") { importShared() }
                 Button("Presentation…") { importShared() }
+                Button("Plan…") { importShared() }
             }
             .disabled(model == nil || runOnly)
             Menu("Export") {
                 Button(exportPresentationLabel) { exportPresentation() }
                     .disabled(model.flatMap { SlideTarget.current(model: $0, editor: slideEditor) } == nil)
+                Button(exportPlanLabel) { exportPlan() }
+                    .disabled(currentPlan == nil)
                 Menu("Theme") {
                     ForEach(model?.entries(of: .theme).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } ?? [], id: \.id) { theme in
                         Button(theme.name) {
@@ -1649,6 +1652,20 @@ struct LibraryCommands: Commands {
     private var exportPresentationLabel: String {
         guard let model, let target = SlideTarget.current(model: model, editor: slideEditor) else { return "Presentation…" }
         return "Presentation “\(target.name)”…"
+    }
+
+    private var currentPlan: Service? {
+        model?.currentServiceID.flatMap { model?.resident.services.value($0) }
+    }
+
+    private var exportPlanLabel: String {
+        currentPlan.map { "Plan “\($0.name)”…" } ?? "Plan…"
+    }
+
+    /// The plan and everything in it, as one file another Mac opens ready to run.
+    private func exportPlan() {
+        guard let model, let plan = currentPlan else { return }
+        ShareTransferRunner(model: model).presentExport(kind: .service, id: plan.id, name: plan.name)
     }
 
     private func exportPresentation() {

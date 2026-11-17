@@ -78,7 +78,12 @@ final class MessageCleanupRunner {
             isSermon: { id in decks[id].map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true },
             protected: protectedPresentations(model))
         for plan in trashed { model.client.delete(kind: .service, id: plan.id) }
-        let removing = messages.compactMap { model.libraryEntry($0) }
+        // A students night's own Game and Breakout Groups go with it
+        // (StudentsNight); its Message is among `messages` when nothing else uses it.
+        let nightDecks = trashed.compactMap(\.mxuPlanHexId).flatMap { StudentsNight.presentationIDs(planID: $0) }
+            .filter { id in !messages.contains(id) && !plans.contains { !gone.contains($0.id) && $0.items.contains { $0.refId == id } } }
+            .filter { !$0.hasPrefix("shepherd-message-") }
+        let removing = (messages + nightDecks).compactMap { model.libraryEntry($0) }
         if !removing.isEmpty { model.delete(removing) }
     }
 

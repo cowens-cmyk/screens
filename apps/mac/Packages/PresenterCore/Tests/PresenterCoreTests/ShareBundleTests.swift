@@ -73,6 +73,52 @@ struct ShareBundleTests {
     }
 }
 
+/// A whole plan exported from one library opens in another as the same
+/// plan, with the presentations in it and nothing else.
+@MainActor
+struct PlanShareTests {
+    @Test func aPlanCarriesItselfAndItsPresentations() async throws {
+        let temp = FileManager.default.temporaryDirectory
+        let rootA = temp.appendingPathComponent(UUID().uuidString)
+        let rootB = temp.appendingPathComponent(UUID().uuidString)
+        let file = temp.appendingPathComponent("\(UUID().uuidString).\(ShareBundle.planExtension)")
+        defer { for url in [rootA, rootB, file] { try? FileManager.default.removeItem(at: url) } }
+
+        let source = LibraryClient(rootURL: rootA)
+        try await source.start().value
+        for (id, name) in [("deck-game", "Game"), ("deck-breakout", "Breakout Groups"), ("deck-unused", "Unused")] {
+            _ = try await source.create(Presentation(
+                id: id, name: name, presentationKind: .deck, themeId: "",
+                slides: [Slide(id: "s-" + id, name: "One", objects: [])])).value
+        }
+        _ = try await source.create(Service(
+            id: "plan-wed", name: "November 18, 2026 — Wednesday Night", serviceDate: "2026-11-18", items: [
+                ServiceItem(id: "i1", itemKind: .header, name: "6:35 PM - WELCOME/GAME", refId: ""),
+                ServiceItem(id: "i2", itemKind: .presentation, name: "Game", refId: "deck-game"),
+                ServiceItem(id: "i3", itemKind: .presentation, name: "Breakout Groups", refId: "deck-breakout"),
+            ])).value
+
+        let contents = try await ShareBundle.export(
+            root: rootA, kind: .service, id: "plan-wed", name: "November 18, 2026 — Wednesday Night", to: file)
+        #expect(contents.documents[.service] == ["plan-wed"])
+        #expect(contents.documents[.presentation] == ["deck-game", "deck-breakout"])
+
+        let (folder, info) = try ShareBundle.unpack(file)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        #expect(info.kind == "service" && info.id == "plan-wed")
+        var options = BackupImportOptions()
+        options.excluded = [.settings]
+        let target = LibraryClient(rootURL: rootB)
+        try await target.start().value
+        let result = try await BackupBundle.restore(from: folder, into: target, options: options)
+        #expect(result.warnings.isEmpty)
+        try await onLibraryActor(reading: rootB) { library throws in
+            #expect(try library.index.entries(of: .service).map(\.id) == ["plan-wed"])
+            #expect(Set(try library.index.entries(of: .presentation).map(\.id)) == ["deck-game", "deck-breakout"])
+        }
+    }
+}
+
 /// Anthem triggers slide N of a presentation by its place among all the
 /// presentation's slides, grouped by section the way ProPresenter lists them.
 @Test func proPresenterGroupsKeepTheSlideOrderAnthemTriggers() throws {

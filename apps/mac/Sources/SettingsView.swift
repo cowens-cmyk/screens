@@ -222,6 +222,8 @@ struct AppSettingsView: View {
     @HotDefault(ServiceStation.runsServiceKey) private var runsService = false
     @HotDefault(MessageCleanupRunner.enabledKey) private var removeOldMessages = true
     @HotDefault(MessageCleanupRunner.plansEnabledKey) private var removeOldPlans = true
+    @HotDefault(PlanFileSaver.enabledKey) private var savePlanFiles = true
+    @HotDefault(ScreensFolder.rootKey) private var screensFolder = ""
 
     private var generalPane: some View {
         Form {
@@ -275,8 +277,38 @@ struct AppSettingsView: View {
             } footer: {
                 Text("Plans more than \(PlanCleanup.keepDays / 7) weeks past are saved to the Trash as a file and removed by the Mac with Run on this Mac on. Templates and the plan that's open stay.")
             }
+            Section {
+                SettingsRow("general.screensFolder") {
+                    HStack(spacing: 8) {
+                        Text(screensFolder.isEmpty ? ScreensFolder.root.path : screensFolder)
+                            .lineLimit(1).truncationMode(.head)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Button("Choose…") { chooseScreensFolder() }
+                        Button("Show in Finder") { ScreensFolder.showInFinder() }
+                    }
+                }
+                SettingsToggle("general.savePlanFiles", isOn: $savePlanFiles)
+                if savePlanFiles {
+                    Button("Save Plans Now") { PlanFileSaver.shared.runSoon() }
+                }
+            } header: {
+                Text("Files")
+            } footer: {
+                Text("Screens keeps its files in one folder: Plans (a folder per upcoming plan, with the whole plan as a .screensplan file and each presentation in it as a .screenspres file, to open on any Mac running Screens), Exports and Backups. Plans are saved by the Mac with Run on this Mac on, when they change, every 15 minutes.")
+            }
         }
         .settingsForm()
+    }
+
+    private func chooseScreensFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = ScreensFolder.root
+        panel.prompt = "Choose"
+        if panel.runModal() == .OK, let url = panel.url { screensFolder = url.path }
     }
 
     // MARK: Simple Mode

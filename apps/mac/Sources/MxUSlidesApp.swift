@@ -78,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Double-clicked .screenstheme / .screenspres files import themselves.
+    /// Double-clicked .screenstheme, .screenspres and .screensplan files import themselves.
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated { ShareOpenQueue.open(urls) }
     }
@@ -243,6 +243,7 @@ struct MxUSlidesApp: App {
             PlanPreloader.shared.start(model: model, render: render, controls: controls)
             WebsiteEventSync.shared.start(model: model, controls: controls)
             MessageCleanupRunner.shared.start(model: model)
+            PlanFileSaver.shared.start(model: model)
             MediaDriveMonitor.shared.start(model: model)
             CloudSync.shared.start(model: model)
             MainMacCoordinator.shared.start(model: model)

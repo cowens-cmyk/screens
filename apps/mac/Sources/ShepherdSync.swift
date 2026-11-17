@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import PresenterCore
@@ -234,17 +235,26 @@ final class ShepherdSync {
                 if index == 0 { await applyKeys(items, model: model) }
             }
 
-            // Each upcoming Wednesday Night plan's "Students Hang Time" item
-            // shows the Students Hang Time slideshow with the Walk-in look.
-            // Outside the loop, so a plan Shepherd hasn't changed gets it too.
-            if !midweek.isEmpty, let hangTime = StudentsHangTime.find(
-                ids: model.entries(of: .presentation).map { ($0.id, $0.name) }) {
-                for service in model.resident.services.values
+            // Each upcoming Wednesday Night plan runs as a students night
+            // (StudentsNight): hang time, game, message and breakout groups
+            // linked, with their lights and livestream. Outside the loop, so
+            // a plan Shepherd hasn't changed gets it too.
+            if !midweek.isEmpty {
+                let hangTime = StudentsHangTime.find(ids: model.entries(of: .presentation).map { ($0.id, $0.name) })
+                for service in Array(model.resident.services.values)
                 where service.origin == ShepherdPlanSync.origin && service.mxuSyncPaused != true
                     && Self.isMidweek(name: service.mxuServiceTypeName ?? "", midweek) && service.serviceDate >= from {
-                    guard StudentsHangTime.linking(service.items, to: hangTime) != nil else { continue }
+                    guard let planID = service.mxuPlanHexId,
+                          let shaped = StudentsNight.shaping(service, planID: planID, hangTimeID: hangTime)
+                    else { continue }
+                    for deck in shaped.presentations where model.libraryEntry(deck.id) == nil {
+                        _ = try? await model.createInDrive(deck).value
+                    }
                     model.updateMainService(service.id) { plan in
-                        if let linked = StudentsHangTime.linking(plan.items, to: hangTime) { plan.items = linked }
+                        // Worked out again on the plan as the write finds it.
+                        if let again = StudentsNight.shaping(plan, planID: planID, hangTimeID: hangTime) {
+                            plan = again.service
+                        }
                     }
                 }
             }
