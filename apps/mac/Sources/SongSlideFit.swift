@@ -56,15 +56,25 @@ enum SongSlideFit {
         return changes.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
+    /// A song from Shepherd changed in Screens since it was imported (its
+    /// words, chords or order no longer match what was imported).
+    nonisolated static func editedByHand(_ song: Presentation) -> Bool {
+        guard song.shepherdSongId != nil, let imported = song.shepherdImportHash else { return false }
+        return imported != ShepherdSongImport.fingerprint(song)
+    }
+
     /// Writes the changes. A song whose slides changed since the survey is
-    /// left as it is. Returns the ids of the songs changed.
+    /// left as it is, and with `keepingHandEdits` so is a Shepherd song
+    /// someone edited in Screens: a slide made to read three lines by hand
+    /// stays that way. Returns the ids of the songs changed.
     @discardableResult
-    static func apply(_ changes: [Change], model: AppModel) async -> [String] {
+    static func apply(_ changes: [Change], model: AppModel, keepingHandEdits: Bool = false) async -> [String] {
         var done: [String] = []
         for change in changes {
             let before = change.before, after = change.after
             let task = model.updatePresentation(change.id) { current in
                 guard current.slides == before else { return }
+                if keepingHandEdits, Self.editedByHand(current) { return }
                 // A song still as Shepherd imported it stays that way, so
                 // plan sync keeps updating it.
                 let asImported = current.shepherdImportHash != nil

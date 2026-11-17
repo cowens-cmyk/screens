@@ -127,6 +127,9 @@ final class LyricsFetcher {
         let sync = ShepherdSync.shared
         guard sync.isConfigured else { return .notConfigured }
         let client = sync.client
+        // The lyrics theme has to be here to measure the slides in, so a
+        // line that wraps past two is split as the song is built.
+        await model.resident.ready([.theme])
         do {
             // The plan's own Shepherd song when it has one, else a search.
             var detail: ShepherdClient.SongDetail?

@@ -3111,12 +3111,16 @@ final class AppModel {
 
     @discardableResult
     func importLyrics(text: String, fallbackTitle: String? = nil, linesPerSlide: Int = 2, themeId: String = "") -> String? {
-        let presentation = LyricTextImporter.makePresentation(
+        var presentation = LyricTextImporter.makePresentation(
             LyricCleanup.clean(text, removePunctuation: LyricImportSettings.removePunctuation),
             fallbackTitle: fallbackTitle,
-            themeId: themeId,
+            // No theme chosen: the lyrics theme, so the slides can be measured.
+            themeId: themeId.isEmpty ? (slideBuilding.lyricsImportThemeId ?? "") : themeId,
             linesPerSlide: linesPerSlide
         )
+        // A song: worship type, so the two-line fit splits any slide that
+        // wraps past two lines in its theme.
+        if presentation.category?.isEmpty ?? true { presentation.category = PresentationTypes.worship }
         createInDrive(presentation)
         lastImportSummary = "Imported \"\(presentation.name)\" (\(presentation.slides.count) slides)"
         return presentation.id

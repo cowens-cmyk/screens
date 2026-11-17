@@ -26,6 +26,7 @@ struct BackupTransferRunner {
     func presentExport() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Library \(Date.now.formatted(.iso8601.year().month().day())).mxubackup"
+        panel.directoryURL = ScreensFolder.backups
         panel.begin { response in
             if response == .OK, let url = panel.url {
                 Task { @MainActor in await export(to: url) }

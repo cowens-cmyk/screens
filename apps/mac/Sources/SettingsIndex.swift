@@ -75,6 +75,16 @@ enum SettingsIndex {
             caption: "Keeps each plan's message in the Messages folder and removes ones last used 30 or more days ago. Songs are never removed.",
             keywords: "message sermon presentation cleanup old delete remove trash bloat library messages folder 30 days"),
         SettingsEntry(
+            id: "general.screensFolder", category: .general,
+            title: "Screens folder",
+            caption: "Where Screens keeps its files: Plans, Exports and Backups.",
+            keywords: "folder files documents plans exports backups screensplan screenspres finder"),
+        SettingsEntry(
+            id: "general.savePlanFiles", category: .general,
+            title: "Save each upcoming plan as files",
+            caption: "A folder per upcoming plan with the whole plan and each presentation in it, to open on any Mac.",
+            keywords: "save plan file screensplan screenspres export other mac automatic folder"),
+        SettingsEntry(
             id: "general.removeOldPlans", category: .general,
             title: "Remove old plans automatically",
             caption: "Keeps the last four weeks of past plans. Older ones are saved to the Trash and removed.",

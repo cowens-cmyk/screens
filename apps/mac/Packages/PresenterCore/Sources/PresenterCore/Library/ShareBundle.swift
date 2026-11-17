@@ -1,13 +1,15 @@
 import CoreText
 import Foundation
 
-/// One presentation or theme packed with everything it needs on another
+/// One presentation, theme or plan packed with everything it needs on another
 /// Mac: the documents it points at (themes, media, stage layouts, macros,
 /// messages…), the media files, the fonts that don't ship with macOS, and
 /// the timers its actions start. Inside it's a library backup holding only
 /// those pieces, zipped into one file, so import reuses the backup restore.
 public enum ShareBundle {
     public static let presentationExtension = "screenspres"
+    /// A whole plan: the plan and every presentation, video and theme in it.
+    public static let planExtension = "screensplan"
     public static let themeExtension = "screenstheme"
     static let shareName = "share.json"
     public static let timersName = "timers.json"
@@ -46,10 +48,20 @@ public enum ShareBundle {
 
     /// Everything reachable from the root document: any carried document
     /// whose id appears anywhere inside a document already collected.
+    /// `alsoIDs` start the search too (the look's layouts and themes), each
+    /// kept only when a carried document has that id.
     @LibraryActor
-    public static func collect(root: URL, kind: DocumentKind, id: String) throws -> Contents {
+    public static func collect(root: URL, kind: DocumentKind, id: String, alsoIDs: [String] = []) throws -> Contents {
         var contents = Contents()
-        var queue = [(kind, id)]
+        var extra: [(DocumentKind, String)] = []
+        for candidate in Set(alsoIDs) where candidate != id {
+            for other in carriedKinds
+            where FileManager.default.fileExists(atPath: documentURL(root: root, kind: other, id: candidate).path) {
+                extra.append((other, candidate))
+            }
+        }
+        // The root last, so it is read first and a missing root is an error.
+        var queue = extra + [(kind, id)]
         var seen = Set<String>()
         while let (kind, id) = queue.popLast() {
             guard seen.insert(id).inserted else { continue }
@@ -76,11 +88,11 @@ public enum ShareBundle {
     /// Writes the share file. `extraFiles` go in as-is (timers.json).
     public static func export(
         root: URL, kind: DocumentKind, id: String, name: String,
-        extraFiles: [String: Data] = [:], to destination: URL
+        extraFiles: [String: Data] = [:], alsoIDs: [String] = [], to destination: URL
     ) async throws -> Contents {
         try await Task.detached(priority: .userInitiated) {
             let files = FileManager.default
-            let contents = try await collect(root: root, kind: kind, id: id)
+            let contents = try await collect(root: root, kind: kind, id: id, alsoIDs: alsoIDs)
             let staging = files.temporaryDirectory.appendingPathComponent("share-\(UUID().uuidString)", isDirectory: true)
             defer { try? files.removeItem(at: staging) }
 

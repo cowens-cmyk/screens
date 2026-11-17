@@ -72,7 +72,15 @@ updating it rather than treating the split as an edit.
 
 Other ways of making songs (Import Lyrics…, the song editor, chord chart
 files, the CMS) still cut by line count only; the automatic pass fits those
-songs within a minute.
+songs within a minute. Import Lyrics… files the song as Worship (so the pass
+sees it) and uses the lyrics theme when none is picked; the Assistant's
+Shepherd import waits for the themes, so it splits as it builds.
+
+A Shepherd song edited in Screens (its words, chords or order no longer what
+was imported) is left alone by the automatic pass: a slide fixed by hand,
+right-click › Edit, stays as it was made, even at three lines. File › Fit
+Song Slides still fits it when asked. Edits save to the library as they're
+made.
 
 ## Parts with chords and no words
 

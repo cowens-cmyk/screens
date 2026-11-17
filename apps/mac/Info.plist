@@ -34,6 +34,18 @@
 		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
+			<string>Screens Plan</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.hopejc.screens.plan</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
 			<string>Anthem Session</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
@@ -118,6 +130,23 @@
 				<key>public.filename-extension</key>
 				<array>
 					<string>screenspres</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Screens Plan</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.hopejc.screens.plan</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>screensplan</string>
 				</array>
 			</dict>
 		</dict>

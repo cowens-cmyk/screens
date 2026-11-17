@@ -116,7 +116,8 @@ final class SongSlideAutoFit {
             guard Self.thisMacFits else { return }
             let heldNow = songsHeldForTheService(model)
             let safe = changes.filter { $0.id != liveID && !heldNow.contains($0.id) && Self.fontsAreHere(for: $0.id, model: model) }
-            let done = await SongSlideFit.apply(safe, model: model)
+            // A song fixed by hand (right-click › Edit) keeps what was done.
+            let done = await SongSlideFit.apply(safe, model: model, keepingHandEdits: true)
             let left = Set(changes.map(\.id)).subtracting(safe.map(\.id))
             for entry in due where entry.id != liveID && !left.contains(entry.id) { checked[entry.id] = entry.updatedAt }
             if !done.isEmpty {
