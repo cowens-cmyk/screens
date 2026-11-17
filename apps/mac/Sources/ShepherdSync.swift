@@ -18,6 +18,8 @@ final class ShepherdSync {
     private static let weeksKey = "shepherd.weeksAhead"
     private static let sundaysKey = "shepherd.sundaysOnly"
     private static let autoKey = "shepherd.autoSync"
+    private static let midweekTypeKey = "shepherd.midweekServiceType"
+    private static let midweekTemplateKey = "shepherd.midweekTemplate"
     static let refreshInterval: TimeInterval = 10 * 60
 
     var apiKey: String {
@@ -27,6 +29,16 @@ final class ShepherdSync {
     var serviceType: String { didSet { UserDefaults.standard.set(serviceType, forKey: Self.serviceTypeKey) } }
     var weeksAhead: Int { didSet { UserDefaults.standard.set(weeksAhead, forKey: Self.weeksKey) } }
     var sundaysOnly: Bool { didSet { UserDefaults.standard.set(sundaysOnly, forKey: Self.sundaysKey) } }
+    /// The Shepherd service type whose plans are built on a Screens template
+    /// (ShepherdTemplatePlan): Wednesday Night, for Hope Students. Loaded on
+    /// its own day whatever "Sundays only" says; empty loads none.
+    var midweekServiceType: String {
+        didSet { UserDefaults.standard.set(midweekServiceType, forKey: Self.midweekTypeKey) }
+    }
+    /// The template those plans are built on; empty picks one by name.
+    var midweekTemplateID: String {
+        didSet { UserDefaults.standard.set(midweekTemplateID, forKey: Self.midweekTemplateKey) }
+    }
     var autoSync: Bool {
         didSet {
             UserDefaults.standard.set(autoSync, forKey: Self.autoKey)
@@ -62,6 +74,8 @@ final class ShepherdSync {
         serviceType = defaults.string(forKey: Self.serviceTypeKey) ?? ""
         weeksAhead = defaults.object(forKey: Self.weeksKey) as? Int ?? 3
         sundaysOnly = defaults.object(forKey: Self.sundaysKey) as? Bool ?? true
+        midweekServiceType = defaults.string(forKey: Self.midweekTypeKey) ?? ShepherdTemplatePlan.defaultServiceType
+        midweekTemplateID = defaults.string(forKey: Self.midweekTemplateKey) ?? ""
         autoSync = defaults.object(forKey: Self.autoKey) as? Bool ?? true
         importSongs = defaults.object(forKey: Self.importSongsKey) as? Bool ?? true
     }
@@ -110,6 +124,21 @@ final class ShepherdSync {
             let (from, to) = Self.window(weeks: weeksAhead)
             var plans = try await client.plans(from: from, to: to, serviceType: serviceType.isEmpty ? nil : serviceType)
             if sundaysOnly { plans = plans.filter(Self.isSunday) }
+            // Wednesday Night plans come on their own, whatever day filter
+            // the Sunday plans have. When they can't be read, the ones
+            // already here are left alone rather than taken for gone.
+            let midweek = midweekServiceType.trimmingCharacters(in: .whitespaces)
+            var midweekRead = true
+            if !midweek.isEmpty {
+                plans.removeAll { Self.isMidweek($0.serviceType, midweek) }
+                do {
+                    plans += try await client.plans(from: from, to: to, serviceType: midweek)
+                        .filter { Self.isMidweek($0.serviceType, midweek) }
+                } catch {
+                    midweekRead = false
+                }
+                plans.sort { ($0.startsAt ?? .distantFuture, $0.id) < ($1.startsAt ?? .distantFuture, $1.id) }
+            }
             // One plan per day (ShepherdDayPick): a day with more than one is
             // read in full to see which is the church's service.
             var details: [String: ShepherdClient.PlanDetail] = [:]
@@ -118,7 +147,7 @@ final class ShepherdSync {
             let pick = ShepherdDayPick.pick(plans, songs: details.mapValues(ShepherdDayPick.songCount))
             plans = pick.kept
 
-            var created = 0, updated = 0
+            var created = 0, updated = 0, waiting = 0
             let preService = model.preServiceSlideshowID()
             for (index, plan) in plans.enumerated() {
                 let existing = model.resident.services.values.first {
@@ -128,11 +157,29 @@ final class ShepherdSync {
                 let version = ISO8601DateFormatter().string(from: plan.updatedAt)
                 // An unchanged plan is still re-read while it has flagged
                 // songs, so importing the song links it on the next pass.
-                if let existing, existing.mxuPlanVersion == version, !Self.hasFlaggedSongs(existing) { continue }
+                // A plan still named the old way ("2026-11-22 — …") is read
+                // once more to get its date written out.
+                if let existing, existing.mxuPlanVersion == version, !Self.hasFlaggedSongs(existing),
+                   !Self.hasNumericDateName(existing) { continue }
 
                 let detail: ShepherdClient.PlanDetail
                 if let read = details[plan.id] { detail = read } else { detail = try await client.plan(id: plan.id) }
                 let rules = model.serviceLinkRules
+                if Self.isMidweek(plan.serviceType, midweek), existing.map(Self.isTemplateBuilt) ?? true {
+                    switch await syncTemplatePlan(
+                        detail, existing: existing, version: version, rules: rules, candidates: candidates, model: model) {
+                    case .created: created += 1
+                    case .updated: updated += 1
+                    case .waiting: waiting += 1
+                    case .unchanged: break
+                    }
+                    if index == 0, let id = existing?.id ?? model.resident.services.value(
+                        ShepherdDayPick.serviceID(forPlan: plan.id))?.id,
+                       let items = model.resident.services.value(id)?.items {
+                        await applyKeys(items, model: model)
+                    }
+                    continue
+                }
                 let items = Self.planItems(
                     detail, over: existing, rules: rules, candidates: candidates, preService: preService)
                 let name = ShepherdPlanSync.serviceName(for: detail)
@@ -174,8 +221,10 @@ final class ShepherdSync {
 
             // The second plans already imported, and copies of one plan, go.
             let open = Set([model.currentServiceID].compactMap { $0 })
-            let extra = ShepherdDayPick.duplicates(
-                in: Array(model.resident.services.values), pick: pick, keep: open, window: from...to)
+            let services = model.resident.services.values.filter {
+                midweekRead || !Self.isMidweek(name: $0.mxuServiceTypeName ?? "", midweek)
+            }
+            let extra = ShepherdDayPick.duplicates(in: services, pick: pick, keep: open, window: from...to)
             for id in extra { model.client.delete(kind: .service, id: id) }
 
             let ids = plans.compactMap { plan in
@@ -199,6 +248,10 @@ final class ShepherdSync {
             if songs.arranged > 0 {
                 parts.append("\(songs.arranged) arrangement\(songs.arranged == 1 ? "" : "s") from Shepherd")
             }
+            if waiting > 0 {
+                parts.append("\(waiting) \(midweek) plan\(waiting == 1 ? " waits" : "s wait") for a template")
+            }
+            if !midweekRead { parts.append("\(midweek) plans couldn't be read") }
             if parts.isEmpty { parts.append(plans.isEmpty ? "No upcoming plans" : "Up to date") }
             if !newerCharts.isEmpty {
                 parts.append("\(newerCharts.count) edited song\(newerCharts.count == 1 ? " has" : "s have") a newer chart")
@@ -248,6 +301,126 @@ final class ShepherdSync {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/New_York")!
         return calendar.component(.weekday, from: start) == 1
+    }
+
+    // MARK: Plans built on a template (Wednesday Night)
+
+    /// A plan of the Wednesday Night type, by name or id.
+    static func isMidweek(_ type: ShepherdClient.ServiceType, _ midweek: String) -> Bool {
+        !midweek.isEmpty && (isMidweek(name: type.name, midweek) || type.id == midweek)
+    }
+
+    static func isMidweek(name: String, _ midweek: String) -> Bool {
+        !midweek.isEmpty && name.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(midweek) == .orderedSame
+    }
+
+    /// Built on the template: Shepherd gave it songs and nothing else. A
+    /// Wednesday plan loaded in Shepherd's order before (with "Sundays only"
+    /// off) stays that way.
+    static func isTemplateBuilt(_ service: Service) -> Bool {
+        !service.items.contains { $0.mxuSourceItemId != nil && $0.mxuKind != "song" }
+    }
+
+    enum TemplatePlanResult { case created, updated, unchanged, waiting }
+
+    /// A Wednesday Night plan made from its template, or its songs, name,
+    /// date and times brought up to date. `.waiting` when there's no
+    /// template to make it from.
+    private func syncTemplatePlan(
+        _ detail: ShepherdClient.PlanDetail, existing: Service?, version: String, rules: ServiceLinkRules,
+        candidates: [ServiceLinkLogic.Candidate], model: AppModel
+    ) async -> TemplatePlanResult {
+        let midweek = midweekServiceType.trimmingCharacters(in: .whitespaces)
+        let template = ShepherdTemplatePlan.template(
+            for: midweek, chosenID: midweekTemplateID, in: Array(model.resident.services.values))
+        let date = ShepherdPlanSync.serviceDate(for: detail)
+        let title = detail.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let label = !title.isEmpty ? title
+            : template.map { $0.name.replacingOccurrences(of: " Template", with: "") } ?? detail.serviceType.name
+        let name = ShepherdPlanSync.planName(date: date, label: label)
+        let times = Self.planTimes(detail)
+
+        if let existing {
+            let songs = Self.templateSongs(detail, over: existing.items, rules: rules, candidates: candidates)
+            let items = ShepherdTemplatePlan.laying(songs, over: existing.items) { $0.mxuSourceItemId != nil }
+            guard existing.items != items || existing.name != name || existing.mxuPlanVersion != version else {
+                return .unchanged
+            }
+            let readRefs = Set(existing.items.map(\.refId))
+            model.updateMainService(existing.id) { service in
+                // Worked out again on the plan as the write finds it, as
+                // Sunday plans are.
+                let linkedSince = Set(service.items.map(\.refId)).subtracting(readRefs)
+                let songs = Self.templateSongs(
+                    detail, over: service.items, rules: rules, candidates: candidates, linkedSince: linkedSince)
+                service.items = ShepherdTemplatePlan.laying(songs, over: service.items) { $0.mxuSourceItemId != nil }
+                service.name = name
+                service.serviceDate = date
+                service.mxuPlanVersion = version
+                service.mxuServiceTypeName = detail.serviceType.name
+                service.mxuPlanTimes = times
+            }
+            return .updated
+        }
+
+        guard let template else { return .waiting }
+        let roles = await Self.templateRoles(template, model: model)
+        let id = ShepherdDayPick.serviceID(forPlan: detail.id)
+        var service = model.plan(
+            fromTemplate: template, id: id, date: date,
+            isMessage: { roles.messages.contains($0.refId) },
+            messageID: { "shepherd-message-\(detail.id)" + ($0 == 0 ? "" : "-\($0 + 1)") })
+        let songs = Self.templateSongs(detail, over: [], rules: rules, candidates: candidates)
+        service.items = ShepherdTemplatePlan.laying(songs, over: service.items) {
+            $0.itemKind == .presentation && roles.songs.contains($0.refId)
+        }
+        service.name = name
+        service.mxuDerivedName = name
+        service.origin = ShepherdPlanSync.origin
+        service.mxuPlanHexId = detail.id
+        service.mxuServiceTypeName = detail.serviceType.name
+        service.mxuPlanVersion = version
+        service.mxuPlanTimes = times
+        service.mxuSyncPaused = nil
+        model.createInDrive(service)
+        return .created
+    }
+
+    /// The plan's songs, linked to library songs as Sunday plans' are, each
+    /// with the Shepherd header it is planned under.
+    nonisolated static func templateSongs(
+        _ detail: ShepherdClient.PlanDetail, over items: [ServiceItem], rules: ServiceLinkRules,
+        candidates: [ServiceLinkLogic.Candidate], linkedSince: Set<String> = []
+    ) -> [ShepherdTemplatePlan.Song] {
+        let library = Set(candidates.map(\.id)).union(linkedSince)
+        var songsOnly = detail
+        songsOnly.items = detail.items.filter { $0.kind == "song" }
+        let synced = ShepherdPlanSync.items(
+            for: songsOnly, rules: rules, existing: items.filter { $0.mxuSourceItemId != nil },
+            inLibrary: library.contains
+        ) { song in librarySong(for: song, candidates: candidates) }
+        let headers = ShepherdTemplatePlan.headers(of: detail)
+        return synced.map { ShepherdTemplatePlan.Song(header: $0.mxuSourceItemId.flatMap { headers[$0] }, item: $0) }
+    }
+
+    /// Which of the template's presentations are songs (placeholders
+    /// Shepherd's songs replace) and which are messages (each plan gets its
+    /// own), by presentation id.
+    private static func templateRoles(
+        _ template: Service, model: AppModel
+    ) async -> (songs: Set<String>, messages: Set<String>) {
+        var songs: Set<String> = [], messages: Set<String> = []
+        for ref in Set(template.items.filter { $0.itemKind == .presentation && !$0.refId.isEmpty }.map(\.refId)) {
+            guard let presentation = try? await model.client.loadValue(Presentation.self, id: ref) else { continue }
+            if presentation.presentationKind == .song { songs.insert(ref) }
+            if PresentationTypes.category(of: presentation) == PresentationTypes.sermon { messages.insert(ref) }
+        }
+        return (songs, messages)
+    }
+
+    /// Named before plan dates were written out: "2026-11-22 — Genesis 46-47".
+    static func hasNumericDateName(_ service: Service) -> Bool {
+        service.name.range(of: #"^\d{4}-\d{2}-\d{2} — "#, options: .regularExpression) != nil
     }
 
     static func flaggedSongs(in items: [ServiceItem]) -> Int {
@@ -317,8 +490,21 @@ final class ShepherdSync {
 
 /// Settings › Integrations › Shepherd.
 struct ShepherdSettingsForm: View {
+    var model: AppModel? = nil
     @Bindable private var sync = ShepherdSync.shared
     @HotDefault(LyricImportSettings.removePunctuationKey) private var removePunctuation = true
+
+    private var templates: [Service] {
+        guard let model else { return [] }
+        return model.resident.services.values.filter { $0.isTemplate == true }.sorted { $0.name < $1.name }
+    }
+
+    /// What Automatic picks now, so the choice is visible.
+    private var automaticTemplateLabel: String {
+        let picked = ShepherdTemplatePlan.template(
+            for: sync.midweekServiceType.trimmingCharacters(in: .whitespaces), chosenID: nil, in: templates)
+        return picked.map { "Automatic (\($0.name))" } ?? "Automatic (none found)"
+    }
 
     var body: some View {
         Section {
@@ -341,6 +527,17 @@ struct ShepherdSettingsForm: View {
                 .toggleStyle(.switch)
         } header: {
             Text("Plans")
+        }
+        Section {
+            TextField("Service type", text: $sync.midweekServiceType, prompt: Text("Off"))
+            Picker("Template", selection: $sync.midweekTemplateID) {
+                Text(automaticTemplateLabel).tag("")
+                ForEach(templates, id: \.id) { Text($0.name).tag($0.id) }
+            }
+        } header: {
+            Text("Wednesday Night")
+        } footer: {
+            Text("Plans of this type are made from the template, with the songs from Shepherd in place of the template's songs. Leave the service type empty to load none.")
         }
         Section {
             Toggle("Import lyrics and chords from Shepherd automatically", isOn: $sync.importSongs)

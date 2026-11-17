@@ -22,8 +22,31 @@ public enum ShepherdPlanSync {
 
     private static func name(title: String?, date: String, serviceType: String) -> String {
         let title = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let label = title.isEmpty ? serviceType : title
-        return date.isEmpty ? label : "\(date) — \(label)"
+        return planName(date: date, label: title.isEmpty ? serviceType : title)
+    }
+
+    /// "November 18, 2026 — Hope Students": the date written out, so the
+    /// plan list reads like a calendar. `date` is the service date
+    /// ("2026-11-18"); without one the name is the label alone.
+    public static func planName(date: String, label: String) -> String {
+        let written = readableDate(date)
+        return written.isEmpty ? label : "\(written) — \(label)"
+    }
+
+    /// "2026-11-18" as "November 18, 2026"; anything else as it is.
+    public static func readableDate(_ date: String) -> String {
+        let parser = DateFormatter()
+        parser.calendar = Calendar(identifier: .gregorian)
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.timeZone = TimeZone(identifier: "UTC")!
+        parser.dateFormat = "yyyy-MM-dd"
+        guard let day = parser.date(from: date) else { return date }
+        let writer = DateFormatter()
+        writer.calendar = parser.calendar
+        writer.locale = Locale(identifier: "en_US")
+        writer.timeZone = parser.timeZone
+        writer.dateFormat = "MMMM d, yyyy"
+        return writer.string(from: day)
     }
 
     private static func dateString(_ date: Date?) -> String {

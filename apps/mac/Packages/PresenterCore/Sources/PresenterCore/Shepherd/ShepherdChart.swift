@@ -320,6 +320,25 @@ public struct ShepherdChart: Equatable, Sendable {
         }.filter { !$0.isEmpty }
     }
 
+    /// The chords of a part with no words (an intro, a turnaround), one row
+    /// per chart line, each written "[C][F]": bar lines, beat slashes and
+    /// repeat marks left out. Built into a slide it has no words and only
+    /// chords, so the audience sees nothing and the stage display shows the
+    /// band where they are. Empty for a part with words or no chords.
+    public func chordRows(_ section: Section) -> [String] {
+        guard !section.hasLyrics else { return [] }
+        return section.stanzas.joined().compactMap { line in
+            let chords = ChordMath.extractLine(line).chords.compactMap { LyricCleanup.cleanChordToken($0.symbol) }
+            return chords.isEmpty ? nil : chords.map { "[\($0)]" }.joined()
+        }
+    }
+
+    /// True when some part has chords and no words: Screens once built
+    /// those as blank slides without their chords.
+    var hasChordOnlySections: Bool {
+        sections.contains { !chordRows($0).isEmpty }
+    }
+
     private func text(removePunctuation: Bool, keepChords: Bool) -> String {
         var blocks: [String] = []
         for section in sections {
