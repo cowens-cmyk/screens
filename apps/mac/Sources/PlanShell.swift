@@ -84,6 +84,8 @@ struct PlanShell: View {
     @State private var schedulePlanID: String?
     /// The plan being saved as a template, while its message length is asked.
     @State private var templatePlanID: String?
+    /// Past plans fold away under their header; closed unless opened.
+    @HotDefault("plans.pastExpanded") private var pastExpanded = false
     @State private var simpleModePIN: PinFlow?
     @State private var confirmingSimpleMode = false
     /// Where the Add to Plan popover is open from, if it is.
@@ -731,8 +733,26 @@ struct PlanShell: View {
                 }
             }
             if !plans.past.isEmpty {
-                Section("Past") {
-                    ForEach(plans.past, id: \.id) { planRow($0) }
+                Section {
+                    if pastExpanded {
+                        ForEach(plans.past, id: \.id) { planRow($0) }
+                    }
+                } header: {
+                    Button {
+                        withAnimation(HopeMotion.ui(reduced: reduceMotion)) { pastExpanded.toggle() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 9, weight: .semibold))
+                                .rotationEffect(.degrees(pastExpanded ? 90 : 0))
+                            Text("Past")
+                            Text("\(plans.past.count)").foregroundStyle(.tertiary)
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(pastExpanded ? "Hide past plans" : "Show past plans")
                 }
             }
         }
