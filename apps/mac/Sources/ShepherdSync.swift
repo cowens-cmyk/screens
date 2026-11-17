@@ -227,10 +227,26 @@ final class ShepherdSync {
                         service.transitionRemoved = true
                         service.walkoutRemoved = true
                     }
-                    model.createInDrive(service)
+                    // Waited for, so this pass can give its songs their slides.
+                    _ = try? await model.createInDrive(service).value
                     created += 1
                 }
                 if index == 0 { await applyKeys(items, model: model) }
+            }
+
+            // Each upcoming Wednesday Night plan's "Students Hang Time" item
+            // shows the Students Hang Time slideshow with the Walk-in look.
+            // Outside the loop, so a plan Shepherd hasn't changed gets it too.
+            if !midweek.isEmpty, let hangTime = StudentsHangTime.find(
+                ids: model.entries(of: .presentation).map { ($0.id, $0.name) }) {
+                for service in model.resident.services.values
+                where service.origin == ShepherdPlanSync.origin && service.mxuSyncPaused != true
+                    && Self.isMidweek(name: service.mxuServiceTypeName ?? "", midweek) && service.serviceDate >= from {
+                    guard StudentsHangTime.linking(service.items, to: hangTime) != nil else { continue }
+                    model.updateMainService(service.id) { plan in
+                        if let linked = StudentsHangTime.linking(plan.items, to: hangTime) { plan.items = linked }
+                    }
+                }
             }
 
             // The second plans already imported, and copies of one plan, go.
@@ -241,6 +257,9 @@ final class ShepherdSync {
             let extra = ShepherdDayPick.duplicates(in: services, pick: pick, keep: open, window: from...to)
             for id in extra { model.client.delete(kind: .service, id: id) }
 
+            // A plan made this pass gets its songs now, not on the next
+            // pass ten minutes on: Gratitude sat on Get Lyrics until then.
+            if created > 0 { await model.client.settled() }
             let ids = plans.compactMap { plan in
                 model.resident.services.values.first {
                     $0.origin == ShepherdPlanSync.origin && $0.mxuPlanHexId == plan.id
@@ -396,7 +415,7 @@ final class ShepherdSync {
         service.mxuPlanVersion = version
         service.mxuPlanTimes = times
         service.mxuSyncPaused = nil
-        model.createInDrive(service)
+        _ = try? await model.createInDrive(service).value
         return .created
     }
 

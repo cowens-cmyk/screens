@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ImageIO
 import Observation
 import PresenterCore
 import UniformTypeIdentifiers
@@ -8,7 +9,8 @@ import UniformTypeIdentifiers
 /// each church event's artwork goes in a month before the event and comes
 /// out when it starts (WebsiteEvents decides what shows; this fetches the
 /// feed, brings the artwork into Media › Announcements and writes the
-/// slides).
+/// slides). The students calendar fills the Students Hang Time slideshow
+/// the same way, with 1920×1080 artwork only (StudentsHangTime).
 ///
 /// Every Mac writes, so a Mac that doesn't run the service (or isn't
 /// syncing with the one that does) still shows the events. Each event's
@@ -40,6 +42,8 @@ final class WebsiteEventSync {
 
     /// The last feed read, nil until one has been.
     private(set) var events: [WebsiteEvent]?
+    /// The students calendar's last read, for Students Hang Time.
+    private(set) var studentEvents: [WebsiteEvent]?
     private(set) var lastFetched: Date?
     /// When the slides were last brought up to date on this Mac.
     private(set) var lastApplied: Date?
@@ -61,6 +65,9 @@ final class WebsiteEventSync {
     /// Artwork brought in, by the address it came from. Kept to what the
     /// feed still names.
     @ObservationIgnored private var mediaByURL: [String: String] = [:]
+    /// Students artwork that isn't 1920×1080, so it isn't downloaded again
+    /// every pass.
+    @ObservationIgnored private var wrongSize: Set<String> = []
     @ObservationIgnored private var referenceChecked: [String: Date] = [:]
     @ObservationIgnored private var lastNotes: [String: (detail: String, at: Date)] = [:]
 
@@ -180,9 +187,13 @@ final class WebsiteEventSync {
         Task { @MainActor in
             let activity = ProcessInfo.processInfo.beginActivity(
                 options: [.background], reason: "Updating hopejc.org events in the pre-service slides")
-            if fetch { await fetchFeed() }
+            if fetch {
+                await fetchFeed()
+                await fetchStudentsFeed()
+            }
             if model != nil {
                 await apply(enabled: WebsiteEvents.isEnabled(settings))
+                await applyStudents(enabled: WebsiteEvents.isEnabled(settings))
             }
             ProcessInfo.processInfo.endActivity(activity)
             isWorking = false
@@ -226,6 +237,23 @@ final class WebsiteEventSync {
             problem = "Couldn't reach hopejc.org. Trying again at \(at.formatted(date: .omitted, time: .shortened))."
             note("websiteEvents.fetchFailed", "\(error.localizedDescription) (attempt \(failures))")
             scheduleRetry(after: wait * 60)
+        }
+    }
+
+    /// The students calendar, for Students Hang Time. Read with the church's
+    /// feed; when it can't be, the slideshow keeps what it has and only
+    /// slides whose time has passed come out.
+    private func fetchStudentsFeed() async {
+        var request = URLRequest(
+            url: WebsiteEvents.feedURL(calendar: StudentsHangTime.calendar),
+            cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+            studentEvents = try WebsiteEvents.parseFeed(data)
+        } catch {
+            note("websiteEvents.studentsFetchFailed", error.localizedDescription)
         }
     }
 
@@ -301,11 +329,80 @@ final class WebsiteEventSync {
         }
     }
 
+    // MARK: Students Hang Time
+
+    /// The Students Hang Time slideshow's event slides, as the pre-service
+    /// slideshow's are kept, from the students calendar and with 1920×1080
+    /// artwork only. The slideshow is made the first time there's something
+    /// to show; turned off, its event slides come out.
+    private func applyStudents(enabled: Bool) async {
+        guard let model else { return }
+        let now = Date()
+        let calendar = StudentsHangTime.calendar
+        let deckID: String
+        if let found = StudentsHangTime.find(ids: model.entries(of: .presentation).map { ($0.id, $0.name) }) {
+            deckID = found
+        } else {
+            guard enabled, let events = studentEvents,
+                  !WebsiteEvents.desired(events, now: now, options: options, calendar: calendar).isEmpty
+            else { return }
+            _ = try? await model.createInDrive(StudentsHangTime.newSlideshow()).value
+            deckID = StudentsHangTime.presentationID
+            note("websiteEvents.madeHangTime", StudentsHangTime.presentationName)
+        }
+        guard let deck = await model.presentationsFilled([deckID])[deckID] else { return }
+        await model.resident.ready([.media])
+        let live = controls?.livePresentationID == deckID ? controls?.liveSlideID : nil
+
+        let rewrite: @Sendable ([Slide]) -> WebsiteEvents.SlidePlan
+        if !enabled {
+            rewrite = { WebsiteEvents.plan(existing: $0, wanted: [], liveSlideID: live) }
+        } else if let events = studentEvents {
+            var wanted: [WebsiteEvents.Wanted] = []
+            for item in WebsiteEvents.desired(events, now: now, options: options, calendar: calendar) {
+                // Artwork that isn't 1920×1080 isn't shown at all.
+                guard let id = await mediaID(for: item, in: deck.slides, fullScreenOnly: true) else { continue }
+                wanted.append(.init(shown: item, mediaID: id))
+            }
+            let fixed = wanted
+            rewrite = { WebsiteEvents.plan(existing: $0, wanted: fixed, liveSlideID: live) }
+        } else {
+            rewrite = { WebsiteEvents.expiredOnly(existing: $0, now: now, liveSlideID: live) }
+        }
+        let plan = rewrite(deck.slides)
+        guard plan.changed else { return }
+        let fresh = model.rewriteSlides(in: deckID) { presentation in
+            presentation.slides = rewrite(presentation.slides).slides
+        }
+        if let fresh {
+            controls?.presentationReplaced(fresh)
+        } else {
+            controls?.presentationEdited(deckID)
+        }
+        note("websiteEvents.applied",
+             "\(deck.name): +\(plan.added.count) ~\(plan.updated.count) -\(plan.removed.count)\(plan.moved ? " reordered" : "")")
+    }
+
     /// The media for an event's artwork: what its slide already shows when
     /// the picture hasn't changed, else artwork brought in before from the
-    /// same address (on this Mac or another), else downloaded now.
-    private func mediaID(for shown: WebsiteEvents.Shown, in slides: [Slide]) async -> String? {
+    /// same address (on this Mac or another), else downloaded now. With
+    /// `fullScreenOnly`, nil for artwork that isn't 1920×1080.
+    private func mediaID(
+        for shown: WebsiteEvents.Shown, in slides: [Slide], fullScreenOnly: Bool = false
+    ) async -> String? {
         guard let model else { return nil }
+        if fullScreenOnly {
+            if wrongSize.contains(shown.imageURL) { return nil }
+            guard let id = await mediaID(for: shown, in: slides, fullScreenOnly: false) else { return nil }
+            let item = model.media(id)
+            // A picture whose size isn't known yet was checked as it came in.
+            if let width = item?.pixelWidth, let height = item?.pixelHeight,
+               !StudentsHangTime.fits(width: width, height: height) {
+                wrongSize.insert(shown.imageURL)
+                return nil
+            }
+            return id
+        }
         if let slide = slides.first(where: { $0.sourceEvent?.key == shown.key }),
            slide.sourceEvent?.imageUrl == shown.imageURL,
            let id = slide.background?.mediaId, model.media(id) != nil {
@@ -352,6 +449,16 @@ final class WebsiteEventSync {
             }
             let file = folder.appendingPathComponent(name)
             try FileManager.default.moveItem(at: downloaded, to: file)
+            // Students artwork goes in only at 1920×1080 (StudentsHangTime).
+            if shown.event.calendars.contains(where: { $0.caseInsensitiveCompare(StudentsHangTime.calendar) == .orderedSame }),
+               !shown.event.calendars.contains(where: { $0.caseInsensitiveCompare(WebsiteEvents.calendar) == .orderedSame }) {
+                let size = Self.pixelSize(of: file)
+                guard StudentsHangTime.fits(width: size?.width, height: size?.height) else {
+                    wrongSize.insert(shown.imageURL)
+                    note("websiteEvents.wrongSize", "\(shown.event.title): \(size.map { "\($0.width)×\($0.height)" } ?? "unknown size")")
+                    return nil
+                }
+            }
             let placement = LibraryHome.Placement.drive(viewing: LibraryHome.Viewed(
                 kind: .media, area: .team, path: MediaLibraryCategory.announcements.folder ?? "Announcements"))
             guard let id = await model.importFiles([file], placement: placement).first else {
@@ -374,13 +481,26 @@ final class WebsiteEventSync {
         }
     }
 
+    /// A picture file's size in pixels, read from its header.
+    static func pixelSize(of file: URL) -> (width: Int, height: Int)? {
+        guard let source = CGImageSourceCreateWithURL(file as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int
+        else { return nil }
+        return (width, height)
+    }
+
     /// Artwork this sync brought in that no event wants any more and nothing
     /// in the library uses (someone may have put it on a slide of their own)
     /// is deleted, so the library doesn't fill with past events.
     private func removeUnusedArtwork(keeping used: Set<String>, enabled: Bool) async {
         guard let model else { return }
         let wantedURLs = enabled
-            ? Set(WebsiteEvents.desired(events ?? [], now: Date(), options: options).map(\.imageURL)) : []
+            ? Set(WebsiteEvents.desired(events ?? [], now: Date(), options: options).map(\.imageURL)
+                + WebsiteEvents.desired(studentEvents ?? [], now: Date(), options: options,
+                                        calendar: StudentsHangTime.calendar).map(\.imageURL))
+            : []
         let candidates = syncedArtwork().filter { !used.contains($0.id) && !wantedURLs.contains($0.url) }
         referenceChecked = referenceChecked.filter { id, _ in candidates.contains { $0.id == id } }
         // Without a feed, an event's artwork might only look unwanted.

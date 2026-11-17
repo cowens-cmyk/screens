@@ -60,9 +60,19 @@ extension ShepherdSync {
         // have to be here before any is built.
         await model.resident.ready([.theme])
 
-        func detail(_ songID: String) async -> ShepherdClient.SongDetail? {
+        // The plan's own Shepherd song, else the one with its CCLI number or
+        // title, as Get Lyrics finds it: a song whose id Shepherd doesn't
+        // answer for still gets its words, chords and arrangement.
+        func detail(_ songID: String, _ item: ServiceItem) async -> ShepherdClient.SongDetail? {
             if let cached = details[songID] { return cached }
-            guard !missing.contains(songID), let fetched = try? await client.song(id: songID) else {
+            guard !missing.contains(songID) else { return nil }
+            var fetched = try? await client.song(id: songID)
+            if fetched == nil, let match = try? await ShepherdSongMatch.find(
+                ccli: item.mxuCcliNumber.map(String.init), title: item.mxuSongTitle ?? item.name,
+                search: { try await client.searchSongs($0) }) {
+                fetched = try? await client.song(id: match.id)
+            }
+            guard let fetched else {
                 missing.insert(songID)
                 return nil
             }
@@ -76,7 +86,7 @@ extension ShepherdSync {
             for item in service.items where item.mxuSongTitle != nil {
                 guard let songID = item.mxuSourceSongId, !songID.isEmpty else { continue }
                 if item.refId.isEmpty {
-                    guard importing, item.itemKind == .info, let detail = await detail(songID) else { continue }
+                    guard importing, item.itemKind == .info, let detail = await detail(songID, item) else { continue }
                     let planned = ShepherdSongMatch.arrangement(
                         in: detail, id: item.mxuSourceArrangementId, name: item.mxuArrangementName)
                     if importSong(detail, arrangement: planned, for: item, serviceID: serviceID, model: model) {
@@ -92,7 +102,7 @@ extension ShepherdSync {
                     guard let loaded = try? await model.client.loadValue(Presentation.self, id: item.refId) else { continue }
                     presentation = loaded
                 }
-                guard let detail = await detail(songID) else { continue }
+                guard let detail = await detail(songID, item) else { continue }
                 let planned = ShepherdSongMatch.arrangement(
                     in: detail, id: item.mxuSourceArrangementId, name: item.mxuArrangementName)
 
@@ -148,7 +158,10 @@ extension ShepherdSync {
             }
             guard !picks.isEmpty else { continue }
             let changes = picks
-            model.updateService(serviceID) { service in
+            // Main, as the plan sync writes: Shepherd's arrangement belongs
+            // to the plan, not to a version running on this Mac, which
+            // would leave every other Mac on none.
+            model.updateMainService(serviceID) { service in
                 for change in changes {
                     guard let index = service.items.firstIndex(where: { $0.id == change.itemID }),
                           service.items[index].refId == change.refID else { continue }

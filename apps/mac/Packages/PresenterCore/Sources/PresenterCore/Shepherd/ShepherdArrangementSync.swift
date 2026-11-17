@@ -540,14 +540,21 @@ public enum ShepherdArrangementSync {
         guard let target, !anthemLeads else { return nil }
         // A pick of an arrangement since deleted shows the default: as good as none.
         let current = current.flatMap { available.contains($0) ? $0 : nil }
-        if (current ?? defaultId) == target {
-            // Already showing it; remember it as sync's so a later Shepherd
-            // change can move it.
-            return lastSynced == target ? nil : Pick(arrangementId: current, syncedArrangementId: target)
-        }
-        // Sync's own pick (or never one): Shepherd's now.
         let lastSynced = lastSynced.flatMap { available.contains($0) ? $0 : nil }
-        if current == lastSynced { return Pick(arrangementId: target, syncedArrangementId: target) }
+        if current == target {
+            // Already on it; remember it as sync's so a later Shepherd
+            // change can move it.
+            return lastSynced == target ? nil : Pick(arrangementId: target, syncedArrangementId: target)
+        }
+        // The item always gets Shepherd's arrangement written on it, even
+        // when it is the song's default: the plan, the slide grid and the
+        // song's order read the item's own, and with none they showed
+        // "Default" and played the slides in written order. Sync used to
+        // leave such an item with none; one left that way (nothing on it,
+        // sync's last pick the default) is taken as sync's own.
+        let mine = current ?? (lastSynced != nil && lastSynced == defaultId ? lastSynced : nil)
+        // Sync's own pick (or never one): Shepherd's now.
+        if mine == lastSynced { return Pick(arrangementId: target, syncedArrangementId: target) }
         // Someone chose another in Screens since.
         return nil
     }
