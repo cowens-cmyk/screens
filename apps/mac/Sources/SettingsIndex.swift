@@ -74,6 +74,11 @@ enum SettingsIndex {
             title: "Remove old messages automatically",
             caption: "Keeps each plan's message in the Messages folder and removes ones last used 30 or more days ago. Songs are never removed.",
             keywords: "message sermon presentation cleanup old delete remove trash bloat library messages folder 30 days"),
+        SettingsEntry(
+            id: "general.removeOldPlans", category: .general,
+            title: "Remove old plans automatically",
+            caption: "Keeps the last four weeks of past plans. Older ones are saved to the Trash and removed.",
+            keywords: "plan service past old delete remove trash cleanup four weeks 28 days history"),
     ]
 
     // MARK: Screens

@@ -221,6 +221,7 @@ struct AppSettingsView: View {
     @HotDefault("present.continuous") private var continuousPresent = true
     @HotDefault(ServiceStation.runsServiceKey) private var runsService = false
     @HotDefault(MessageCleanupRunner.enabledKey) private var removeOldMessages = true
+    @HotDefault(MessageCleanupRunner.plansEnabledKey) private var removeOldPlans = true
 
     private var generalPane: some View {
         Form {
@@ -266,6 +267,13 @@ struct AppSettingsView: View {
                 Text("Messages")
             } footer: {
                 Text("Each plan's message is kept in the library's Messages folder. One whose last service was \(MessageCleanup.keepDays) days ago or more is removed by the Mac with Run on this Mac on. Songs are never removed.")
+            }
+            Section {
+                SettingsToggle("general.removeOldPlans", isOn: $removeOldPlans)
+            } header: {
+                Text("Plans")
+            } footer: {
+                Text("Plans more than \(PlanCleanup.keepDays / 7) weeks past are saved to the Trash as a file and removed by the Mac with Run on this Mac on. Templates and the plan that's open stay.")
             }
         }
         .settingsForm()

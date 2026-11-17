@@ -165,7 +165,15 @@ final class ShepherdSync {
                 let detail: ShepherdClient.PlanDetail
                 if let read = details[plan.id] { detail = read } else { detail = try await client.plan(id: plan.id) }
                 let rules = model.serviceLinkRules
-                if Self.isMidweek(plan.serviceType, midweek), existing.map(Self.isTemplateBuilt) ?? true {
+                // A Wednesday Night plan is made from its template. With no
+                // template in the library yet it still comes in, in
+                // Shepherd's order like a Sunday plan but without Sunday's
+                // pre-service slideshow, Transition and Walkout; plans made
+                // once there is a template use it.
+                let isMidweekPlan = Self.isMidweek(plan.serviceType, midweek)
+                let hasTemplate = isMidweekPlan && ShepherdTemplatePlan.template(
+                    for: midweek, chosenID: midweekTemplateID, in: Array(model.resident.services.values)) != nil
+                if isMidweekPlan, existing.map(Self.isTemplateBuilt) ?? hasTemplate {
                     switch await syncTemplatePlan(
                         detail, existing: existing, version: version, rules: rules, candidates: candidates, model: model) {
                     case .created: created += 1
@@ -180,8 +188,9 @@ final class ShepherdSync {
                     }
                     continue
                 }
+                let opener = isMidweekPlan ? nil : preService
                 let items = Self.planItems(
-                    detail, over: existing, rules: rules, candidates: candidates, preService: preService)
+                    detail, over: existing, rules: rules, candidates: candidates, preService: opener)
                 let name = ShepherdPlanSync.serviceName(for: detail)
                 let date = ShepherdPlanSync.serviceDate(for: detail)
                 if let existing {
@@ -197,7 +206,7 @@ final class ShepherdSync {
                             let linkedSince = Set(service.items.map(\.refId)).subtracting(readRefs)
                             service.items = Self.planItems(
                                 detail, over: service, rules: rules, candidates: candidates,
-                                preService: preService, linkedSince: linkedSince)
+                                preService: opener, linkedSince: linkedSince)
                             service.name = name
                             service.serviceDate = date
                             service.mxuPlanVersion = version
@@ -213,6 +222,11 @@ final class ShepherdSync {
                         mxuServiceTypeName: detail.serviceType.name, mxuPlanVersion: version)
                     service.mxuDerivedName = name
                     service.mxuPlanTimes = Self.planTimes(detail)
+                    if isMidweekPlan {
+                        service.preServiceRemoved = true
+                        service.transitionRemoved = true
+                        service.walkoutRemoved = true
+                    }
                     model.createInDrive(service)
                     created += 1
                 }
