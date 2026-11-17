@@ -100,6 +100,13 @@ struct RunOrderList: View, Equatable {
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     runOrderList(service: service, visible: visible, order: order, changed: changed)
+                        // A plan with nothing in it yet (a new one made by
+                        // hand) says how to fill it, one click from the library.
+                        .overlay {
+                            if !runOnly, !Self.hasContent(visible) {
+                                emptyPlanPrompt
+                            }
+                        }
                         .animation(HopeMotion.ui(reduced: reduceMotion), value: order)
                         // One highlight, the list's own selection hidden:
                         // its fill under the rows, its edge over them, so it
@@ -975,10 +982,33 @@ struct RunOrderList: View, Equatable {
         }
     }
 
+    /// Anything besides headers and the shared pre-service slideshow.
+    static func hasContent(_ items: [ServiceItem]) -> Bool {
+        items.contains { $0.itemKind != .header && $0.isPreService != true }
+    }
+
+    private var emptyPlanPrompt: some View {
+        VStack(spacing: 10) {
+            Text("Nothing in this plan yet")
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.secondary)
+            Button("Add Presentations…", systemImage: "books.vertical") { addingFromLibrary = true }
+                .buttonStyle(.glassProminent)
+                .tint(HopeStyle.blue)
+            Text("Or drag them in from the library.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.top, 40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
     private var addBar: some View {
         HStack(spacing: 10) {
             Menu {
                 if let planAdds {
+                    Button("Presentation from Library…", systemImage: "books.vertical") { addingFromLibrary = true }
+                    Divider()
                     Button("Header…", systemImage: "textformat") { addingHeader = true }
                     Divider()
                     Button("Song", systemImage: "music.note", action: planAdds.song)
@@ -986,9 +1016,9 @@ struct RunOrderList: View, Equatable {
                     Button("Slideshow", systemImage: "play.rectangle.on.rectangle", action: planAdds.slideshow)
                     Button("Video or Image…", systemImage: "film", action: planAdds.media)
                     Button("Message Notes…", systemImage: "text.book.closed", action: planAdds.message)
-                    Divider()
-                    Button("From Library…", systemImage: "books.vertical") { addingFromLibrary = true }
                 } else {
+                Button("Presentation from Library…") { addingFromLibrary = true }
+                Divider()
                 Button("New Slides Presentation") {
                     if let id = model.createEntity(in: .presentations) {
                         model.addServiceItem(serviceID, refID: id)
@@ -996,8 +1026,6 @@ struct RunOrderList: View, Equatable {
                 }
                 Button("New Media Item…") { importMediaIntoService() }
                 Button("Header…") { addingHeader = true }
-                Divider()
-                Button("Add From Library…") { addingFromLibrary = true }
                 }
             } label: {
                 HStack(spacing: 4) {

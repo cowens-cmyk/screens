@@ -19,6 +19,12 @@ extension AppModel {
         plan.name = template.name.replacingOccurrences(of: " Template", with: "")
         plan.serviceDate = date
         plan.messagePresentationId = nil
+        // A plan from the Students template is a Students plan (its logo,
+        // its link rules), however the template was made.
+        let midweek = ShepherdSync.shared.midweekServiceType
+        if plan.mxuServiceTypeName == nil, PlanBrand.of(template, midweekServiceType: midweek) == .students {
+            plan.mxuServiceTypeName = midweek
+        }
         let copied = PlanTemplate.planItems(from: template, isMessage: isMessage)
         plan.items = copied.items
         for (number, itemID) in copied.messageItemIDs.enumerated() {

@@ -114,12 +114,16 @@ import Testing
     @Test func studentsLogoForWednesdayNightAndStudentsPlansHopeForTheRest() {
         let wednesday = Service(id: "w", name: "2026-11-18 — Youth", serviceDate: "2026-11-18", items: [],
                                 mxuServiceTypeName: "Wednesday Night")
-        let template = Service(id: "t", name: "Hope Students Template", serviceDate: "", items: [])
+        var template = Service(id: "t", name: "Hope Students Template", serviceDate: "", items: [])
+        template.isTemplate = true
         let sunday = Service(id: "s", name: "2026-11-22 — Genesis 42-45", serviceDate: "2026-11-22", items: [],
                              mxuServiceTypeName: "Sunday Morning")
         #expect(PlanBrand.of(wednesday, midweekServiceType: "wednesday night ") == .students)
         #expect(PlanBrand.of(template, midweekServiceType: "Wednesday Night") == .students)
         #expect(PlanBrand.of(sunday, midweekServiceType: "Wednesday Night") == .hope)
         #expect(PlanBrand.of(wednesday, midweekServiceType: "") == .hope)
+        // Made by hand: Hope, whatever it's called.
+        let manual = Service(id: "m", name: "Hope Students Lock-In", serviceDate: "2026-12-04", items: [])
+        #expect(PlanBrand.of(manual, midweekServiceType: "Wednesday Night") == .hope)
     }
 }
