@@ -8,30 +8,9 @@ struct CountdownVideoMenu: View {
     let planID: String
     let item: ServiceItem
 
-    private var videos: (countdowns: [LibraryIndex.Entry], others: [LibraryIndex.Entry]) {
-        let all = model.entries(of: .media)
-            .filter { model.media($0.id)?.mediaKind == .video }
-            .sorted { $0.updatedAt > $1.updatedAt }
-        let inFolder = all.filter { $0.subkind == ServiceCountdown.folder || $0.subkind.hasPrefix(ServiceCountdown.folder + "/") }
-        return (inFolder, all.filter { entry in !inFolder.contains { $0.id == entry.id } })
-    }
-
     var body: some View {
-        let lists = videos
         Menu {
-            if lists.countdowns.isEmpty {
-                Text("Put countdown videos in Media › \(ServiceCountdown.folder)")
-            }
-            ForEach(lists.countdowns.prefix(20), id: \.id) { entry in
-                Button(entry.name) { choose(entry.id) }
-            }
-            if !lists.others.isEmpty {
-                Menu("Other Videos") {
-                    ForEach(lists.others.prefix(40), id: \.id) { entry in
-                        Button(entry.name) { choose(entry.id) }
-                    }
-                }
-            }
+            CountdownVideoChoices(model: model, planID: planID, item: item)
         } label: {
             // Small enough to sit beside the name in the narrow plan column;
             // orange until this week's video is chosen.
@@ -46,6 +25,41 @@ struct CountdownVideoMenu: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help(item.refId.isEmpty ? "Choose this service's countdown video" : "Change the countdown video")
+    }
+
+}
+
+/// The countdown's videos to choose from: the Countdowns folder, newest
+/// first, then every other video. The film menu beside the countdown and
+/// the "+" on its empty tile offer the same list.
+struct CountdownVideoChoices: View {
+    let model: AppModel
+    let planID: String
+    let item: ServiceItem
+
+    private var videos: (countdowns: [LibraryIndex.Entry], others: [LibraryIndex.Entry]) {
+        let all = model.entries(of: .media)
+            .filter { model.media($0.id)?.mediaKind == .video }
+            .sorted { $0.updatedAt > $1.updatedAt }
+        let inFolder = all.filter { $0.subkind == ServiceCountdown.folder || $0.subkind.hasPrefix(ServiceCountdown.folder + "/") }
+        return (inFolder, all.filter { entry in !inFolder.contains { $0.id == entry.id } })
+    }
+
+    var body: some View {
+        let lists = videos
+        if lists.countdowns.isEmpty {
+            Text("Put countdown videos in Media › \(ServiceCountdown.folder)")
+        }
+        ForEach(lists.countdowns.prefix(20), id: \.id) { entry in
+            Button(entry.name) { choose(entry.id) }
+        }
+        if !lists.others.isEmpty {
+            Menu("Other Videos") {
+                ForEach(lists.others.prefix(40), id: \.id) { entry in
+                    Button(entry.name) { choose(entry.id) }
+                }
+            }
+        }
     }
 
     /// The video itself is left as it is: the plan moves on from its

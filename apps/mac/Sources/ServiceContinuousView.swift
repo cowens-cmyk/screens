@@ -398,7 +398,11 @@ struct ServiceContinuousPage: View, Equatable {
         case .info:
 
             Section {
-                EmptyView()
+                // Anything but a song waiting for its words gets the same
+                // "+" tile an empty presentation has.
+                if !runOnly, item.mxuSongTitle == nil {
+                    unlinkedTile(item)
+                }
             } header: {
                 CardRefresh(model: model) { unlinkedCard(item) }
             }
@@ -914,6 +918,96 @@ struct ServiceContinuousPage: View, Equatable {
         .padding(.top, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.bottom, Self.itemGap)
+    }
+
+    /// The tile under an item with nothing linked, sized like a slide: the
+    /// countdown's "+" offers its videos and takes a video dropped on it;
+    /// any other item's "+" makes it a presentation of its own and adds the
+    /// slide chosen, and slides or media dropped on it do the same.
+    private func unlinkedTile(_ item: ServiceItem) -> some View {
+        let across = SlidesAcross.resolved(
+            slidesAcross, width: pageWidth - Self.pageMargin * 2, spacing: SlideGridMetrics.spacing)
+        let row = SlidesAcross.rows(count: 1, across: across)[0]
+        let countdown = item.isCountdown == true
+        let planID = serviceID
+        return HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
+            VStack(spacing: SlideGridMetrics.labelGap) {
+                EmptySlidesDropArea(
+                    aspect: 16.0 / 9.0,
+                    locked: runOnly,
+                    choices: AddSlideChoices(
+                        fromTheme: {
+                            presentation(for: item) { deck in
+                                emptyDeckNewSlide = EmptyDeckNewSlide(
+                                    presentationID: deck.id, themeId: deck.themeId, afterSlideID: nil)
+                            }
+                        },
+                        fromMedia: {
+                            presentation(for: item) { deck in
+                                emptyDeckMedia = MediaSlideTarget(presentationID: deck.id, afterSlideID: nil)
+                            }
+                        },
+                        blank: {
+                            presentation(for: item) { deck in
+                                model.insertSlide(
+                                    deck.id,
+                                    slide: NewSlideChoice.blank.slide(sectionId: nil, deckThemeId: deck.themeId),
+                                    afterSlideID: nil)
+                            }
+                        }
+                    ),
+                    dropText: { payload in
+                        if countdown { return model.dropCountdownVideo(payload, on: item, planID: planID) }
+                        guard !payload.contains("::") || SlideBulkEdit.draggedSlide(in: payload) != nil else { return false }
+                        presentation(for: item) { deck in _ = dropOnEmptyDeck(payload, presentationID: deck.id) }
+                        return true
+                    },
+                    dropFiles: { urls in
+                        if countdown {
+                            _ = model.dropCountdownVideoFile(urls, on: item, planID: planID)
+                            return
+                        }
+                        presentation(for: item) { deck in
+                            Task { @MainActor in
+                                await model.importForSlides(urls) { _ = addMediaSlides($0, to: deck.id) }
+                            }
+                        }
+                    },
+                    breadcrumb: "present.unlinkedDrop",
+                    menuItems: countdown
+                        ? AnyView(CountdownVideoChoices(model: model, planID: planID, item: item)) : nil,
+                    hint: countdown ? "Drop the countdown video here" : "Drop slides or media here",
+                    plusHelp: countdown ? "Choose this service's countdown video" : "Add a slide",
+                    roundedCorners: roundedCorners
+                )
+                Color.clear.frame(height: SlideGridMetrics.labelHeight)
+            }
+            .frame(maxWidth: .infinity)
+            ForEach(0 ..< row.fillers, id: \.self) { _ in
+                Color.clear.frame(height: 0).frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.top, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, Self.itemGap)
+    }
+
+    /// Makes an item with nothing linked a presentation of its own, named
+    /// like the item, then hands it on (to add the first slide to).
+    private func presentation(for item: ServiceItem, then: @escaping (Presentation) -> Void) {
+        let deck = Presentation(
+            id: UUID().uuidString, name: item.name, presentationKind: .deck, themeId: "", slides: [])
+        let planID = serviceID, itemID = item.id, deckID = deck.id
+        Task { @MainActor in
+            _ = try? await model.createInDrive(deck).value
+            model.updateService(planID) { service in
+                guard let index = service.items.firstIndex(where: { $0.id == itemID }),
+                      service.items[index].refId.isEmpty else { return }
+                service.items[index].itemKind = .presentation
+                service.items[index].refId = deckID
+            }
+            then(deck)
+        }
     }
 
     /// A slide dragged from another presentation is copied in; a picture or

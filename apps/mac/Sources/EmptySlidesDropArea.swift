@@ -35,6 +35,11 @@ struct EmptySlidesDropArea: View {
     let dropFiles: ([URL]) -> Void
 
     var breadcrumb = "grid.emptyDrop"
+    /// What the "+" offers in place of the three ways to add a slide (the
+    /// countdown's videos), with its own line under it.
+    var menuItems: AnyView? = nil
+    var hint = "Drop slides or media here"
+    var plusHelp = "Add a slide"
     /// Payloads this place never takes (the editor's own object and slide
     /// drags).
     var rejectPrefixes: [String]? = nil
@@ -86,7 +91,11 @@ struct EmptySlidesDropArea: View {
         } else {
             VStack(spacing: 8) {
                 Menu {
-                    AddSlideMenuItems(choices: choices)
+                    if let menuItems {
+                        menuItems
+                    } else {
+                        AddSlideMenuItems(choices: choices)
+                    }
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 13, weight: .bold))
@@ -99,8 +108,8 @@ struct EmptySlidesDropArea: View {
                 .buttonStyle(.plain)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help("Add a slide")
-                Text("Drop slides or media here")
+                .help(plusHelp)
+                Text(hint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
