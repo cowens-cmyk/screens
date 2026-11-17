@@ -222,10 +222,10 @@ private func song(
         #expect(!all.joined().contains("/"))
         let verse = try #require(presentation.slides.first { $0.objects.first?.text.hasPrefix("Wond'ring") == true })
         #expect(verse.objects.first?.chords?.map(\.symbol) == ["C", "F", "C"])
-        // The intro has no words: one blank slide.
+        // The intro has no words: one slide with its chords and no words.
         let intro = try #require(presentation.sections?.first)
         #expect(intro.name == "Intro")
-        #expect(presentation.slides.filter { $0.sectionId == intro.id }.map(\.objects.isEmpty) == [true])
+        #expect(presentation.slides.filter { $0.sectionId == intro.id }.map { $0.objects.map(\.text) } == [[""]])
     }
 
     @Test func linesPerSlideAndKeys() throws {
@@ -256,6 +256,32 @@ private func song(
         #expect(ShepherdSongImport.presentation(song: chordsOnly, arrangement: nil).map(texts)?.contains("Hello there") == true)
         #expect(ShepherdSongImport.presentation(song: song(chart: nil, lyrics: nil), arrangement: nil) == nil)
         #expect(ShepherdSongImport.presentation(song: song(chart: "  \n"), arrangement: nil) == nil)
+    }
+
+    @Test func aPartOfChordsAloneIsAWordlessSlideWithItsChords() throws {
+        let presentation = try #require(ShepherdSongImport.presentation(song: song(), arrangement: song().arrangements.first))
+        let names = Dictionary(uniqueKeysWithValues: (presentation.sections ?? []).map { ($0.id, $0.name) })
+        // The Intro is still the slide the song opens on: no Blank before it.
+        #expect(names[presentation.slides[0].sectionId ?? ""] == "Intro")
+        let intro = try #require(presentation.slides[0].objects.first)
+        #expect(intro.text == "")
+        #expect((intro.chords ?? []).map(\.symbol) == ["C", "F", "C"])
+        #expect((intro.chords ?? []).allSatisfy { $0.line == 0 && $0.column == 0 })
+
+        let twoLines = song(chart: "Intro\n[G] [/] [D] [|]\n[Em] [C]\n\nVerse 1\n[G]Hello there\n\nTurnaround\n[C] [|] [D]")
+        let built = try #require(ShepherdSongImport.presentation(song: twoLines, arrangement: nil))
+        let wordless = built.slides.compactMap(\.objects.first).filter { $0.text.trimmingCharacters(in: .newlines).isEmpty }
+        #expect(wordless.map(\.text) == ["\n", ""])
+        #expect(wordless.first?.chords?.map { "\($0.line)\($0.symbol)" } == ["0G", "0D", "1Em", "1C"])
+        #expect(wordless.last?.chords?.map(\.symbol) == ["C", "D"])
+        #expect(texts(built).contains("Hello there"))
+    }
+
+    @Test func chartsWithChordOnlyPartsHashAnewSoTheyAreBuiltAgain() {
+        let words = "Verse 1\n[G]Hello there"
+        #expect(ShepherdChart.parse(words).hasChordOnlySections == false)
+        #expect(ShepherdChart.parse("Intro\n[|] [/]\n\n" + words).hasChordOnlySections == false)
+        #expect(ShepherdChart.parse(iThankGodChart).hasChordOnlySections)
     }
 
     @Test func sameChartSameHashSoReSyncIsANoOp() throws {

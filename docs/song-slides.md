@@ -74,6 +74,17 @@ Other ways of making songs (Import Lyrics…, the song editor, chord chart
 files, the CMS) still cut by line count only; the automatic pass fits those
 songs within a minute.
 
+## Parts with chords and no words
+
+An intro, turnaround or instrumental written in a Shepherd chart as chords
+alone ("[C] [/] [F] [|]") is one slide with no words and the part's chords:
+a chord row per chart line, bar lines, beat slashes and repeat marks left out
+(`ShepherdChart.chordRows`). The audience sees a blank slide; the stage
+display shows the chords, transposed like any others. An Intro of chords is
+still the slide a song opens on. Anthem and the two-line fit read the slide as
+wordless, as before. Charts with such a part got a new chart hash, so songs
+imported before are built again on the next sync (an edited song asks first).
+
 ## Tests
 
 - `WrappedLineCountTests` (RenderEngine): wraps, insets, shrink to keep lines
@@ -83,3 +94,6 @@ songs within a minute.
   is left alone.
 - `LyricSlideFitterTests` (SlideScene): a theme Lyrics box two lines high; a
   wrapping slide splits with its label, a fitting one doesn't change.
+- `ShepherdSongImportTests` (PresenterCore) and `ChordRenderingTests`
+  (RenderEngine): a part of chords alone is a wordless slide with a chord row
+  per chart line.
