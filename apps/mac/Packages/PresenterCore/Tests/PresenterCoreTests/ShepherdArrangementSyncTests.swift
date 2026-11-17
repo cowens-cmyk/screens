@@ -264,9 +264,14 @@ struct ShepherdArrangementSyncTests {
         #expect(pick("mine", nil, "shepherd-a1") == nil)
         // A pick of a deleted arrangement is as good as none.
         #expect(pick("gone", "gone", "shepherd-a1")?.arrangementId == "shepherd-a1")
-        // Already showing it as the default: only remembered.
-        #expect(pick(nil, nil, "default") == .init(arrangementId: nil, syncedArrangementId: "default"))
-        #expect(pick(nil, "default", "default") == nil)
+        // Shepherd's is the song's default: still written on the item, so
+        // the plan shows and plays it rather than "Default".
+        #expect(pick(nil, nil, "default") == .init(arrangementId: "default", syncedArrangementId: "default"))
+        // Left with none by an earlier sync: written now, and it follows
+        // Shepherd again when the plan changes arrangement.
+        #expect(pick(nil, "default", "default") == .init(arrangementId: "default", syncedArrangementId: "default"))
+        #expect(pick(nil, "default", "shepherd-a2") == .init(arrangementId: "shepherd-a2", syncedArrangementId: "shepherd-a2"))
+        #expect(pick("default", "default", "default") == nil)
         // Anthem leads, or nothing to pick: left alone.
         #expect(pick(nil, nil, "shepherd-a1", anthem: true) == nil)
         #expect(pick("shepherd-a1", "shepherd-a1", "shepherd-a2", anthem: true) == nil)

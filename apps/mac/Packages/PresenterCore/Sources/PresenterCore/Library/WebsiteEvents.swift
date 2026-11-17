@@ -51,7 +51,8 @@ public struct WebsiteEvent: Equatable, Sendable {
 public enum WebsiteEvents {
     public static let host = URL(string: "https://media.hopejc.org")!
     /// Only the church-wide calendar: ministry calendars (students, kids)
-    /// have their own gatherings that aren't for the whole room.
+    /// have their own gatherings that aren't for the whole room. The
+    /// students calendar has a slideshow of its own (StudentsHangTime).
     public static let calendar = "master"
     /// The church's own clock, whatever the Mac is set to.
     public static let timeZone = TimeZone(identifier: "America/New_York")!
@@ -62,7 +63,7 @@ public enum WebsiteEvents {
     /// two Macs writing the same event write the same slide.
     public static let slideIDPrefix = "hopejc-"
 
-    public static func feedURL() -> URL {
+    public static func feedURL(calendar: String = WebsiteEvents.calendar) -> URL {
         var components = URLComponents(url: host.appendingPathComponent("api/public/calendar"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "calendar", value: calendar),
@@ -224,9 +225,9 @@ public enum WebsiteEvents {
         hideKey(event.baseTitle) + "|" + (event.image ?? "")
     }
 
-    /// Events that can have a slide at all: on the church calendar, not
-    /// cancelled, with artwork.
-    static func eligible(_ event: WebsiteEvent) -> Bool {
+    /// Events that can have a slide at all: on the calendar (the church's,
+    /// unless another is named), not cancelled, with artwork.
+    static func eligible(_ event: WebsiteEvent, calendar: String = WebsiteEvents.calendar) -> Bool {
         !event.cancelled && event.image != nil
             && event.calendars.contains { $0.caseInsensitiveCompare(calendar) == .orderedSame }
     }
@@ -238,10 +239,11 @@ public enum WebsiteEvents {
     /// marked, so Settings can offer them back.
     public static func desired(
         _ events: [WebsiteEvent], now: Date, options: Options,
-        includingHidden: Bool = false, timeZone: TimeZone = WebsiteEvents.timeZone
+        includingHidden: Bool = false, timeZone: TimeZone = WebsiteEvents.timeZone,
+        calendar: String = WebsiteEvents.calendar
     ) -> [Shown] {
         var next: [String: Shown] = [:]
-        for event in events where eligible(event) {
+        for event in events where eligible(event, calendar: calendar) {
             guard let image = event.image,
                   let starts = startsAt(event, timeZone: timeZone),
                   let remove = removeAt(event, removeAtEnd: options.removeAtEnd, timeZone: timeZone),
