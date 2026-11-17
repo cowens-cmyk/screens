@@ -199,7 +199,17 @@ struct PlanShell: View {
                 ScriptureSheet(model: model, render: render) { id in addToPlan(id) }
             }
             .sheet(isPresented: $creatingPlan) {
-                NewServiceSheet(model: model) { id in model.currentServiceID = id }
+                NewServiceSheet(model: model) { id, startedEmpty in
+                    model.currentServiceID = id
+                    // An empty plan opens the library search, to fill it
+                    // straight away. Once the sheet has gone: one sheet
+                    // can't open over another.
+                    if startedEmpty {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            libraryPick = LibraryPick(scopes: [.presentations])
+                        }
+                    }
+                }
             }
             .sheet(isPresented: $controlsShown) {
                 if let controls {
@@ -1655,6 +1665,7 @@ struct AddToPlanPopover: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Add to Plan")
                 .font(.headline)
+            libraryButton
             Grid(horizontalSpacing: 8, verticalSpacing: 8) {
                 GridRow {
                     tile("New Song", kind: .song, .song)
@@ -1670,7 +1681,6 @@ struct AddToPlanPopover: View {
                 row("Header", symbol: "textformat", .header)
                 row("Slideshow", symbol: "play.rectangle.on.rectangle", .slideshow)
                 row("Message Notes…", symbol: "text.book.closed", .messageNotes)
-                row("Add from Library…", symbol: "books.vertical", .library)
             }
             Text("Goes after the selected item.")
                 .font(.caption)
@@ -1678,6 +1688,29 @@ struct AddToPlanPopover: View {
         }
         .padding(16)
         .frame(width: 280)
+    }
+
+    /// What's added most: a presentation already in the library. Search,
+    /// then click each one to add; the search stays open for the next.
+    private var libraryButton: some View {
+        Button { choose(.library) } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "books.vertical.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(HopeStyle.blue.gradient, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("From the Library").font(.callout.weight(.medium))
+                    Text("Presentations, songs and media").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func tile(_ title: String, kind: HopeStyle.ItemKind, _ choice: AddToPlanChoice) -> some View {

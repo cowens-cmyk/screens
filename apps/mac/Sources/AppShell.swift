@@ -920,7 +920,7 @@ struct ShellView: View {
         .padding(.horizontal, 10)
         .padding(.bottom, 6)
         .sheet(isPresented: $creatingService) {
-            NewServiceSheet(model: model) { id in
+            NewServiceSheet(model: model) { id, _ in
                 model.currentServiceID = id
                 serviceItemID = nil
             }

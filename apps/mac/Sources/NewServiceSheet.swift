@@ -5,7 +5,8 @@ import SwiftUI
 /// earlier service's order (so a regular Sunday is a couple of clicks).
 struct NewServiceSheet: View {
     let model: AppModel
-    let onCreated: (String) -> Void
+    /// The new plan's id, and whether it started empty.
+    let onCreated: (String, Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var name = "Sunday Service"
@@ -27,7 +28,7 @@ struct NewServiceSheet: View {
                 }
             }
             .formStyle(.grouped)
-            Text("Add songs, presentations, videos and headers with Add, or drag them in from the library.")
+            Text("An empty plan opens the library next, to add presentations. Add more any time with +, or drag them in from the library.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Spacer()
@@ -67,7 +68,7 @@ struct NewServiceSheet: View {
         if let ensured = PreServiceSlides.ensuring(service, sharedID: model.preServiceSlideshowID()) { service = ensured }
         model.createInDrive(service)
         dismiss()
-        onCreated(service.id)
+        onCreated(service.id, copyFrom.isEmpty)
     }
 }
 
