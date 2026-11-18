@@ -27,10 +27,50 @@ enum ChurchBrowserWindow {
         }
     }
 
-    /// The Browser slide went up: its window comes forward.
+    /// A Browser slide went up: its window comes forward on the slide's
+    /// site, reloaded from the start each time it fires, so the operator
+    /// can click around and go back to the slide for a clean page. A slide
+    /// without a site leaves the page as it is.
     static func slideWentLive(_ slide: Slide) {
         guard ChurchBrowser.shows(slide) else { return }
-        open(focus: false)
+        guard let site = ChurchBrowser.site(on: slide) else {
+            open(focus: false)
+            return
+        }
+        let inventory = VideoInputInventory.shared
+        if inventory.entry(id: ChurchBrowser.inputID) == nil {
+            // Made with the slide's site, so it opens there.
+            inventory.importEntry(
+                id: ChurchBrowser.inputID, name: ChurchBrowser.inputName, kind: .web, sourceId: site)
+            DiagnosticsStore.shared.note("browser.made", detail: site)
+        } else {
+            inventory.assignDevice(id: ChurchBrowser.inputID, kind: .web, sourceId: site)
+        }
+        inventory.webSource(id: ChurchBrowser.inputID)?.bringForward()
+        DiagnosticsStore.shared.note("browser.site", detail: site)
+    }
+}
+
+/// Asks for the site a Browser slide opens.
+@MainActor
+enum BrowserSitePrompt {
+    /// The site typed, as an address; nil when cancelled.
+    static func ask(current: String?) -> String? {
+        let alert = NSAlert()
+        alert.messageText = current == nil ? "Browser Slide" : "Browser Site"
+        alert.informativeText = "The website this slide opens. When the slide goes live, the Browser window opens on it and comes forward, and what you do there shows on the screens."
+        let field = NSTextField(string: current ?? "")
+        field.placeholderString = "hopejc.org"
+        field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: current == nil ? "Add" : "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        while alert.runModal() == .alertFirstButtonReturn {
+            if let site = ChurchBrowser.normalized(field.stringValue) { return site }
+            alert.informativeText = "\u{201C}\(field.stringValue)\u{201D} isn't a web address. Type one like hopejc.org."
+        }
+        return nil
     }
 }
 

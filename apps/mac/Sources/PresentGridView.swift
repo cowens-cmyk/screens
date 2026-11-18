@@ -1355,6 +1355,17 @@ struct SlideGridBody: View {
 
         prismMenu([slide.id])
 
+        if ChurchBrowser.shows(slide) {
+            Button("Browser Site\u{2026}") {
+                guard let site = BrowserSitePrompt.ask(current: ChurchBrowser.site(on: slide) ?? "") else { return }
+                model.updateSlides(presentationID: presentation.id, undoLabel: "Browser Site") { deck in
+                    for index in deck.slides.indices where deck.slides[index].id == slide.id {
+                        deck.slides[index] = ChurchBrowser.setting(site: site, on: deck.slides[index])
+                    }
+                }
+            }
+        }
+
         ForEach(cueMediaIDs(of: slide), id: \.self) { mediaID in
             Menu(model.media(mediaID)?.name ?? "Media") {
 
@@ -1606,13 +1617,14 @@ struct SlideGridBody: View {
     private func gridTile(index: Int, slide: Slide, aspect: CGFloat) -> some View {
         tile(index: index, slide: slide, aspect: aspect)
 
-            .newSlideEdgeMenu(enabled: !runOnly && index == slides.count - 1, choices: AddSlideChoices(
+            .newSlideEdgeMenu(enabled: !runOnly, choices: AddSlideChoices(
                 fromTheme: { newSlideTarget = NewSlideTarget(after: slide, startsWithThemes: true) },
                 fromMedia: {
                     mediaSlideTarget = MediaSlideTarget(
                         presentationID: presentation.id, afterSlideID: slide.id, beforeIndex: index + 1)
                 },
-                blank: { insertNewSlide(.blank, after: slide) }
+                blank: { insertNewSlide(.blank, after: slide) },
+                browser: { insertNewSlide(.browser(site: $0), after: slide) }
             ))
 
             .id(Self.tileAnchor(contextID: contextID, index: index))
@@ -1902,7 +1914,8 @@ struct SlideGridBody: View {
                     fromMedia: {
                         mediaSlideTarget = MediaSlideTarget(presentationID: presentation.id, afterSlideID: nil)
                     },
-                    blank: { insertNewSlide(.blank, after: nil) }
+                    blank: { insertNewSlide(.blank, after: nil) },
+                    browser: { insertNewSlide(.browser(site: $0), after: nil) }
                 ),
                 dropText: { payload in
                     if let dragged = SlideBulkEdit.draggedSlide(in: payload) {

@@ -21,4 +21,34 @@ import Testing
         #expect(ChurchBrowser.find(ids: [("b", " browser "), ("a", "Browser")]) == "a")
         #expect(ChurchBrowser.find(ids: [("a", "Announcements")]) == nil)
     }
+
+    @Test func aBrowserSlideOpensItsOwnSite() throws {
+        let slide = ChurchBrowser.slide(site: "hopejc.org/events", width: 1280, height: 720)
+        #expect(ChurchBrowser.shows(slide))
+        #expect(ChurchBrowser.site(on: slide) == "https://hopejc.org/events")
+        #expect(slide.name == "hopejc.org/events")
+        let page = try #require(slide.objects.first)
+        #expect(page.width == 1280 && page.height == 720)
+        #expect(ChurchBrowser.site(on: ChurchBrowser.slide(site: nil)) == nil)
+        #expect(ChurchBrowser.site(on: ChurchBrowser.presentation().slides[0]) == nil)
+    }
+
+    @Test func changingTheSiteRenamesOnlyASlideNamedForIt() {
+        let slide = ChurchBrowser.slide(site: "https://www.youtube.com")
+        #expect(slide.name == "youtube.com")
+        let moved = ChurchBrowser.setting(site: "hopejc.org", on: slide)
+        #expect(ChurchBrowser.site(on: moved) == "https://hopejc.org")
+        #expect(moved.name == "hopejc.org")
+        var named = slide
+        named.name = "Giving video"
+        #expect(ChurchBrowser.setting(site: "hopejc.org", on: named).name == "Giving video")
+    }
+
+    @Test func typedSitesBecomeAddresses() {
+        #expect(ChurchBrowser.normalized(" hopejc.org ") == "https://hopejc.org")
+        #expect(ChurchBrowser.normalized("http://10.1.2.5:8080/x") == "http://10.1.2.5:8080/x")
+        #expect(ChurchBrowser.normalized("not a site") == nil)
+        #expect(ChurchBrowser.normalized("hello") == nil)
+        #expect(ChurchBrowser.normalized("") == nil)
+    }
 }

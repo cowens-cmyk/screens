@@ -51,7 +51,7 @@ struct NewSlideSheet: View {
             }
             .padding(12)
         }
-        .frame(width: exploring ? 820 : 520, height: exploring ? 600 : nil)
+        .frame(width: exploring ? 820 : 640, height: exploring ? 600 : nil)
         .task { looks = await ThemeLook.load(appModel, firstThemeId: deckThemeId) }
         .onAppear { if startsWithThemes { exploring = true } }
     }
@@ -71,6 +71,12 @@ struct NewSlideSheet: View {
                     systemImage: "paintpalette"
                 ) {
                     exploring = true
+                }
+                door(
+                    title: "Browser", detail: "A website you drive in its own window.",
+                    systemImage: "globe"
+                ) {
+                    if let site = BrowserSitePrompt.ask(current: nil) { create(.browser(site: site)) }
                 }
             }
         }
@@ -118,8 +124,8 @@ final class NewSlideRouter {
 
 extension View {
 
-    /// The "+" on a grid's last tile, offering the same choices as an empty
-    /// presentation's drop area.
+    /// The "+" on the right edge of a hovered slide tile, adding a slide
+    /// after it, with the same choices as an empty presentation's drop area.
     func newSlideEdgeMenu(enabled: Bool, choices: AddSlideChoices) -> some View {
         modifier(NewSlideEdgeMenu(enabled: enabled, choices: choices))
     }

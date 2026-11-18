@@ -1,14 +1,16 @@
 import PresenterCore
 import SwiftUI
 
-/// The three ways to add a slide from a "+": a design from a theme, a
-/// picture or video from the Media library, or a blank slide. The Present
-/// page's empty presentations, its last-tile "+", and the editor's empty
-/// canvas all offer the same three.
+/// The ways to add a slide from a "+": a design from a theme, a picture or
+/// video from the Media library, a blank slide, or the Browser on a site.
+/// The Present page's empty presentations, each slide tile's "+", and the
+/// editor's empty canvas all offer the same.
 struct AddSlideChoices {
     let fromTheme: () -> Void
     let fromMedia: () -> Void
     let blank: () -> Void
+    /// Adds a Browser slide opening the site given.
+    let browser: (String) -> Void
 }
 
 struct AddSlideMenuItems: View {
@@ -18,6 +20,9 @@ struct AddSlideMenuItems: View {
         Button("Slide from Theme\u{2026}", systemImage: "paintpalette", action: choices.fromTheme)
         Button("From Media Library\u{2026}", systemImage: "photo.on.rectangle", action: choices.fromMedia)
         Button("Blank Slide", systemImage: "rectangle", action: choices.blank)
+        Button("Browser\u{2026}", systemImage: "globe") {
+            if let site = BrowserSitePrompt.ask(current: nil) { choices.browser(site) }
+        }
     }
 }
 
