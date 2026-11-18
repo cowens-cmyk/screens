@@ -99,7 +99,9 @@ final class VideoInputInventory {
         MediaEngine.captureNote.value = { DiagnosticsStore.shared.note("input.camera", detail: $0) }
         if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
            let stored = try? JSONDecoder().decode([Entry].self, from: data) {
-            entries = stored
+            // The Browser is switched off (0.44.1): its input is dropped so
+            // its window never opens on launch.
+            entries = stored.filter { $0.id != ChurchBrowser.inputID }
             shareDeviceRates()
 
             persist()

@@ -46,7 +46,9 @@ struct PresentCommands: Commands {
                 .disabled(controls == nil)
             Divider()
             // The page the Browser slide shows, in its own window.
-            Button("Open Browser") { ChurchBrowserWindow.open() }
+            if ChurchBrowserWindow.isOn {
+                Button("Open Browser") { ChurchBrowserWindow.open() }
+            }
             Divider()
             // Back to the message's length, stopped, ready for the next
             // service.

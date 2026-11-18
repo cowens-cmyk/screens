@@ -72,11 +72,13 @@ struct NewSlideSheet: View {
                 ) {
                     exploring = true
                 }
-                door(
-                    title: "Browser", detail: "A website you drive in its own window.",
-                    systemImage: "globe"
-                ) {
-                    if let site = BrowserSitePrompt.ask(current: nil) { create(.browser(site: site)) }
+                if ChurchBrowserWindow.isOn {
+                    door(
+                        title: "Browser", detail: "A website you drive in its own window.",
+                        systemImage: "globe"
+                    ) {
+                        if let site = BrowserSitePrompt.ask(current: nil) { create(.browser(site: site)) }
+                    }
                 }
             }
         }

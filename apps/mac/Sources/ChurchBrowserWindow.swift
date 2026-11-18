@@ -10,7 +10,11 @@ enum ChurchBrowserWindow {
     /// Opens the window, making the input first if this Mac has none.
     /// `focus` makes it the key window; a slide going live only brings it
     /// forward, so the arrow keys keep driving the slides.
+    /// Off for now: the Browser window took over the booth's screens.
+    static let isOn = false
+
     static func open(focus: Bool = true) {
+        guard isOn else { return }
         let inventory = VideoInputInventory.shared
         if inventory.entry(id: ChurchBrowser.inputID) == nil {
             inventory.importEntry(
@@ -32,7 +36,7 @@ enum ChurchBrowserWindow {
     /// can click around and go back to the slide for a clean page. A slide
     /// without a site leaves the page as it is.
     static func slideWentLive(_ slide: Slide) {
-        guard ChurchBrowser.shows(slide) else { return }
+        guard isOn, ChurchBrowser.shows(slide) else { return }
         guard let site = ChurchBrowser.site(on: slide) else {
             open(focus: false)
             return
