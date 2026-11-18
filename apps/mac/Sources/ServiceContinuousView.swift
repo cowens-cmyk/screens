@@ -1535,19 +1535,22 @@ extension ServiceContinuousPage {
 
     static let jumpSeconds: TimeInterval = 0.3
 
-    private func revealLive(_ service: Service, cause: String = "keyboard") {
+    private func revealLive(_ service: Service, cause: String = "keyboard", centers: Bool = true) {
         if let itemID = controls?.liveContextID, let occurrence = controls?.liveOccurrence,
            presentRows(service).contains(where: { $0.id == itemID }) {
             PresentCardFrames.shared.reveal(
-                itemID, slide: occurrence, headerHeight: headerHeights.values[itemID] ?? 44, cause: cause)
+                itemID, slide: occurrence, headerHeight: headerHeights.values[itemID] ?? 44,
+                cause: cause, centers: centers)
         }
     }
 
     /// A slide went live some way other than an arrow key here. The page
     /// keeps it in view and the plan list highlights its item, except for a
-    /// few seconds after the operator scrolls the page somewhere else; a
-    /// clicked slide is already in view, so only the highlight moves. More
-    /// slides of an item the operator picked away from never get here.
+    /// few seconds after the operator scrolls the page somewhere else. A
+    /// clicked slide is already in view and stays under the pointer; the
+    /// page only moves enough to show the slide after it, so clicking
+    /// through a song brings up its next row. More slides of an item the
+    /// operator picked away from never get here.
     private func followLive(_ itemID: String, _ service: Service) {
         guard presentRows(service).contains(where: { $0.id == itemID }) else { return }
         let recorder = InputTrailRecorder.shared
@@ -1557,6 +1560,8 @@ extension ServiceContinuousPage {
         }
         if PresentFollowRule.reveals(sinceScroll: scroll, sinceKey: key, sinceClick: click) {
             revealLive(service, cause: "live")
+        } else if (click ?? .infinity) <= PresentFollowRule.clickWindow {
+            revealLive(service, cause: "click", centers: false)
         }
     }
 }

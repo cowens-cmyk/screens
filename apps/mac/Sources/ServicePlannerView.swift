@@ -1016,6 +1016,7 @@ struct RunOrderList: View, Equatable {
                     Button("Slideshow", systemImage: "play.rectangle.on.rectangle", action: planAdds.slideshow)
                     Button("Video or Image…", systemImage: "film", action: planAdds.media)
                     Button("Message Notes…", systemImage: "text.book.closed", action: planAdds.message)
+                    Button("Browser", systemImage: "globe") { model.addBrowser(to: serviceID) }
                 } else {
                 Button("Presentation from Library…") { addingFromLibrary = true }
                 Divider()
@@ -1025,6 +1026,7 @@ struct RunOrderList: View, Equatable {
                     }
                 }
                 Button("New Media Item…") { importMediaIntoService() }
+                Button("Browser") { model.addBrowser(to: serviceID) }
                 Button("Header…") { addingHeader = true }
                 }
             } label: {
@@ -1114,6 +1116,7 @@ struct ServiceItemDetailView: View {
                     serviceID: serviceID, serviceItem: item
                 )
                 .id(item.id)
+                .inputRegion(InputTrailRecorder.grid)
             case .media:
                 MediaFireView(model: model, controls: controls, mediaID: item.refId, serviceItemID: item.id)
             case .audio:

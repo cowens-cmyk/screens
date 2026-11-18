@@ -219,3 +219,16 @@ import Testing
     #expect(!PresentFollowRule.operatorScrolled(sinceScroll: 5, sinceFocus: nil), "an old scroll: something else moved it")
     #expect(!PresentFollowRule.operatorScrolled(sinceScroll: nil, sinceFocus: nil))
 }
+
+@Test func clickingThroughASongBringsUpTheNextRow() {
+    // Viewport 1000, header 44: the top edge is at 56, the bottom at 988.
+    let next = { (live: CGFloat, nextTop: CGFloat) in
+        PresentLanding.revealNext(liveRowTop: live, nextRowTop: nextTop, rowPitch: 250, viewport: 1000, topInset: 44)
+    }
+    #expect(next(300, 300) == nil, "the next slide is on the live row")
+    #expect(next(300, 550) == nil, "the next row already shows")
+    #expect(next(600, 850) == 112, "the next row is cut off at the bottom: up just far enough")
+    #expect(next(100, 350) == nil)
+    #expect(next(120, 900) == 64, "never pushes the live row above the top")
+    #expect(next(-200, 50) == -256, "a live row above the top comes back down")
+}
