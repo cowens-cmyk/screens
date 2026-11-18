@@ -61,11 +61,11 @@ Simple Mode is the volunteer view behind a passcode (the run-only lock). It repl
 - Beside the previews: **Back** and **Next**, a large red **Clear All** (⇧Esc), the sermon timer (click the time to set the minutes; −1, +1, start or pause, reset) and **Message to Stage**.
 - The toolbar has the plan menu (this week's plans and later) and **Exit Simple Mode**, which asks for the passcode. Simple Mode stays on after a relaunch.
 - Enter it from **View › Simple Mode…**, the **More** (…) menu, or Settings › General › **Simple Mode**. The first time sets the passcode.
-- **Check for Updates…** and **Present › Sermon Timer Resets at Service Start** are locked, like Settings. With no screens set up, the previews' place says so; screens are set up outside Simple Mode.
+- **Check for Updates…**, **Install Earlier Version…** and **Present › Sermon Timer Resets at Service Start** are locked, like Settings. With no screens set up, the previews' place says so; screens are set up outside Simple Mode.
 
 ## Menu bar and shortcuts
 
-**Screens menu**: Settings… (⌘,), **Check for Updates…** (it reads **Update to Screens <version>…** once the automatic check finds one; the automatic check never puts up an alert, and nothing installs until someone chooses it). Choosing it always answers: the update, "Screens is up to date", or why it couldn't check. Locked in Simple Mode.
+**Screens menu**: Settings… (⌘,), **Check for Updates…** (it reads **Update to Screens <version>…** once the automatic check finds one; the automatic check never puts up an alert, and nothing installs until someone chooses it). Choosing it always answers: the update, "Screens is up to date", or why it couldn't check. **Install Earlier Version…** (also Settings › Advanced › **Earlier Version…**) lists every release older than this one, newest first, with its date; pick one and Screens quits, installs it and reopens, for when a new release misbehaves. Presentations, plans and settings stay. Check for Updates brings the newest back; turn off automatic checks to stay on the earlier one. Both are locked in Simple Mode.
 
 **File**
 - **New Presentation** ⌘N, **New Slide…** ⌘⇧N, **New Service**, **New Theme**, **Add to Plan…** ⌥⌘N

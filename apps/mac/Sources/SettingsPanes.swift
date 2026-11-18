@@ -238,6 +238,10 @@ struct AdvancedSettingsPane: View {
                         if let release = updater.available, !updater.isWorking {
                             Button("Install \(release.version)…") { updater.promptToInstall() }
                         }
+                        Button("Earlier Version\u{2026}") {
+                            Task { await updater.chooseEarlierVersion() }
+                        }
+                        .disabled(updater.isWorking)
                     }
                 }
                 if let status = updater.status {
