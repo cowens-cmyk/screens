@@ -170,8 +170,13 @@ final class AppModel {
         }
     }
 
+    /// Goes up each time something is opened in the editor, for the plan
+    /// window to let go of its plan item when a theme is opened.
+    private(set) var editorOpenCount = 0
+
     func openInEditor(entryID: String, slideID: String? = nil) {
         guard let entry = libraryEntry(entryID) else { return }
+        defer { editorOpenCount += 1 }
 
         if !protectEditorSelection { stashPresentSelection() }
         if let section = LibrarySection.allCases.first(where: { $0.kind == entry.kind }) {
@@ -1942,6 +1947,22 @@ final class AppModel {
         default:
             return nil
         }
+    }
+
+    /// The pictures and videos on a slide (its background, its objects and
+    /// its actions), for right-click › Show in Finder.
+    func mediaFiles(on slide: Slide) -> [MediaItem] {
+        MediaReferences.ids(in: slide).sorted()
+            .filter { !$0.contains("::") }
+            .compactMap { media($0) }
+    }
+
+    /// Opens Finder on the file Screens plays this media from, in its media
+    /// folder (Settings › Media & Video › Media Storage). The file is named
+    /// by its contents, so Finder selects it.
+    func showMediaInFinder(_ item: MediaItem) {
+        guard let url = blobs?.url(forHash: item.fileHash) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     func isMediaFileMissing(_ item: MediaItem) -> Bool {

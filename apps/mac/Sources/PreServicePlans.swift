@@ -109,7 +109,12 @@ extension AppModel {
                 StandingItems.ensuring(plan, transitionID: $0.transition, walkoutID: $0.walkout, messageItemID: $0.message)
             } != nil
             let needsShared = SharedPlanItems.linking(plan, to: links) != nil
-            guard preService != nil || countdown != nil || needsStanding || needsShared else { continue }
+            // A Hope Students plan plays its own Transition, not Sunday's.
+            let studentsLinks = studentsTransitionLinks(for: plan)
+            let needsStudents = studentsLinks.flatMap {
+                StudentsTransition.relinking(plan, sundayID: $0.sunday, studentsID: $0.students)
+            } != nil
+            guard preService != nil || countdown != nil || needsStanding || needsShared || needsStudents else { continue }
             updateService(plan.id) { service in
                 if let preService { PreServiceSlides.apply(preService, to: &service) }
                 if let countdown { ServiceCountdown.apply(countdown, to: &service) }
@@ -122,8 +127,70 @@ extension AppModel {
                     messageItemID: standing.message) {
                     service = updated
                 }
+                if needsStudents, let studentsLinks, let relinked = StudentsTransition.relinking(
+                    service, sundayID: studentsLinks.sunday, studentsID: studentsLinks.students) {
+                    service = relinked
+                }
             }
         }
+    }
+
+    // MARK: Hope Students' Transition
+
+    func isStudentsPlan(_ plan: Service) -> Bool {
+        PlanBrand.of(plan, midweekServiceType: ShepherdSync.shared.midweekServiceType) == .students
+    }
+
+    /// Sunday's Transition: the Service Day's choice, else the shared one.
+    func sundayTransitionID() -> String? {
+        chosenTransitionID() ?? sharedPresentationID(.transition)
+    }
+
+    /// Hope Students' own Transition, once it's in the library.
+    func studentsTransitionID() -> String? {
+        StudentsTransition.find(ids: entries(of: .presentation).map { ($0.id, $0.name) })
+    }
+
+    /// For a Hope Students plan, Sunday's Transition and the students' one
+    /// its Transition item should move from and to; nil for any other plan,
+    /// or before the students' one is made.
+    func studentsTransitionLinks(for plan: Service) -> (sunday: String?, students: String)? {
+        guard isStudentsPlan(plan), let students = studentsTransitionID() else { return nil }
+        return (sundayTransitionID(), students)
+    }
+
+    /// Whether these plans need Hope Students' Transition made: a Hope
+    /// Students plan that has a Transition, or will get one, and there's
+    /// none yet.
+    func studentsTransitionNeeded(for plans: [Service]) -> Bool {
+        guard studentsTransitionID() == nil else { return false }
+        return plans.contains { plan in
+            isStudentsPlan(plan) && plan.isTemplate != true
+                && (StandingItems.transition(in: plan) != nil || SharedPlanItems.wantsTransition(plan))
+        }
+    }
+
+    /// Makes Hope Students' Transition as a copy of Sunday's (its slides,
+    /// cues and settings), once. Not while the library is opening, or while
+    /// it's on the team drive but not on this Mac yet, so two Macs don't
+    /// each make one. Returns whether it was made.
+    @discardableResult
+    func makeStudentsTransitionIfNeeded(for plans: [Service]) async -> Bool {
+        guard isLibraryReady, studentsTransitionNeeded(for: plans), !SharedItemsMaking.studentsTransition else { return false }
+        let onDrive = teamCloudItems.contains {
+            $0.kind == .presentation && StudentsTransition.find(ids: [($0.id, $0.name)]) != nil
+        }
+        guard !onDrive else { return false }
+        SharedItemsMaking.studentsTransition = true
+        defer { SharedItemsMaking.studentsTransition = false }
+        var sunday: Presentation?
+        if let id = sundayTransitionID() {
+            sunday = await presentationsFilled([id])[id]
+        }
+        let deck = StudentsTransition.copy(of: sunday)
+        _ = try? await createInDrive(deck).value
+        DiagnosticsStore.shared.note("studentsTransition.made", detail: sunday.map { "copied from \($0.name)" } ?? "empty")
+        return libraryEntry(deck.id) != nil
     }
 
     /// The Transition chosen in the Service Day setup, while it's in the
@@ -140,7 +207,8 @@ extension AppModel {
     func standingLinks(for plan: Service) -> (transition: String?, walkout: String?, message: String?)? {
         let day = slideBuilding.serviceDay
         let inLibrary = { (id: String?) -> String? in id.flatMap { self.libraryEntry($0) != nil ? $0 : nil } }
-        let transition = chosenTransitionID() ?? sharedPresentationID(.transition)
+        // A Hope Students plan's Transition is the students' own once it's made.
+        let transition = (isStudentsPlan(plan) ? studentsTransitionID() : nil) ?? sundayTransitionID()
         // The Walkout is the Service Day's choice, else the shared Closing
         // presentation: the same slide the service closes on, this time with
         // the Walkout lights and over the whole livestream.
@@ -156,6 +224,8 @@ extension AppModel {
         let day = slideBuilding.serviceDay
         let today = Self.isoDate(.now)
         for plan in resident.services.values where plan.isTemplate != true && String(plan.serviceDate.prefix(10)) >= today {
+            // Hope Students plans keep their own Transition.
+            if isStudentsPlan(plan), studentsTransitionID() != nil { continue }
             guard StandingItems.relinking(plan, transitionID: day?.transitionPresentationId,
                                           walkoutID: day?.walkoutPresentationId) != nil else { continue }
             updateService(plan.id) { service in
@@ -191,4 +261,5 @@ enum PreServiceMaking {
 @MainActor
 enum SharedItemsMaking {
     static var inFlight: Set<SharedPlanItems.Slot> = []
+    static var studentsTransition = false
 }

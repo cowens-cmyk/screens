@@ -654,6 +654,10 @@ struct SlideGridBody: View {
 
     @State private var actionPlacement: ActionPlacement?
     @State private var screensTarget: SlideScreensTarget?
+    /// Right-click › Edit Chords… on a slide.
+    @State private var chordsSlide: IdentifiedID?
+    /// Right-click › Make This the Worship Theme… on a song's slide.
+    @State private var worshipThemeSlide: Slide?
     @State private var livestreamPrompt: LivestreamPromptRequest?
 
     @State private var autoAdvanceTarget: AutoAdvanceTarget?
@@ -857,6 +861,10 @@ struct SlideGridBody: View {
                     model.applyTheme(to: presentation.id, slideIDs: slideIDs, themeID: themeId, design: design)
                 }
             }
+        }
+        .modifier(WorshipThemePrompt(model: model, presentation: presentation, slide: $worshipThemeSlide))
+        .sheet(item: $chordsSlide) { target in
+            ChordEditorSheet(model: model, presentationID: presentation.id, slideID: target.id)
         }
         .sheet(item: $quickEditSlide) { target in
             QuickEditView(
@@ -1263,9 +1271,36 @@ struct SlideGridBody: View {
             HotDefaults.setAppMode(.edit)
         }
         Button("Quick Edit…") { quickEditSlide = slide }
+        // A song's chords for the stage display, on this slide.
+        if presentation.presentationKind == .song || slide.objects.contains(where: { !($0.chords ?? []).isEmpty }) {
+            Button("Edit Chords…") { chordsSlide = IdentifiedID(id: slide.id) }
+        }
+        // The song's look: its theme in the editor, or made the worship theme.
+        if presentation.presentationKind == .song {
+            if let themeID = model.followedWorshipTheme(of: slide, in: presentation),
+               let name = model.libraryEntry(themeID)?.name {
+                Button("Edit Theme \u{201C}\(name)\u{201D}…") {
+                    model.openInEditor(entryID: themeID)
+                    HotDefaults.setAppMode(.edit)
+                }
+            }
+            Button("Make This the Worship Theme…") { worshipThemeSlide = slide }
+        }
         Button("Rename Slide…") {
             renameText = slide.name
             renamingSlide = slide
+        }
+        let files = model.mediaFiles(on: slide)
+        if files.count == 1, let item = files.first {
+            Button("Show in Finder") { model.showMediaInFinder(item) }
+                .disabled(model.isMediaFileMissing(item))
+        } else if files.count > 1 {
+            Menu("Show in Finder") {
+                ForEach(files, id: \.id) { item in
+                    Button(item.name) { model.showMediaInFinder(item) }
+                        .disabled(model.isMediaFileMissing(item))
+                }
+            }
         }
 
         ForEach(cueMediaIDs(of: slide), id: \.self) { mediaID in
