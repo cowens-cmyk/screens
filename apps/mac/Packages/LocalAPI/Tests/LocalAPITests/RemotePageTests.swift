@@ -23,6 +23,28 @@ struct RemotePageTests {
         #expect(!page.contains("__SERVICE_NAME__"))
     }
 
+    /// A phone that can't reach the Mac is pointed at the remote that works
+    /// from anywhere; with none given, the page still parses.
+    @Test func aLostPhoneIsOfferedTheAnywhereRemote() throws {
+        let page = RemotePage.html(serviceName: "Sunday", anywhereURL: "https://dashboard.hopejc.org/screens/remote")
+        #expect(page.contains("var ANYWHERE=\"https:\\/\\/dashboard.hopejc.org\\/screens\\/remote\"") || page.contains("var ANYWHERE=\"https://dashboard.hopejc.org/screens/remote\""))
+        #expect(page.contains("id=\"lost\""))
+        #expect(!page.contains("__ANYWHERE_URL__"))
+        let bare = RemotePage.html(serviceName: "Sunday")
+        #expect(bare.contains("var ANYWHERE=\"\""))
+        for html in [page, bare] {
+            let start = try #require(html.range(of: "<script>"))
+            let end = try #require(html.range(of: "</script>", range: start.upperBound..<html.endIndex))
+            let script = String(html[start.upperBound..<end.lowerBound])
+            let context = try #require(JSContext())
+            var error: String?
+            context.exceptionHandler = { _, value in error = value?.toString() }
+            // Parse only: wrapping in a function that's never called.
+            context.evaluateScript("(function(){" + script + "})")
+            #expect(error == nil, "\(error ?? "")")
+        }
+    }
+
     /// A code the Mac turned down leaves the address and storage both, and
     /// is passed over when the address still has it (a home-screen app opens
     /// at the address it was added with). Connect writes the new code to both.

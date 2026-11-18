@@ -17,6 +17,9 @@ final class PhoneRemoteController {
 
     static let enabledKey = "remote.cloudCommands"
 
+    /// The CMS's remote: works on any Wi-Fi or cellular, after signing in.
+    static let cmsURL = "https://dashboard.hopejc.org/screens/remote"
+
     /// On unless turned off on this Mac.
     static var enabled: Bool {
         get { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }

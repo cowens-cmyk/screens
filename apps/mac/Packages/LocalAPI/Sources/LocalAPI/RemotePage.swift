@@ -11,8 +11,10 @@ import Foundation
 public enum RemotePage {
     public static let manifestPath = "/remote.webmanifest"
 
-    public static func html(serviceName: String) -> String {
-        template.replacingOccurrences(of: "__SERVICE_NAME__", with: escape(serviceName))
+    public static func html(serviceName: String, anywhereURL: String? = nil) -> String {
+        template
+            .replacingOccurrences(of: "__SERVICE_NAME__", with: escape(serviceName))
+            .replacingOccurrences(of: "__ANYWHERE_URL__", with: jsonString(anywhereURL ?? ""))
     }
 
     /// Lets a phone keep the remote on its home screen as its own app. No
@@ -107,6 +109,8 @@ textarea,input[type=text]{-webkit-user-select:text;user-select:text}
 .msg{width:100%;font:inherit;font-size:18px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);margin-bottom:10px;resize:none}
 #toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#7f1d1d;color:#fff;padding:10px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90%;z-index:9}
 #toast.show{opacity:1}#toast.good{background:#166534}
+#lost{display:none;position:fixed;left:0;right:0;top:0;z-index:8;background:#7c2d12;color:#fff;padding:calc(10px + env(safe-area-inset-top)) 16px 12px;font-size:15px;line-height:1.35}
+#lost.show{display:block}#lost a{color:#fff;font-weight:700;display:inline-block;margin-top:6px}
 .pane{display:none;padding:30px 20px;max-width:480px;margin:0 auto}
 #gate input{width:100%;padding:14px;font-size:17px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);margin:14px 0}
 .pane p{color:var(--dim)}
@@ -136,6 +140,7 @@ textarea,input[type=text]{-webkit-user-select:text;user-select:text}
   <button class="role" data-role="booth"><b>Booth</b><span>Run the slides: Back, Next, clears, timers.</span></button>
   <button class="role" data-role="stage"><b>Pastor or worship leader</b><span>Sermon timer, the time, the next slide, and notes to the booth.</span></button>
 </div>
+<div id="lost">Can’t reach Screens. The phone has to be on the same network as the Mac.<br><a id="lostLink" href="#">Use the remote that works anywhere →</a></div>
 <div id="app">
   <header><span class="dot"></span><div style="flex:1;min-width:0"><div class="title"></div><div class="sub" id="sub"></div></div><button class="swap">Switch</button></header>
   <nav>
@@ -278,8 +283,20 @@ function act(method,path,body,after){
 function guard(){var n=Date.now();if(n-lastFire<250)return false;lastFire=n;return true}
 function flash(el){el.classList.add("flash");setTimeout(function(){el.classList.remove("flash")},180);if(navigator.vibrate)try{navigator.vibrate(12)}catch(e){}}
 
+// Can't reach the Mac (the phone left its Wi-Fi, or never was on it):
+// after a few seconds of trying, say so, and offer the remote that works
+// from anywhere. It goes away by itself once the Mac answers again.
+var ANYWHERE=__ANYWHERE_URL__, lostSince=0;
+function reached(){lostSince=0;$("lost").className=""}
+function unreached(){
+  if(!lostSince)lostSince=Date.now();
+  if(Date.now()-lostSince<5000)return;
+  $("lostLink").style.display=ANYWHERE?"inline-block":"none";
+  if(ANYWHERE)$("lostLink").href=ANYWHERE;
+  $("lost").className="show";
+}
 function refresh(){
-  return api("GET","/v1/status").then(function(s){status=s;render()}).catch(function(e){if(e.message!=="unauthorized")setDot("off")});
+  return api("GET","/v1/status").then(function(s){status=s;reached();render()}).catch(function(e){if(e.message!=="unauthorized"){setDot("off");unreached()}});
 }
 function setDot(m){all(".dot").forEach(function(d){d.className="dot"+(m==="ws"?" on":m==="poll"?" poll":"")})}
 function render(){
@@ -443,7 +460,7 @@ function connectWS(){
   var sock;try{sock=new WebSocket(url)}catch(e){startPolling();return}
   ws=sock;var opened=false;
   sock.onopen=function(){
-    opened=true;wsFails=0;retry=1000;setDot("ws");
+    opened=true;wsFails=0;retry=1000;setDot("ws");reached();
     if(pollTimer){clearInterval(pollTimer);pollTimer=null}
     sock.send(JSON.stringify({type:"subscribe",topics:["show","timers","library"]}));
     refresh();
@@ -459,7 +476,7 @@ function connectWS(){
     if(ws!==sock)return;ws=null;
     if(!opened)wsFails++;
     if(wsFails>=3||!token)startPolling();
-    else setDot("off");
+    else{setDot("off");refresh()}
     if(token)setTimeout(connectWS,retry);
     retry=Math.min(retry*2,15000);
   };

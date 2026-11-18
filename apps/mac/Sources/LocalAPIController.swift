@@ -1,3 +1,4 @@
+import SystemConfiguration
 import Foundation
 import LocalAPI
 import Observation
@@ -5,11 +6,39 @@ import Security
 
 enum NetworkInfo {
 
+    /// The address a phone on this Mac's network reaches it at: the one on
+    /// the interface macOS sends through (Wi-Fi or Ethernet, whichever is in
+    /// use), else en0, else any other en port.
     static func lanIPv4() -> String? {
+        let addresses = ipv4Addresses()
+        if let primary = primaryInterface(), let ip = addresses.first(where: { $0.name == primary })?.ip {
+            return ip
+        }
+        return addresses.first { $0.name == "en0" }?.ip ?? addresses.first { $0.name.hasPrefix("en") }?.ip
+    }
+
+    /// "10.1.2.x": the network a phone has to be on, for the settings.
+    static func networkHint() -> String? {
+        lanIPv4().map { ip in
+            var parts = ip.split(separator: ".").map(String.init)
+            guard parts.count == 4 else { return ip }
+            parts[3] = "x"
+            return parts.joined(separator: ".")
+        }
+    }
+
+    private static func primaryInterface() -> String? {
+        guard let store = SCDynamicStoreCreate(nil, "Screens" as CFString, nil, nil),
+              let global = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
+        else { return nil }
+        return global["PrimaryInterface"] as? String
+    }
+
+    private static func ipv4Addresses() -> [(name: String, ip: String)] {
+        var found: [(name: String, ip: String)] = []
         var head: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&head) == 0, let first = head else { return nil }
+        guard getifaddrs(&head) == 0, let first = head else { return [] }
         defer { freeifaddrs(head) }
-        var fallback: String?
         for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
             let flags = Int32(pointer.pointee.ifa_flags)
             guard flags & IFF_UP == IFF_UP, flags & IFF_LOOPBACK == 0,
@@ -21,12 +50,9 @@ enum NetworkInfo {
                 addr, socklen_t(addr.pointee.sa_len),
                 &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST
             )
-            let ip = String(cString: host)
-            let name = String(cString: pointer.pointee.ifa_name)
-            if name == "en0" { return ip }
-            if fallback == nil, name.hasPrefix("en") { fallback = ip }
+            found.append((String(cString: pointer.pointee.ifa_name), String(cString: host)))
         }
-        return fallback
+        return found
     }
 }
 
@@ -224,7 +250,8 @@ final class LocalAPIController {
                 port: port,
                 serviceName: info.name,
                 advertise: true,
-                info: info
+                info: info,
+                anywhereURL: PhoneRemoteController.cmsURL
             ),
             routes: APIRouteTable.build(bridge: bridge) + [mcp.server(version: info.apiVersion).route()],
             tokens: tokens
