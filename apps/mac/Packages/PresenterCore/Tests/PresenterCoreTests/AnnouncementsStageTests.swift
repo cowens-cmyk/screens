@@ -86,10 +86,33 @@ private func sundayItems() -> [ServiceItem] {
         id: "v", name: "v", mediaKind: .video, classification: .foreground, fileHash: "h", fileName: "v.mov",
         fileStatus: .ready, statusDetail: "", tags: [], favorite: false, collections: [], loops: false)
     clip.inPoint = 4
-    #expect(MediaPosterStore.posterTime(of: clip) == 4)
+    #expect(MediaPosterStore.posterTime(of: clip) == 14, "ten seconds past the in point")
     let before = MediaPosterStore.fingerprint(of: clip)
-    #expect(before == MediaPosterStore.fingerprint(fileHash: "h", inPoint: 4), "posters already on disk are still found")
     clip.posterSeconds = 12.5
     #expect(MediaPosterStore.posterTime(of: clip) == 12.5)
     #expect(MediaPosterStore.fingerprint(of: clip) != before)
+}
+
+@Test func aVideosThumbnailIsTenSecondsIn() {
+    var clip = MediaItem(
+        id: "v", name: "v", mediaKind: .video, classification: .foreground, fileHash: "h", fileName: "v.mov",
+        fileStatus: .ready, statusDetail: "", tags: [], favorite: false, collections: [], loops: false)
+    #expect(MediaPosterStore.posterTime(of: clip) == 10, "length unknown")
+    clip.durationSeconds = 60
+    #expect(MediaPosterStore.posterTime(of: clip) == 10)
+    clip.durationSeconds = 6
+    #expect(MediaPosterStore.posterTime(of: clip) == 3, "a short clip gives its middle")
+    clip.durationSeconds = 30
+    clip.inPoint = 2
+    clip.outPoint = 8
+    #expect(MediaPosterStore.posterTime(of: clip) == 5, "the middle of what plays")
+    clip.posterSeconds = 1
+    #expect(MediaPosterStore.posterTime(of: clip) == 1, "a chosen frame wins")
+}
+
+@Test func aPicturesPosterFingerprintNeverMoves() {
+    let still = MediaItem(
+        id: "p", name: "p", mediaKind: .image, classification: .foreground, fileHash: "h", fileName: "p.jpg",
+        fileStatus: .ready, statusDetail: "", tags: [], favorite: false, collections: [], loops: false)
+    #expect(MediaPosterStore.fingerprint(of: still) == MediaPosterStore.fingerprint(fileHash: "h", inPoint: nil))
 }

@@ -4152,10 +4152,31 @@
         },
         "mainMacName": {
           "type": "string"
+        },
+        "mediaCategories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/MediaCategoryDefinition"
+          }
         }
       },
       "required": [
         "id"
+      ]
+    },
+    "MediaCategoryDefinition": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "icon": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "icon"
       ]
     },
     "WebsiteEventSettings": {

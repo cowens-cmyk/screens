@@ -12,17 +12,29 @@ public struct MediaPosterStore: Sendable {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
+    /// How far into a video its thumbnail is taken when no frame has been
+    /// chosen: the first frame of most church videos is black or a title
+    /// card, and ten seconds in shows what the video actually is.
+    public static let defaultPosterOffset = 10.0
+
     /// The moment of a video its thumbnail is taken from: the frame chosen
-    /// for it (Media › Thumbnail), else its in point.
+    /// for it (Media › Thumbnail), else ten seconds past its in point. A
+    /// video shorter than that gives the frame halfway through what plays.
     public static func posterTime(of item: MediaItem) -> Double {
-        max(item.posterSeconds ?? item.inPoint ?? 0, 0)
+        if let chosen = item.posterSeconds { return max(chosen, 0) }
+        let start = max(item.inPoint ?? 0, 0)
+        let wanted = start + defaultPosterOffset
+        guard let duration = item.durationSeconds, duration > 0 else { return wanted }
+        let end = min(item.outPoint ?? duration, duration)
+        guard wanted >= end else { return wanted }
+        return end > start ? start + (end - start) / 2 : start
     }
 
-    /// The fingerprint of an item's poster as it should be now. A video
-    /// with no chosen frame keeps the one it had (its in point), so posters
-    /// already on disk are still found.
+    /// The fingerprint of an item's poster as it should be now: a new frame
+    /// (a chosen one, or a new trim moving the default) makes a new poster.
+    /// A picture's never changes.
     public static func fingerprint(of item: MediaItem) -> String {
-        fingerprint(fileHash: item.fileHash, inPoint: item.posterSeconds ?? item.inPoint)
+        fingerprint(fileHash: item.fileHash, inPoint: item.mediaKind == .video ? posterTime(of: item) : nil)
     }
 
     public static func fingerprint(fileHash: String, inPoint: Double?) -> String {

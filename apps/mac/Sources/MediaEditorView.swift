@@ -1197,7 +1197,7 @@ struct MediaEditorView: View {
                         clear: { writePoster(nil) }
                     )
                 }
-                .help("The frame shown for this video in the library, the plan and on slides. Move the preview to the frame you want, then Set.")
+                .help("The frame shown for this video in the library, the plan and on slides: 10 seconds in unless one is set. Move the preview to the frame you want, then Set.")
             }
             if trimIn != nil || trimOut != nil, preview.duration > 0 {
                 let length = min(trimOut ?? preview.duration, preview.duration) - max(trimIn ?? 0, 0)

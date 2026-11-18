@@ -172,6 +172,8 @@ struct PlanShell: View {
                 }
             }
             .task { await appeared() }
+            // Missing media in the plan just opened, said first thing.
+            .modifier(PlanMissingMediaPrompt(model: model))
     }
 
     /// The workspace with its sheets; split from `body` so each half

@@ -2740,8 +2740,9 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
     public var websiteEvents: WebsiteEventSettings?
     public var mainMacId: String?
     public var mainMacName: String?
+    public var mediaCategories: [MediaCategoryDefinition]?
 
-    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil, serviceDay: ServiceDaySettings? = nil, lightingCues: [LightingCue]? = nil, typeScreens: [PresentationTypeScreens]? = nil, websiteEvents: WebsiteEventSettings? = nil, mainMacId: String? = nil, mainMacName: String? = nil) {
+    public init(id: String, designMap: String? = nil, messageNotesThemeId: String? = nil, lyricsImportThemeId: String? = nil, scriptureThemeId: String? = nil, presentationTypeRules: [PresentationTypeRule]? = nil, pointsThemeId: String? = nil, sermonThemeId: String? = nil, serviceDay: ServiceDaySettings? = nil, lightingCues: [LightingCue]? = nil, typeScreens: [PresentationTypeScreens]? = nil, websiteEvents: WebsiteEventSettings? = nil, mainMacId: String? = nil, mainMacName: String? = nil, mediaCategories: [MediaCategoryDefinition]? = nil) {
         self.id = id
         self.designMap = designMap
         self.messageNotesThemeId = messageNotesThemeId
@@ -2756,6 +2757,17 @@ public struct SlideBuildingSettings: Codable, Sendable, Equatable, Identifiable 
         self.websiteEvents = websiteEvents
         self.mainMacId = mainMacId
         self.mainMacName = mainMacName
+        self.mediaCategories = mediaCategories
+    }
+}
+
+public struct MediaCategoryDefinition: Codable, Sendable, Equatable {
+    public var name: String
+    public var icon: String
+
+    public init(name: String, icon: String) {
+        self.name = name
+        self.icon = icon
     }
 }
 
