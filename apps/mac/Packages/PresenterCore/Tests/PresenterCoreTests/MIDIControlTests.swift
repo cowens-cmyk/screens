@@ -223,15 +223,15 @@ import Testing
 
     let merged = MIDIDeviceResolver.discovered(
         destinations: [
-            MIDIEndpoint(uid: 1, name: "Lightkey Output"),
+            MIDIEndpoint(uid: 1, name: "Prism Output"),
             MIDIEndpoint(uid: 2, name: "Console"),
         ],
         sources: [
             MIDIEndpoint(uid: 3, name: "Console"),
-            MIDIEndpoint(uid: 4, name: "Lightkey Input"),
+            MIDIEndpoint(uid: 4, name: "Prism Input"),
         ]
     )
-    #expect(merged.map(\.name) == ["Lightkey Output", "Console", "Lightkey Input"])
+    #expect(merged.map(\.name) == ["Prism Output", "Console", "Prism Input"])
     #expect(merged[0].sourceUid == nil)
     #expect(merged[1].uid == 2)
     #expect(merged[1].sourceUid == 3)
@@ -239,7 +239,7 @@ import Testing
     #expect(merged[2].direction == .input)
 }
 
-@Test func noteNamesSpeakLightkeysOctaveConvention() {
+@Test func noteNamesPutMiddleCInOctaveThree() {
     #expect(MIDINote.name(0) == "C-2")
     #expect(MIDINote.name(1) == "C#-2")
     #expect(MIDINote.name(60) == "C3")
@@ -249,12 +249,12 @@ import Testing
 }
 
 @Test func midiOutTargetResolvesThroughItemsAndNeverFallsBackToBroadcast() {
-    var output = MIDIDevice(id: "lk", name: "Lightkey")
+    var output = MIDIDevice(id: "lk", name: "Prism")
     output.direction = .output
     let items = MIDIDeviceResolver.resolve(
         devices: [output],
         bindings: ["lk": MIDIDeviceBinding(destinationUID: 7)],
-        destinations: [MIDIEndpoint(uid: 7, name: "Lightkey Output")],
+        destinations: [MIDIEndpoint(uid: 7, name: "Prism Output")],
         sources: []
     )
 
@@ -267,7 +267,7 @@ import Testing
     off.enabled = false
     let offItems = [ResolvedMIDIDevice(device: off, destinationUID: 7)]
     #expect(MIDIOutTarget.resolve(deviceId: "lk", items: offItems) == .skip("device off"))
-    var input = MIDIDevice(id: "lk", name: "Lightkey")
+    var input = MIDIDevice(id: "lk", name: "Prism")
     input.direction = .input
     let inputItems = [ResolvedMIDIDevice(device: input, sourceUID: 3)]
     #expect(MIDIOutTarget.resolve(deviceId: "lk", items: inputItems) == .skip("device is input-only"))

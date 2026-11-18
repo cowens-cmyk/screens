@@ -353,8 +353,6 @@ final class ServiceControls {
         }
         guard landings == landing else { return }
         actionRouter?.slideDidFire(slide, contextID: contextID)
-        guard landings == landing else { return }
-        LightkeyLink.shared.slideWentLive(slide, in: presentation)
         armAutoAdvance(for: slide, in: presentation, keepingMediaAdvance: underVideo)
     }
 
@@ -1070,10 +1068,10 @@ final class ServiceControls {
 
     /// A plan item's slide or video went live. Returns false when `itemID`
     /// isn't an item of the current plan (a library deck fired by its own
-    /// id). The first time, Lightkey gets the item's position cue, then the
+    /// id). The first time, Prism gets the item's position cue, then the
     /// item's own macros run — whether or not the lights follow the
     /// service. When those macros, or the slide's or video's own actions
-    /// (`ownActions`), already send Lightkey a cue, that cue is the
+    /// (`ownActions`), already cue a Prism scene, that cue is the
     /// operator's choice and the position cue stays quiet rather than
     /// flashing one scene before the other.
     @discardableResult
@@ -1086,12 +1084,10 @@ final class ServiceControls {
         guard liveItem.wentLive(itemID) else { return true }
         standingItemWentLive(item, in: service, previous: previous)
         let macros = item.actions ?? []
-        let link = LightkeyLink.shared
-        if link.followsService,
+        if PrismLink.shared.followsService,
            let position = ServiceLighting.positions(in: service, model: appModel)[itemID],
-           !LightingCueTable.sendsLightkeyCue(
-               ownActions + macros, lightkeyDeviceID: LightkeyLink.deviceID,
-               combo: { try? self.appModel.actionCombo($0).actions }) {
+           !PrismScenes.cuesPrism(
+               ownActions + macros, combo: { try? self.appModel.actionCombo($0).actions }) {
             sendLightingCue(position)
         }
         if !macros.isEmpty {
@@ -1101,12 +1097,12 @@ final class ServiceControls {
         return true
     }
 
-    /// A header clicked while presenting: Lightkey gets the header's scene
+    /// A header clicked while presenting: Prism gets the header's scene
     /// (Baptism, Communion…) before anything under it goes up. Nothing else
     /// happens — the live item stays the live item, and its macros don't run
     /// again.
     func headerClicked(_ headerID: String) {
-        guard LightkeyLink.shared.followsService,
+        guard PrismLink.shared.followsService,
               let serviceID = appModel.currentServiceID,
               let service = try? appModel.service(serviceID),
               service.items.first(where: { $0.id == headerID })?.itemKind == .header,
@@ -1210,15 +1206,15 @@ final class ServiceControls {
         guard ServiceLighting.isPreService(
                 presentation, preServiceID: appModel.slideBuilding.serviceDay?.preServicePresentationId),
               liveItem.wentLive(LiveItemTracker.preServiceKey(presentation.id)),
-              LightkeyLink.shared.followsService
+              PrismLink.shared.followsService
         else { return }
         sendLightingCue(.walkIn)
     }
 
     private func sendLightingCue(_ position: ServicePosition) {
         guard let note = LightingCueTable.note(for: position, in: ServiceLighting.table(appModel)) else { return }
-        DiagnosticsStore.shared.note("lightkey.position", detail: "\(position.title) note \(note)")
-        LightkeyLink.shared.sendCue(note: note)
+        DiagnosticsStore.shared.note("prism.position", detail: "\(position.title) note \(note)")
+        PrismLink.shared.sendCue(note: note)
     }
 
     // MARK: What's on the screens, for the pre-service restart

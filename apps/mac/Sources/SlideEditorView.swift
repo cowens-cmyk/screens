@@ -685,6 +685,15 @@ struct SlideEditorView: View {
                     if model.presentation.presentationKind == .song {
                         Button("Edit Chords…") { chordsSlideTarget = QuickEditTarget(id: slide.id) }
                     }
+                    let prismCue = PrismScenes.cue(on: slide)
+                    Menu("Prism") {
+                        PrismSceneMenuItems(
+                            model: model.appModel, current: prismCue?.prismCueId,
+                            offersNone: prismCue != nil
+                        ) { scene in
+                            model.updateSlide(slide.id) { $0 = PrismScenes.setting(scene, on: $0) }
+                        }
+                    }
                     let files = model.appModel.mediaFiles(on: slide)
                     if files.count == 1, let item = files.first {
                         Button("Show in Finder") { model.appModel.showMediaInFinder(item) }

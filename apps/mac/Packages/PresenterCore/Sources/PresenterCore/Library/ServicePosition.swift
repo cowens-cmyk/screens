@@ -1,6 +1,6 @@
 import Foundation
 
-/// Where an item sits in the service, for the lights: LightKey has a scene
+/// Where an item sits in the service, for the lights: Prism has a scene
 /// per position (Walk-in, Song 1, Message…) and Screens sends that scene's
 /// cue when the item goes live, so nobody drags a macro onto every song.
 public enum ServicePosition: Hashable, Sendable {
@@ -211,14 +211,8 @@ public enum ServicePosition: Hashable, Sendable {
 
 /// The church's cue table: a MIDI note per position.
 public enum LightingCueTable {
-    /// Clear of the other notes Screens sends Lightkey on the same channel:
-    /// the song sections (1–10) and the slide action Lightkey Cue (31–54).
-    /// Both are learned once in Lightkey, so a position must never share one.
+    /// Middle C up, where Prism's own cues start.
     public static let firstNote = 60
-
-    /// Notes no position takes: the section notes and the Lightkey Cue
-    /// action's.
-    public static let reservedNotes: [ClosedRange<Int>] = [1...10, 31...54]
 
     /// Walk-in 60, Countdown 61, Song 1–5 62–66, Announcements 67, Message
     /// 68, Closing 69, Walkout 70, Baptism 71, Communion 72. Added songs and
@@ -267,77 +261,23 @@ public enum LightingCueTable {
     }
 
     /// Why `note` can't be the note of `position`'s row, or nil when it
-    /// can. 0 is the note Send Test sends for MIDI learn, the reserved
-    /// notes belong to the song sections and the Lightkey Cue action, and a
-    /// note another row has would fire both scenes.
+    /// can. 0 is kept out of the table, and a note another row has would
+    /// fire both scenes.
     public static func noteProblem(_ note: Int, for position: String, in table: [LightingCue]) -> String? {
-        if note == 0 { return "0 is the test note." }
-        if note < 0 || note > 127 { return "Notes go from 1 to 127." }
-        if let section = sectionNotes.first(where: { $0.note == note }) {
-            return "\(note) is the \(section.name) section's note."
-        }
-        if let range = reservedNotes.first(where: { $0.contains(note) }) {
-            return "\(range.lowerBound)–\(range.upperBound) are left for the Lightkey Cue action."
-        }
+        if note < 1 || note > 127 { return "Notes go from 1 to 127." }
         if let other = table.first(where: { $0.position != position && $0.note == note }) {
             return "\(ServicePosition(key: other.position)?.title ?? other.position) already has \(note)."
         }
         return nil
     }
 
-    /// Section notes: Lightkey learns each once, then follows every song.
-    public static let sectionNotes: [(name: String, note: Int)] = [
-        ("Intro", 1), ("Verse", 2), ("Pre-Chorus", 3), ("Chorus", 4), ("Bridge", 5),
-        ("Tag", 6), ("Interlude", 7), ("Instrumental", 8), ("Outro", 9), ("Ending", 10),
-    ]
-
-    /// A song section's note, by its name: "Verse 2" sends Verse's. Spaces,
-    /// hyphens and case don't count, so "Pre Chorus", "PreChorus" and
-    /// "pre-chorus" are all the Pre-Chorus; the longest name wins, so
-    /// "Pre-Chorus" isn't taken for a Chorus.
-    public static func sectionNote(forName name: String) -> Int? {
-        let compact = ServicePosition.compacted(name)
-        return sectionNotes
-            .map { (name: ServicePosition.compacted($0.name), note: $0.note) }
-            .sorted { $0.name.count > $1.name.count }
-            .first { compact.hasPrefix($0.name) }?.note
-    }
-
     /// The note an added song or cue gets: the lowest free one above the
-    /// defaults, then any free one below them, never a reserved one.
+    /// defaults, then any free one below them.
     public static func nextFreeNote(in table: [LightingCue]) -> Int {
         let used = Set(table.map(\.note))
         let above = firstNote + defaults.count
         let candidates = Array(above...127) + Array((1..<above).reversed())
-        return candidates.first { note in
-            !used.contains(note) && !reservedNotes.contains { $0.contains(note) }
-        } ?? 127
-    }
-
-    /// Whether a list of actions (macros included) already sends Lightkey a
-    /// cue. Then it is the one the operator chose, and the item's position
-    /// cue stays quiet rather than flashing one scene before the other.
-    public static func sendsLightkeyCue(
-        _ actions: [SlideAction], lightkeyDeviceID: String,
-        combo: (String) -> [SlideAction]?, depth: Int = 0, visited: Set<String> = []
-    ) -> Bool {
-        guard depth < 8 else { return false }
-        for action in actions {
-            switch action.kind {
-            case .midiOut where action.midiDeviceId == lightkeyDeviceID:
-                return true
-            case .fireCombo:
-                guard let id = action.comboId, !visited.contains(id), let inner = combo(id) else { continue }
-                if sendsLightkeyCue(
-                    inner, lightkeyDeviceID: lightkeyDeviceID, combo: combo,
-                    depth: depth + 1, visited: visited.union([id])) {
-                    return true
-                }
-            default:
-                continue
-            }
-        }
-        return false
+        return candidates.first { !used.contains($0) } ?? 127
     }
 }
 

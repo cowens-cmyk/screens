@@ -4,15 +4,17 @@ import Observation
 import PresenterCore
 import SwiftUI
 
-/// Lightkey listens to MIDI. On this Mac it picks the "Screens" MIDI port;
-/// on another Mac, Screens joins it over network MIDI (the same session
-/// Audio MIDI Setup › Network shows), so cues travel over the LAN.
+/// Prism, the church's lighting app, listens to Screens by MIDI note. On
+/// this Mac it hears the "Screens" MIDI source by itself; on another Mac,
+/// Screens joins that Mac's network MIDI session (Prism turns its session
+/// on and lets anyone in), so cues travel over the LAN.
+///
+/// Prism's scenes come from its show file on this Mac, so a slide's
+/// right-click › Prism lists them by name.
 @MainActor
 @Observable
-final class LightkeyLink {
-    static let shared = LightkeyLink()
-    /// A MIDI Out action aimed at Lightkey carries this as its device.
-    static let deviceID = "lightkey"
+final class PrismLink {
+    static let shared = PrismLink()
 
     enum Location: String, CaseIterable, Identifiable {
         case thisMac, network
@@ -29,52 +31,65 @@ final class LightkeyLink {
     }
     var host: String { didSet { save() } }
     var port: Int { didSet { save() } }
-    /// Lightkey learns whatever channel it hears; one channel keeps
-    /// Screens' cues apart from other controllers.
+    /// Prism listens on one channel (16 unless changed there), so a
+    /// keyboard on another channel can't change the lights.
     var channel: Int { didSet { save() } }
-    /// Sends a note when the song moves to a new section (Verse, Chorus…).
-    var sendsSections: Bool { didSet { save() } }
 
-    /// Changes Lightkey's scene as the service moves: each plan item sends
+    /// Changes Prism's scene as the service moves: each plan item sends
     /// its position's note (Walk-in, Song 1, Message…) when it goes live.
     /// Per Mac, like the rest of this link; the note table is the church's.
-    /// Off until someone turns it on here: a Mac that only sends section
-    /// notes, or a Lightkey that hasn't learned the positions' notes yet,
-    /// shouldn't start changing scenes by itself.
+    /// Off until someone turns it on here, so a second Mac running a plan
+    /// doesn't change the room's lights.
     var followsService: Bool { didSet { save() } }
 
     private(set) var status = ""
 
+    /// Prism's scenes, from its show on this Mac; empty when Prism has never
+    /// run here.
+    private(set) var prismScenes: [PrismScene] = []
+
     private var connection: MIDINetworkConnection?
-    private var lastSection: String?
+    private var watcher: DispatchSourceFileSystemObject?
 
     private init() {
         let defaults = UserDefaults.standard
-        location = defaults.string(forKey: "lightkey.location").flatMap(Location.init(rawValue:)) ?? .thisMac
-        host = defaults.string(forKey: "lightkey.host") ?? ""
-        port = defaults.object(forKey: "lightkey.port") as? Int ?? 5004
-        channel = defaults.object(forKey: "lightkey.channel") as? Int ?? 16
-        sendsSections = defaults.bool(forKey: "lightkey.sections")
-        followsService = defaults.bool(forKey: "lightkey.followService")
+        location = Self.stored("location", defaults).flatMap { ($0 as? String).flatMap(Location.init(rawValue:)) } ?? .thisMac
+        host = Self.stored("host", defaults) as? String ?? ""
+        port = Self.stored("port", defaults) as? Int ?? 5004
+        channel = Self.stored("channel", defaults) as? Int ?? 16
+        followsService = Self.stored("followService", defaults) as? Bool ?? false
+        // Settings saved before this link was Prism's sat under the old
+        // lighting app's prefix; they move over once.
+        for key in ["location", "host", "port", "channel", "followService", "sections"] {
+            defaults.removeObject(forKey: Self.olderPrefix + key)
+        }
+        save()
+    }
+
+    private static let prefix = "prism."
+    private static let olderPrefix = "lightkey."
+
+    private static func stored(_ key: String, _ defaults: UserDefaults) -> Any? {
+        defaults.object(forKey: prefix + key) ?? defaults.object(forKey: olderPrefix + key)
     }
 
     private func save() {
         let defaults = UserDefaults.standard
-        defaults.set(location.rawValue, forKey: "lightkey.location")
-        defaults.set(host, forKey: "lightkey.host")
-        defaults.set(port, forKey: "lightkey.port")
-        defaults.set(channel, forKey: "lightkey.channel")
-        defaults.set(sendsSections, forKey: "lightkey.sections")
-        defaults.set(followsService, forKey: "lightkey.followService")
+        defaults.set(location.rawValue, forKey: Self.prefix + "location")
+        defaults.set(host, forKey: Self.prefix + "host")
+        defaults.set(port, forKey: Self.prefix + "port")
+        defaults.set(channel, forKey: Self.prefix + "channel")
+        defaults.set(followsService, forKey: Self.prefix + "followService")
     }
 
     func start() {
         MIDIOutService.shared.prepare()
         apply()
+        loadScenes()
     }
 
     /// Joins (or leaves) the network MIDI session and connects to the
-    /// Lightkey Mac's session.
+    /// Prism Mac's session.
     func apply() {
         let session = MIDINetworkSession.default()
         if let connection {
@@ -82,21 +97,21 @@ final class LightkeyLink {
             self.connection = nil
         }
         guard location == .network else {
-            status = "In Lightkey, choose the MIDI input named “Screens”."
+            status = "Prism on this Mac hears Screens by itself."
             return
         }
         session.isEnabled = true
         session.connectionPolicy = .anyone
         let address = host.trimmingCharacters(in: .whitespaces)
         guard !address.isEmpty else {
-            status = "Enter the Lightkey Mac's IP address."
+            status = "Enter the Prism Mac's IP address."
             return
         }
-        let networkHost = MIDINetworkHost(name: "Lightkey", address: address, port: port)
+        let networkHost = MIDINetworkHost(name: "Prism", address: address, port: port)
         let connection = MIDINetworkConnection(host: networkHost)
         if session.addConnection(connection) {
             self.connection = connection
-            status = "Connected to \(address):\(port). In Lightkey, choose that Mac's network session as a MIDI input."
+            status = "Connected to \(address):\(port)."
         } else {
             status = "Couldn't reach \(address):\(port)."
         }
@@ -113,13 +128,8 @@ final class LightkeyLink {
     func send(kind: MIDIMessageKind, channel: Int, number: Int, value: Int) {
         let network: MIDIEndpointRef? = location == .network && connection != nil
             ? MIDINetworkSession.default().destinationEndpoint() : nil
-        MIDIOutService.shared.sendToLightkey(
+        MIDIOutService.shared.sendToPrism(
             kind: kind, channel: channel, number: number, value: value, network: network)
-    }
-
-    /// A note Lightkey can MIDI-learn: press Test while Lightkey is learning.
-    func sendTest(note: Int = 0) {
-        send(kind: .noteOn, channel: channel, number: note, value: 127)
     }
 
     /// A position's note, on this link's channel.
@@ -127,24 +137,53 @@ final class LightkeyLink {
         send(kind: .noteOn, channel: channel, number: note, value: 127)
     }
 
-    // MARK: Song sections
-
-    /// Section notes: Lightkey learns each once, then follows every song.
-    static let sectionNotes = LightingCueTable.sectionNotes
-
-    static func note(forSection name: String) -> Int? {
-        LightingCueTable.sectionNote(forName: name)
+    /// A slide's (or macro's) Prism scene: the scene's note in Prism now,
+    /// so a note changed there still reaches the same scene.
+    func fire(_ action: SlideAction) {
+        guard let note = PrismScenes.note(for: action, scenes: prismScenes) else {
+            DiagnosticsStore.shared.note("prism.noNote", detail: action.prismCueName ?? "")
+            return
+        }
+        DiagnosticsStore.shared.note("prism.scene", detail: "\(action.prismCueName ?? "") note \(note)")
+        send(kind: action.midiKind ?? .noteOn, channel: action.midiChannel ?? channel,
+             number: note, value: action.midiValue ?? 127)
     }
 
-    func slideWentLive(_ slide: Slide, in presentation: Presentation) {
-        guard sendsSections else { return }
-        let section = slide.sectionId.flatMap { id in presentation.sections?.first { $0.id == id }?.name }
-        let key = "\(presentation.id)|\(section ?? "")"
-        guard key != lastSection else { return }
-        lastSection = key
-        if let section, let note = Self.note(forSection: section) {
-            send(kind: .noteOn, channel: channel, number: note, value: 127)
+    // MARK: Prism's scenes
+
+    /// What a slide's right-click › Prism offers: Prism's own scenes when it
+    /// runs on this Mac, else the church's cue table, whose positions are
+    /// the scenes Prism starts with.
+    func sceneChoices(_ model: AppModel) -> [PrismScene] {
+        prismScenes.isEmpty
+            ? PrismScenes.scenes(fromCueTable: ServiceLighting.table(model))
+            : prismScenes
+    }
+
+    private var showURL: URL {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return PrismScenes.showURL(applicationSupport: support)
+    }
+
+    /// Reads Prism's show and watches its folder: Prism saves by replacing
+    /// the file, so the folder is what changes when a scene is added or
+    /// renamed.
+    func loadScenes() {
+        if let data = try? Data(contentsOf: showURL), let scenes = PrismScenes.scenes(fromShow: data) {
+            if scenes != prismScenes { prismScenes = scenes }
         }
+        guard watcher == nil else { return }
+        let folder = showURL.deletingLastPathComponent()
+        let descriptor = open(folder.path, O_EVTONLY)
+        guard descriptor >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor, eventMask: [.write, .rename, .delete], queue: .main)
+        source.setEventHandler { [weak self] in
+            MainActor.assumeIsolated { self?.loadScenes() }
+        }
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+        watcher = source
     }
 }
 
@@ -187,28 +226,17 @@ enum ServiceLighting {
     }
 }
 
-struct LightkeySettingsForm: View {
+struct PrismSettingsForm: View {
     var model: AppModel?
-    @Bindable private var link = LightkeyLink.shared
-    @State private var settingUp = false
+    @Bindable private var link = PrismLink.shared
 
     var body: some View {
         Section {
-            if model != nil {
-                LabeledContent {
-                    Button("Set Up Lightkey…") { settingUp = true }
-                } label: {
-                    Text("First time")
-                    Text("Teaches Lightkey a note for each part of the service, one at a time.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Picker("Lightkey runs on", selection: $link.location) {
-                ForEach(LightkeyLink.Location.allCases) { Text($0.title).tag($0) }
+            Picker("Prism runs on", selection: $link.location) {
+                ForEach(PrismLink.Location.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.radioGroup)
-            .settingsAnchor("midi.lightkey")
+            .settingsAnchor("midi.prism")
             if link.location == .network {
                 LabeledContent("Address") {
                     HStack(spacing: 8) {
@@ -229,37 +257,20 @@ struct LightkeySettingsForm: View {
                 Stepper("\(link.channel)", value: $link.channel, in: 1...16)
                     .monospacedDigit()
             }
-            LabeledContent {
-                Button("Send Test Note") { link.sendTest() }
-            } label: {
-                Text("Test")
-                Text("Put a Lightkey cue in MIDI learn, then press Send Test Note.")
-                    .font(.subheadline)
+            LabeledContent("Scenes") {
+                Text(link.prismScenes.isEmpty
+                     ? "Prism isn't on this Mac: slides offer the lighting cues below."
+                     : "\(link.prismScenes.count) from Prism on this Mac")
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("Lightkey")
+            Text("Prism")
         } footer: {
-            if link.location == .network {
-                Text("On the Lightkey Mac: Audio MIDI Setup › Window › Show MIDI Studio › Network. Create a session, turn it on and allow anyone to connect (port 5004).")
-            }
+            Text("To cue a scene from a slide: right-click it › Prism. Prism needs Follow Screens on, and the same MIDI channel as here (Prism › Settings › Screens).")
         }
-        .onAppear { link.applyIfDisconnected() }
-        .sheet(isPresented: $settingUp) {
-            if let model { LightkeySetupSheet(model: model) }
-        }
-        Section {
-            Toggle("Send song sections (Verse, Chorus, Bridge…)", isOn: $link.sendsSections)
-                .toggleStyle(.switch)
-            if link.sendsSections {
-                Text(LightkeyLink.sectionNotes.map { "\($0.name) = note \($0.note)" }.joined(separator: " · "))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("Song Sections")
-        } footer: {
-            Text("To fire a Lightkey cue from a slide: right-click › Add Action › Lightkey Cue.")
+        .onAppear {
+            link.applyIfDisconnected()
+            link.loadScenes()
         }
         if let model {
             Section {
@@ -272,11 +283,11 @@ struct LightkeySettingsForm: View {
     }
 }
 
-/// Settings › Integrations › Lightkey & MIDI › Lighting cues: a note per service position.
+/// Settings › Integrations › Prism & MIDI › Lighting cues: a note per service position.
 /// The table is the church's (synced); the switch is this Mac's.
 struct LightingCueTableForm: View {
     let model: AppModel
-    @Bindable private var link = LightkeyLink.shared
+    @Bindable private var link = PrismLink.shared
     @State private var addingCue = false
     @State private var newCueName = ""
     /// Notes typed that weren't saved, by position key, with the reason.
@@ -287,14 +298,14 @@ struct LightingCueTableForm: View {
         let table = ServiceLighting.table(model)
         VStack(alignment: .leading, spacing: 8) {
             Toggle(isOn: $link.followsService) {
-                Text("Change Lightkey scenes with the service").fontWeight(.semibold)
+                Text("Change Prism scenes with the service").fontWeight(.semibold)
             }
             if !link.followsService {
-                Text("Off on this Mac. Teach Lightkey each note below (press Send while a cue is in MIDI learn), then turn this on.")
+                Text("Off on this Mac. Prism's scenes start on these notes; turn this on to have them follow the plan.")
                     .font(.caption).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("When a plan item goes live, Lightkey gets its position's note. Songs count Song 1, Song 2… down the plan. A header named Message, Baptism, Communion and so on gives its items that position; clicking the header while presenting sends it. Right-click a plan item to pick its cue or turn it off.")
+            Text("When a plan item goes live, Prism gets its position's note. Songs count Song 1, Song 2… down the plan. A header named Message, Baptism, Communion and so on gives its items that position; clicking the header while presenting sends it. Right-click a plan item to pick its cue or turn it off.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
@@ -322,7 +333,7 @@ struct LightingCueTableForm: View {
                         .font(.caption).foregroundStyle(.red)
                 }
             }
-            Text("Songs past the last song row use it. Press Send while a Lightkey cue is in MIDI learn. Notes go out on channel \(link.channel); 1–10 (song sections) and 31–54 (the Lightkey Cue action) are left for those.")
+            Text("Songs past the last song row use it. Notes go out on channel \(link.channel). To give a Prism scene one of these notes, press Learn on it in Prism, then Send here.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .alert("Add Cue", isPresented: $addingCue) {

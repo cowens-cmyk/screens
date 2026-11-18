@@ -1864,6 +1864,8 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
     public var midiNumber: Int?
     public var midiValue: Int?
     public var midiDeviceId: String?
+    public var prismCueId: String?
+    public var prismCueName: String?
     public var capturePresetId: String?
     public var capturePrivacy: String?
     public var presentationId: String?
@@ -1891,7 +1893,7 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
     public var serviceItemName: String?
     public var serviceItemRefId: String?
 
-    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, signageId: String? = nil, screenId: String? = nil, delaySeconds: Double? = nil, streamMode: String? = nil, stageMode: String? = nil, serviceId: String? = nil, serviceItemId: String? = nil, planSeries: String? = nil, serviceItemRole: String? = nil, serviceItemName: String? = nil, serviceItemRefId: String? = nil) {
+    public init(id: String, kind: SlideActionKind, layer: String? = nil, presetId: String? = nil, mediaId: String? = nil, alertId: String? = nil, timerId: String? = nil, timerMode: TimerMode? = nil, timerDurationSeconds: Double? = nil, timerHour: Int? = nil, timerMinute: Int? = nil, comboId: String? = nil, midiKind: MIDIMessageKind? = nil, midiChannel: Int? = nil, midiNumber: Int? = nil, midiValue: Int? = nil, midiDeviceId: String? = nil, prismCueId: String? = nil, prismCueName: String? = nil, capturePresetId: String? = nil, capturePrivacy: String? = nil, presentationId: String? = nil, slideIndex: Int? = nil, confidenceLayoutId: String? = nil, confidenceScreenId: String? = nil, overlayId: String? = nil, inputSourceKind: CaptureSourceKind? = nil, inputSourceId: String? = nil, liveInputId: String? = nil, audioInputId: String? = nil, playlistId: String? = nil, audioItemId: String? = nil, audioEntryId: String? = nil, audioRepeat: Bool? = nil, signageId: String? = nil, screenId: String? = nil, delaySeconds: Double? = nil, streamMode: String? = nil, stageMode: String? = nil, serviceId: String? = nil, serviceItemId: String? = nil, planSeries: String? = nil, serviceItemRole: String? = nil, serviceItemName: String? = nil, serviceItemRefId: String? = nil) {
         self.id = id
         self.kind = kind
         self.layer = layer
@@ -1909,6 +1911,8 @@ public struct SlideAction: Codable, Sendable, Equatable, Identifiable {
         self.midiNumber = midiNumber
         self.midiValue = midiValue
         self.midiDeviceId = midiDeviceId
+        self.prismCueId = prismCueId
+        self.prismCueName = prismCueName
         self.capturePresetId = capturePresetId
         self.capturePrivacy = capturePrivacy
         self.presentationId = presentationId

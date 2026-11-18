@@ -112,7 +112,7 @@ struct MediaSettingsPane: View {
 
 // MARK: - Integrations
 
-/// Settings › Integrations: Anthem, Lightkey and MIDI, Shepherd, the
+/// Settings › Integrations: Anthem, Prism and MIDI, Shepherd, the
 /// website's events, and the phone remote and Local API, one at a time.
 struct IntegrationsSettingsPane: View {
     let model: AppModel?
@@ -125,7 +125,7 @@ struct IntegrationsSettingsPane: View {
         VStack(spacing: 0) {
             if let midiDevice {
                 SettingsPageHeader(
-                    backTitle: IntegrationTab.lightkey.title,
+                    backTitle: IntegrationTab.prism.title,
                     title: MIDIDeviceInventory.shared.items.first { $0.id == midiDevice }?.device.name ?? "MIDI Device"
                 ) { self.midiDevice = nil }
                 Divider()
@@ -149,9 +149,9 @@ struct IntegrationsSettingsPane: View {
         case .anthem:
             Form { AnthemSettingsForm() }
                 .settingsForm()
-        case .lightkey:
+        case .prism:
             Form {
-                LightkeySettingsForm(model: model)
+                PrismSettingsForm(model: model)
                 MIDIDevicesSection { midiDevice = $0 }
                 Section {
                     SettingsRow("midi.map") { MIDIMapManager() }

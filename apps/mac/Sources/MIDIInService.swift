@@ -20,7 +20,7 @@ final class MIDIInService: @unchecked Sendable {
     private var anthemUIDs = Set<Int32>()
     /// The "Screens In" virtual destination any app on this Mac can send
     /// to. Not "Screens": that name is Screens' own output source, and two
-    /// ports with one name make Anthem and Lightkey users pick the wrong one.
+    /// ports with one name make Anthem and Prism users pick the wrong one.
     static let destinationName = "Screens In"
     private var destination = MIDIEndpointRef()
     private var destinationUID: Int32 = 0
@@ -231,7 +231,7 @@ final class MIDIInController {
         }
         MIDIInService.shared.setSources(MIDIDeviceInventory.shared.items.inputSourceUIDs)
         MIDIInService.shared.start()
-        LightkeyLink.shared.start()
+        PrismLink.shared.start()
     }
 
     private func receive(sourceUid: Int32, status: UInt8, data1: UInt8, data2: UInt8) {

@@ -672,23 +672,23 @@ struct RunOrderList: View, Equatable {
 
     // MARK: Lighting cues and plan-item macros
 
-    /// What Lightkey gets when the item goes live, in small type at the
+    /// What Prism gets when the item goes live, in small type at the
     /// row's end, and a bolt when macros ride on the item.
     @ViewBuilder
     private func lightingBadges(_ item: ServiceItem, position: ServicePosition?) -> some View {
-        if LightkeyLink.shared.followsService {
+        if PrismLink.shared.followsService {
             if let position {
                 Text(position.title)
                     .font(.caption2)
                     .foregroundStyle(item.lightingCue == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
                     .layoutPriority(2)
-                    .help("Lightkey: \(position.title)" + (item.lightingCue == nil ? "" : " (chosen for this item)"))
+                    .help("Prism: \(position.title)" + (item.lightingCue == nil ? "" : " (chosen for this item)"))
             } else if item.lightingCue == ServicePosition.noneKey {
                 Image(systemName: "lightbulb.slash")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
-                    .help("No Lightkey cue for this item")
+                    .help("No Prism cue for this item")
             }
         }
         if let actions = item.actions, !actions.isEmpty {

@@ -2749,6 +2749,12 @@
         "midiDeviceId": {
           "type": "string"
         },
+        "prismCueId": {
+          "type": "string"
+        },
+        "prismCueName": {
+          "type": "string"
+        },
         "capturePresetId": {
           "type": "string"
         },

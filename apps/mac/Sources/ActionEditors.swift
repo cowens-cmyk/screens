@@ -230,6 +230,29 @@ struct ActionParameterFields: View {
                     Text(entry.name).tag(entry.id)
                 }
             }
+        case .midiOut where PrismScenes.isPrism(action):
+            // A Prism action names a scene; its note and channel follow
+            // Prism and Settings.
+            let scenes = PrismLink.shared.sceneChoices(model)
+            Picker("Scene", selection: Binding(
+                get: { action.prismCueId ?? "" },
+                set: { id in
+                    guard let scene = scenes.first(where: { $0.id == id }) else { return }
+                    update(action.id) {
+                        $0.midiDeviceId = PrismScenes.deviceID
+                        $0.midiNumber = scene.note
+                        $0.prismCueId = scene.id
+                        $0.prismCueName = scene.name
+                    }
+                }
+            )) {
+                if action.prismCueId == nil || !scenes.contains(where: { $0.id == action.prismCueId }) {
+                    Text(PrismScenes.label(for: action)).tag(action.prismCueId ?? "")
+                }
+                ForEach(scenes) { scene in
+                    Text(scene.note == nil ? "\(scene.name) (no note in Prism)" : scene.name).tag(scene.id)
+                }
+            }
         case .midiOut:
             Picker("Device", selection: stringBinding(action, \.midiDeviceId)) {
 
@@ -617,17 +640,9 @@ struct AddActionMenuItems: View {
             Button("Turn On Microphone (Listen for Scripture)") { add(make(.listenStart)) }
             Button("Turn Off Microphone") { add(make(.listenStop)) }
         }
-        Menu("Lightkey Cue") {
-            ForEach(1...24, id: \.self) { note in
-                Button("Cue note \(note)") {
-                    add(make(.midiOut) {
-                        $0.midiDeviceId = LightkeyLink.deviceID
-                        $0.midiKind = .noteOn
-                        $0.midiChannel = LightkeyLink.shared.channel
-                        $0.midiNumber = 30 + note
-                        $0.midiValue = 127
-                    })
-                }
+        Menu("Prism Scene") {
+            PrismSceneMenuItems(model: model, current: nil) { scene in
+                if let scene { add(PrismScenes.action(for: scene)) }
             }
         }
         Menu("Clear") {
@@ -734,5 +749,41 @@ struct AddActionMenuItems: View {
 
     private func entries(of kind: DocumentKind) -> [LibraryIndex.Entry] {
         model.entries(of: kind)
+    }
+}
+
+/// Prism's scenes as menu items: a slide's right-click › Prism, and Add
+/// Action › Prism Scene. The scene the slide already cues is ticked, and
+/// None takes it off. A scene without a note in Prism can't be reached
+/// from Screens, so it shows but can't be picked.
+struct PrismSceneMenuItems: View {
+    let model: AppModel
+    /// The scene id the slide cues now; nil when choosing for a new action.
+    var current: String?
+    /// Whether None shows, for slides that already cue a scene.
+    var offersNone = false
+    let choose: (PrismScene?) -> Void
+
+    var body: some View {
+        let link = PrismLink.shared
+        let scenes = link.sceneChoices(model)
+        if link.prismScenes.isEmpty {
+            Text("Prism isn\u{2019}t on this Mac: its starting scenes")
+        }
+        ForEach(scenes) { scene in
+            if scene.note == nil {
+                Button("\(scene.name) (no note in Prism)") {}
+                    .disabled(true)
+            } else {
+                Toggle(scene.name, isOn: Binding(
+                    get: { current == scene.id },
+                    set: { _ in choose(scene) }
+                ))
+            }
+        }
+        if offersNone {
+            Divider()
+            Button("None") { choose(nil) }
+        }
     }
 }

@@ -5,7 +5,7 @@ import SwiftUI
 /// Settings layout checks without screenshots (other apps can't capture this
 /// Mac's screen): SCREENS_SETTINGS_PROBE lists the panes to open and the
 /// window sizes to open them at, e.g.
-/// "integrations:lightkey@1030x710,general@min,stage@min~end" (~end scrolls
+/// "integrations:prism@1030x710,general@min,stage@min~end" (~end scrolls
 /// to the bottom). Each one is drawn to a PNG in SCREENS_SETTINGS_PROBE_DIR,
 /// and the window's frames go to stderr, with any view that reaches past the
 /// window's edges. Run it on a test library with MXU_SKIP_KEYCHAIN=1, as it
@@ -130,7 +130,7 @@ enum SettingsLayoutProbe {
     /// The tabs as a row of segments where they fit, a pop-up where not.
     private static func checkSegmentsFallback(into folder: URL) {
         struct Holder: View {
-            @State var tab = IntegrationTab.lightkey
+            @State var tab = IntegrationTab.prism
             var body: some View {
                 SettingsSegments(choices: IntegrationTab.allCases, title: \.title, selection: $tab)
                     .padding(10).background(Color.basePlane)
