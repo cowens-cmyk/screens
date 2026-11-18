@@ -20,8 +20,10 @@ struct AddSlideMenuItems: View {
         Button("Slide from Theme\u{2026}", systemImage: "paintpalette", action: choices.fromTheme)
         Button("From Media Library\u{2026}", systemImage: "photo.on.rectangle", action: choices.fromMedia)
         Button("Blank Slide", systemImage: "rectangle", action: choices.blank)
-        Button("Browser\u{2026}", systemImage: "globe") {
-            if let site = BrowserSitePrompt.ask(current: nil) { choices.browser(site) }
+        if ChurchBrowserWindow.isOn {
+            Button("Browser\u{2026}", systemImage: "globe") {
+                if let site = BrowserSitePrompt.ask(current: nil) { choices.browser(site) }
+            }
         }
     }
 }
