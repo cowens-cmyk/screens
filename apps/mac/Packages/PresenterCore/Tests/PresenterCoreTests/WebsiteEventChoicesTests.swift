@@ -55,3 +55,15 @@ import Testing
         calendar: StudentsHangTime.calendar)
     #expect(listed.first { $0.event.slug == "g" }?.hidden == true)
 }
+
+@Test func aSlidesEventIsLeftOutByItsName() {
+    let event = WebsiteEvent(
+        slug: "g-1125", title: "Hope Students Gathering (Nov 25)", baseTitle: "Hope Students Gathering",
+        startDate: "2026-11-25", image: "https://media.hopejc.org/g.jpg", calendars: ["students"])
+    let key = WebsiteEvents.key(event)
+    let tag = WebsiteEventTag(key: key, slug: event.slug, title: event.title, startDate: event.startDate, imageUrl: event.image!)
+    let name = WebsiteEvents.hideName(of: tag)
+    let settings = WebsiteEvents.setting(nil, hidden: true, baseTitle: name)
+    #expect(WebsiteEvents.Options(settings).hidden.contains(WebsiteEvents.hideKey(event.baseTitle)),
+            "every later Gathering is left out too")
+}

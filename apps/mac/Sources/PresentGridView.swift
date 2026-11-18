@@ -1271,6 +1271,10 @@ struct SlideGridBody: View {
             HotDefaults.setAppMode(.edit)
         }
         Button("Quick Edit…") { quickEditSlide = slide }
+        if let event = slide.sourceEvent {
+            Button("Don\u{2019}t Show This Event") { WebsiteEventSync.shared.hide(event) }
+                .help("Leaves \(event.title) out of the slideshow, and its later dates too. Settings › Integrations › Website brings it back.")
+        }
         // A song's chords for the stage display, on this slide.
         if presentation.presentationKind == .song || slide.objects.contains(where: { !($0.chords ?? []).isEmpty }) {
             Button("Edit Chords…") { chordsSlide = IdentifiedID(id: slide.id) }
@@ -2061,6 +2065,10 @@ struct SlideTile: View {
             tileShape.strokeBorder(Color.accentColor, lineWidth: 2)
         } else if isNext {
             tileShape.strokeBorder(Color.primary.opacity(0.55), lineWidth: 1.5)
+        } else if slide.sourceEvent != nil {
+            // Added from hopejc.org: a gold dashed edge, so it's told apart
+            // from slides made by hand (right-click › Don't Show This Event).
+            tileShape.strokeBorder(HopeStyle.amber, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
         } else {
             tileShape.strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
         }
@@ -2089,10 +2097,10 @@ struct SlideTile: View {
             // Added from the church's events page; it comes down by itself.
             Text("hopejc.org")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(Color.secondary)
+                .foregroundStyle(HopeStyle.amber)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
-                .background(Color(.sRGB, white: 0.5).opacity(0.25), in: Capsule())
+                .background(HopeStyle.amber.opacity(0.18), in: Capsule())
                 .tileHelp(WebsiteEventWords.tileHelp(event))
         }
         if stepCount > 0 {

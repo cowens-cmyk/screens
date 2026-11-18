@@ -149,6 +149,14 @@ final class WebsiteEventSync {
         }
     }
 
+    /// Right-click › Don't Show This Event on one of its slides: left out of
+    /// both slideshows from now on, its later dates included. The slide
+    /// comes out on the next pass (once it's off the screens).
+    func hide(_ tag: WebsiteEventTag) {
+        let name = WebsiteEvents.hideName(of: tag)
+        update { $0 = WebsiteEvents.setting($0, hidden: true, baseTitle: name) }
+    }
+
     /// Settings changed here or on another Mac: the slides follow soon after.
     private func watchSettings() {
         guard let model else { return }

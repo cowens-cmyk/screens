@@ -679,6 +679,9 @@ struct SlideEditorView: View {
                 Button("Rename Slide") { beginSlideRename(slide) }
                 if !model.isThemeEditor {
                     Button("Quick Edit…") { quickEditTarget = QuickEditTarget(id: slide.id) }
+                    if let event = slide.sourceEvent {
+                        Button("Don\u{2019}t Show This Event") { WebsiteEventSync.shared.hide(event) }
+                    }
                     if model.presentation.presentationKind == .song {
                         Button("Edit Chords…") { chordsSlideTarget = QuickEditTarget(id: slide.id) }
                     }
