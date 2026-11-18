@@ -132,15 +132,15 @@ struct LocalAPIRemoteQRRow: View {
             let token = api.defaultKeySecret
             let url = Self.remoteURL(address: address, token: token)
             HStack(alignment: .top, spacing: 14) {
-                if let image = QRCode.image(for: url) {
-                    Image(decorative: image, scale: 1)
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 148, height: 148)
-                        .padding(8)
-                        .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
+                QRCodeTile(url: url)
                 VStack(alignment: .leading, spacing: 6) {
+                    Text("On this Mac\u{2019}s network").font(.headline)
+                    // The usual reason it never loads: the phone is on
+                    // guest Wi-Fi, another network or cellular.
+                    Text("Fastest, but only for a phone on the same network as this Mac\(NetworkInfo.networkHint().map { " (\($0))" } ?? ""). On other Wi-Fi or cellular it won\u{2019}t load: use Anywhere.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 6) {
                         Text(verbatim: "http://\(address)/remote")
                             .font(.system(size: 11).monospaced())
@@ -167,6 +167,74 @@ struct LocalAPIRemoteQRRow: View {
             Text("This Mac isn't on a network yet")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// A QR code on white, the size a phone camera reads from across a desk.
+struct QRCodeTile: View {
+    let url: String
+
+    var body: some View {
+        if let image = QRCode.image(for: url) {
+            Image(decorative: image, scale: 1)
+                .interpolation(.none)
+                .resizable()
+                .frame(width: 148, height: 148)
+                .padding(8)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+}
+
+/// The CMS's phone remote: works on any Wi-Fi or cellular, through the
+/// church library's link, after signing in. Says whether this Mac follows
+/// it now, and why not when it doesn't.
+struct PhoneRemoteAnywhereRow: View {
+    @State private var sync = CloudSync.shared
+    @HotDefault(PhoneRemoteController.enabledKey) private var takesCommands = true
+    @HotDefault(ServiceStation.runsServiceKey) private var runsHere = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            QRCodeTile(url: PhoneRemoteController.cmsURL)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Anywhere").font(.headline)
+                Text("Any Wi-Fi or cellular. Sign in with a CMS account the first time; the phone remembers it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    Text(verbatim: PhoneRemoteController.cmsURL)
+                        .font(.system(size: 11).monospaced())
+                        .textSelection(.enabled)
+                    CopyGlyphButton(value: PhoneRemoteController.cmsURL)
+                }
+                Label(state.text, systemImage: state.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(state.ok ? .green : .orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                Toggle("Take commands from the CMS on this Mac", isOn: $takesCommands)
+                    .font(.caption)
+            }
+        }
+    }
+
+    private var state: (ok: Bool, text: String) {
+        if !sync.isLinked {
+            return (false, "This Mac isn\u{2019}t linked to the church library (Integrations \u{203A} Sync), so the CMS can\u{2019}t reach it.")
+        }
+        if !runsHere {
+            return (false, "Only the Mac with Run on this Mac on (Service Day) follows it. This Mac doesn\u{2019}t.")
+        }
+        if !takesCommands {
+            return (false, "Off on this Mac.")
+        }
+        switch sync.status {
+        case .live, .catchingUp:
+            return (true, "This Mac follows it now.")
+        default:
+            return (false, "Not connected to the CMS right now. It follows again as soon as it reconnects.")
         }
     }
 }

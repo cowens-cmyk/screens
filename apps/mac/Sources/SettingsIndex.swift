@@ -426,7 +426,7 @@ enum SettingsIndex {
         SettingsEntry(
             id: "api.remote", category: .integrations, tab: .remote,
             title: "Phone remote",
-            caption: "Scan with a phone or iPad on the same Wi-Fi to open the remote.",
+            caption: "Anywhere works on any Wi-Fi or cellular through the CMS; the other is for a phone on this Mac's own network.",
             keywords: "remote phone iphone ipad qr code scan pastor worship leader booth message home screen"),
         SettingsEntry(
             id: "booth.enabled", category: .integrations, tab: .remote,

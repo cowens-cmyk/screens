@@ -8,12 +8,16 @@ public final class LocalAPIServer: @unchecked Sendable {
         public var serviceName: String
         public var advertise: Bool
         public var info: APIServerInfo
+        /// A remote that works off this network (the CMS's), which the
+        /// phone page offers when it can't reach this Mac.
+        public var anywhereURL: String?
 
-        public init(port: UInt16, serviceName: String, advertise: Bool, info: APIServerInfo) {
+        public init(port: UInt16, serviceName: String, advertise: Bool, info: APIServerInfo, anywhereURL: String? = nil) {
             self.port = port
             self.serviceName = serviceName
             self.advertise = advertise
             self.info = info
+            self.anywhereURL = anywhereURL
         }
     }
 
@@ -79,6 +83,7 @@ public final class LocalAPIServer: @unchecked Sendable {
         }
 
         let serviceName = configuration.serviceName
+        let anywhereURL = configuration.anywhereURL
         for path in ["/", "/remote"] {
             await http.appendRoute(HTTPRoute("GET \(path)")) { _ in
                 HTTPResponse(
@@ -87,7 +92,7 @@ public final class LocalAPIServer: @unchecked Sendable {
                         HTTPHeader("Content-Type"): "text/html; charset=utf-8",
                         HTTPHeader("Cache-Control"): "no-store",
                     ],
-                    body: Data(RemotePage.html(serviceName: serviceName).utf8)
+                    body: Data(RemotePage.html(serviceName: serviceName, anywhereURL: anywhereURL).utf8)
                 )
             }
         }

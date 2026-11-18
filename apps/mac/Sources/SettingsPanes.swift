@@ -194,6 +194,8 @@ private struct LocalAPISettingsForm: View {
                 Text("Local API")
             }
             Section {
+                PhoneRemoteAnywhereRow()
+                    .padding(.vertical, 4)
                 LocalAPIRemoteQRRow(api: api)
                     .padding(.vertical, 4)
             } header: {
