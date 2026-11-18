@@ -15,6 +15,8 @@ final class InputTrailRecorder {
     /// entries, so typing a stage message would push a scroll out of it.
     private var lastPageScroll: TimeInterval?
     private var lastPageClick: TimeInterval?
+    private var lastGridScroll: TimeInterval?
+    private var lastGridClick: TimeInterval?
     private var lastKeyboardFire: TimeInterval?
 
     private let regions = NSHashTable<InputRegionView>.weakObjects()
@@ -78,6 +80,16 @@ final class InputTrailRecorder {
         lastPageClick.map { ProcessInfo.processInfo.systemUptime - $0 }
     }
 
+    /// A scroll over one song's grid (Show Whole Plan off, or the library).
+    func sinceGridScroll() -> TimeInterval? {
+        lastGridScroll.map { ProcessInfo.processInfo.systemUptime - $0 }
+    }
+
+    /// A click on one song's grid.
+    func sinceGridClick() -> TimeInterval? {
+        lastGridClick.map { ProcessInfo.processInfo.systemUptime - $0 }
+    }
+
     func sinceFocusScroll() -> TimeInterval? {
         lastFocusScroll.map { ProcessInfo.processInfo.systemUptime - $0 }
     }
@@ -100,6 +112,7 @@ final class InputTrailRecorder {
         case .scrollWheel:
             let place = region(at: event.locationInWindow, in: event.window)
             if place == Self.page { lastPageScroll = now }
+            if place == Self.grid { lastGridScroll = now }
             what = "scroll in \(place)"
         case .rightMouseDown:
             what = "right-click in \(region(at: event.locationInWindow, in: event.window))"
@@ -109,6 +122,7 @@ final class InputTrailRecorder {
             let click = event.clickCount > 1 ? "double-click" : "click"
             let place = region(at: event.locationInWindow, in: event.window)
             if place == Self.page { lastPageClick = now }
+            if place == Self.grid { lastGridClick = now }
             what = "\(click) in \(place)"
         }
 
@@ -117,6 +131,8 @@ final class InputTrailRecorder {
 
     /// The whole-plan page's region name (ServiceContinuousView).
     private static let page = "present"
+    /// One song's grid (PresentGridView).
+    static let grid = "single deck"
 
     private func region(at point: NSPoint, in window: NSWindow?) -> String {
         let hits = regions.allObjects.filter { view in
@@ -400,14 +416,27 @@ final class PresentCardFrames {
         if docGrids[grid.id] != grid { docGrids[grid.id] = grid }
     }
 
-    func reveal(_ id: String, slide: Int, headerHeight: CGFloat, cause: String = "keyboard") {
+    /// Scrolls the live slide into the middle of the page (`centers`), or
+    /// only as far as needed, and then far enough that the slide after it
+    /// shows too.
+    func reveal(_ id: String, slide: Int, headerHeight: CGFloat, cause: String = "keyboard", centers: Bool = true) {
         let insets = scrollView?.contentInsets ?? NSEdgeInsets()
-        if let grid = docGrids[id], let scrollView,
-           let delta = PresentLanding.reveal(
-               rowTop: PresentLanding.rowTop(slide: slide, in: grid) - Self.offsetFromTop(scrollView) - insets.top,
-               rowPitch: grid.rowPitch,
-               viewport: scrollView.contentView.bounds.height - insets.top - insets.bottom,
-               topInset: headerHeight) {
+        guard let grid = docGrids[id], let scrollView else { return }
+        let offset = Self.offsetFromTop(scrollView) + insets.top
+        let viewport = scrollView.contentView.bounds.height - insets.top - insets.bottom
+        let liveTop = PresentLanding.rowTop(slide: slide, in: grid) - offset
+        var delta: CGFloat = 0
+        if centers, let centring = PresentLanding.reveal(
+            rowTop: liveTop, rowPitch: grid.rowPitch, viewport: viewport, topInset: headerHeight) {
+            delta = centring
+        }
+        if slide + 1 < grid.count, let more = PresentLanding.revealNext(
+            liveRowTop: liveTop - delta,
+            nextRowTop: PresentLanding.rowTop(slide: slide + 1, in: grid) - offset - delta,
+            rowPitch: grid.rowPitch, viewport: viewport, topInset: headerHeight) {
+            delta += more
+        }
+        if abs(delta) >= 0.5 {
             InputTrailRecorder.shared.noteFocusScroll()
             Self.scroll(scrollView, by: delta)
             let name = rows.first { $0.id == id }?.name ?? "-"

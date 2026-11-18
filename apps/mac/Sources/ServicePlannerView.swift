@@ -1114,6 +1114,7 @@ struct ServiceItemDetailView: View {
                     serviceID: serviceID, serviceItem: item
                 )
                 .id(item.id)
+                .inputRegion(InputTrailRecorder.grid)
             case .media:
                 MediaFireView(model: model, controls: controls, mediaID: item.refId, serviceItemID: item.id)
             case .audio:

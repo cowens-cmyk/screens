@@ -110,6 +110,11 @@ struct PresentGridView: View {
                 }
 
                 .background(KeyboardFireFollow(controls: controls) { revealLive(proxy) })
+                // Everything else that puts a slide up: a click, the
+                // remote, Anthem, a slide's own timing.
+                .background(LiveTileFollow(controls: controls, contextID: fireContext) {
+                    followLive(proxy, count: slides.count)
+                })
 
                 .onDeleteCommand { deleteRequests += 1 }
 
@@ -155,6 +160,29 @@ struct PresentGridView: View {
     private func revealLive(_ proxy: ScrollViewProxy) {
         if let controls, controls.liveContextID == fireContext, let occurrence = controls.liveOccurrence {
             proxy.scrollTo(SlideGridBody.tileAnchor(contextID: fireContext, index: occurrence), anchor: .center)
+        }
+    }
+
+    /// A slide of this grid went live some way other than an arrow key
+    /// here: the grid scrolls only as far as it takes to show it and the
+    /// slide after it, so clicking through a song brings up the next row.
+    /// It stays put for a few seconds after the operator scrolls it.
+    private func followLive(_ proxy: ScrollViewProxy, count: Int) {
+        guard let controls, controls.liveContextID == fireContext,
+              let occurrence = controls.liveOccurrence else { return }
+        let recorder = InputTrailRecorder.shared
+        // An arrow key here already centred it.
+        if let key = recorder.sinceKey(), key < PresentFollowRule.clickWindow { return }
+        if let scroll = recorder.sinceGridScroll(), scroll < PresentFollowRule.scrollPause,
+           (recorder.sinceGridClick() ?? .infinity) > scroll {
+            return
+        }
+        proxy.scrollTo(SlideGridBody.tileAnchor(contextID: fireContext, index: occurrence))
+        guard occurrence + 1 < count else { return }
+        // After the live tile has settled, so the two don't fight: the
+        // next one, which only moves the grid when it's below the edge.
+        DispatchQueue.main.async {
+            proxy.scrollTo(SlideGridBody.tileAnchor(contextID: fireContext, index: occurrence + 1))
         }
     }
 
@@ -309,6 +337,23 @@ struct SlideClipboardRequests: Equatable {
         case .selectAll: selectAlls += 1
         case .delete: break
         }
+    }
+}
+
+/// Calls `follow` when a different slide of this grid goes live.
+private struct LiveTileFollow: View {
+    let controls: ServiceControls?
+    let contextID: String
+    let follow: () -> Void
+
+    var body: some View {
+        Color.clear.onChange(of: place) { _, place in
+            if place != nil { follow() }
+        }
+    }
+
+    private var place: Int? {
+        controls?.liveContextID == contextID ? controls?.liveOccurrence : nil
     }
 }
 

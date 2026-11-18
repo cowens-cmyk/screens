@@ -271,6 +271,24 @@ public enum PresentLanding {
             return nil
         }
     }
+
+    /// How far to scroll so the slide after the live one is in view too,
+    /// once the live row is where it'll be; nil when it already is. Going
+    /// through a song by clicking, the next row comes up as the last slide
+    /// of a row goes live, without a hand on the scroll wheel. The live row
+    /// is never pushed above the top to make room, and one above the top
+    /// is brought back down.
+    public static func revealNext(
+        liveRowTop: CGFloat, nextRowTop: CGFloat, rowPitch: CGFloat,
+        viewport: CGFloat, topInset: CGFloat, margin: CGFloat = 12
+    ) -> CGFloat? {
+        let top = topInset + margin
+        if liveRowTop < top - 0.5 { return liveRowTop - top }
+        let overflow = nextRowTop + rowPitch - (viewport - margin)
+        guard overflow > 0.5 else { return nil }
+        let delta = min(overflow, liveRowTop - top)
+        return delta > 0.5 ? delta : nil
+    }
 }
 
 public enum PresentHold {
