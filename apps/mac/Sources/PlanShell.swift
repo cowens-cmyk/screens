@@ -164,6 +164,16 @@ struct PlanShell: View {
                 syncSidebar()
             })
             .onChange(of: model.selectedEntryID) { _, _ in resetEditorFace() }
+            // A theme or stage layout opened from a menu (Theme Editor) isn't
+            // a plan item: let go of the item, or the editor keeps showing
+            // the item's slides instead. Counted, so opening the same theme
+            // again still works.
+            .onChange(of: model.editorOpenCount) { _, _ in
+                if let id = model.selectedEntryID, let kind = model.indexEntry(id)?.kind,
+                   kind == .theme || kind == .confidenceLayout {
+                    itemID = nil
+                }
+            }
             .onChange(of: modeRaw) { _, _ in resetEditorFace() }
             .onChange(of: model.pendingEditorSlideID) { _, slideID in
                 if slideID != nil, stageEdit != nil || songWordsEditor {
@@ -1382,6 +1392,13 @@ struct PlanShell: View {
         if !model.sharedSlotsToMake(for: needing).isEmpty {
             Task {
                 guard await model.makeSharedPresentationsIfNeeded(for: needing) else { return }
+                ensurePlanOpeners()
+            }
+        }
+        // Hope Students plans get their own Transition, copied from Sunday's.
+        if model.studentsTransitionNeeded(for: needing) {
+            Task {
+                guard await model.makeStudentsTransitionIfNeeded(for: needing) else { return }
                 ensurePlanOpeners()
             }
         }

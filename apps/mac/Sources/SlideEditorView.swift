@@ -50,6 +50,8 @@ struct SlideEditorView: View {
     @State private var showingArrangement = false
     @State private var showingReflow = false
     @State private var showingChords = false
+    /// A slide's right-click › Edit Chords….
+    @State private var chordsSlideTarget: QuickEditTarget?
 
     @HotDefault("shell.sidebarVisible") private var sidebarVisible = true
 
@@ -677,6 +679,21 @@ struct SlideEditorView: View {
                 Button("Rename Slide") { beginSlideRename(slide) }
                 if !model.isThemeEditor {
                     Button("Quick Edit…") { quickEditTarget = QuickEditTarget(id: slide.id) }
+                    if model.presentation.presentationKind == .song {
+                        Button("Edit Chords…") { chordsSlideTarget = QuickEditTarget(id: slide.id) }
+                    }
+                    let files = model.appModel.mediaFiles(on: slide)
+                    if files.count == 1, let item = files.first {
+                        Button("Show in Finder") { model.appModel.showMediaInFinder(item) }
+                            .disabled(model.appModel.isMediaFileMissing(item))
+                    } else if files.count > 1 {
+                        Menu("Show in Finder") {
+                            ForEach(files, id: \.id) { item in
+                                Button(item.name) { model.appModel.showMediaInFinder(item) }
+                                    .disabled(model.appModel.isMediaFileMissing(item))
+                            }
+                        }
+                    }
                     Divider()
                     Button("Start New Section Here…") {
                         newSectionTarget = QuickEditTarget(id: slide.id)
@@ -1186,6 +1203,9 @@ struct SlideEditorView: View {
 
         .sheet(isPresented: $showingChords) {
             ChordEditorSheet(model: model.appModel, presentationID: model.presentation.id)
+        }
+        .sheet(item: $chordsSlideTarget) { target in
+            ChordEditorSheet(model: model.appModel, presentationID: model.presentation.id, slideID: target.id)
         }
         .confirmationDialog(
             "Apply \(pendingThemeID.flatMap { appModel.entry($0)?.name } ?? "this theme") to every slide?",

@@ -1,10 +1,23 @@
 import PresenterCore
 import SwiftUI
 
+/// Chords over a song's words, for the stage display: click above a word to
+/// put a chord there, drag one along, or type the line as ChordPro on the
+/// right. Opened for the whole song (library right-click › Edit Chords…) or
+/// for one slide (a slide's right-click › Edit Chords… on the Present page),
+/// which steps to the slides before and after it.
 struct ChordEditorSheet: View {
     let model: AppModel
     let presentationID: String
+    /// Only this slide's lines; nil shows the whole song.
+    @State var slideID: String?
     @Environment(\.dismiss) private var dismiss
+
+    init(model: AppModel, presentationID: String, slideID: String? = nil) {
+        self.model = model
+        self.presentationID = presentationID
+        _slideID = State(initialValue: slideID)
+    }
 
     @State private var editingChip: ChipID?
     @State private var editingText = ""
@@ -43,7 +56,7 @@ struct ChordEditorSheet: View {
             header
             Divider()
             if let presentation = model.presentation(presentationID) {
-                let rows = Self.rows(of: presentation)
+                let rows = Self.rows(of: presentation).filter { slideID == nil || $0.slideID == slideID }
                 if rows.isEmpty {
                     ContentUnavailableView(
                         "No Lyrics", systemImage: "music.note.list",
@@ -71,7 +84,40 @@ struct ChordEditorSheet: View {
                 ContentUnavailableView("Presentation not found", systemImage: "questionmark.square.dashed")
             }
         }
-        .frame(minWidth: 940, minHeight: 560)
+        .frame(minWidth: 940, minHeight: slideID == nil ? 560 : 300)
+    }
+
+    /// The slides with lines, in order, for stepping one slide at a time.
+    private var slidesWithLines: [String] {
+        guard let presentation = model.presentation(presentationID) else { return [] }
+        var seen = Set<String>()
+        return Self.rows(of: presentation).map(\.slideID).filter { seen.insert($0).inserted }
+    }
+
+    @ViewBuilder
+    private var slideStepper: some View {
+        if let slideID {
+            let order = slidesWithLines
+            let index = order.firstIndex(of: slideID)
+            HStack(spacing: 4) {
+                Button {
+                    commitOpenChip()
+                    if let index, index > 0 { self.slideID = order[index - 1] }
+                } label: { Image(systemName: "chevron.left") }
+                .disabled((index ?? 0) == 0)
+                .help("Previous slide")
+                Button {
+                    commitOpenChip()
+                    if let index, index + 1 < order.count { self.slideID = order[index + 1] }
+                } label: { Image(systemName: "chevron.right") }
+                .disabled(index.map { $0 + 1 >= order.count } ?? true)
+                .help("Next slide")
+                Button("Whole Song") {
+                    commitOpenChip()
+                    self.slideID = nil
+                }
+            }
+        }
     }
 
     private var header: some View {
@@ -90,7 +136,11 @@ struct ChordEditorSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Done") { dismiss() }
+            slideStepper
+            Button("Done") {
+                commitOpenChip()
+                dismiss()
+            }
                 .keyboardShortcut(.defaultAction)
         }
         .padding(12)
