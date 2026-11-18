@@ -196,6 +196,13 @@ public enum WebsiteEvents {
         baseTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
+    /// The name a slide's event is left out by (its key starts with it), so
+    /// right-click › Don't Show This Event covers the event's later dates.
+    public static func hideName(of tag: WebsiteEventTag) -> String {
+        let fromKey = tag.key.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        return fromKey.isEmpty ? tag.title : fromKey
+    }
+
     /// Settings with an event shown or not.
     public static func setting(_ settings: WebsiteEventSettings?, hidden: Bool, baseTitle: String) -> WebsiteEventSettings {
         var next = settings ?? WebsiteEventSettings()
