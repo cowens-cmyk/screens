@@ -104,8 +104,9 @@ public struct ObjectFill: Codable, Sendable, Equatable {
     public var captureSourceId: String?
     public var screenSourceId: String?
     public var liveInputId: String?
+    public var browserURL: String?
 
-    public init(fillKind: FillKind, colorHex: String? = nil, gradientAngleDegrees: Double? = nil, gradientStops: [GradientStop]? = nil, mediaId: String? = nil, mediaScaleMode: MediaScaleMode? = nil, mediaSourceRect: MediaSourceRect? = nil, loops: Bool? = nil, captureSourceKind: CaptureSourceKind? = nil, captureSourceId: String? = nil, screenSourceId: String? = nil, liveInputId: String? = nil) {
+    public init(fillKind: FillKind, colorHex: String? = nil, gradientAngleDegrees: Double? = nil, gradientStops: [GradientStop]? = nil, mediaId: String? = nil, mediaScaleMode: MediaScaleMode? = nil, mediaSourceRect: MediaSourceRect? = nil, loops: Bool? = nil, captureSourceKind: CaptureSourceKind? = nil, captureSourceId: String? = nil, screenSourceId: String? = nil, liveInputId: String? = nil, browserURL: String? = nil) {
         self.fillKind = fillKind
         self.colorHex = colorHex
         self.gradientAngleDegrees = gradientAngleDegrees
@@ -118,6 +119,7 @@ public struct ObjectFill: Codable, Sendable, Equatable {
         self.captureSourceId = captureSourceId
         self.screenSourceId = screenSourceId
         self.liveInputId = liveInputId
+        self.browserURL = browserURL
     }
 }
 

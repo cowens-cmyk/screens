@@ -885,6 +885,12 @@ struct ServiceContinuousPage: View, Equatable {
                                 presentationID,
                                 slide: NewSlideChoice.blank.slide(sectionId: nil, deckThemeId: presentation.themeId),
                                 afterSlideID: nil)
+                        },
+                        browser: { site in
+                            model.insertSlide(
+                                presentationID,
+                                slide: NewSlideChoice.browser(site: site).slide(sectionId: nil, deckThemeId: presentation.themeId),
+                                afterSlideID: nil)
                         }
                     ),
                     dropText: { dropOnEmptyDeck($0, presentationID: presentationID) },
@@ -952,6 +958,14 @@ struct ServiceContinuousPage: View, Equatable {
                                 model.insertSlide(
                                     deck.id,
                                     slide: NewSlideChoice.blank.slide(sectionId: nil, deckThemeId: deck.themeId),
+                                    afterSlideID: nil)
+                            }
+                        },
+                        browser: { site in
+                            presentation(for: item) { deck in
+                                model.insertSlide(
+                                    deck.id,
+                                    slide: NewSlideChoice.browser(site: site).slide(sectionId: nil, deckThemeId: deck.themeId),
                                     afterSlideID: nil)
                             }
                         }

@@ -36,13 +36,19 @@ public enum NewSlide {
 public enum NewSlideChoice: Equatable, Sendable {
     case blank
     case design(themeId: String, design: Slide)
+    /// The Browser window filling the slide, opening `site` when it goes live.
+    case browser(site: String)
 
     public func slide(sectionId: String?, deckThemeId: String) -> Slide {
         switch self {
         case .blank:
-            NewSlide.blank(sectionId: sectionId)
+            return NewSlide.blank(sectionId: sectionId)
         case .design(let themeId, let design):
-            NewSlide.fromDesign(design, themeId: themeId, deckThemeId: deckThemeId, sectionId: sectionId)
+            return NewSlide.fromDesign(design, themeId: themeId, deckThemeId: deckThemeId, sectionId: sectionId)
+        case .browser(let site):
+            var slide = ChurchBrowser.slide(site: site)
+            slide.sectionId = sectionId
+            return slide
         }
     }
 }

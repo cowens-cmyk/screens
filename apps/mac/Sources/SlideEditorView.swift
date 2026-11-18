@@ -685,6 +685,13 @@ struct SlideEditorView: View {
                     if model.presentation.presentationKind == .song {
                         Button("Edit Chords…") { chordsSlideTarget = QuickEditTarget(id: slide.id) }
                     }
+                    if ChurchBrowser.shows(slide) {
+                        Button("Browser Site\u{2026}") {
+                            guard let site = BrowserSitePrompt.ask(current: ChurchBrowser.site(on: slide) ?? "")
+                            else { return }
+                            model.updateSlide(slide.id) { $0 = ChurchBrowser.setting(site: site, on: $0) }
+                        }
+                    }
                     let prismCue = PrismScenes.cue(on: slide)
                     Menu("Prism") {
                         PrismSceneMenuItems(
@@ -1559,7 +1566,8 @@ extension SlideEditorView {
             choices: AddSlideChoices(
                 fromTheme: { model.choosingNewSlide = true },
                 fromMedia: { choosingMediaSlides = true },
-                blank: { model.addSlide(.blank) }
+                blank: { model.addSlide(.blank) },
+                browser: { model.addSlide(.browser(site: $0)) }
             ),
             dropText: { payload in
                 guard !runOnly, !payload.contains("::") else { return false }

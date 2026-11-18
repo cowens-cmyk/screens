@@ -185,6 +185,11 @@
           "name": "liveInputId",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "browserURL",
+          "type": "string",
+          "optional": true
         }
       ]
     },
