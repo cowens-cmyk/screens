@@ -101,7 +101,77 @@ Media dropped onto a slide is still that slide's background
 
 A video's poster is taken at `MediaPosterStore.posterTime(of:)`: the item's
 optional `posterSeconds` (Edit › the video › Trim › **Thumbnail** › Set, at the
-preview playhead), else its in point. The poster's cache key and its on-disk
-fingerprint (`MediaPosterStore.fingerprint(of:)`) include that time, so a new
-frame replaces the old poster everywhere, and an item with no chosen frame
-keeps the fingerprint it always had.
+preview playhead), else 10 seconds past its in point
+(`MediaPosterStore.defaultPosterOffset`): the first frame of most church
+videos is black or a title card. A video shorter than that gives the frame
+halfway through what plays (in point to out point). The poster's cache key
+and its on-disk fingerprint (`MediaPosterStore.fingerprint(of:)`) include that
+time, so a new frame replaces the old poster everywhere. A picture's
+fingerprint never changes.
+
+## The church's own categories
+
+Beside the built-in categories, the church makes its own in the media bin's
+side list: **New Category…** under the categories, a name and an icon (the
+Hope Students or Hope logo, or one of a set of symbols). Right-click one ›
+Edit Category… or Delete Category…. Hope Students, with the Students logo, is
+there until the list is changed for the first time.
+
+A church category is a folder at the top of Media, like a built-in one, so
+what's in it syncs as any move does. The list (name and icon) is
+`SlideBuildingSettings.mediaCategories`, the church-wide settings, so every
+Mac shows the same categories. Rules in `PresenterCore/Library/MediaCategories.swift`
+(tested in `MediaCategoriesAndMissingTests.swift`), the app side in
+`apps/mac/Sources/MediaCategoriesModel.swift`:
+
+- A name is a folder name: `/` and `:` become `-`. It can't be a built-in
+  category's (or All Media), or another church category's, without regard to
+  case.
+- Renaming refiles everything in it and keeps folders made inside it.
+- Deleting takes it off the list only. Its media stays in the folder and in
+  All Media; making the category again brings it back.
+- Media in a church category plays as anything outside Worship Backgrounds
+  does: in front, once.
+- Drop files on its row or grid to import into it; drag tiles onto its row,
+  or right-click › Move to, to file them there.
+
+A Mac on a build from before 0.41 shows only the built-in categories, and a
+change to the church-wide settings made there can drop the list. Update every
+Mac.
+
+## Where the files are
+
+Every picture, video and song added to Screens (dropped on a slide or the
+plan, imported into the Media Library, brought in with a ProPresenter or
+Keynote import, or downloaded from the church library) is copied into one
+folder, and Screens plays only from it: `~/Library/Application
+Support/Screens/Library/blobs` on this Mac, or the `blobs` folder on the
+drive chosen in Settings › Media & Video › Media Storage (Show in Finder
+there opens it). A slide holds a media item's id, never the path of the
+file it came from, so deleting or moving the original changes nothing.
+
+The files are named by their SHA-256 (sync, backups and the drive move check
+each copy against its name), so the folder isn't for sorting by hand: the
+Media Library's categories are where media is organized.
+
+## Missing media when a plan opens
+
+`PlanMissingMediaPrompt` (`apps/mac/Sources/PlanMissingMediaCheck.swift`)
+looks through a plan when it's opened: each item's presentation (every slide,
+section and the deck's own background, through `MediaReferences`), media,
+audio and playlist, in every version. Anything that can't play is listed in a
+sheet straight away (`PlanMissingMedia` in PresenterCore):
+
+- **File not on this Mac**: the item is in the library, its file isn't in
+  the media folder.
+- **Deleted from the library**: a slide or the plan still points at it.
+
+Each row says which plan items use it. **Choose File…** puts a file behind it
+(or brings a deleted one back under the same id, so every slide using it is
+fixed); **Find in a Folder…** searches a folder for exact copies by content.
+Run-Only sees the list without the buttons.
+
+It waits 1.5 seconds after the plan opens, and up to 20 more while files are
+downloading from the church library, then says if the media drive is
+unplugged or files are still downloading. The list updates as files arrive.
+It shows once per plan per launch unless something else goes missing.

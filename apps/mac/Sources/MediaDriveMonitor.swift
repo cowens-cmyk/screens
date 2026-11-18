@@ -262,6 +262,14 @@ struct MediaStorageSection: View {
                 }
             } else {
                 HStack {
+                    // The one folder every picture, video and song in
+                    // Screens plays from. Files are named by their contents
+                    // (which is how sync and the drive move check them), so
+                    // this is for finding it, not for sorting by hand: the
+                    // Media Library is where they're organized.
+                    if let folder = monitor.resolved?.directory, !monitor.isExternal || monitor.isConnected {
+                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+                    }
                     Spacer()
                     if monitor.isExternal {
                         Button("Move Back to This Mac…") { confirmingBack = true }
@@ -278,7 +286,7 @@ struct MediaStorageSection: View {
         } header: {
             Text("Media Storage")
         } footer: {
-            Text("Keep this Mac's pictures, videos and audio on an external SSD instead of its own drive. Every file is copied and checked, then Screens relaunches; the copies on this Mac are removed once it has started from the drive. Videos play straight from the drive, so keep it plugged in during services. Kept per Mac.")
+            Text("Every picture, video and song added to Screens (dropped on a slide or the plan, or imported into the Media Library) is copied into this one folder, and Screens plays only from here. Deleting or moving the original somewhere else changes nothing in Screens. Keep this Mac's pictures, videos and audio on an external SSD instead of its own drive. Every file is copied and checked, then Screens relaunches; the copies on this Mac are removed once it has started from the drive. Videos play straight from the drive, so keep it plugged in during services. Kept per Mac.")
         }
         .task { used = await monitor.usedBytes() }
         .confirmationDialog("Move media back to this Mac?", isPresented: $confirmingBack) {

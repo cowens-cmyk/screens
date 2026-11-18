@@ -1960,6 +1960,10 @@ final class AppModel {
 
     @ObservationIgnored private var fileMissingMemo = ShortLivedMemo<String, Bool>(lifetime: 2)
 
+    /// Missing media already shown for each plan this launch
+    /// (PlanMissingMediaPrompt), by plan id.
+    @ObservationIgnored var missingMediaShown: [String: String] = [:]
+
     @concurrent
     nonisolated private static func mediaReferenceSets(
         reader: LibraryReader, priority: TaskPriority

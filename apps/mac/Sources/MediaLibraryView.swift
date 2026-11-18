@@ -103,28 +103,40 @@ struct MediaLibraryView: View {
     @State private var packDeleteUsedCount = 0
     @State private var newPackTarget: LibraryIndex.Entry?
     @State private var newPackText = ""
+    /// New Category… (an empty definition) or Edit Category….
+    @State private var categoryEditor: CategoryEditorTarget?
+    @State private var categoryDeleteTarget: MediaCategoryDefinition?
 
-    /// All Media or one category; stored by name so the window opens where
-    /// it was left.
+    /// All Media, one category, or one of the church's own categories (by
+    /// its name); stored so the window opens where it was left.
     enum Shown: Hashable {
         case all
         case category(MediaLibraryCategory)
+        case custom(String)
+
+        private static let customPrefix = "custom:"
 
         var rawValue: String {
             switch self {
             case .all: "all"
             case .category(let category): category.rawValue
+            case .custom(let name): Self.customPrefix + name
             }
         }
 
         init(rawValue: String) {
-            self = MediaLibraryCategory(rawValue: rawValue).map(Shown.category) ?? .all
+            if rawValue.hasPrefix(Self.customPrefix) {
+                self = .custom(String(rawValue.dropFirst(Self.customPrefix.count)))
+            } else {
+                self = MediaLibraryCategory(rawValue: rawValue).map(Shown.category) ?? .all
+            }
         }
 
         var title: String {
             switch self {
             case .all: "All Media"
             case .category(let category): category.title
+            case .custom(let name): name
             }
         }
     }
@@ -132,7 +144,19 @@ struct MediaLibraryView: View {
     private var shown: Shown {
         let stored = Shown(rawValue: shownRaw)
         // Music can't be a slide.
-        return picking != nil && stored == .category(.audio) ? .all : stored
+        if picking != nil, stored == .category(.audio) { return .all }
+        // A category removed (here or on another Mac) falls back to All Media.
+        if case .custom(let name) = stored, customCategory(named: name) == nil { return .all }
+        return stored
+    }
+
+    private func customCategory(named name: String) -> MediaCategoryDefinition? {
+        model.mediaCategories.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    struct CategoryEditorTarget: Identifiable {
+        let id = UUID()
+        var editing: MediaCategoryDefinition?
     }
 
     /// The categories on the side; picking leaves out Audio.
@@ -256,9 +280,47 @@ struct MediaLibraryView: View {
                         count: members(of: .category(category), media: media, audio: audio).count,
                         glyph: Self.symbol(for: category))
                 }
+                ForEach(model.mediaCategories, id: \.name) { category in
+                    categoryRow(
+                        .custom(category.name),
+                        count: members(of: .custom(category.name), media: media, audio: audio).count,
+                        glyph: category.icon)
+                    .contextMenu {
+                        if !runOnly, picking == nil {
+                            Button("Edit Category…") { categoryEditor = CategoryEditorTarget(editing: category) }
+                            Button("Delete Category…", role: .destructive) { categoryDeleteTarget = category }
+                        }
+                    }
+                }
+                if !runOnly, picking == nil {
+                    Button {
+                        categoryEditor = CategoryEditorTarget(editing: nil)
+                    } label: {
+                        Label("New Category…", systemImage: "plus")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 2)
+                }
             }
         }
         .listStyle(.sidebar)
+        .sheet(item: $categoryEditor) { target in
+            MediaCategoryEditor(model: model, editing: target.editing)
+        }
+        .confirmationDialog(
+            "Delete the \u{201C}\(categoryDeleteTarget?.name ?? "")\u{201D} category?",
+            isPresented: Binding(get: { categoryDeleteTarget != nil }, set: { if !$0 { categoryDeleteTarget = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Category", role: .destructive) {
+                if let categoryDeleteTarget { model.removeMediaCategory(categoryDeleteTarget) }
+                categoryDeleteTarget = nil
+            }
+            Button("Cancel", role: .cancel) { categoryDeleteTarget = nil }
+        } message: {
+            Text("Nothing in it is deleted: it stays in All Media, and making the category again brings it back.")
+        }
     }
 
     private func categoryRow(_ row: Shown, count: Int, glyph: String) -> some View {
@@ -268,7 +330,7 @@ struct MediaLibraryView: View {
             openPackName = nil
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: glyph)
+                MediaCategoryIconView(icon: glyph)
                     .frame(width: 18)
                     .foregroundStyle(.secondary)
                 Text(row.title)
@@ -319,6 +381,10 @@ struct MediaLibraryView: View {
         case .category(.audio): audio
         case .category(let category):
             media.filter { MediaLibraryCategory.containing(folder: $0.subkind) == category }
+        case .custom(let name):
+            customCategory(named: name).map { category in
+                media.filter { MediaCategories.containing(folder: $0.subkind, in: [category]) != nil }
+            } ?? []
         }
     }
 
@@ -669,7 +735,13 @@ struct MediaLibraryView: View {
     }
 
     private var shownSymbol: String {
-        if case .category(let category) = shown { Self.symbol(for: category) } else { "photo.on.rectangle.angled" }
+        switch shown {
+        case .category(let category): Self.symbol(for: category)
+        // The empty state wants a symbol; a logo shows as a folder there.
+        case .custom(let name):
+            customCategory(named: name).map { MediaCategoryIcon.logoAsset($0.icon) == nil ? $0.icon : "folder" } ?? "folder"
+        case .all: "photo.on.rectangle.angled"
+        }
     }
 
     private var emptyInvite: String {
@@ -682,6 +754,7 @@ struct MediaLibraryView: View {
         case .category(.announcements): "Drop announcement images here. Event artwork from hopejc.org is added here too."
         case .category(.images): "Drop images here."
         case .category(.audio): "Drop music here."
+        case .custom: "Drop pictures and videos here, or right-click anything in the library › Move to."
         }
     }
 
@@ -775,6 +848,15 @@ struct MediaLibraryView: View {
                         Button(category.title) { model.moveToFolder(entry, folder: category.folder) }
                             .disabled(category == current)
                     }
+                    let churchCategories = model.mediaCategories
+                    if !churchCategories.isEmpty {
+                        Divider()
+                        let currentCustom = MediaCategories.containing(folder: entry.subkind, in: churchCategories)
+                        ForEach(churchCategories, id: \.name) { category in
+                            Button(category.name) { model.moveToFolder(entry, folder: category.name) }
+                                .disabled(currentCustom?.name == category.name)
+                        }
+                    }
                 }
                 if current == .worshipBackgrounds {
                     packMenu(for: entry, packs: packs)
@@ -806,6 +888,13 @@ struct MediaLibraryView: View {
     /// dropped on an open pack's grid it joins the pack. Let go over the
     /// grid it came from, it stays where it is.
     private func file(_ id: String, into row: Shown, pack: String? = nil, leavesPack: Bool = true) -> Bool {
+        if case .custom(let name) = row {
+            guard let category = customCategory(named: name), let entry = model.indexEntry(id), entry.kind == .media,
+                  MediaCategories.containing(folder: entry.subkind, in: [category]) == nil
+            else { return false }
+            model.moveToFolder(entry, folder: category.name)
+            return true
+        }
         guard case .category(let category) = row, let folder = category.folder,
               let entry = model.indexEntry(id), entry.kind == .media
         else { return false }
@@ -848,6 +937,8 @@ struct MediaLibraryView: View {
             }
         case .category(let category):
             await model.importFiles(urls, placement: Self.placement(category))
+        case .custom(let name):
+            await model.importFiles(urls, placement: Self.placement(folder: customCategory(named: name)?.name ?? name))
         case .all:
             var byCategory: [MediaLibraryCategory?: [URL]] = [:]
             for url in urls {
@@ -866,7 +957,11 @@ struct MediaLibraryView: View {
     private static func placement(_ category: MediaLibraryCategory) -> LibraryHome.Placement {
         // Music isn't filed under a media folder: an empty path leaves it
         // where imports usually land.
-        .drive(viewing: LibraryHome.Viewed(kind: .media, area: .team, path: category.folder ?? ""))
+        placement(folder: category.folder ?? "")
+    }
+
+    private static func placement(folder: String) -> LibraryHome.Placement {
+        .drive(viewing: LibraryHome.Viewed(kind: .media, area: .team, path: folder))
     }
 
     private func presentImportPanel(pack: String?) {
