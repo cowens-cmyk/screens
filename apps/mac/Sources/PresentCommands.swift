@@ -45,6 +45,9 @@ struct PresentCommands: Commands {
                 .keyboardShortcut(command: .clearAll)
                 .disabled(controls == nil)
             Divider()
+            // The page the Browser slide shows, in its own window.
+            Button("Open Browser") { ChurchBrowserWindow.open() }
+            Divider()
             // Back to the message's length, stopped, ready for the next
             // service.
             Button("Reset Sermon Timer") { controls?.resetSermonTimer() }

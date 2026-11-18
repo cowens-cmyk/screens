@@ -554,6 +554,17 @@ Prism is the church's lighting app. Screens tells it which scene to show, by MID
 - Prism only follows Screens while its **Follow Screens** is on (Prism › Settings › Screens).
 - Templates keep each item's lighting choice and macros.
 
+## Browser
+
+A web page shown on the screens, driven from its own window: whatever you do in the window (click, scroll, type, play a video) shows on the LED wall while the Browser slide is live.
+
+- **Add Item › Browser** in a plan adds the Browser slide and opens its window. **Present › Open Browser** opens the window any time. The window remembers where it was left, so it can live on the second display.
+- The window has back, forward, reload, an address bar and a mute button for the page's sound. It starts on hopejc.org.
+- Clicking the Browser slide puts the page on the screens and brings its window forward; the arrow keys keep driving the slides. Another slide takes it down.
+- The first time, macOS asks for Screen Recording permission (System Settings › Privacy & Security › Screen & System Audio Recording). Until it's given, the window says so and has **Open Settings**.
+- The mouse pointer isn't shown on the screens. The page's sound plays from the Mac's own output, not the mixer. A video's own full-screen button doesn't work; an embed address (youtube.com/embed/…) fills the page instead.
+- The Browser is a Web Page input (Settings › Media & Video), so any slide's Live Input object can show it too. Each Mac makes its own the first time it's opened there; the Browser presentation is the church's.
+
 ## Phone remote and Local API
 
 Settings › Integrations › Remote & API: **Local API** on/off, **Port**, **Connect at** (open http://address/ in Safari or Chrome on the same Wi-Fi), **Access keys** (required; each grants Watch, Operate or Manage), **API reference**. The phone remote has tabs Show, Slides, Timers, Macros and Stage. Companion and Stream Deck use the same address.

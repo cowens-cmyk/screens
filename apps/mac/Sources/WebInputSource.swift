@@ -50,6 +50,10 @@ final class WebInputSource {
             title: Self.windowTitle(name),
             pixelSize: CGSize(width: width, height: height), muted: muted)
         window.onBackingChanged = { [weak self] in self?.matchBacking() }
+        // Each page's window opens where it was left (on the second
+        // display, say), at its own size for the output.
+        window.window?.setFrameAutosaveName("Web Input \(name)")
+        window.resize(pixelSize: CGSize(width: width, height: height))
         window.load(url)
     }
 
@@ -82,6 +86,12 @@ final class WebInputSource {
         window.showWindow(nil)
         window.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// In front of other windows without taking the keyboard from the
+    /// slides.
+    func bringForward() {
+        window.window?.orderFront(nil)
     }
 
     func load(_ url: String) {

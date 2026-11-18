@@ -353,6 +353,7 @@ final class ServiceControls {
         }
         guard landings == landing else { return }
         actionRouter?.slideDidFire(slide, contextID: contextID)
+        ChurchBrowserWindow.slideWentLive(slide)
         armAutoAdvance(for: slide, in: presentation, keepingMediaAdvance: underVideo)
     }
 
