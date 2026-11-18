@@ -375,9 +375,14 @@ enum SettingsIndex {
             keywords: "punctuation comma period lyrics import songselect paste chord chart clean"),
         SettingsEntry(
             id: "website.events", category: .integrations, tab: .website,
-            title: "Add events from hopejc.org to the pre-service announcements",
-            caption: "Each church event's picture goes in the pre-service slideshow, full screen, and comes out when the event starts. Every Mac keeps them up to date.",
-            keywords: "website hopejc events calendar announcements pre-service preservice slideshow loop promo automatic cms"),
+            title: "Sundays: add church events to the pre-service slideshow",
+            caption: "Each church event's picture from hopejc.org goes in the pre-service slideshow, full screen, and comes out when the event starts. Every Mac keeps them up to date.",
+            keywords: "website hopejc events calendar announcements pre-service preservice slideshow loop promo automatic cms sunday"),
+        SettingsEntry(
+            id: "website.students", category: .integrations, tab: .website,
+            title: "Wednesdays: add Hope Students events to Students Hang Time",
+            caption: "Each Hope Students event's picture from hopejc.org (1920×1080 only) goes in the Students Hang Time slideshow.",
+            keywords: "website hopejc students youth wednesday hang time events slideshow automatic"),
         SettingsEntry(
             id: "website.window", category: .integrations, tab: .website,
             title: "Show events starting within",
@@ -394,9 +399,14 @@ enum SettingsIndex {
             keywords: "website events sync now refresh update"),
         SettingsEntry(
             id: "website.list", category: .integrations, tab: .website,
-            title: "Events",
-            caption: "The events in the slideshow now. Don't show leaves an event out, and every later one with the same name.",
-            keywords: "website events list hide don't show included"),
+            title: "Sunday events",
+            caption: "The events in the pre-service slideshow now. Don't show leaves an event out, and every later one with the same name. Picture › Choose… shows a picture of your own instead of the website's.",
+            keywords: "website events list hide don't show included picture replace own graphic"),
+        SettingsEntry(
+            id: "website.studentsList", category: .integrations, tab: .website,
+            title: "Wednesday events",
+            caption: "The Hope Students events in Students Hang Time now. Don't show leaves out a weekly one such as the Gathering; Picture › Choose… shows a picture of your own instead.",
+            keywords: "website students events list hide don't show gathering weekly picture replace own graphic"),
         SettingsEntry(
             id: "api.enabled", category: .integrations, tab: .remote,
             title: "Local API",

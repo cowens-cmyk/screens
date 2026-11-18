@@ -4967,6 +4967,34 @@
           "name": "hidden",
           "type": "list:string",
           "optional": true
+        },
+        {
+          "name": "preServiceEnabled",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "studentsEnabled",
+          "type": "bool",
+          "optional": true
+        },
+        {
+          "name": "replacements",
+          "type": "list:WebsiteEventReplacement",
+          "optional": true
+        }
+      ]
+    },
+    "WebsiteEventReplacement": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "mediaId",
+          "type": "string"
         }
       ]
     },

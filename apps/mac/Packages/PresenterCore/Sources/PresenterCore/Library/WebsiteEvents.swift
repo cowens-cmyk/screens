@@ -128,9 +128,66 @@ public enum WebsiteEvents {
     }
 
     /// On unless someone turned it off; only the Mac that runs the service
-    /// writes, so being on elsewhere does nothing.
+    /// writes, so being on elsewhere does nothing. True while either
+    /// slideshow is on.
     public static func isEnabled(_ settings: WebsiteEventSettings?) -> Bool {
-        settings?.enabled ?? true
+        Slideshow.allCases.contains { isEnabled(settings, for: $0) }
+    }
+
+    /// The two slideshows the website fills: Sunday's pre-service slideshow
+    /// from the church calendar, and Wednesday's Students Hang Time from the
+    /// students calendar. Each turns off on its own.
+    public enum Slideshow: CaseIterable, Sendable {
+        case preService
+        case students
+    }
+
+    /// Whether one slideshow is filled. `enabled` is the switch from before
+    /// there were two: off, both are off.
+    public static func isEnabled(_ settings: WebsiteEventSettings?, for slideshow: Slideshow) -> Bool {
+        guard settings?.enabled ?? true else { return false }
+        switch slideshow {
+        case .preService: return settings?.preServiceEnabled ?? true
+        case .students: return settings?.studentsEnabled ?? true
+        }
+    }
+
+    /// Settings with one slideshow turned on or off, the other left as it
+    /// was (an old all-off switch becomes both off, then this one set).
+    public static func setting(_ settings: WebsiteEventSettings?, enabled: Bool, for slideshow: Slideshow) -> WebsiteEventSettings {
+        var next = settings ?? WebsiteEventSettings()
+        if next.enabled == false {
+            next.enabled = nil
+            next.preServiceEnabled = false
+            next.studentsEnabled = false
+        }
+        switch slideshow {
+        case .preService: next.preServiceEnabled = enabled ? nil : false
+        case .students: next.studentsEnabled = enabled ? nil : false
+        }
+        return next
+    }
+
+    // MARK: Our own picture
+
+    /// The picture chosen to show instead of the website's for an event,
+    /// by its name, so it covers every occurrence of a repeating event.
+    public static func replacement(_ settings: WebsiteEventSettings?, baseTitle: String) -> String? {
+        let key = hideKey(baseTitle)
+        return settings?.replacements?.first { hideKey($0.title) == key }.map(\.mediaId)
+    }
+
+    /// Settings with an event's picture replaced, or back to the website's
+    /// when `mediaID` is nil.
+    public static func setting(_ settings: WebsiteEventSettings?, replacement mediaID: String?, baseTitle: String) -> WebsiteEventSettings {
+        var next = settings ?? WebsiteEventSettings()
+        let key = hideKey(baseTitle)
+        var list = (next.replacements ?? []).filter { hideKey($0.title) != key }
+        if let mediaID, !mediaID.isEmpty {
+            list.append(WebsiteEventReplacement(title: baseTitle.trimmingCharacters(in: .whitespacesAndNewlines), mediaId: mediaID))
+        }
+        next.replacements = list.isEmpty ? nil : list
+        return next
     }
 
     /// "Don't show" is remembered by the event's name, so it covers every

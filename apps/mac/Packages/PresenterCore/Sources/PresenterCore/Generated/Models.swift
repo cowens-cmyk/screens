@@ -2776,12 +2776,28 @@ public struct WebsiteEventSettings: Codable, Sendable, Equatable {
     public var windowDays: Int?
     public var removeAtEnd: Bool?
     public var hidden: [String]?
+    public var preServiceEnabled: Bool?
+    public var studentsEnabled: Bool?
+    public var replacements: [WebsiteEventReplacement]?
 
-    public init(enabled: Bool? = nil, windowDays: Int? = nil, removeAtEnd: Bool? = nil, hidden: [String]? = nil) {
+    public init(enabled: Bool? = nil, windowDays: Int? = nil, removeAtEnd: Bool? = nil, hidden: [String]? = nil, preServiceEnabled: Bool? = nil, studentsEnabled: Bool? = nil, replacements: [WebsiteEventReplacement]? = nil) {
         self.enabled = enabled
         self.windowDays = windowDays
         self.removeAtEnd = removeAtEnd
         self.hidden = hidden
+        self.preServiceEnabled = preServiceEnabled
+        self.studentsEnabled = studentsEnabled
+        self.replacements = replacements
+    }
+}
+
+public struct WebsiteEventReplacement: Codable, Sendable, Equatable {
+    public var title: String
+    public var mediaId: String
+
+    public init(title: String, mediaId: String) {
+        self.title = title
+        self.mediaId = mediaId
     }
 }
 

@@ -4196,8 +4196,35 @@
           "items": {
             "type": "string"
           }
+        },
+        "preServiceEnabled": {
+          "type": "boolean"
+        },
+        "studentsEnabled": {
+          "type": "boolean"
+        },
+        "replacements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/WebsiteEventReplacement"
+          }
         }
       }
+    },
+    "WebsiteEventReplacement": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "mediaId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "mediaId"
+      ]
     },
     "WebsiteEventTag": {
       "type": "object",

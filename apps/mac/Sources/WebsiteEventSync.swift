@@ -130,7 +130,8 @@ final class WebsiteEventSync {
         }
     }
 
-    /// Whether this Mac writes the slides: the feature is on church-wide.
+    /// Whether this Mac writes the slides: either slideshow is on
+    /// church-wide.
     var writesHere: Bool {
         guard let model else { return false }
         return WebsiteEvents.isEnabled(model.slideBuilding.websiteEvents)
@@ -192,8 +193,8 @@ final class WebsiteEventSync {
                 await fetchStudentsFeed()
             }
             if model != nil {
-                await apply(enabled: WebsiteEvents.isEnabled(settings))
-                await applyStudents(enabled: WebsiteEvents.isEnabled(settings))
+                await apply(enabled: WebsiteEvents.isEnabled(settings, for: .preService))
+                await applyStudents(enabled: WebsiteEvents.isEnabled(settings, for: .students))
             }
             ProcessInfo.processInfo.endActivity(activity)
             isWorking = false
@@ -391,6 +392,11 @@ final class WebsiteEventSync {
         for shown: WebsiteEvents.Shown, in slides: [Slide], fullScreenOnly: Bool = false
     ) async -> String? {
         guard let model else { return nil }
+        // A picture chosen in Settings instead of the website's, whatever
+        // its size: nothing is downloaded for the event.
+        if let id = WebsiteEvents.replacement(settings, baseTitle: shown.event.baseTitle), model.media(id) != nil {
+            return id
+        }
         if fullScreenOnly {
             if wrongSize.contains(shown.imageURL) { return nil }
             guard let id = await mediaID(for: shown, in: slides, fullScreenOnly: false) else { return nil }
@@ -403,9 +409,11 @@ final class WebsiteEventSync {
             }
             return id
         }
+        // The slide's picture, when it is the website's (not one chosen
+        // in its place that has since been taken back).
         if let slide = slides.first(where: { $0.sourceEvent?.key == shown.key }),
            slide.sourceEvent?.imageUrl == shown.imageURL,
-           let id = slide.background?.mediaId, model.media(id) != nil {
+           let id = slide.background?.mediaId, model.media(id)?.sourceUrl == shown.imageURL {
             return id
         }
         if let id = mediaByURL[shown.imageURL], model.media(id) != nil { return id }
