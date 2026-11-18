@@ -157,37 +157,28 @@ struct ServicePositionTests {
         #expect(!ServicePosition.isPreServiceSlideshow(id: "a", name: "Announcements", loops: true, preServicePresentationId: "b"))
     }
 
-    @Test func cueTableDefaultsStayClearOfSectionAndActionNotes() {
+    @Test func cueTableDefaultsStartAtMiddleC() {
         let table = LightingCueTable.defaults
         #expect(table.count == 13)
         #expect(table.map(\.note) == Array(60...72))
         #expect(LightingCueTable.note(for: .walkIn, in: table) == 60)
         #expect(LightingCueTable.note(for: .song(1), in: table) == 62)
         #expect(LightingCueTable.note(for: .communion, in: table) == 72)
-        // Song sections send 1–10 and the Lightkey Cue action 31–54.
-        #expect(table.allSatisfy { row in !LightingCueTable.reservedNotes.contains { $0.contains(row.note) } })
         #expect(LightingCueTable.effective(nil) == table)
         #expect(LightingCueTable.effective([]) == table)
         #expect(LightingCueTable.nextFreeNote(in: table) == 73)
     }
 
-    @Test func addedCuesNeverTakeAReservedNote() {
+    @Test func addedCuesTakeTheFreeNotesBelowOnceTheTopIsFull() {
         var table = LightingCueTable.defaults
-        // Everything above the defaults taken: the next free one is below
-        // them, skipping 31–54 and 1–10.
         table += (73...127).map { LightingCue(position: ServicePosition.custom("C\($0)").key, note: $0) }
         var handed: [Int] = []
-        // 59–55 and 30–11 are all that's left.
-        for _ in 0..<25 {
+        for _ in 0..<3 {
             let note = LightingCueTable.nextFreeNote(in: table)
             handed.append(note)
             table.append(LightingCue(position: ServicePosition.custom("N\(note)").key, note: note))
         }
-        #expect(handed.prefix(5) == [59, 58, 57, 56, 55])
-        #expect(handed[5] == 30)
-        #expect(handed.last == 11)
-        #expect(handed.allSatisfy { note in !LightingCueTable.reservedNotes.contains { $0.contains(note) } })
-        #expect(Set(handed).count == handed.count)
+        #expect(handed == [59, 58, 57])
     }
 
     @Test func anItemGoesLiveOncePerVisit() {
@@ -219,55 +210,16 @@ struct ServicePositionTests {
         #expect(LightingCueTable.customNames(in: table) == ["Prayer"])
     }
 
-    @Test func aMacroWithALightkeyCueIsSeenThroughCombos() {
-        var cue = SlideAction(id: "1", kind: .midiOut)
-        cue.midiDeviceId = "lightkey"
-        var other = SlideAction(id: "2", kind: .midiOut)
-        other.midiDeviceId = "console"
-        var fire = SlideAction(id: "3", kind: .fireCombo)
-        fire.comboId = "outer"
-        var loop = SlideAction(id: "4", kind: .fireCombo)
-        loop.comboId = "loop"
-        var fireInner = SlideAction(id: "5", kind: .fireCombo)
-        fireInner.comboId = "inner"
-        let combos: [String: [SlideAction]] = ["outer": [other, fireInner], "inner": [cue], "loop": [loop]]
-        let lookup = { (id: String) in combos[id] }
-        #expect(LightingCueTable.sendsLightkeyCue([cue], lightkeyDeviceID: "lightkey", combo: lookup))
-        #expect(!LightingCueTable.sendsLightkeyCue([other], lightkeyDeviceID: "lightkey", combo: lookup))
-        #expect(LightingCueTable.sendsLightkeyCue([fire], lightkeyDeviceID: "lightkey", combo: lookup))
-        #expect(!LightingCueTable.sendsLightkeyCue([loop], lightkeyDeviceID: "lightkey", combo: lookup))
-    }
-
-    /// Song 1 on note 4 would go up on every Chorus too: the settings field
-    /// refuses reserved notes, the test note and another row's note.
-    @Test func aCueNoteMustBeFreeAndUnreserved() {
+    /// Two rows on one note would fire both scenes: the settings field
+    /// refuses another row's note, and notes outside 1–127.
+    @Test func aCueNoteMustBeFree() {
         let table = LightingCueTable.defaults
         let song1 = ServicePosition.song(1).key
         #expect(LightingCueTable.noteProblem(62, for: song1, in: table) == nil, "its own note")
         #expect(LightingCueTable.noteProblem(90, for: song1, in: table) == nil)
-        #expect(LightingCueTable.noteProblem(4, for: song1, in: table) == "4 is the Chorus section's note.")
-        #expect(LightingCueTable.noteProblem(40, for: song1, in: table) == "31–54 are left for the Lightkey Cue action.")
+        #expect(LightingCueTable.noteProblem(4, for: song1, in: table) == nil)
         #expect(LightingCueTable.noteProblem(0, for: song1, in: table) != nil)
         #expect(LightingCueTable.noteProblem(128, for: song1, in: table) != nil)
-        #expect(LightingCueTable.noteProblem(-1, for: song1, in: table) != nil)
         #expect(LightingCueTable.noteProblem(60, for: song1, in: table) == "Walk-in already has 60.")
-        for section in LightingCueTable.sectionNotes {
-            #expect(LightingCueTable.noteProblem(section.note, for: song1, in: table) != nil)
-        }
-    }
-
-    /// Section names are spelled many ways; the lights shouldn't care.
-    @Test func sectionNotesIgnoreSpacesHyphensAndCase() {
-        for name in ["Pre-Chorus", "Pre Chorus", "PreChorus", "pre-chorus 2", "PRE CHORUS"] {
-            #expect(LightingCueTable.sectionNote(forName: name) == 3, "\(name)")
-        }
-        #expect(LightingCueTable.sectionNote(forName: "Chorus 2") == 4)
-        #expect(LightingCueTable.sectionNote(forName: "Verse1") == 2)
-        #expect(LightingCueTable.sectionNote(forName: "Instrumental") == 8)
-        #expect(LightingCueTable.sectionNote(forName: "Intro") == 1)
-        #expect(LightingCueTable.sectionNote(forName: "Interlude") == 7)
-        #expect(LightingCueTable.sectionNote(forName: "Ending") == 10)
-        #expect(LightingCueTable.sectionNote(forName: "Blank") == nil)
-        #expect(LightingCueTable.sectionNote(forName: "") == nil)
     }
 }

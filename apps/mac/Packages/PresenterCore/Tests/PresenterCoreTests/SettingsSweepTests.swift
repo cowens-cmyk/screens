@@ -40,7 +40,7 @@ import Testing
             "present.continuous", "present.slidesAcross", "present.roundedCorners", "present.legibleText",
             "present.transparencyGrid", "present.scopedBackgrounds", "present.nextSkipsBlanks",
             "present.layouts", "present.runOnly", "present.types",
-            "avInputs.cameras", "avInputs.audio", "midi.devices", "midi.lightkey", "midi.map",
+            "avInputs.cameras", "avInputs.audio", "midi.devices", "midi.prism", "midi.map",
             "network.ndi", "show.typeScreens", "show.decklink", "show.liveAssist",
             "bible.sermon", "bible.themes", "bible.sources", "api.assistant",
             "anthem.link", "shepherd.sync",

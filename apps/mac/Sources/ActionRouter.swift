@@ -289,12 +289,8 @@ final class ActionRouter {
                 durationSeconds: action.timerDurationSeconds,
                 hour: action.timerHour, minute: action.timerMinute
             )
-        case .midiOut where action.midiDeviceId == LightkeyLink.deviceID:
-            LightkeyLink.shared.send(
-                kind: action.midiKind ?? .noteOn,
-                channel: action.midiChannel ?? LightkeyLink.shared.channel,
-                number: action.midiNumber ?? 0,
-                value: action.midiValue ?? 127)
+        case .midiOut where PrismScenes.isPrism(action):
+            PrismLink.shared.fire(action)
         case .midiOut:
             switch MIDIOutTarget.resolve(
                 deviceId: action.midiDeviceId, items: MIDIDeviceInventory.shared.items
@@ -429,7 +425,7 @@ final class MIDIOutService: @unchecked Sendable {
     private var client = MIDIClientRef()
     private var port = MIDIPortRef()
     /// A virtual source named "Screens" that every message is also sent from,
-    /// so Lightkey (or any MIDI app) can listen to Screens directly — no IAC
+    /// so Prism (or any MIDI app) can listen to Screens directly — no IAC
     /// bus or Audio MIDI Setup needed.
     private var virtualSource = MIDIEndpointRef()
     private var ready = false
@@ -502,9 +498,9 @@ final class MIDIOutService: @unchecked Sendable {
         }
     }
 
-    /// To Lightkey: the "Screens" virtual source (Lightkey on this Mac) and,
-    /// when given, a network MIDI session (Lightkey on another Mac).
-    func sendToLightkey(
+    /// To Prism: the "Screens" virtual source (Prism on this Mac) and,
+    /// when given, a network MIDI session (Prism on another Mac).
+    func sendToPrism(
         kind: MIDIMessageKind, channel: Int, number: Int, value: Int, network: MIDIEndpointRef?
     ) {
         lock.lock()

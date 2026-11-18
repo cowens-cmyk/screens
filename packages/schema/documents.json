@@ -3333,6 +3333,16 @@
           "optional": true
         },
         {
+          "name": "prismCueId",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "prismCueName",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "capturePresetId",
           "type": "string",
           "optional": true

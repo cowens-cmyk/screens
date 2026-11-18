@@ -57,7 +57,7 @@ final class AnthemFeed {
         }
     }
     /// Read Anthem's notes with Anthem's numbers rather than the MIDI input
-    /// map in Settings › Integrations › Lightkey & MIDI.
+    /// map in Settings › Integrations › Prism & MIDI.
     var midiUsesAnthemNotes: Bool {
         didSet { UserDefaults.standard.set(midiUsesAnthemNotes, forKey: "anthem.midi.anthemNotes") }
     }

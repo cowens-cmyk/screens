@@ -1073,6 +1073,7 @@ struct SlideGridBody: View {
                 actionPlacement = ActionPlacement(slideIDs: slideIDs, draft: action)
             }
         }
+        prismMenu(slideIDs)
         let kinds = SlideBulkEdit.actionKinds(on: slideIDs, in: presentation.slides)
         if !kinds.isEmpty {
             Menu("Remove Action") {
@@ -1306,6 +1307,8 @@ struct SlideGridBody: View {
                 }
             }
         }
+
+        prismMenu([slide.id])
 
         ForEach(cueMediaIDs(of: slide), id: \.self) { mediaID in
             Menu(model.media(mediaID)?.name ?? "Media") {
@@ -1676,6 +1679,32 @@ struct SlideGridBody: View {
         }
         return model.setSlideBackground(
             presentationID: presentation.id, slideID: slide.id, mediaID: payload)
+    }
+
+    /// Right-click › Prism: the scene these slides cue when they go up.
+    /// The one they all cue is ticked.
+    private func prismMenu(_ slideIDs: [String]) -> some View {
+        let cues = presentation.slides
+            .filter { slideIDs.contains($0.id) }
+            .map { PrismScenes.cue(on: $0)?.prismCueId }
+        let current = Set(cues).count == 1 ? cues.first ?? nil : nil
+        return Menu("Prism") {
+            PrismSceneMenuItems(
+                model: model, current: current,
+                offersNone: cues.contains { $0 != nil }
+            ) { scene in
+                setPrismScene(scene, on: slideIDs)
+            }
+        }
+    }
+
+    private func setPrismScene(_ scene: PrismScene?, on slideIDs: [String]) {
+        let ids = Set(slideIDs)
+        model.updateSlides(presentationID: presentation.id, undoLabel: "Prism Scene") { deck in
+            for index in deck.slides.indices where ids.contains(deck.slides[index].id) {
+                deck.slides[index] = PrismScenes.setting(scene, on: deck.slides[index])
+            }
+        }
     }
 
     private func appendSlideAction(_ action: SlideAction, to slide: Slide) {
@@ -2339,6 +2368,7 @@ func slideActionLabel(
     case .timerReset: "Reset Timer: \(timerName(action.timerId))"
     case .timerConfigure:
         "Configure Timer: \(timerName(action.timerId))\(configureDetail(action))"
+    case .midiOut where PrismScenes.isPrism(action): PrismScenes.label(for: action)
     case .midiOut: "MIDI Out: ch \(action.midiChannel ?? 1)"
     case .fireCombo: "Run Combo: \(entryName(action.comboId))"
     case .captureStart: "Start Capture: \(entryName(action.capturePresetId))"

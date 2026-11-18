@@ -390,7 +390,7 @@ private struct AnthemMIDISettings: View {
             Text("MIDI")
         } footer: {
             if feed.followMIDI {
-                Text("Anthem's notes, channel 1: Next 13, Previous 14, Select Item 19, Trigger Slide 20 (velocity is the slide number). The choice covers Anthem's own MIDI source and the Screens In destination, so Anthem can send to either; a message that arrives on both counts once. If another app sends to Screens In, choose MIDI input map. MIDI devices added in Settings › Integrations › Lightkey & MIDI always use the map.")
+                Text("Anthem's notes, channel 1: Next 13, Previous 14, Select Item 19, Trigger Slide 20 (velocity is the slide number). The choice covers Anthem's own MIDI source and the Screens In destination, so Anthem can send to either; a message that arrives on both counts once. If another app sends to Screens In, choose MIDI input map. MIDI devices added in Settings › Integrations › Prism & MIDI always use the map.")
             }
         }
     }
