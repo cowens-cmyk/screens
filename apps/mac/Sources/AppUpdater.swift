@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import PresenterCore
 import Security
 
 /// Updates from the GitHub repository's Releases: checks the latest release
@@ -24,6 +25,7 @@ final class AppUpdater {
         var notes: String
         var dmgURL: URL
         var page: URL?
+        var published: Date? = nil
     }
 
     var checksAutomatically: Bool {
@@ -64,6 +66,9 @@ final class AppUpdater {
         do {
             var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.repository)/releases/latest")!)
             request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+            // Always GitHub's answer now: a check right after a release is
+            // published otherwise gets the cached "latest" from a minute ago.
+            request.cachePolicy = .reloadIgnoringLocalCacheData
             let (data, response) = try await URLSession.shared.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else {
                 status = "No releases published yet."
@@ -109,6 +114,91 @@ final class AppUpdater {
 
     static func isNewer(_ candidate: String, than current: String) -> Bool {
         candidate.compare(current, options: .numeric) == .orderedDescending
+    }
+
+    /// Every release older than this one, newest first.
+    func earlierReleases() async throws -> [Release] {
+        struct GitHubRelease: Decodable {
+            struct Asset: Decodable { var name: String; var browser_download_url: URL }
+            var tag_name: String
+            var draft: Bool?
+            var prerelease: Bool?
+            var body: String?
+            var html_url: URL?
+            var published_at: Date?
+            var assets: [Asset]
+            var dmg: Asset? { assets.first { $0.name.lowercased().hasSuffix(".dmg") } }
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        // GitHub lists at most 100 a page; every page, so every version
+        // ever published can be picked.
+        var all: [GitHubRelease] = []
+        for page in 1 ... 20 {
+            var request = URLRequest(url: URL(
+                string: "https://api.github.com/repos/\(Self.repository)/releases?per_page=100&page=\(page)")!)
+            request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                throw UpdateError.command("GitHub didn't list the releases.")
+            }
+            let batch = try decoder.decode([GitHubRelease].self, from: data)
+            all += batch
+            if batch.count < 100 { break }
+        }
+        let listings = all.map {
+            ReleaseHistory.Listing(
+                tag: $0.tag_name, draft: $0.draft ?? false, prerelease: $0.prerelease ?? false, hasDMG: $0.dmg != nil)
+        }
+        return ReleaseHistory.earlier(listings, than: currentVersion).compactMap { listing in
+            guard let release = all.first(where: { $0.tag_name == listing.tag }), let dmg = release.dmg else { return nil }
+            return Release(
+                version: listing.version, notes: release.body ?? "", dmgURL: dmg.browser_download_url,
+                page: release.html_url, published: release.published_at)
+        }
+    }
+
+    /// Screens › Install Earlier Version…: for when a new release
+    /// misbehaves. The version picked is installed the way an update is;
+    /// Check for Updates brings the newest back.
+    func chooseEarlierVersion() async {
+        isWorking = true
+        let releases: [Release]
+        do {
+            releases = try await earlierReleases()
+        } catch {
+            isWorking = false
+            let alert = NSAlert()
+            alert.messageText = "Couldn't list earlier versions"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+            return
+        }
+        isWorking = false
+        guard !releases.isEmpty else {
+            let alert = NSAlert()
+            alert.messageText = "No earlier versions to install"
+            alert.runModal()
+            return
+        }
+        let dates = DateFormatter()
+        dates.dateFormat = "MMM d"
+        let picker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26), pullsDown: false)
+        for release in releases {
+            picker.addItem(withTitle: release.published.map { "\(release.version)  \u{00B7}  \(dates.string(from: $0))" } ?? release.version)
+        }
+        let alert = NSAlert()
+        alert.messageText = "Install an Earlier Version"
+        alert.informativeText = "You have \(currentVersion). Screens will quit, install the version you pick and reopen. Presentations, plans and settings stay as they are. Check for Updates brings back the newest when you're ready; to stay on the earlier one, turn off automatic checks in Settings \u{203A} Advanced."
+        alert.accessoryView = picker
+        // Cancel comes first so Return (a next-slide key) picks it.
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Install and Relaunch")
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+        let release = releases[picker.indexOfSelectedItem]
+        DiagnosticsStore.shared.note("update.earlier", detail: "\(currentVersion) -> \(release.version)")
+        await install(release)
     }
 
     /// Settings' Install button: the same alert the menu item puts up.

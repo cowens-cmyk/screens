@@ -114,6 +114,10 @@ struct UpdateCommands: Commands {
                 Task { await AppUpdater.shared.check(userInitiated: true) }
             }
             .disabled(runOnly)
+            Button("Install Earlier Version\u{2026}") {
+                Task { await AppUpdater.shared.chooseEarlierVersion() }
+            }
+            .disabled(runOnly)
         }
     }
 }
