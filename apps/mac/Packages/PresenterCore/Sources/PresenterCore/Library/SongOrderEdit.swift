@@ -23,6 +23,33 @@ public enum SongOrderEdit {
         return out
     }
 
+    /// The block at `index` sung again right after itself.
+    public static func duplicating(at index: Int, in order: [String]) -> [String] {
+        guard order.indices.contains(index) else { return order }
+        var out = order
+        out.insert(order[index], at: index + 1)
+        return out
+    }
+
+    /// A copy of an arrangement to change without touching the original:
+    /// a new id, "<name> Copy" (or "Copy 2", …) and never Shepherd's, so
+    /// sync leaves it alone. `nil` copies the song's slide order ("Default").
+    public static func duplicate(
+        _ arrangement: Arrangement?, of presentation: Presentation, id: String = UUID().uuidString
+    ) -> Arrangement? {
+        let order = arrangement?.sectionIds ?? baseOrder(of: presentation)
+        guard !order.isEmpty else { return nil }
+        let base = ShepherdArrangementSync.baseName(arrangement?.name ?? "Default")
+        let taken = Set((presentation.arrangements ?? []).map { $0.name.lowercased() })
+        var name = "\(base) Copy"
+        var number = 2
+        while taken.contains(name.lowercased()) {
+            name = "\(base) Copy \(number)"
+            number += 1
+        }
+        return Arrangement(id: id, name: name, sectionIds: order)
+    }
+
     public static func removing(at index: Int, in order: [String]) -> [String] {
         guard order.indices.contains(index) else { return order }
         var out = order

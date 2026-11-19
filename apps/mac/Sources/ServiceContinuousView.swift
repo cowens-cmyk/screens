@@ -1866,16 +1866,19 @@ struct ArrangementStrip: View {
                         return applied
                     }
                 ))
-                .overlay(alignment: .topTrailing) {
+                .overlay(alignment: .trailing) {
+                    // Inside the pill, so moving onto it keeps the pill
+                    // hovered: one sticking out vanished on the way to it.
                     if !runOnly, hoveredPill == index {
                         Button { removeBlock(index, from: arrangement) } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 11))
                                 .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, Color.secondary)
+                                .foregroundStyle(.white, Color.accentColor)
+                                .background(Circle().fill(.background).padding(1))
                         }
                         .buttonStyle(.plain)
-                        .offset(x: 5, y: -5)
+                        .padding(.trailing, 2)
                         .help("Take this out of the order (⌘Z undoes)")
                     }
                 }
@@ -1884,6 +1887,11 @@ struct ArrangementStrip: View {
                 }
                 .contextMenu {
                     if !runOnly {
+                        Button("Sing Again Right After") {
+                            model.updateArrangement(presentation.id, arrangementID: arrangement.id) {
+                                $0.sectionIds = SongOrderEdit.duplicating(at: index, in: $0.sectionIds)
+                            }
+                        }
                         Button("Remove Section") { removeBlock(index, from: arrangement) }
                     }
                 }
@@ -2035,6 +2043,11 @@ struct ArrangementPicker: View {
 
                 model.addArrangement(presentation.id) { created in
                     selection = created.id
+                }
+            }
+            Button(activeArrangement.map { "Duplicate \u{201C}\($0.name)\u{201D}" } ?? "Duplicate Default") {
+                model.duplicateArrangement(presentation.id, arrangementID: activeArrangement?.id) { copy in
+                    selection = copy.id
                 }
             }
             if let arrangement = activeArrangement {

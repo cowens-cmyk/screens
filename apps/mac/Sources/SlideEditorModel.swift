@@ -1940,6 +1940,21 @@ final class SlideEditorModel {
         return arrangement
     }
 
+    /// A copy of the arrangement right after it; nil copies the slide order.
+    @discardableResult
+    func duplicateArrangement(_ id: String?) -> Arrangement? {
+        guard !isThemeEditor else { return nil }
+        let source = id.flatMap { id in arrangements.first { $0.id == id } }
+        guard let copy = SongOrderEdit.duplicate(source, of: presentation) else { return nil }
+        updateDocument { presentation in
+            var list = presentation.arrangements ?? []
+            let at = source.flatMap { source in list.firstIndex { $0.id == source.id } }.map { $0 + 1 } ?? list.count
+            list.insert(copy, at: at)
+            presentation.arrangements = list
+        }
+        return copy
+    }
+
     func deleteArrangement(_ id: String) {
         updateDocument { presentation in
             presentation.arrangements?.removeAll { $0.id == id }

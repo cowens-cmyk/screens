@@ -45,6 +45,12 @@ struct ArrangementPopover: View {
                     }
                 }
                 .disabled(model.sections.isEmpty)
+                if let arrangement = selectedArrangement {
+                    Button("Duplicate") {
+                        if let copy = model.duplicateArrangement(arrangement.id) { selectedArrangementID = copy.id }
+                    }
+                    .help("A copy of this arrangement to change without touching it")
+                }
                 Spacer()
                 if let arrangement = selectedArrangement {
                     Button("Delete", role: .destructive) {
