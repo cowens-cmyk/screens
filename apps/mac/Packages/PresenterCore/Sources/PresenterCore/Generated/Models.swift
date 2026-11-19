@@ -1623,8 +1623,9 @@ public struct Theme: Codable, Sendable, Equatable, Identifiable {
     public var streamLowerThirdThemeId: String?
     public var streamDesigns: [StreamDesign]?
     public var isSermonSeries: Bool?
+    public var galleryGroup: String?
 
-    public init(id: String, name: String, fontFamily: String, fontSize: Double, textColorHex: String, backgroundColorHex: String, slides: [Slide]? = nil, streamLowerThirdThemeId: String? = nil, streamDesigns: [StreamDesign]? = nil, isSermonSeries: Bool? = nil) {
+    public init(id: String, name: String, fontFamily: String, fontSize: Double, textColorHex: String, backgroundColorHex: String, slides: [Slide]? = nil, streamLowerThirdThemeId: String? = nil, streamDesigns: [StreamDesign]? = nil, isSermonSeries: Bool? = nil, galleryGroup: String? = nil) {
         self.id = id
         self.name = name
         self.fontFamily = fontFamily
@@ -1635,6 +1636,7 @@ public struct Theme: Codable, Sendable, Equatable, Identifiable {
         self.streamLowerThirdThemeId = streamLowerThirdThemeId
         self.streamDesigns = streamDesigns
         self.isSermonSeries = isSermonSeries
+        self.galleryGroup = galleryGroup
     }
 }
 

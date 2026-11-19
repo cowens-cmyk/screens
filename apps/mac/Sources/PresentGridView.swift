@@ -1105,7 +1105,7 @@ struct SlideGridBody: View {
     private func bulkMenu(slideIDs: [String]) -> some View {
         Text("\(slideIDs.count) Slides")
         Button("Screens…") { screensTarget = SlideScreensTarget(slideIDs: slideIDs) }
-        layoutMenu(slideIDs)
+        themeMenu(slideIDs)
         livestreamMenu(slideIDs)
         stageToggle(slideIDs)
         listenButton()
@@ -1145,10 +1145,6 @@ struct SlideGridBody: View {
         }
         Button(presentation.autoAdvance == nil ? "Slide Show…" : "Slide Show… ✓") {
             slideShowPresented = true
-        }
-        changeThemeMenu(slideIDs)
-        Button("Apply Theme…") {
-            applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: slideIDs)
         }
         Divider()
         Button("Duplicate \(slideIDs.count) Slides") {
@@ -1305,7 +1301,7 @@ struct SlideGridBody: View {
     private func singleMenu(slide: Slide) -> some View {
 
         Button("Screens…") { screensTarget = SlideScreensTarget(slideIDs: [slide.id]) }
-        layoutMenu([slide.id])
+        themeMenu([slide.id])
         livestreamMenu([slide.id])
         stageToggle([slide.id])
         listenButton()
@@ -1418,10 +1414,6 @@ struct SlideGridBody: View {
         Button(presentation.autoAdvance == nil ? "Slide Show…" : "Slide Show… ✓") {
             slideShowPresented = true
         }
-        changeThemeMenu([slide.id])
-        Button("Apply Theme…") {
-            applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: [slide.id])
-        }
         Divider()
         Button("New Slide After…") { newSlideTarget = NewSlideTarget(after: slide) }
         Button("Duplicate Slide") {
@@ -1443,28 +1435,68 @@ struct SlideGridBody: View {
         }
     }
 
-    /// Layout › the categories of the slides' theme (Title, Bible, Sermon
-    /// Points…), so a slide can switch design without opening the editor.
-    private func layoutMenu(_ slideIDs: [String]) -> some View {
+    /// Theme › every theme, each with its designs (Title, Bible, Sermon
+    /// Points…): a slide's theme and its design are chosen in one place.
+    /// The slides' theme comes first; lower-third themes aren't listed,
+    /// since a slide on the room's screens can't use one.
+    private func themeMenu(_ slideIDs: [String]) -> some View {
         let slides = presentation.slides.filter { slideIDs.contains($0.id) }
-        var categories: [String] = []
+        let currentThemes = Set(slides.map { presentation.themeId(for: $0) })
         var current: Set<String> = []
         for slide in slides {
-            let designs = (model.theme(for: slide, in: presentation)?.slides ?? [])
-                .filter { !($0.folder ?? "").lowercased().contains("third") }
-            for design in designs where !categories.contains(design.name) {
-                categories.append(design.name)
-            }
+            let designs = Self.fullScreenDesigns(model.theme(for: slide, in: presentation))
             // A slide asking for "Scripture" is on the theme's "Bible".
             let name = slide.themeSlideName ?? ""
             current.insert(name.isEmpty ? "" : ThemeCategories.match(name, in: designs)?.name ?? name)
         }
-        return Menu("Layout") {
-            Button((current == [""] ? "✓ " : "") + StreamWording.themeDefault) { setLayout(nil, of: slideIDs) }
-            if !categories.isEmpty { Divider() }
-            ForEach(categories, id: \.self) { category in
-                Button((current == [category] ? "✓ " : "") + category) { setLayout(category, of: slideIDs) }
+        let worship = model.slideBuilding.lyricsImportThemeId
+        let themes = menuThemes.filter { entry in
+            model.resident.themes.value(entry.id)
+                .map { ThemeGallery.group(of: $0, worshipThemeId: worship) != .lowerThirds } ?? true
+        }
+        let ordered = themes.filter { currentThemes.contains($0.id) } + themes.filter { !currentThemes.contains($0.id) }
+        // Each theme's designs, read from the themes already in memory
+        // before the menu is built, not while it opens.
+        var designsByTheme: [String: [String]] = [:]
+        for entry in ordered {
+            designsByTheme[entry.id] = Self.fullScreenDesigns(model.resident.themes.value(entry.id)).map(\.name)
+                .reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        }
+        return Menu("Theme") {
+            ForEach(ordered, id: \.id) { entry in
+                let isCurrent = currentThemes == [entry.id]
+                let designs = designsByTheme[entry.id] ?? []
+                Menu((isCurrent ? "\u{2713} " : "") + entry.name) {
+                    Button((isCurrent && current == [""] ? "\u{2713} " : "") + StreamWording.themeDefault) {
+                        chooseTheme(entry.id, design: nil, for: slideIDs, isCurrent: isCurrent)
+                    }
+                    if !designs.isEmpty { Divider() }
+                    ForEach(designs, id: \.self) { design in
+                        Button((isCurrent && current == [design] ? "\u{2713} " : "") + design) {
+                            chooseTheme(entry.id, design: design, for: slideIDs, isCurrent: isCurrent)
+                        }
+                    }
+                }
             }
+            Divider()
+            Button("Choose Theme\u{2026}") {
+                applyThemeTarget = ApplyThemeTarget(presentationID: presentation.id, slideIDs: slideIDs)
+            }
+        }
+        .disabled(themes.isEmpty)
+    }
+
+    private static func fullScreenDesigns(_ theme: Theme?) -> [Slide] {
+        (theme?.slides ?? []).filter { !ThemeGallery.isLowerThirdDesign($0) }
+    }
+
+    /// The slides on `themeID`'s `design` (nil: the theme's default). On
+    /// their own theme already, only the design changes.
+    private func chooseTheme(_ themeID: String, design: String?, for slideIDs: [String], isCurrent: Bool) {
+        if isCurrent {
+            setLayout(design, of: slideIDs)
+        } else {
+            model.changeTheme(of: slideIDs, in: presentation.id, to: themeID, design: .some(design))
         }
     }
 
@@ -1588,18 +1620,6 @@ struct SlideGridBody: View {
     }
 
     /// Change Theme › one entry per theme (each sermon series is its own).
-    private func changeThemeMenu(_ slideIDs: [String]) -> some View {
-        Menu("Change Theme") {
-            let current = Set(presentation.slides.filter { slideIDs.contains($0.id) }.map { presentation.themeId(for: $0) })
-            ForEach(menuThemes, id: \.id) { theme in
-                Button((current == [theme.id] ? "✓ " : "") + theme.name) {
-                    model.changeTheme(of: slideIDs, in: presentation.id, to: theme.id)
-                }
-            }
-        }
-        .disabled(menuThemes.isEmpty)
-    }
-
     private var menuThemes: [LibraryIndex.Entry] {
         model.entries(of: .theme).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }

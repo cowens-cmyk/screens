@@ -2865,6 +2865,11 @@
           "name": "isSermonSeries",
           "type": "bool",
           "optional": true
+        },
+        {
+          "name": "galleryGroup",
+          "type": "string",
+          "optional": true
         }
       ]
     },

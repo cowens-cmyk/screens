@@ -522,6 +522,7 @@ struct TopBarActions {
 /// points, the sermon notes, the stage display) is in More.
 struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
     @HotDefault(MediaDrawer.openKey) private var mediaBinOpen = false
+    @State private var themesShown = false
     let fit: TopBarFit
     /// The window's title bar height, so the bar is centred on the traffic lights.
     let height: CGFloat
@@ -605,16 +606,14 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
         .help(help)
     }
 
-    /// A click opens the plan's series theme in the theme editor; the menu
-    /// opens any other.
+    /// Every theme, as thumbnails (ThemeGalleryView): click one to edit it.
     private var themeCell: some View {
-        Menu { themes() } label: {
-            TopBarCellLabel("Theme", systemImage: "paintpalette")
-        } primaryAction: {
-            actions.theme()
+        Button { themesShown.toggle() } label: {
+            TopBarCellLabel("Theme", systemImage: "paintpalette", selected: themesShown)
         }
-        .topBarMenu()
-        .help("Open this plan's theme in the theme editor. Hold or click the arrow for the others.")
+        .buttonStyle(TopBarButtonStyle())
+        .popover(isPresented: $themesShown, arrowEdge: .bottom) { themes() }
+        .help("Every theme: wide and lower thirds. Click one to edit it.")
     }
 
     /// A click adds scripture; the menu has listening for references and the Bible theme.

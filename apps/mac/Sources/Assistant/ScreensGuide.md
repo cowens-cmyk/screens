@@ -242,13 +242,12 @@ Click a slide to fire it. Each tile shows the slide with a thin bar in its group
 
 **Right-click a slide:**
 - **Screens…**: what this slide puts on the Audience (Theme Default or a specific design), Livestream (see Livestream), and Stage (Keep current, or a stage layout).
-- **Layout** › Theme Default, or one of the theme's designs (Title, Bible, Sermon Points…), to switch design without opening the editor.
+- **Theme** › every theme (the slide's own first, ticked), each with Theme Default and its designs (Title, Bible, Sermon Points…): pick a theme and design together, or another design in the same theme, without opening the editor. Lower-third themes aren't listed. **Choose Theme…** at the bottom opens the Apply Theme sheet with thumbnails.
 - **Livestream** › Theme Default / Lower Third / Full Screen (takes over the stream) / Nothing (camera only).
 - **Start Listening for Scripture** / **Stop Listening**.
 - **Edit…**, **Quick Edit…** (just the text), **Rename Slide…** (names are optional).
 - **Add Action**, **Edit Action**, **Remove Action**.
 - **Auto Advance…** (this slide) and **Slide Show…** (the whole presentation). A check mark means one is set.
-- **Change Theme** submenu, **Apply Theme…**
 - **New Slide After…**, **Duplicate Slide**, **Copy Slide**, **Paste Slide After**, **Delete Slide**.
 
 With several slides selected the same menu applies to all of them (Duplicate, Copy and Delete show the count).
@@ -322,8 +321,9 @@ The grid shows each item's poster, name and length; a ↻ badge marks videos tha
 
 A theme holds full-screen designs named by category (Title, Bible, Sermon Points, Worship, Point + Scripture, Announcements…) and lower-third designs for the livestream. A slide asks its theme for a design by category, so changing theme keeps a verse a verse. A new library starts with Worship, Scripture and Points themes and Worship, Message and Video stage layouts.
 
-- **Change a presentation's theme**: library right-click › **Apply Theme**, plan item › **Apply Theme…**, or slide right-click › **Apply Theme…** / **Change Theme**. The Apply Theme sheet has **Apply “Theme”** (each slide keeps its kind of design) or pick one design for every slide.
-- **Theme editor**: the top bar's **Theme** (a click opens the plan's series theme; hold it to pick any other), **Edit Theme** on Message & Series or after building a series or theme from art, or View › Edit Themes (⌘5). A design's objects are drawn in list order, the last on top, so text belongs after the art and bars it sits on. Each design's inspector has **Where It Goes**, which sets what the livestream shows for each category when Livestream is on Lower Third (Lower Third, Full Screen, Nothing, or a specific design), and which theme's lower thirds to use.
+- **Change a presentation's theme**: library right-click › **Apply Theme**, plan item › **Apply Theme…**, or slide right-click › **Theme** (› a theme › a design, or **Choose Theme…**). The Apply Theme sheet has **Apply “Theme”** (each slide keeps its kind of design) or pick one design for every slide.
+- **Theme gallery**: the top bar's **Theme** shows every theme as a thumbnail. **WIDE** (the room's screens) is split into **Worship**, **Message** and **Misc**; **LOWER THIRDS** (the livestream's) come after. A series theme sits under Message, a theme with only lower thirds (or named for them) under Lower Thirds, the lyrics theme or one named for worship under Worship, anything else under Misc; right-click a theme › **Show Under** to move it. Under each wide theme is the lower-third theme it is paired with ("Its own lower thirds" when none): click it to pick another, or drag a lower-third theme onto the wide theme. **This plan** marks the plan's series theme. Click a theme to edit it; **+** makes a new one, the photo button one from an image.
+- **Theme editor**: a theme in the gallery, **Edit Theme** on Message & Series or after building a series or theme from art, or View › Edit Themes (⌘5). A design's objects are drawn in list order, the last on top, so text belongs after the art and bars it sits on. Each design's inspector has **Where It Goes**, which sets what the livestream shows for each category when Livestream is on Lower Third (Lower Third, Full Screen, Nothing, or a specific design), and which theme's lower thirds to use.
 - **Reapply Theme (Clear Slide Edits)** in the slide editor resets slides to the theme.
 - **New Theme from Image** (Library › Themes › **New** › **New Theme from Image…**, More › Themes › **New Theme from Image…**, or drop an image or a Claude Design download on the Themes library): the same one-step build as a new sermon series, with nothing to choose before **Done**, made into a general theme for anything outside the message: **Lyrics**, **Title**, **Announcements** (a heading over a paragraph), **Bible** and **Sermon Points**, with Lyrics, Bible and Sermon Points lower thirds tied for the livestream. It isn't a sermon series, so it doesn't appear as one. **Edit Colors & Fonts…**, **Try Again** and **Edit Theme** work as for a series.
 
