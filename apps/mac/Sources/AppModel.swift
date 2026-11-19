@@ -1823,6 +1823,27 @@ final class AppModel {
         return arrangement
     }
 
+    /// A copy of an arrangement (nil: the song's slide order) right after
+    /// it, to change without touching the original; `select` gets the copy.
+    func duplicateArrangement(
+        _ presentationID: String, arrangementID: String?, then select: @escaping @MainActor (Arrangement) -> Void
+    ) {
+        withDeck(presentationID) { presentation in
+            guard let presentation else { return }
+            let source = arrangementID.flatMap { id in presentation.arrangements?.first { $0.id == id } }
+            guard let copy = SongOrderEdit.duplicate(source, of: presentation) else { return }
+            let sourceID = source?.id
+            self.updatePresentation(presentationID) { song in
+                var list = song.arrangements ?? []
+                let at = sourceID.flatMap { id in list.firstIndex { $0.id == id } }.map { $0 + 1 } ?? list.count
+                list.insert(copy, at: at)
+                song.arrangements = list
+            }
+            DiagnosticsStore.shared.note("arrangement.duplicated", detail: copy.name)
+            select(copy)
+        }
+    }
+
     func updateArrangement(
         _ presentationID: String, arrangementID: String,
         _ mutate: @escaping @Sendable (inout Arrangement) -> Void

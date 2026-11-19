@@ -5,7 +5,7 @@ import SwiftUI
 /// A song's order, made by dragging: every section of the song across the
 /// top, the order it's sung in below. Drag a section down into place (or
 /// click it to add it at the end), drag a block along the order to move
-/// it, hover one and click × to take it out. Every change can be undone
+/// it, click its × to take it out. Every change can be undone
 /// with ⌘Z.
 ///
 /// It edits the arrangement the plan item plays (else the song's default
@@ -65,8 +65,13 @@ struct SongOrderEditor: View {
                     if let name = arrangement?.name {
                         Text(name).font(.caption).foregroundStyle(.secondary)
                     }
+                    Spacer()
+                    Button("Duplicate Arrangement", systemImage: "plus.square.on.square", action: duplicate)
+                        .controlSize(.small)
+                        .disabled(order.isEmpty)
+                        .help("Edit a copy of this arrangement; the original stays as it is")
                 }
-                Text("Drag to move. Hover a section and click × to take it out; ⌘Z undoes.")
+                Text("Drag to move. Click × to take a section out; right-click for more. ⌘Z undoes.")
                     .font(.caption).foregroundStyle(.secondary)
                 WrapLayout(spacing: 6, lineSpacing: 6) {
                     ForEach(Array(order.enumerated()), id: \.offset) { index, sectionID in
@@ -93,23 +98,26 @@ struct SongOrderEditor: View {
         }
     }
 
+    /// A block of the order. Its × is always there, inside the chip: one
+    /// shown only on hover, sticking out of the chip, vanished as the
+    /// pointer moved onto it. Right-click has the same and more.
     private func orderChip(index: Int, sectionID: String) -> some View {
         let section = sections.first { $0.id == sectionID }
-        return chip(section?.name ?? "Deleted Section", section: section)
-            .overlay(alignment: .topTrailing) {
-                if hovered == index {
-                    Button {
-                        change { SongOrderEdit.removing(at: index, in: $0) }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 13))
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, Color.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .offset(x: 6, y: -6)
-                    .help("Take this out of the order")
+        return chip(section?.name ?? "Deleted Section", section: section, trailingRoom: 16)
+            .overlay(alignment: .trailing) {
+                Button {
+                    change { SongOrderEdit.removing(at: index, in: $0) }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, hovered == index ? Color.red : Color.secondary)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Circle())
                 }
+                .buttonStyle(.plain)
+                .padding(.trailing, 3)
+                .help("Take this out of the order (⌘Z undoes)")
             }
             .overlay(alignment: .leading) {
                 if dropBefore == index {
@@ -118,6 +126,15 @@ struct SongOrderEditor: View {
             }
             .onHover { inside in
                 if inside { hovered = index } else if hovered == index { hovered = nil }
+            }
+            .contextMenu {
+                Button("Remove") { change { SongOrderEdit.removing(at: index, in: $0) } }
+                Button("Sing Again Right After") { change { SongOrderEdit.duplicating(at: index, in: $0) } }
+                Divider()
+                Button("Move Earlier") { change { SongOrderEdit.moving(from: index, before: index - 1, in: $0) } }
+                    .disabled(index == 0)
+                Button("Move Later") { change { SongOrderEdit.moving(from: index, before: index + 2, in: $0) } }
+                    .disabled(index >= order.count - 1)
             }
             .draggable(SongOrderEdit.blockPayload(index))
             .dropDestination(for: String.self) { payloads, _ in
@@ -128,12 +145,13 @@ struct SongOrderEditor: View {
             }
     }
 
-    private func chip(_ name: String, section: PresentationSection?) -> some View {
+    private func chip(_ name: String, section: PresentationSection?, trailingRoom: CGFloat = 0) -> some View {
         let fill = section?.resolvedColorHex(paletteColors: model.groupColors).flatMap(GroupColor.color)
         return Text(name)
             .font(.system(size: 12, weight: .medium))
             .lineLimit(1)
-            .padding(.horizontal, 10)
+            .padding(.leading, 10)
+            .padding(.trailing, 10 + trailingRoom)
             .padding(.vertical, 5)
             .background((fill ?? .secondary).opacity(0.25), in: Capsule())
             .overlay(Capsule().strokeBorder((fill ?? .secondary).opacity(0.6), lineWidth: 1))
@@ -155,6 +173,17 @@ struct SongOrderEditor: View {
             return true
         case nil:
             return false
+        }
+    }
+
+    /// A copy of the arrangement, which this editor (and the plan item, when
+    /// opened from a plan) then uses, so the original stays as it was.
+    private func duplicate() {
+        model.duplicateArrangement(presentationID, arrangementID: arrangement?.id) { copy in
+            createdID = copy.id
+            if let planItem {
+                model.setServiceItemArrangement(planItem.serviceID, itemID: planItem.itemID, arrangementID: copy.id)
+            }
         }
     }
 
