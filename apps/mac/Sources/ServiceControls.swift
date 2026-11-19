@@ -254,7 +254,7 @@ final class ServiceControls {
 
         let deckWasLive = livePresentationID == presentation.id
         if !deckWasLive {
-            applyScreenDefaults(for: presentation)
+            applyScreenDefaults(for: presentation, contextID: contextID)
         }
         // The stage's mode is settled before the type's actions run: a mode
         // change clears each screen's layout, and coming out of Before
@@ -1280,11 +1280,27 @@ final class ServiceControls {
         }
     }
 
-    private func applyScreenDefaults(for presentation: Presentation) {
+    /// Whether a presentation going up is the plan's message: filed as a
+    /// message, named as the plan's message, or the slides of the item
+    /// Shepherd planned as the message (`PlanMessage.plannedItemIndex`),
+    /// which may be a plain presentation nobody filed as one.
+    func isMessage(_ presentation: Presentation, contextID: String? = nil) -> Bool {
+        let category = PresentationTypes.category(of: presentation)
+        if category == PresentationTypes.sermon { return true }
+        guard category == nil,
+              let plan = appModel.currentServiceID.flatMap({ appModel.resident.services.value($0) })
+        else { return false }
+        if plan.messagePresentationId == presentation.id { return true }
+        guard let index = PlanMessage.plannedItemIndex(in: plan) else { return false }
+        let item = plan.items[index]
+        return item.refId == presentation.id && (contextID == nil || contextID == item.id)
+    }
+
+    private func applyScreenDefaults(for presentation: Presentation, contextID: String?) {
         let setup = ShowSetup.shared
         setup.stageLayoutOverride = presentation.stageLayoutId
         setup.streamThemeOverride = presentation.streamThemeId
-        let isMessage = PresentationTypes.category(of: presentation) == PresentationTypes.sermon
+        let isMessage = isMessage(presentation, contextID: contextID)
         let isAnnouncements = PresentationTypes.category(of: presentation) == PresentationTypes.announcements
         if isAnnouncements { startAnnouncementsTimer() }
         // Anything else going up ends the announcements, also when it has a
@@ -1336,7 +1352,7 @@ final class ServiceControls {
                       // The pastor preaches over the message's last slide,
                       // so a plan that ends on the message keeps the
                       // Message stage until the walk-in or the next item.
-                      PresentationTypes.category(of: presentation) != PresentationTypes.sermon
+                      !isMessage(presentation, contextID: contextID)
                 else { return false }
                 let slides = SlideSceneBuilder.arrangedSlides(
                     for: presentation, arrangementId: arrangementId ?? last.arrangementId)
@@ -1345,7 +1361,7 @@ final class ServiceControls {
         if before {
             if setup.stageMode != .preService { setup.stageMode = .preService }
         } else if setup.stageMode == .preService {
-            setup.stageMode = PresentationTypes.category(of: presentation) == PresentationTypes.sermon ? .message : .worship
+            setup.stageMode = isMessage(presentation, contextID: contextID) ? .message : .worship
         }
     }
 
@@ -1376,8 +1392,7 @@ final class ServiceControls {
     /// message's, else 40 minutes (30 on a Wednesday night).
     var sermonLength: Double {
         let midweek = currentPlanIsMidweek
-        if let live = state.liveSlide?.presentation,
-           PresentationTypes.category(of: live) == PresentationTypes.sermon {
+        if let live = state.liveSlide?.presentation, isMessage(live) {
             return SermonTimer.seconds(for: live, midweek: midweek)
         }
         guard let planID = appModel.currentServiceID,
@@ -1494,8 +1509,7 @@ final class ServiceControls {
                 isRunning: $0.isRunning, remaining: $0.value(at: now),
                 elapsed: $0.elapsed(at: now), duration: $0.durationSeconds)
         }
-        let messageIsLive = state.liveSlide?.presentation
-            .map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } ?? false
+        let messageIsLive = state.liveSlide?.presentation.map { isMessage($0) } ?? false
         switch SermonTimerReset.decide(timerState, length: length, messageIsLive: messageIsLive) {
         case .reset:
             resetSermonTimer(to: length)

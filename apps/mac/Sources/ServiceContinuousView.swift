@@ -2326,7 +2326,7 @@ private struct PresentationIssuesBadge: View {
                let detail = try? await ShepherdSync.shared.client.song(id: songID) {
                 let planned = ShepherdSongMatch.arrangement(
                     in: detail, id: item?.mxuSourceArrangementId, name: item?.mxuArrangementName)
-                let order = ShepherdSongMatch.sequence(of: detail, arrangement: planned)
+                let order = ShepherdSongMatch.playedSequence(of: detail, arrangement: planned)
                 sequence = order.isEmpty ? nil : order
                 tag = ShepherdArrangementSync.tag(planned)
             }
