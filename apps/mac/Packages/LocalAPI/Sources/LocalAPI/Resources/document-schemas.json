@@ -2384,6 +2384,9 @@
         },
         "isSermonSeries": {
           "type": "boolean"
+        },
+        "galleryGroup": {
+          "type": "string"
         }
       },
       "required": [

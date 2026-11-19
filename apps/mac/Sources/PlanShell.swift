@@ -1169,7 +1169,15 @@ struct PlanShell: View {
                 theme: { openPlanTheme() },
                 scripture: { scriptureShown = true },
                 media: { toggleMedia() }),
-            themes: { themesMenuItems },
+            themes: {
+                ThemeGalleryView(
+                    model: model, render: render,
+                    planThemeID: model.currentServiceID.flatMap { model.resident.services.value($0)?.sermonThemeId }
+                        ?? model.slideBuilding.sermonThemeId,
+                    open: { editTheme($0) },
+                    newTheme: { if let id = model.createEntity(in: .themes) { editTheme(id) } },
+                    newFromImage: { themeFromImage = true })
+            },
             scriptureMenu: { bibleMenuItems },
             more: { moreMenuItems })
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
@@ -1490,31 +1498,6 @@ struct PlanShell: View {
     /// since that's the one most often adjusted, then the rest by name. The
     /// top bar's Theme button, and Themes in More.
     @ViewBuilder
-    private var themesMenuItems: some View {
-        let seriesID = model.currentServiceID.flatMap { model.resident.services.value($0)?.sermonThemeId }
-            ?? model.slideBuilding.sermonThemeId
-        let themes = model.entries(of: .theme)
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        let series = themes.first { $0.id == seriesID }
-        let others = themes.filter { $0.id != series?.id }
-        if let series {
-            Section("This Plan’s Series") {
-                Button(series.name) { editTheme(series.id) }
-            }
-            Section("Other Themes") {
-                ForEach(others, id: \.id) { theme in Button(theme.name) { editTheme(theme.id) } }
-            }
-        } else {
-            ForEach(others, id: \.id) { theme in Button(theme.name) { editTheme(theme.id) } }
-        }
-        Divider()
-        Button("New Theme from Image…") { themeFromImage = true }
-        Button("Show Themes in Library") {
-            topPane = .library
-            model.switchLibrarySection(.themes)
-        }
-    }
-
     /// The workspace, with More › Themes › New Theme from Image… and the
     /// requests from sheets that made or picked a theme to open it in the
     /// editor. Kept out of `body`, whose chain of modifiers is already as

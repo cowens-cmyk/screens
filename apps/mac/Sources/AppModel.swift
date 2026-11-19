@@ -2254,7 +2254,10 @@ final class AppModel {
     /// drop their own text sizes and positions, so they match it fully.
     /// Each keeps its category (Lyrics, Bible, Sermon Points…), which the new
     /// theme's matching design and lower third pick up.
-    func changeTheme(of slideIDs: [String], in presentationID: String, to themeID: String) {
+    /// `design` also puts the slides on one of the theme's designs
+    /// (`.some(nil)`: the theme's default for each slide), in the same
+    /// change, so the menu's Theme › <theme> › <design> is one undo.
+    func changeTheme(of slideIDs: [String], in presentationID: String, to themeID: String, design: String?? = nil) {
         Task {
             await resident.ready([.theme])
             let themes = Dictionary(resident.themes.values.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -2264,6 +2267,7 @@ final class AppModel {
                 presentation.applyTheme(theme, toSlides: ids, themes: themes)
                 for index in presentation.slides.indices where ids.contains(presentation.slides[index].id) {
                     SlideSceneBuilder.resetThemeOverrides(&presentation.slides[index])
+                    if let design { presentation.slides[index].themeSlideName = design }
                 }
             }
         }
