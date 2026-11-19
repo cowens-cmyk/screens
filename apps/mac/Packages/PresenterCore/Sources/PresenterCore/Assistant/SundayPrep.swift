@@ -165,4 +165,18 @@ public enum ShepherdSongMatch {
         if let sequence = arrangement?.sequence, !sequence.isEmpty { return sequence }
         return song.sequence
     }
+
+    /// The order to play: Shepherd's typed sequence, else the order the
+    /// arrangement's chord chart is written in. Many arrangements have no
+    /// sequence typed in Shepherd, only a chart written out in the order it
+    /// is sung, and they play in that order.
+    public static func playedSequence(
+        of song: ShepherdClient.SongDetail, arrangement: ShepherdClient.SongArrangement?
+    ) -> [String] {
+        let typed = sequence(of: song, arrangement: arrangement)
+        guard typed.isEmpty, let source = ShepherdSongImport.source(song: song, arrangement: arrangement),
+              source.isChart
+        else { return typed }
+        return ShepherdChart.parse(source.text).sungNames
+    }
 }

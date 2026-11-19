@@ -201,6 +201,18 @@ public struct ShepherdChart: Equatable, Sendable {
         return chart
     }
 
+    /// The chart's sections in the order they are sung, by name ("Chorus",
+    /// "Chorus (2)" for a chorus written again with other words), with a
+    /// heading's repeats ("Bridge (2x)").
+    public var sungNames: [String] {
+        order.compactMap { index in
+            guard sections.indices.contains(index) else { return nil }
+            let section = sections[index]
+            guard let times = section.repeatCount, times > 1 else { return section.name }
+            return "\(section.name) (\(times)x)"
+        }
+    }
+
     /// The section a name points to: the same name, else the same kind of
     /// section ("Chorus" for "Chorus 1", "Verse 1" for "Verse"), the first
     /// one written. Shepherd's short names ("V1", "C") count.

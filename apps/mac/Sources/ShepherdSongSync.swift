@@ -219,7 +219,7 @@ extension ShepherdSync {
         _ presentation: Presentation, detail: ShepherdClient.SongDetail,
         planned: ShepherdClient.SongArrangement?, model: AppModel
     ) -> Presentation? {
-        let sequence = ShepherdSongMatch.sequence(of: detail, arrangement: planned)
+        let sequence = ShepherdSongMatch.playedSequence(of: detail, arrangement: planned)
         guard !sequence.isEmpty,
               !ShepherdArrangementSync.mapping(sequence: sequence, onto: presentation).missing.isEmpty,
               let fresh = ShepherdSongImport.presentation(
@@ -243,7 +243,7 @@ extension ShepherdSync {
         _ presentation: Presentation, detail: ShepherdClient.SongDetail,
         planned: ShepherdClient.SongArrangement?, arrangementId: String?, model: AppModel
     ) -> Presentation? {
-        let sequence = ShepherdSongMatch.sequence(of: detail, arrangement: planned)
+        let sequence = ShepherdSongMatch.playedSequence(of: detail, arrangement: planned)
         let tag = ShepherdArrangementSync.tag(planned)
         guard let filled = ShepherdArrangementSync.fillingWordlessParts(
             presentation, sequence: sequence, arrangementId: arrangementId, shepherdTag: tag)
