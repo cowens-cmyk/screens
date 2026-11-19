@@ -259,6 +259,31 @@ final class ShepherdSync {
                 }
             }
 
+            // The item Shepherd planned as each Sunday's message is filed as
+            // the message, so its slides start the sermon timer and put the
+            // stage on Message however they were made (series art dropped on
+            // the item makes a plain presentation). Outside the loop, so
+            // slides added since the plan last changed are filed too.
+            for service in Array(model.resident.services.values)
+            where service.origin == ShepherdPlanSync.origin && service.mxuSyncPaused != true
+                && service.isTemplate != true && service.serviceDate >= from {
+                guard let index = PlanMessage.plannedItemIndex(in: service) else { continue }
+                let ref = service.items[index].refId
+                guard service.items[index].itemKind == .presentation, !ref.isEmpty,
+                      let deck = model.presentation(ref), deck.presentationKind != .song,
+                      PresentationTypes.category(of: deck) == nil
+                else { continue }
+                model.updatePresentation(ref) { deck in
+                    if PresentationTypes.category(of: deck) == nil { deck.category = PresentationTypes.sermon }
+                }
+                if service.messagePresentationId?.isEmpty ?? true {
+                    model.updateMainService(service.id) { plan in
+                        if plan.messagePresentationId?.isEmpty ?? true { plan.messagePresentationId = ref }
+                    }
+                }
+                DiagnosticsStore.shared.note("shepherd.messageFiled", detail: "\(service.name): \(deck.name)")
+            }
+
             // The second plans already imported, and copies of one plan, go.
             let open = Set([model.currentServiceID].compactMap { $0 })
             let services = model.resident.services.values.filter {

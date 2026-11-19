@@ -492,4 +492,51 @@ struct ShepherdArrangementSyncTests {
         #expect(ShepherdArrangementSync.fillingWordlessParts(
             filled, sequence: sequence, arrangementId: nil, shepherdTag: "a1") == nil)
     }
+
+    @Test func withNoSequenceTypedTheChartsOrderIsPlayed() throws {
+        // Holy Forever on Nov 22: arrangement "Default", no sequence in
+        // Shepherd, its chart written out in the order it is sung.
+        let chart = """
+        {comment: Verse 1}
+        Words of verse one
+        {comment: Chorus}
+        Words of the chorus
+        {comment: Verse 2}
+        Words of verse two
+        {comment: Chorus}
+        {comment: Bridge}
+        Words of the bridge
+        {comment: Chorus}
+        """
+        let arrangement = ShepherdClient.SongArrangement(id: "a1", name: "Default", chordChart: chart)
+        let detail = shepherdSong([arrangement])
+        #expect(ShepherdSongMatch.playedSequence(of: detail, arrangement: arrangement)
+            == ["Verse 1", "Chorus", "Verse 2", "Chorus", "Bridge", "Chorus"])
+        let song = librarySong()
+        let outcome = ShepherdArrangementSync.reconcile(song, song: detail, arrangement: arrangement)
+        #expect(outcome.arrangementId == "shepherd-a1")
+        let made = try #require(outcome.arrangements?.first { $0.id == "shepherd-a1" })
+        #expect(names(made.sectionIds, in: song) == ["Verse 1", "Chorus", "Verse 2", "Chorus", "Bridge", "Chorus"])
+
+        // A typed sequence still wins over the chart.
+        var typed = arrangement
+        typed.sequence = ["V1", "C"]
+        #expect(ShepherdSongMatch.playedSequence(of: shepherdSong([typed]), arrangement: typed) == ["V1", "C"])
+    }
+
+    @Test func aSongImportedFromShepherdIsPickedWithoutASequence() {
+        let arrangement = ShepherdClient.SongArrangement(id: "a1", name: "Default")
+        let detail = shepherdSong([arrangement])
+        var song = librarySong(arrangements: [Arrangement(id: "shepherd-a1", name: "Default", sectionIds: ["s0"])])
+        song.shepherdSongId = "song-1"
+        song.shepherdArrangementId = "a1"
+        #expect(ShepherdArrangementSync.reconcile(song, song: detail, arrangement: arrangement)
+            == .init(arrangements: nil, arrangementId: "shepherd-a1"))
+    }
+
+    @Test func aChorusWrittenAgainIsItsOwnSection() {
+        let song = librarySong(sections: ["Verse 1", "Chorus", "Chorus (2)"])
+        let mapping = ShepherdArrangementSync.mapping(sequence: ["Verse 1", "Chorus", "Chorus (2)"], onto: song)
+        #expect(names(mapping.sectionIds, in: song) == ["Verse 1", "Chorus", "Chorus (2)"])
+    }
 }

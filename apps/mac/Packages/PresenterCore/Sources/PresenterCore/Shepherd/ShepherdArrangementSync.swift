@@ -164,7 +164,14 @@ public enum ShepherdArrangementSync {
         var missing: [String] = []
         for name in sequence {
             guard let (wanted, repeats) = label(name) else { continue }
-            guard let index = sectionIndex(for: wanted, in: labels) else {
+            // A section of exactly that name first: "Chorus (2)", the chorus
+            // written again with other words, is that section, not the first
+            // chorus its label also fits.
+            let exact = sections.firstIndex {
+                $0.name.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(
+                    name.trimmingCharacters(in: .whitespaces)) == .orderedSame
+            }
+            guard let index = exact ?? sectionIndex(for: wanted, in: labels) else {
                 let shown = wanted.displayName
                 if !wanted.isWordless, !missing.contains(shown) { missing.append(shown) }
                 continue
@@ -427,20 +434,23 @@ public enum ShepherdArrangementSync {
         _ presentation: Presentation, song: ShepherdClient.SongDetail,
         arrangement: ShepherdClient.SongArrangement?
     ) -> Outcome {
-        let sequence = ShepherdSongMatch.sequence(of: song, arrangement: arrangement)
-        guard !sequence.isEmpty else { return Outcome() }
+        let sequence = ShepherdSongMatch.playedSequence(of: song, arrangement: arrangement)
+        let fixedID = ShepherdSongImport.arrangementID(arrangement?.id)
+        let existing = presentation.arrangements ?? []
+        // The arrangement a Shepherd import made: the chart refresh keeps it,
+        // and it is the plan's pick whether or not Shepherd has a sequence
+        // typed (the import plays the chart's order when it has none).
+        let imported = presentation.shepherdSongId == song.id && presentation.shepherdArrangementId == arrangement?.id
+            && existing.contains(where: { $0.id == fixedID })
+        guard !sequence.isEmpty else { return imported ? Outcome(arrangementId: fixedID) : Outcome() }
         guard presentation.sections?.isEmpty == false else {
             return Outcome(warnings: ["Shepherd's arrangement can't be used: this song's slides aren't in sections"])
         }
         let mapping = mapping(sequence: sequence, onto: presentation)
         let warnings = mapping.missing.map(warning(missing:))
         let tag = tag(arrangement)
-        let fixedID = ShepherdSongImport.arrangementID(arrangement?.id)
-        let existing = presentation.arrangements ?? []
 
-        // The arrangement a Shepherd import made: the chart refresh keeps it.
-        if presentation.shepherdSongId == song.id, presentation.shepherdArrangementId == arrangement?.id,
-           existing.contains(where: { $0.id == fixedID }) {
+        if imported {
             return Outcome(arrangementId: fixedID, warnings: warnings)
         }
         guard !mapping.sectionIds.isEmpty else { return Outcome(warnings: warnings) }
