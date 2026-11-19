@@ -22,6 +22,9 @@ struct PlanMessageSheet: View {
     private var series: Theme? { seriesID.isEmpty ? nil : model.theme(seriesID) }
     private var messageID: String? { Self.messageID(of: plan, model: model) }
     private var message: Presentation? { messageID.flatMap { model.presentation($0) } }
+    private var isMidweek: Bool {
+        SermonTimer.isMidweek(plan, midweekServiceType: ShepherdSync.shared.midweekServiceType)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -57,7 +60,7 @@ struct PlanMessageSheet: View {
                         LabeledContent("Presentation", value: message.name)
                         LabeledContent("Sermon timer") {
                             SermonMinutesField(minutes: Binding(
-                                get: { SermonTimer.minutes(for: message) },
+                                get: { SermonTimer.minutes(for: message, midweek: isMidweek) },
                                 set: { minutes in
                                     let seconds = SermonTimer.seconds(minutes: minutes)
                                     model.updatePresentation(message.id) { $0.sermonTimerSeconds = seconds }
@@ -75,7 +78,7 @@ struct PlanMessageSheet: View {
                               ? "Lower thirds from \(series?.name ?? "the series")"
                               : "This series has no lower thirds — set them in the theme editor")
                     check("Stage", ok: message != nil,
-                          detail: "Sermon timer (\(SermonTimer.minutes(for: message)) min, red past 0:00) and the clock")
+                          detail: "Sermon timer (\(SermonTimer.minutes(for: message, midweek: isMidweek)) min, red past 0:00) and the clock")
                 }
             }
             .formStyle(.grouped)

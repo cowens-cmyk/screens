@@ -91,3 +91,28 @@ private func video(loops: Bool = false, endAction: MediaEndAction? = nil, autoAd
     #expect(SermonTimer.restartsWhenMessageGoesLive(elapsed: 30 * 60, remaining: -6 * 60, duration: 24 * 60))
     #expect(!SermonTimer.restartsWhenMessageGoesLive(elapsed: 30 * 60, remaining: -4 * 60, duration: 26 * 60))
 }
+
+@Test func sundaysRunFortyMinutesAndWednesdayNightsThirty() {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "America/New_York")!
+    let sunday = Service(id: "s", name: "Sunday", serviceDate: "2026-11-22", items: [])
+    let wednesday = Service(id: "w", name: "Students", serviceDate: "2026-11-25", items: [])
+    var typed = Service(id: "t", name: "Students", serviceDate: "", items: [], mxuServiceTypeName: "Wednesday Night")
+    #expect(!SermonTimer.isMidweek(sunday, midweekServiceType: "Wednesday Night", calendar: calendar))
+    #expect(SermonTimer.isMidweek(wednesday, midweekServiceType: "Wednesday Night", calendar: calendar))
+    #expect(SermonTimer.isMidweek(typed, midweekServiceType: "wednesday night ", calendar: calendar))
+    typed.mxuServiceTypeName = "Sunday Morning"
+    #expect(!SermonTimer.isMidweek(typed, midweekServiceType: "Wednesday Night", calendar: calendar))
+    #expect(!SermonTimer.isMidweek(nil, midweekServiceType: "Wednesday Night", calendar: calendar))
+
+    #expect(SermonTimer.seconds(for: nil, midweek: false) == 2400)
+    #expect(SermonTimer.seconds(for: nil, midweek: true) == 1800)
+    #expect(SermonTimer.seconds(for: message(seconds: nil), midweek: true) == 1800)
+    // 40 was every message's old default, so a Wednesday doesn't take it.
+    #expect(SermonTimer.seconds(for: message(seconds: 2400), midweek: true) == 1800)
+    #expect(SermonTimer.seconds(for: message(seconds: 2400), midweek: false) == 2400)
+    // A length typed for one week wins on either day.
+    #expect(SermonTimer.seconds(for: message(seconds: 35 * 60), midweek: true) == 2100)
+    #expect(SermonTimer.seconds(for: message(seconds: 45 * 60), midweek: false) == 2700)
+    #expect(SermonTimer.minutes(for: nil, midweek: true) == 30)
+}
