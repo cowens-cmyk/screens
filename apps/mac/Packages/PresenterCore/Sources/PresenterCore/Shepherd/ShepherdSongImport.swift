@@ -321,6 +321,8 @@ public enum ShepherdSongImport {
         result.shepherdSongId = fresh.shepherdSongId
         result.shepherdArrangementId = fresh.shepherdArrangementId
         result.shepherdChartHash = fresh.shepherdChartHash
+        // Chords set by hand in Screens go back on their lines (ChordEdits).
+        result = ChordEdits.applying(result)
         result.shepherdImportHash = fingerprint(result)
         return result
     }

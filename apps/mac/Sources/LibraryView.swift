@@ -32,7 +32,6 @@ struct LibrarySidebar: View {
     @State private var renameText = ""
     @State private var mediaSettingsTarget: MediaSettingsTarget?
     @State private var newFolderTarget: LibraryIndex.Entry?
-    @State private var chordEditTarget: LibraryIndex.Entry?
 
     @State private var pendingApplyTheme: PendingDeckTheme?
     @State private var creatingFolder = false
@@ -144,9 +143,6 @@ struct LibrarySidebar: View {
         }
         .sheet(item: $mediaSettingsTarget) { target in
             MediaSettingsSheet(model: model, mediaID: target.id)
-        }
-        .sheet(item: $chordEditTarget) { entry in
-            ChordEditorSheet(model: model, presentationID: entry.id)
         }
         .sheet(isPresented: $creatingFolder) {
             NewFolderSheet(model: model, entry: nil, parentPath: realPath(folderPath ?? []))
@@ -1100,7 +1096,7 @@ struct LibrarySidebar: View {
             Menu("Apply Theme") {
                 DeckThemeMenuItems(model: model, presentationID: entry.id, themes: menus.themes, pending: $pendingApplyTheme)
             }
-            Button("Edit Chords…") { chordEditTarget = entry }
+            Button("Edit Chords…") { openWindow(id: "chords", value: ChordsWindowTarget(presentationID: entry.id)) }
         }
         if AppModel.folderableSections.contains(where: { $0.kind == entry.kind }) {
             Menu("Move to Folder") {

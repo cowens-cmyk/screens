@@ -306,6 +306,35 @@
         "fill"
       ]
     },
+    "ChordLineEdit": {
+      "type": "object",
+      "properties": {
+        "section": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "occurrence": {
+          "type": "integer"
+        },
+        "chords": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ChordPlacement"
+          }
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "section",
+        "text",
+        "occurrence",
+        "chords"
+      ]
+    },
     "ChordNotation": {
       "type": "string",
       "enum": [
@@ -1426,6 +1455,12 @@
         },
         "shepherdImportHash": {
           "type": "string"
+        },
+        "chordEdits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ChordLineEdit"
+          }
         }
       },
       "required": [

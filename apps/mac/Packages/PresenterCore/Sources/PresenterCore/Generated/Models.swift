@@ -210,6 +210,22 @@ public struct TextLineFill: Codable, Sendable, Equatable {
     }
 }
 
+public struct ChordLineEdit: Codable, Sendable, Equatable {
+    public var section: String
+    public var text: String
+    public var occurrence: Int
+    public var chords: [ChordPlacement]
+    public var key: String?
+
+    public init(section: String, text: String, occurrence: Int, chords: [ChordPlacement], key: String? = nil) {
+        self.section = section
+        self.text = text
+        self.occurrence = occurrence
+        self.chords = chords
+        self.key = key
+    }
+}
+
 public enum ChordNotation: String, Codable, Sendable, CaseIterable, Equatable {
     case chords
     case numbers
@@ -913,8 +929,9 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
     public var shepherdArrangementId: String?
     public var shepherdChartHash: String?
     public var shepherdImportHash: String?
+    public var chordEdits: [ChordLineEdit]?
 
-    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil, category: String? = nil, streamThemeId: String? = nil, stageLayoutId: String? = nil, sermonTimerSeconds: Double? = nil, shepherdSongId: String? = nil, shepherdArrangementId: String? = nil, shepherdChartHash: String? = nil, shepherdImportHash: String? = nil) {
+    public init(id: String, name: String, presentationKind: PresentationKind, themeId: String, folder: String? = nil, folderId: String? = nil, slides: [Slide], canvasWidth: Int? = nil, canvasHeight: Int? = nil, background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sections: [PresentationSection]? = nil, arrangements: [Arrangement]? = nil, defaultArrangementId: String? = nil, reflowSource: String? = nil, ccli: CCLIInfo? = nil, chordProSource: String? = nil, musicKey: String? = nil, autoAdvance: AutoAdvance? = nil, displayKey: String? = nil, category: String? = nil, streamThemeId: String? = nil, stageLayoutId: String? = nil, sermonTimerSeconds: Double? = nil, shepherdSongId: String? = nil, shepherdArrangementId: String? = nil, shepherdChartHash: String? = nil, shepherdImportHash: String? = nil, chordEdits: [ChordLineEdit]? = nil) {
         self.id = id
         self.name = name
         self.presentationKind = presentationKind
@@ -943,6 +960,7 @@ public struct Presentation: Codable, Sendable, Equatable, Identifiable {
         self.shepherdArrangementId = shepherdArrangementId
         self.shepherdChartHash = shepherdChartHash
         self.shepherdImportHash = shepherdImportHash
+        self.chordEdits = chordEdits
     }
 }
 

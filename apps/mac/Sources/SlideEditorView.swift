@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 struct SlideEditorView: View {
     let appModel: AppModel
+    @Environment(\.openWindow) private var openWindow
     let render: RenderContext?
 
     let presentationID: String
@@ -49,7 +50,6 @@ struct SlideEditorView: View {
     @State private var renameSectionName = ""
     @State private var showingArrangement = false
     @State private var showingReflow = false
-    @State private var showingChords = false
     /// A slide's right-click › Edit Chords….
     @State private var chordsSlideTarget: QuickEditTarget?
 
@@ -137,6 +137,11 @@ struct SlideEditorView: View {
             }
         }
         .onDisappear { model?.teardown() }
+    }
+
+    /// The song's chords, every section, in the Chords window.
+    private func openChordsWindow(_ presentationID: String) {
+        openWindow(id: "chords", value: ChordsWindowTarget(presentationID: presentationID))
     }
 
     private func editor(_ model: SlideEditorModel) -> some View {
@@ -1220,9 +1225,6 @@ struct SlideEditorView: View {
 
         .clipped()
 
-        .sheet(isPresented: $showingChords) {
-            ChordEditorSheet(model: model.appModel, presentationID: model.presentation.id)
-        }
         .sheet(item: $chordsSlideTarget) { target in
             ChordEditorSheet(model: model.appModel, presentationID: model.presentation.id, slideID: target.id)
         }
@@ -1312,7 +1314,7 @@ struct SlideEditorView: View {
             }
 
             Button {
-                showingChords = true
+                openChordsWindow(model.presentation.id)
             } label: {
                 Label("Chord Chart", systemImage: "music.note.list")
             }
@@ -1372,7 +1374,7 @@ struct SlideEditorView: View {
             Menu {
                 Button("Reflow…") { showingReflow = true }
                 Button("Arrangement…") { showingArrangement = true }
-                Button("Chord Chart…") { showingChords = true }
+                Button("Chord Chart…") { openChordsWindow(model.presentation.id) }
                 Divider()
                 Menu("Theme") { themeItems(model) }
                 if !model.presentation.themeId.isEmpty {

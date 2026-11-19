@@ -408,6 +408,20 @@ struct MxUSlidesApp: App {
         .defaultSize(width: 980, height: 640)
         .keyboardShortcut("m", modifiers: [.command, .shift])
 
+        // A song's chords, section by section (ChordsWindowView): library
+        // right-click › Edit Chords…, a slide's Chords Window…. It edits
+        // the song, so Run-Only locks it.
+        WindowGroup("Chords", id: "chords", for: ChordsWindowTarget.self) { $target in
+            if presentLayout.runOnly {
+                RunOnlyLockedPlaceholder(surface: "Chords")
+                    .background(NonRestorableWindow())
+            } else if let appModel, let target {
+                ChordsWindowView(model: appModel, target: target)
+                    .background(NonRestorableWindow())
+            }
+        }
+        .defaultSize(width: 1100, height: 720)
+
         Window("Live Assist", id: "liveAssist") {
             LiveAssistView()
         }

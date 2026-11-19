@@ -122,6 +122,8 @@ final class SlideEditorModel {
     @discardableResult
     func setChord(objectID: String, index: Int, symbol: String) -> Int? {
         var landed: Int?
+        let chordsBefore = chordsNow([objectID])
+        defer { recordChords(objectIDs: [objectID], before: chordsBefore) }
         updateObject(id: objectID) { object in
             let edit = ChordEditing.setting(symbol, at: index, in: object.chords ?? [])
             object.chords = edit.chords.isEmpty ? nil : edit.chords
@@ -133,6 +135,8 @@ final class SlideEditorModel {
     @discardableResult
     func addChord(objectID: String, line: Int, column: Int, symbol: String) -> Int? {
         var landed: Int?
+        let chordsBefore = chordsNow([objectID])
+        defer { recordChords(objectIDs: [objectID], before: chordsBefore) }
         updateObject(id: objectID) { object in
             let edit = ChordEditing.adding(symbol, line: line, column: column, to: object.chords ?? [], text: object.text)
             object.chords = edit.chords.isEmpty ? nil : edit.chords
@@ -141,7 +145,38 @@ final class SlideEditorModel {
         return landed
     }
 
+    /// The chords on these boxes of the slide shown, by box.
+    private func chordsNow(_ objectIDs: [String]) -> [String: [ChordPlacement]] {
+        Dictionary(objectIDs.map { ($0, object(id: $0)?.chords ?? []) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Lines whose chords a canvas edit changed, kept as the operator's
+    /// (ChordEdits) so an update from Shepherd puts them back.
+    private func recordChords(objectIDs: [String], before: [String: [ChordPlacement]]) {
+        guard case .presentation(let document) = host, let slideID = selectedSlideID else { return }
+        var changed = Set<String>()
+        for id in objectIDs {
+            let old = before[id] ?? [], new = object(id: id)?.chords ?? []
+            for line in Set(old.map(\.line) + new.map(\.line)) {
+                let was = old.filter { $0.line == line }.sorted { $0.column < $1.column }
+                let now = new.filter { $0.line == line }.sorted { $0.column < $1.column }
+                if was != now { changed.insert("\(id)#\(line)") }
+            }
+        }
+        guard !changed.isEmpty else { return }
+        let depth = document.undoDepth
+        updateDocument { presentation in
+            presentation.chordEdits = ChordEdits.recordingAll(in: presentation) {
+                $0.slideID == slideID && changed.contains("\($0.objectID)#\($0.line)")
+            }
+        }
+        // One ⌘Z takes back the chord and its record together.
+        if document.undoDepth == depth + 1 { document.joinLastUndo() }
+    }
+
     func removeChord(objectID: String, index: Int) {
+        let chordsBefore = chordsNow([objectID])
+        defer { recordChords(objectIDs: [objectID], before: chordsBefore) }
         updateObject(id: objectID) { object in
             let chords = ChordEditing.removing(at: index, from: object.chords ?? [])
             object.chords = chords.isEmpty ? nil : chords
@@ -151,6 +186,8 @@ final class SlideEditorModel {
     @discardableResult
     func moveChord(objectID: String, index: Int, toObjectID: String, line: Int, column: Int) -> Int? {
         var landed: Int?
+        let chordsBefore = chordsNow([objectID, toObjectID])
+        defer { recordChords(objectIDs: [objectID, toObjectID], before: chordsBefore) }
         if toObjectID == objectID {
             updateObject(id: objectID) { object in
                 let edit = ChordEditing.moving(at: index, toLine: line, column: column, in: object.chords ?? [], text: object.text)
@@ -2016,6 +2053,8 @@ final class SlideEditorModel {
         updateDocument { presentation in
             // Keeps the song's orders where the sections are still there.
             Reflow.apply(built, to: &presentation)
+            // Chords set by hand come back on lines the text gave none.
+            presentation = ChordEdits.applying(presentation, onlyBare: true)
             presentation.reflowSource = text
         }
         if let first = presentation.slides.first { selectSlide(first.id) }

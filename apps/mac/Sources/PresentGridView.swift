@@ -701,6 +701,7 @@ struct SlideGridBody: View {
     @State private var screensTarget: SlideScreensTarget?
     /// Right-click › Edit Chords… on a slide.
     @State private var chordsSlide: IdentifiedID?
+    @Environment(\.openWindow) private var openWindow
     /// Right-click › Make This the Worship Theme… on a song's slide.
     @State private var worshipThemeSlide: Slide?
     @State private var livestreamPrompt: LivestreamPromptRequest?
@@ -1320,6 +1321,10 @@ struct SlideGridBody: View {
         // A song's chords for the stage display, on this slide.
         if presentation.presentationKind == .song || slide.objects.contains(where: { !($0.chords ?? []).isEmpty }) {
             Button("Edit Chords…") { chordsSlide = IdentifiedID(id: slide.id) }
+            Button("Chords Window…") {
+                openWindow(id: "chords", value: ChordsWindowTarget(
+                    presentationID: presentation.id, sectionID: slide.sectionId ?? ""))
+            }
         }
         // The song's look: its theme in the editor, or made the worship theme.
         if presentation.presentationKind == .song {
