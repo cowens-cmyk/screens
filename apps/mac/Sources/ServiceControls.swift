@@ -1364,20 +1364,29 @@ final class ServiceControls {
         return timers.addCountdown(id: SermonTimer.id, name: SermonTimer.name, seconds: seconds)
     }
 
+    /// Whether the current plan is a Wednesday night, whose message runs
+    /// 30 minutes rather than 40.
+    var currentPlanIsMidweek: Bool {
+        SermonTimer.isMidweek(
+            appModel.currentServiceID.flatMap { appModel.resident.services.value($0) },
+            midweekServiceType: ShepherdSync.shared.midweekServiceType)
+    }
+
     /// The message's length: the live message's, else the current plan's
-    /// message's, else 40 minutes.
+    /// message's, else 40 minutes (30 on a Wednesday night).
     var sermonLength: Double {
+        let midweek = currentPlanIsMidweek
         if let live = state.liveSlide?.presentation,
            PresentationTypes.category(of: live) == PresentationTypes.sermon {
-            return SermonTimer.seconds(for: live)
+            return SermonTimer.seconds(for: live, midweek: midweek)
         }
         guard let planID = appModel.currentServiceID,
               let plan = appModel.resident.services.value(planID),
               let index = PlanMessage.itemIndex(in: plan, isSermon: { id in
                   appModel.presentation(id).map { PresentationTypes.category(of: $0) == PresentationTypes.sermon } == true
               })
-        else { return SermonTimer.defaultSeconds }
-        return SermonTimer.seconds(for: appModel.presentation(plan.items[index].refId))
+        else { return SermonTimer.seconds(for: nil, midweek: midweek) }
+        return SermonTimer.seconds(for: appModel.presentation(plan.items[index].refId), midweek: midweek)
     }
 
     /// One "Sermon" countdown, set to the message's length (40 minutes unless
@@ -1386,7 +1395,7 @@ final class ServiceControls {
     /// doesn't restart it; one left running from the service before starts
     /// again.
     private func startSermonTimer(for presentation: Presentation) {
-        let seconds = SermonTimer.seconds(for: presentation)
+        let seconds = SermonTimer.seconds(for: presentation, midweek: currentPlanIsMidweek)
         let id = ensureSermonTimer(seconds: seconds)
         if let timer = timers.snapshot(id: id), timer.isRunning {
             let now = Date()

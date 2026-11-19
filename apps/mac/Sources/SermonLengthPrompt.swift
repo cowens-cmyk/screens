@@ -76,9 +76,12 @@ enum TemplateSermonLength {
         messageItem(in: plan, model: model) != nil
     }
 
-    /// The minutes to suggest: the plan's own message length, else 40.
+    /// The minutes to suggest: the plan's own message length, else 40
+    /// (30 for a Wednesday night).
     static func suggestedMinutes(for plan: Service, model: AppModel) -> Int {
-        SermonTimer.minutes(for: messageItem(in: plan, model: model).flatMap { model.presentation($0.refId) })
+        SermonTimer.minutes(
+            for: messageItem(in: plan, model: model).flatMap { model.presentation($0.refId) },
+            midweek: SermonTimer.isMidweek(plan, midweekServiceType: ShepherdSync.shared.midweekServiceType))
     }
 
     /// Gives the template a placeholder message of its own carrying the

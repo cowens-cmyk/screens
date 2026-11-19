@@ -7,16 +7,33 @@ public enum SermonTimer {
     /// Fixed so the Message layout can name it. A Sermon timer made before
     /// this id existed is still found by its name.
     public static let id = "screens.timer.sermon"
-    /// 40 minutes, unless the message (or its plan's template) says otherwise.
+    /// A Sunday message: 40 minutes, unless the message (or its plan's
+    /// template) says otherwise.
     public static let defaultSeconds: Double = 40 * 60
+    /// A Wednesday night message: 30 minutes.
+    public static let midweekSeconds: Double = 30 * 60
 
-    public static func seconds(for presentation: Presentation?) -> Double {
-        guard let seconds = presentation?.sermonTimerSeconds, seconds > 0 else { return defaultSeconds }
+    /// Whether a plan is a Wednesday night: the midweek service type (from
+    /// Shepherd or the Students template), or any plan dated a Wednesday.
+    public static func isMidweek(_ plan: Service?, midweekServiceType: String, calendar: Calendar = .current) -> Bool {
+        guard let plan else { return false }
+        if PlanBrand.of(plan, midweekServiceType: midweekServiceType) == .students { return true }
+        return PlanSchedule.weekday(of: plan.serviceDate, calendar: calendar) == 4
+    }
+
+    /// The message's length: what the message says, else 30 minutes on a
+    /// Wednesday night and 40 otherwise. 40 minutes was every message's
+    /// length before Wednesday nights had their own (templates and the
+    /// template prompt filled it in), so on a Wednesday it counts as unset.
+    public static func seconds(for presentation: Presentation?, midweek: Bool = false) -> Double {
+        let dayLength = midweek ? midweekSeconds : defaultSeconds
+        guard let seconds = presentation?.sermonTimerSeconds, seconds > 0 else { return dayLength }
+        if midweek, seconds == defaultSeconds { return dayLength }
         return seconds
     }
 
-    public static func minutes(for presentation: Presentation?) -> Int {
-        Int((seconds(for: presentation) / 60).rounded())
+    public static func minutes(for presentation: Presentation?, midweek: Bool = false) -> Int {
+        Int((seconds(for: presentation, midweek: midweek) / 60).rounded())
     }
 
     /// The timer in a list: the fixed id first, then the name.
