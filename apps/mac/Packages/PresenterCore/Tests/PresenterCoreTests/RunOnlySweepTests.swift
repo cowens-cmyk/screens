@@ -189,6 +189,8 @@ import Testing
             "\"liveAssist\"", "\"assistant\"",
             // Browsable in run-only; its drags, menus and imports ask the lock.
             "\"mediaLibrary\"",
+            // A song's chords: locked like the editors.
+            "\"chords\"",
         ]
         let scenePattern = /(?:Window|WindowGroup)\((?:"[^"]*",\s*)?id:\s*("[^"]+")/
         var unplaced: [String] = []

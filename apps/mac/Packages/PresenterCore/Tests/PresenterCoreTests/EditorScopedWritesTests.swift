@@ -366,6 +366,22 @@ private func median(_ runs: Int, _ work: () throws -> Void) rethrows -> Duration
         #endif
     }
 
+    @LibraryActor @Test func aChordAndItsRecordUndoAsOneStep() throws {
+        let origin = try TypedDocument(editorDeck("f", slides: 2))
+        let editor = EditorReplica<Presentation>(parts: ReplicaParts(document: origin.document.fork(), value: origin.value, persisted: nil))
+        let name = editor.value.name
+        try editor.updateDeck { $0.name = "Edited" }
+        let depth = editor.undoDepth
+        try editor.updateDeck {
+            $0.chordEdits = [ChordLineEdit(section: "", text: "x", occurrence: 0, chords: [], key: nil)]
+        }
+        #expect(editor.undoDepth == depth + 1)
+        #expect(editor.wholeWrite == nil, "chordEdits is a deck field like the others")
+        editor.joinLastUndo()
+        try editor.undo()
+        #expect(editor.value.name == name && editor.value.chordEdits == nil)
+    }
+
     @LibraryActor @Test func anUnscopableEditTakesTheCountedWholeWrite() throws {
         let origin = try TypedDocument(editorDeck("f", slides: 3))
         let editor = EditorReplica<Presentation>(parts: ReplicaParts(document: origin.document.fork(), value: origin.value, persisted: nil))

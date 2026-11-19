@@ -343,6 +343,32 @@
         }
       ]
     },
+    "ChordLineEdit": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "section",
+          "type": "string"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "occurrence",
+          "type": "int"
+        },
+        {
+          "name": "chords",
+          "type": "list:ChordPlacement"
+        },
+        {
+          "name": "key",
+          "type": "string",
+          "optional": true
+        }
+      ]
+    },
     "ChordNotation": {
       "kind": "enum",
       "cases": [
@@ -1789,6 +1815,11 @@
         {
           "name": "shepherdImportHash",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "chordEdits",
+          "type": "list:ChordLineEdit",
           "optional": true
         }
       ]

@@ -513,6 +513,12 @@ final class ReplicaCore<Entity: DocumentEntity> {
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
+    var undoDepth: Int { undoStack.count }
+
+    /// The last write undoes together with the one before it, as one step.
+    func joinLastUndo() {
+        if undoStack.count >= 2 { undoStack.removeLast() }
+    }
 
     @discardableResult
     func undo(scoped: Bool = false) throws -> Entity {

@@ -53,6 +53,10 @@ public final class EditorReplica<Entity: DocumentEntity> {
     public var wholeWrite: String? { core.wholeWrite }
 
     public var canUndo: Bool { core.canUndo }
+    /// How many steps Undo can take; with `joinLastUndo`, a follow-up write
+    /// (a record of what the edit did) undoes with the edit.
+    public var undoDepth: Int { core.undoDepth }
+    public func joinLastUndo() { core.joinLastUndo() }
     public var canRedo: Bool { core.canRedo }
 
     public func heads() -> Set<ChangeHash> {

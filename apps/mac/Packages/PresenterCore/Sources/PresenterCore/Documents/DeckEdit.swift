@@ -243,6 +243,7 @@ struct DeckField {
             optional(\.shepherdArrangementId, "shepherdArrangementId"),
             optional(\.shepherdChartHash, "shepherdChartHash"),
             optional(\.shepherdImportHash, "shepherdImportHash"),
+            optional(\.chordEdits, "chordEdits"),
         ]
     }
 }
