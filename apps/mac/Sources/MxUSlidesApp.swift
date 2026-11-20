@@ -153,6 +153,7 @@ struct MxUSlidesApp: App {
     init() {
 
         BackupSettings.applyPending()
+        ShellMetrics.widenSavedPlanWidthOnce()
 
         DiagnosticsStore.shared.activate()
 
