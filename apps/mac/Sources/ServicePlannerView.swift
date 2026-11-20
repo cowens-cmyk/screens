@@ -391,6 +391,8 @@ struct RunOrderList: View, Equatable {
     }
 
     private func insertPayload(_ payload: String, beforeItemID: String?) {
+        // A Prism cue goes on an item, not between them.
+        guard PrismScenes.draggedSceneID(payload) == nil else { return }
         let added: ServiceItem? = if !payload.hasPrefix("svc::"), let ref = model.indexEntry(payload),
             let kind: ServiceItemKind = ref.kind == .presentation ? .presentation
                 : ref.kind == .media ? .media
@@ -474,6 +476,10 @@ struct RunOrderList: View, Equatable {
     private func bulkMenu(_ ids: [String]) -> some View {
         Text("\(ids.count) Items")
         Divider()
+        if let service = try? model.service(serviceID) {
+            prismCueMenu(ids, service: service)
+            Divider()
+        }
         Button("Hide") { hide(ids) }
         Button("Remove from Service", role: .destructive) { requestRemoval(ids) }
     }
@@ -485,6 +491,8 @@ struct RunOrderList: View, Equatable {
             return model.dropCountdownVideo(payload, on: item, planID: serviceID)
         } else if !runOnly, let comboID = payload.flatMap(comboID(in:)) {
             return addMacro(comboID, to: item)
+        } else if !runOnly, let sceneID = PrismScenes.draggedSceneID(payload) {
+            return dropPrismScene(sceneID, on: item)
         } else if !runOnly, item.itemKind == .presentation,
            let dragged = payload.flatMap(SlideBulkEdit.draggedSlide(in:)) {
             return model.copySlide(
@@ -499,6 +507,7 @@ struct RunOrderList: View, Equatable {
         let slideDrag = dragged.flatMap(SlideBulkEdit.draggedSlide(in:))
         return (item.itemKind == .presentation && slideDrag.map { $0.presentationID != item.refId } == true)
             || (!runOnly && dragged.flatMap(comboID(in:)) != nil)
+            || (!runOnly && item.itemKind != .header && PrismScenes.draggedSceneID(dragged) != nil)
             || (!runOnly && model.isCountdownVideoDrop(dragged, on: item))
     }
 
@@ -593,7 +602,7 @@ struct RunOrderList: View, Equatable {
             }
         }
 
-        .id("runOrderRowMenu|\(item.id)|\(item.itemKind.rawValue)|\(item.itemKind == .media && model.media(item.refId) == nil)|\(inMultiSelection(item.id))|\(item.lightingCue ?? "")|\(item.actions?.count ?? 0)")
+        .id("runOrderRowMenu|\(item.id)|\(item.itemKind.rawValue)|\(item.itemKind == .media && model.media(item.refId) == nil)|\(inMultiSelection(item.id))|\(item.lightingCue ?? "")|\(item.actions?.count ?? 0)|\(item.actions?.first(where: PrismScenes.isPrism)?.prismCueId ?? "")")
     }
 
     @ViewBuilder
@@ -630,10 +639,11 @@ struct RunOrderList: View, Equatable {
             }
             headerColorMenu(item)
             if let service {
-                lightingMenu(item, service: service, position: position)
+                prismCueMenu([item.id], service: service, position: position)
             }
-            if item.actions?.isEmpty == false {
-                Button("Remove Macros") { setActions(nil, on: item.id) }
+            if item.actions?.contains(where: { !PrismScenes.isPrism($0) }) == true {
+                // The item's own Prism cue isn't a macro: Prism Cue clears it.
+                Button("Remove Macros") { setActions(item.actions?.filter(PrismScenes.isPrism), on: item.id) }
             }
             Divider()
 
@@ -672,31 +682,92 @@ struct RunOrderList: View, Equatable {
 
     // MARK: Lighting cues and plan-item macros
 
-    /// What Prism gets when the item goes live, in small type at the
-    /// row's end, and a bolt when macros ride on the item.
+    /// A bolt when macros ride on the item, then the Prism scene it leaves
+    /// the lights on as a pill at the row's end (PlanCuePill).
     @ViewBuilder
     private func lightingBadges(_ item: ServiceItem, position: ServicePosition?) -> some View {
-        if PrismLink.shared.followsService {
-            if let position {
-                Text(position.title)
-                    .font(.caption2)
-                    .foregroundStyle(item.lightingCue == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
-                    .lineLimit(1)
-                    .layoutPriority(2)
-                    .help("Prism: \(position.title)" + (item.lightingCue == nil ? "" : " (chosen for this item)"))
-            } else if item.lightingCue == ServicePosition.noneKey {
-                Image(systemName: "lightbulb.slash")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .help("No Prism cue for this item")
-            }
-        }
-        if let actions = item.actions, !actions.isEmpty {
+        let macros = (item.actions ?? []).filter { !PrismScenes.isPrism($0) }
+        if !macros.isEmpty {
             Image(systemName: "bolt.fill")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .help("Runs when it goes live: " + actions.map(macroName).joined(separator: ", "))
+                .help("Runs when it goes live: " + macros.map(macroName).joined(separator: ", "))
         }
+        let follows = PrismLink.shared.followsService
+        if let cue = ServiceLighting.cue(for: item, position: position, model: model) {
+            PlanCuePill(cue: cue, positionName: ServiceLighting.sceneName(for:), follows: follows)
+                .layoutPriority(2)
+        } else if item.lightingCue == ServicePosition.noneKey {
+            Image(systemName: "lightbulb.slash")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .help("No Prism cue for this item")
+        }
+    }
+
+    /// Right-click › Prism Cue on one item or a selection: Automatic (its
+    /// place in the service), any of Prism's scenes, or None.
+    @ViewBuilder
+    private func prismCueMenu(_ ids: [String], service: Service, position: ServicePosition? = nil) -> some View {
+        let items = service.items.filter { ids.contains($0.id) && $0.itemKind != .header }
+        let one = items.count == 1 ? items.first : nil
+        let chosenScene = one.flatMap { $0.actions?.first(where: PrismScenes.isPrism)?.prismCueId }
+        let automatic = one.flatMap { automaticPosition($0, in: service, current: position) }
+        if !items.isEmpty {
+            Menu("Prism Cue") {
+                Toggle(
+                    automatic.map { "Automatic (\(ServiceLighting.sceneName(for: $0)))" } ?? "Automatic",
+                    isOn: Binding(
+                        get: { one != nil && chosenScene == nil && one?.lightingCue == nil },
+                        set: { _ in setPrismCue(.automatic, on: items.map(\.id)) }))
+                Divider()
+                PrismSceneMenuItems(model: model, current: chosenScene ?? one?.lightingCue) { scene in
+                    if let scene { setPrismCue(.scene(scene), on: items.map(\.id)) }
+                }
+                Divider()
+                Toggle("None", isOn: Binding(
+                    get: { chosenScene == nil && one?.lightingCue == ServicePosition.noneKey },
+                    set: { _ in setPrismCue(.none, on: items.map(\.id)) }))
+            }
+        }
+    }
+
+    private enum PrismCueChoice {
+        case automatic, none
+        case scene(PrismScene)
+    }
+
+    /// Saved on the plan's items, so it holds through a quit and a re-sync
+    /// from Shepherd (which keeps items' actions).
+    private func setPrismCue(_ choice: PrismCueChoice, on itemIDs: [String]) {
+        model.updateService(serviceID) { service in
+            for index in service.items.indices where itemIDs.contains(service.items[index].id) {
+                guard service.items[index].itemKind != .header else { continue }
+                switch choice {
+                case .automatic:
+                    service.items[index].actions = PrismScenes.settingItemScene(nil, in: service.items[index].actions)
+                    service.items[index].lightingCue = nil
+                case .none:
+                    service.items[index].actions = PrismScenes.settingItemScene(nil, in: service.items[index].actions)
+                    service.items[index].lightingCue = ServicePosition.noneKey
+                case .scene(let scene):
+                    service.items[index].actions = PrismScenes.settingItemScene(scene, in: service.items[index].actions)
+                    service.items[index].lightingCue = nil
+                }
+            }
+        }
+    }
+
+    /// A Prism scene dragged from the top bar onto an item (and the rest of
+    /// the selection, when the item is part of it).
+    private func dropPrismScene(_ sceneID: String, on item: ServiceItem) -> Bool {
+        guard item.itemKind != .header,
+              let scene = PrismLink.shared.sceneChoices(model).first(where: { $0.id == sceneID }), scene.note != nil
+        else { return false }
+        let ids = marks.multi.contains(item.id) ? Array(marks.multi) : [item.id]
+        setPrismCue(.scene(scene), on: ids)
+        DiagnosticsStore.shared.note("prism.itemCue", detail: "\(scene.name) on \(ids.count) item(s)")
+        return true
     }
 
     /// Right-click › Lighting Cue: Automatic (what the plan works out),

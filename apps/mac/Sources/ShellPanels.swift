@@ -262,8 +262,21 @@ final class PanelMotionMeter: NSObject {
 enum ShellMetrics {
     /// The docked plan column and the peeking plan card, until the
     /// operator drags its edge (kept per Mac under `planWidthKey`).
-    static let planWidth: CGFloat = 248
+    /// Wide enough for a song's name and its Prism cue pill side by side.
+    static let planWidth: CGFloat = 288
     static let planWidthKey = "planPanel.width"
+    private static let planWidenedKey = "planPanel.widenedForPrismCues"
+
+    /// The plan got wider when each row took a Prism cue pill. A width
+    /// dragged narrower than that before then opens at the new one, once;
+    /// dragging it narrow again afterwards sticks.
+    static func widenSavedPlanWidthOnce(_ defaults: UserDefaults = .standard) {
+        guard !defaults.bool(forKey: planWidenedKey) else { return }
+        defaults.set(true, forKey: planWidenedKey)
+        if let saved = defaults.object(forKey: planWidthKey) as? Double, saved < Double(planWidth) {
+            defaults.set(Double(planWidth), forKey: planWidthKey)
+        }
+    }
     /// Narrow enough to leave the slides the room, wide enough for long
     /// presentation names.
     static let planWidthRange: ClosedRange<CGFloat> = 200 ... 520

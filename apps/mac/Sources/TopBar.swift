@@ -520,9 +520,10 @@ struct TopBarActions {
 /// media bin, listening and where the sound goes, the slide transition, More,
 /// Clear, and the screens' lights. Everything else (Start Time, songs,
 /// points, the sermon notes, the stage display) is in More.
-struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
+struct TopBar<Themes: View, Prism: View, ScriptureMenu: View, More: View>: View {
     @HotDefault(MediaDrawer.openKey) private var mediaBinOpen = false
     @State private var themesShown = false
+    @State private var prismShown = false
     let fit: TopBarFit
     /// The window's title bar height, so the bar is centred on the traffic lights.
     let height: CGFloat
@@ -536,6 +537,8 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
     let screens: TopBarToggle?
     let actions: TopBarActions
     @ViewBuilder let themes: () -> Themes
+    /// Prism's scenes, to drag onto plan items (PrismCuePalette).
+    @ViewBuilder let prism: () -> Prism
     @ViewBuilder let scriptureMenu: () -> ScriptureMenu
     @ViewBuilder let more: () -> More
 
@@ -552,7 +555,10 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
                 modeCell(.scheduler, title: "Schedule", symbol: "calendar", help: "Schedule: triggers that fire countdowns, slides and macros at set times" + KeyMapStore.shared.map.helpKeys(for: .modeScheduler))
                 themeCell
             }
-            TopBarGroup { bibleCell }
+            TopBarGroup {
+                bibleCell
+                prismCell
+            }
             Spacer(minLength: 12)
             TopBarGroup {
                 mediaCell
@@ -614,6 +620,18 @@ struct TopBar<Themes: View, ScriptureMenu: View, More: View>: View {
         .buttonStyle(TopBarButtonStyle())
         .popover(isPresented: $themesShown, arrowEdge: .bottom) { themes() }
         .help("Every theme: wide and lower thirds. Click one to edit it.")
+    }
+
+    /// Prism's scenes as chips to drag onto plan items.
+    private var prismCell: some View {
+        Button { prismShown.toggle() } label: {
+            TopBarCellLabel(title: "Prism", selected: prismShown) {
+                PrismMark().frame(width: 17, height: 15)
+            }
+        }
+        .buttonStyle(TopBarButtonStyle())
+        .popover(isPresented: $prismShown, arrowEdge: .bottom) { prism() }
+        .help("Prism cues: drag one onto a plan item to have it change the lights when that item goes live")
     }
 
     /// A click adds scripture; the menu has listening for references and the Bible theme.

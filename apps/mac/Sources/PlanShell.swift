@@ -1178,6 +1178,7 @@ struct PlanShell: View {
                     newTheme: { if let id = model.createEntity(in: .themes) { editTheme(id) } },
                     newFromImage: { themeFromImage = true })
             },
+            prism: { PrismCuePalette(model: model) },
             scriptureMenu: { bibleMenuItems },
             more: { moreMenuItems })
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
