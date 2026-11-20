@@ -55,16 +55,17 @@ struct PlanCuePill: View {
         let off = !chosen && !follows
         HStack(spacing: 4) {
             PrismMark(muted: off).frame(width: 10, height: 9)
-            Text(name)
+            // Cut short here rather than by layout, so the pill hugs its
+            // name and a long scene name can't push the item's name out.
+            Text(name.count > 14 ? String(name.prefix(13)) + "\u{2026}" : name)
                 .font(.system(size: 10, weight: chosen ? .semibold : .medium))
                 .lineLimit(1)
-                .truncationMode(.tail)
                 .foregroundStyle(off ? AnyShapeStyle(.tertiary) : chosen ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
         }
         .padding(.leading, 5)
         .padding(.trailing, 7)
         .frame(height: 17)
-        .frame(maxWidth: 104, alignment: .leading)
+        .fixedSize()
         .background {
             Capsule().fill(chosen
                 ? AnyShapeStyle(LinearGradient(
@@ -74,7 +75,6 @@ struct PlanCuePill: View {
         .overlay {
             if chosen { Capsule().strokeBorder(PrismMark.colors[1].opacity(0.45), lineWidth: 0.5) }
         }
-        .fixedSize(horizontal: false, vertical: true)
         .help(help)
     }
 
@@ -148,7 +148,7 @@ struct PrismCuePalette: View {
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 108), spacing: 6)], alignment: .leading, spacing: 6) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 6)], alignment: .leading, spacing: 6) {
                     ForEach(scenes) { scene in chip(scene) }
                 }
             }
@@ -162,7 +162,7 @@ struct PrismCuePalette: View {
                 .font(.caption2).foregroundStyle(.tertiary)
         }
         .padding(14)
-        .frame(width: 280)
+        .frame(width: 310)
         .onAppear { link.loadScenes() }
     }
 
