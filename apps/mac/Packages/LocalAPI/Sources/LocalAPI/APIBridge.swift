@@ -48,4 +48,11 @@ public protocol LocalAPIBridge: AnyObject, Sendable {
     func sendBoothMessage(_ command: APIBoothMessageCommand) throws -> APIBoothMessage
     /// The notes sent this session, newest first.
     func boothMessages() -> [APIBoothMessage]
+
+    /// The open plan's lighting positions with each one's background, for
+    /// Prism. Empty, with no plan, when none is open.
+    func lightingBackgrounds() async throws -> APILightingBackgrounds
+    /// A media item's picture as a 480-wide JPEG: the same picture
+    /// showFrame(.background) gives while that media is the background.
+    func mediaPoster(id: String) async throws -> Data
 }

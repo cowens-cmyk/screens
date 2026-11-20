@@ -254,6 +254,22 @@ final class FakeBridge: LocalAPIBridge {
     }
 
     func boothMessages() -> [APIBoothMessage] { booth }
+
+    var lighting = APILightingBackgrounds(serviceId: nil, serviceName: nil, positions: [])
+
+    func lightingBackgrounds() async throws -> APILightingBackgrounds {
+        calls.append("lightingBackgrounds")
+        return lighting
+    }
+
+    /// Media ids with a poster; any other id is unknown.
+    var posters: Set<String> = ["bg-1"]
+
+    func mediaPoster(id: String) async throws -> Data {
+        calls.append("poster:\(id)")
+        guard posters.contains(id) else { throw APIError.notFound("No media '\(id)'.") }
+        return Self.frameBytes
+    }
 }
 
 @MainActor

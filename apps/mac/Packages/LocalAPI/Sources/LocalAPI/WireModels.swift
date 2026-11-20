@@ -791,3 +791,67 @@ public struct APIBoothMessage: Codable, Sendable, Equatable {
         self.sentAt = sentAt
     }
 }
+
+/// GET /v1/lighting/backgrounds: the plan Screens has open, each lighting
+/// position in it (Song 1, Countdown, Message…) and the background that
+/// position's item puts up. Prism reads it ahead of the service so a song's
+/// light colours can be ready before the song goes live, instead of
+/// catching up after the background appears.
+public struct APILightingBackgrounds: Codable, Sendable, Equatable {
+    /// Null, with serviceName, when no plan is open.
+    public var serviceId: String?
+    public var serviceName: String?
+    /// One per position, in run order.
+    public var positions: [Position]
+
+    public struct Position: Codable, Sendable, Equatable {
+        /// ServicePosition's key: song1, countdown, walkIn, message,
+        /// custom:Prayer…
+        public var position: String
+        /// The first plan item in run order at this position.
+        public var itemId: String
+        public var itemName: String
+        /// The media its background is; GET /v1/media/{id}/poster draws it.
+        /// Null when the item puts up no background.
+        public var mediaId: String?
+
+        public init(position: String, itemId: String, itemName: String, mediaId: String?) {
+            self.position = position
+            self.itemId = itemId
+            self.itemName = itemName
+            self.mediaId = mediaId
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case position, itemId, itemName, mediaId
+        }
+
+        // Written out so a missing background is `null` rather than a
+        // missing key: Prism was written against null.
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(position, forKey: .position)
+            try container.encode(itemId, forKey: .itemId)
+            try container.encode(itemName, forKey: .itemName)
+            try container.encode(mediaId, forKey: .mediaId)
+        }
+    }
+
+    public init(serviceId: String?, serviceName: String?, positions: [Position]) {
+        self.serviceId = serviceId
+        self.serviceName = serviceName
+        self.positions = positions
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case serviceId, serviceName, positions
+    }
+
+    // Nulls written out, as for Position.mediaId.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(serviceId, forKey: .serviceId)
+        try container.encode(serviceName, forKey: .serviceName)
+        try container.encode(positions, forKey: .positions)
+    }
+}

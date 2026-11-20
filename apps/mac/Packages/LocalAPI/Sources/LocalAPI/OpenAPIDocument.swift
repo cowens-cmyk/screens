@@ -276,12 +276,24 @@ public enum OpenAPIDocument {
             "id": str, "text": str, "from": str,
             "sentAt": .object(["type": "string", "format": "date-time"]),
         ], required: ["id", "text", "sentAt"]),
+        "LightingBackgrounds": obj([
+            "serviceId": nullableStr, "serviceName": nullableStr,
+            "positions": .object([
+                "type": "array",
+                "items": obj([
+                    "position": str, "itemId": str, "itemName": str, "mediaId": nullableStr,
+                ], required: ["position", "itemId", "itemName", "mediaId"]),
+            ]),
+        ], required: ["serviceId", "serviceName", "positions"]),
         "ServerInfo": obj([
             "name": str, "product": str, "apiVersion": str, "schemaVersion": int,
         ], required: ["name", "product", "apiVersion", "schemaVersion"]),
     ]
 
     private static let str = JSONValue.object(["type": "string"])
+    /// Always present, null when there is nothing (OpenAPI 3.1 spells
+    /// nullable as a second type).
+    private static let nullableStr = JSONValue.object(["type": .array([.string("string"), .string("null")])])
     private static let int = JSONValue.object(["type": "integer"])
     private static let num = JSONValue.object(["type": "number"])
 
