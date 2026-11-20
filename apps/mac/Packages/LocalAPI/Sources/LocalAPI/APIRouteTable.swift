@@ -59,6 +59,27 @@ public enum APIRouteTable {
         })
 
         routes.append(APIRoute(
+            "GET", "/v1/lighting/backgrounds", scope: .view,
+            operationId: "getLightingBackgrounds",
+            summary: "The open plan's lighting positions (song1, countdown, walkIn, message…), each with the first item at that position in run order and the media its background is. Prism reads it before the service so a song's light colours are ready before the song goes live. serviceId and serviceName are null and positions empty when no plan is open; mediaId is null when the item puts up no background.",
+            tag: "Lighting",
+            responseSchema: .ref("LightingBackgrounds")
+        ) { _ in
+            .json(try await bridge.lightingBackgrounds())
+        })
+
+        routes.append(APIRoute(
+            "GET", "/v1/media/{id}/poster", scope: .view,
+            operationId: "getMediaPoster",
+            summary: "A media item's picture as a JPEG, 480 wide: a lit frame of a video, else the picture. The same picture GET /v1/show/frames/background gives while that media is the live background. 404 for unknown media.",
+            tag: "Media",
+            responseSchema: .object(["type": "string", "format": "binary"]),
+            responseContentType: "image/jpeg"
+        ) { context in
+            .image(try await bridge.mediaPoster(id: context.pathParameter("id")))
+        })
+
+        routes.append(APIRoute(
             "POST", "/v1/booth/messages", scope: .control,
             operationId: "sendBoothMessage",
             summary: "Send a short note to the booth (\"Mic issue\", \"Ready\"). It shows as a banner in the Mac's main window and is logged.",

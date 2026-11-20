@@ -868,6 +868,14 @@ final class AppAPIBridge: LocalAPIBridge {
         guard let media, !media.mediaId.isEmpty, let item = appModel.media(media.mediaId) else {
             throw APIError.notFound("The live slide has no background.")
         }
+        return try await posterJPEG(item)
+    }
+
+    /// A media item's picture for the lights, 480 wide: a lit frame of a
+    /// video, else the library's poster. The live background and a song's
+    /// background ahead of time come from here, so Prism gets the same
+    /// picture for the same media either way and its colours match.
+    private func posterJPEG(_ item: MediaItem) async throws -> Data {
         guard let blobs = appModel.blobs else {
             throw APIError(status: 503, code: "render_failed", message: "Couldn't draw the background.")
         }
@@ -927,6 +935,76 @@ final class AppAPIBridge: LocalAPIBridge {
         context.interpolationQuality = .high
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         return context.makeImage() ?? image
+    }
+
+    func mediaPoster(id: String) async throws -> Data {
+        guard !id.isEmpty, let item = appModel.media(id) else {
+            throw APIError.notFound("No media '\(id)'.")
+        }
+        return try await posterJPEG(item)
+    }
+
+    // MARK: Prism
+
+    func lightingBackgrounds() async -> APILightingBackgrounds {
+        guard let opened = currentService() else {
+            return APILightingBackgrounds(serviceId: nil, serviceName: nil, positions: [])
+        }
+        // A song's position depends on its deck (a Worship deck counts as a
+        // song) and so does its background, so the plan's decks are read in
+        // first: Prism asks before anything goes live, often before the
+        // decks have been opened on this Mac.
+        let decks = await filledDecks(in: opened)
+        // The plan is read again after the wait, in case another was opened.
+        guard let service = currentService() else {
+            return APILightingBackgrounds(serviceId: nil, serviceName: nil, positions: [])
+        }
+        let positions = ServiceLighting.positions(in: service, model: appModel)
+        var order: [String] = []
+        var chosen: [String: (item: ServiceItem, mediaId: String?)] = [:]
+        for item in service.items {
+            guard let key = positions[item.id]?.key else { continue }
+            if let earlier = chosen[key] {
+                // A header named Message gives the sermon under it the same
+                // position, but shows nothing itself; the item under it is
+                // the one with a background.
+                guard earlier.item.itemKind == .header, item.itemKind != .header else { continue }
+            } else {
+                order.append(key)
+            }
+            chosen[key] = (item, lightingMediaID(for: item, decks: decks))
+        }
+        return APILightingBackgrounds(
+            serviceId: service.id, serviceName: service.name,
+            positions: order.compactMap { key in
+                chosen[key].map {
+                    APILightingBackgrounds.Position(
+                        position: key, itemId: $0.item.id, itemName: $0.item.name, mediaId: $0.mediaId)
+                }
+            })
+    }
+
+    /// The background a plan item puts up: a presentation's first slide
+    /// with a background (its own, its section's or the song's), in the
+    /// item's arrangement; a video or picture is its own. Anything else
+    /// has none.
+    private func lightingMediaID(for item: ServiceItem, decks: [String: Presentation]) -> String? {
+        switch item.itemKind {
+        case .media:
+            return item.refId.isEmpty ? nil : item.refId
+        case .presentation:
+            guard let presentation = decks[item.refId] ?? appModel.presentation(item.refId) else { return nil }
+            for slide in appModel.arrangedSlides(presentation, arrangementId: item.arrangementId) {
+                if let background = SlideSceneBuilder.effectiveBackground(
+                    slide: slide, presentation: presentation, arrangementId: item.arrangementId),
+                   !background.mediaId.isEmpty {
+                    return background.mediaId
+                }
+            }
+            return nil
+        case .audio, .playlist, .header, .info:
+            return nil
+        }
     }
 
     func sendBoothMessage(_ command: APIBoothMessageCommand) throws -> APIBoothMessage {

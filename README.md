@@ -71,6 +71,11 @@ That rewrites `PresenterCore/Sources/PresenterCore/Generated/Models.swift` and `
 
 With Settings › Local API enabled, the app serves a REST and WebSocket API on port 6980, authenticated by scoped bearer tokens created in the same pane. `GET /v1/status` returns the live slide; `scripts/*.mjs` show it driving a show. The route table and OpenAPI document live in `apps/mac/Packages/LocalAPI`.
 
+Two read-only routes (a Watch key is enough) are for Prism, the church's lighting app, which uses them to keep each song's light colours in step with its background before the song goes live:
+
+- `GET /v1/lighting/backgrounds` lists the plan Screens has open: `{"serviceId", "serviceName", "positions": [{"position", "itemId", "itemName", "mediaId"}]}`. One entry per lighting position (`song1`, `countdown`, `walkIn`, `message`, `custom:Prayer`…), in run order, for the first plan item at that position; a header's position goes to the item under it. `mediaId` is a presentation's first background in the item's arrangement, a video or picture item's own id, else `null`. With no plan open, `serviceId` and `serviceName` are `null` and `positions` is empty.
+- `GET /v1/media/{id}/poster` is that media as a 480-wide JPEG: the same picture `GET /v1/show/frames/background` gives while it is the live background (a lit frame of a video, else the picture). 404 for unknown media.
+
 ### Booth board
 
 `apps/mac/Sources/BoothRelay.swift` sends the show to the booth board in the Hope CMS (dashboard.hopejc.org/booth): the status, timers, transport and stage display as JSON every time they change and every 5 seconds, and a 960-px JPEG of the audience screen when it changes and once a minute. The CMS can't reach the Mac, so the Mac pushes. It is off on each Mac until turned on in Settings › Integrations › Remote & API › Booth Board, with the token from the board's setup sheet (kept in the Keychain, service `org.hopejc.screens.booth`). The CMS side is documented in `docs/cms/BOOTH.md` in hope-church-automation.
