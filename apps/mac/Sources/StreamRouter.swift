@@ -11,8 +11,9 @@ import SlideScene
 /// live slide wins (its Full Screen takes over the
 /// stream even when the switch is on Transparent, its Nothing clears the
 /// stream even on Full Screen, and its lower-third picture goes over the
-/// camera in place of the slide), and the Walkout or a presentation set to
-/// Full Screen as a whole stands where that choice stands; then the Transparent · Lower Third · Full
+/// camera in place of the slide), and the Walkout stands where that choice
+/// stands; a presentation set to Full Screen as a whole beats all of it,
+/// videos included, while it's up; then the Transparent · Lower Third · Full
 /// Screen switch (ShowSetup.streamMode); then, on Lower Third, the
 /// presentation's own Livestream theme, then its type's choice in Screens by
 /// Type, then the theme's pick for the slide's category, then the theme's
@@ -101,11 +102,14 @@ final class StreamRouter {
             let choice: StreamChoice?
             // The Walkout takes the whole livestream with what the room
             // sees, whatever its slide says: it shares the Closing slide,
-            // which is set up for the service, not for people leaving. So
-            // does a presentation set to Full Screen as a whole.
-            let design = StreamPrecedence.liveDesign(
-                slide: liveSlide?.streamDesign, wholeStream: walkoutIsLive || setup.streamFullScreenDeck)
-            switch StreamPrecedence.decide(global: global, design: design, video: video.phase) {
+            // which is set up for the service, not for people leaving. A
+            // presentation set to Full Screen as a whole (the pre-service
+            // slideshow) is locked to it, videos' ends included.
+            let design = StreamPrecedence.liveDesign(slide: liveSlide?.streamDesign, wholeStream: walkoutIsLive)
+            switch StreamPrecedence.decide(
+                global: global, design: design, video: video.phase,
+                presentationFullScreen: setup.streamFullScreenDeck
+            ) {
             case .nothing: choice = nil
             case .clear: choice = .clear
             case .audience: choice = .audience

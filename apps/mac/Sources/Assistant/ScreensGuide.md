@@ -369,7 +369,7 @@ A series theme has five full-screen designs: **Title**, **Point**, **Scripture**
 
 ## Livestream
 
-The livestream screen is keyed over the camera. In order, these decide what it shows: a playing video, then a presentation set to **Full Screen (every slide)** (and the Walkout), then the slide's own choice, then the Livestream switch, then (on Lower Third) the presentation's own Livestream theme, its type's choice in Lower Thirds, and last the slide's theme's routing.
+The livestream screen is keyed over the camera. A presentation set to **Full Screen (every slide)** fills it the whole time it's up, whatever else says. Otherwise, in order, these decide what it shows: a playing video, then the Walkout, then the slide's own choice, then the Livestream switch, then (on Lower Third) the presentation's own Livestream theme, its type's choice in Lower Thirds, and last the slide's theme's routing.
 
 **1. The Livestream switch** (Livestream card menu in the screens panel, Settings › Livestream › **Livestream shows**, or the Livestream section of Settings › Screens):
 - **Lower Third** (default): each presentation and slide shows in the lower third set up for it (below); anything without one leaves the camera clear.
@@ -383,7 +383,7 @@ Full Screen and Transparent (picked here or by a slide's or item's Livestream ac
 - Example: to put the Worship lower third on every song, set Worship to **Lyrics**. A song still wins with its own Livestream theme (song editor › Screens), and a slide with its own choice.
 - It sets only the livestream; what the room sees doesn't change.
 
-**3. A presentation's own Livestream theme** (song editor › Screens › Livestream, the slide editor's inspector › Presentation › Livestream, or the tags beside its name in Present). Left on "<Type> default: …" it follows Lower Thirds; a theme picked here wins over the type for that presentation. **Full Screen (every slide)** puts every slide of the presentation on the livestream edge to edge, whatever each slide, the switch or its type says, so slides added later need nothing set: use it for the pre-service slideshow. Videos in it still play full screen and leave the camera clear when they end, until the next slide. The plan's tags say **Full screen**. Changed while the presentation is up, the stream follows at once.
+**3. A presentation's own Livestream theme** (song editor › Screens › Livestream, the slide editor's inspector › Presentation › Livestream, or the tags beside its name in Present). Left on "<Type> default: …" it follows Lower Thirds; a theme picked here wins over the type for that presentation. **Full Screen (every slide)** puts every slide of the presentation on the livestream edge to edge, whatever each slide, the switch or its type says, so slides added later need nothing set: use it for the pre-service slideshow. It's a lock: nothing changes the stream while the presentation is up, not a slide's own choice, a stream action, the switch, or a video ending. The plan's tags say **Full screen**. Changed while the presentation is up, the stream follows at once.
 
 **4. The theme's routing** (theme editor › Where It Goes): what each category shows when nothing above decided. Its note says when Lower Thirds decides first.
 

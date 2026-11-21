@@ -153,17 +153,23 @@ import Testing
     #expect(bare.streamThemeReferences.isEmpty)
 }
 
-@Test func aFullScreenPresentationFillsTheStreamWhateverItsSlidesOrTheSwitchSay() {
+@Test func aFullScreenPresentationFillsTheStreamWhateverItsSlidesTheSwitchOrItsVideosSay() {
     let picture = StreamDesign.lowerThirdImage("lt")
     for slide in [nil, StreamDesign(category: "", mode: .clear), StreamDesign(category: "", mode: .design), picture] {
-        let design = StreamPrecedence.liveDesign(slide: slide, wholeStream: true)
         for global in [StreamPrecedence.GlobalMode.lowerThird, .fullScreen, .transparent] {
-            #expect(StreamPrecedence.decide(global: global, design: design, video: .none) == .audience)
+            for video in [StreamPrecedence.Video.none, .playing, .over] {
+                #expect(StreamPrecedence.decide(
+                    global: global, design: slide, video: video, presentationFullScreen: true) == .audience)
+            }
         }
         // Without it, the slide's own choice stands.
-        #expect(StreamPrecedence.liveDesign(slide: slide, wholeStream: false) == slide)
+        #expect(StreamPrecedence.decide(global: .lowerThird, design: slide, video: .none, presentationFullScreen: false)
+            == StreamPrecedence.decide(global: .lowerThird, design: slide, video: .none))
     }
-    // A video in it still decides first: once over, nothing sits on the camera.
-    let design = StreamPrecedence.liveDesign(slide: nil, wholeStream: true)
+}
+
+@Test func theWalkoutFillsTheStreamButLeavesTheCameraClearWhenItsVideoEnds() {
+    let design = StreamPrecedence.liveDesign(slide: StreamDesign(category: "", mode: .clear), wholeStream: true)
+    #expect(StreamPrecedence.decide(global: .transparent, design: design, video: .none) == .audience)
     #expect(StreamPrecedence.decide(global: .lowerThird, design: design, video: .over) == .nothing)
 }

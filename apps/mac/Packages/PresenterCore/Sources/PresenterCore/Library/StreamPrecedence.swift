@@ -60,15 +60,23 @@ public enum StreamPrecedence {
 }
 
 extension StreamPrecedence {
-    /// The live slide's choice as the stream weighs it. The Walkout, and a
-    /// presentation set to Full Screen as a whole (the pre-service
-    /// slideshow), take the whole stream with what the room sees, whatever
-    /// each slide says: the slides change week to week and nobody should
-    /// have to set each one. They stand where a slide's own Full Screen
-    /// stands, so they beat the switch too; a playing video still decides
-    /// first.
+    /// The live slide's choice as the stream weighs it. The Walkout takes
+    /// the whole stream with what the room sees, whatever each slide says.
+    /// It stands where a slide's own Full Screen stands, so it beats the
+    /// switch too; a video still decides first.
     public static func liveDesign(slide: StreamDesign?, wholeStream: Bool) -> StreamDesign? {
         wholeStream ? StreamDesign(category: "", mode: .audience) : slide
+    }
+
+    /// A presentation set to Full Screen as a whole is locked to what the
+    /// room sees for as long as it's up, its videos' ends included: the
+    /// pre-service slideshow must never leave the bare camera on the
+    /// stream between a video and the next slide. The Walkout isn't
+    /// locked this way; it goes through `liveDesign`.
+    public static func decide(
+        global: GlobalMode, design: StreamDesign?, video: Video, presentationFullScreen: Bool
+    ) -> Decision {
+        presentationFullScreen ? .audience : decide(global: global, design: design, video: video)
     }
 }
 
