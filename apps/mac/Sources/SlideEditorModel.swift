@@ -2161,6 +2161,13 @@ final class SlideEditorModel {
         updateDocument { $0.streamThemeId = themeID }
     }
 
+    /// The presentation's own Livestream picker: a theme, Full Screen for
+    /// every slide, or empty to follow its type.
+    func setLivestream(_ tag: String) {
+        updateDocument { PresentationLivestream.apply(tag, to: &$0) }
+        PresentationLivestream.followIfLive(presentationID: presentation.id, tag: tag, model: appModel)
+    }
+
     func setMusicKey(_ key: String?) {
         updateDocument { presentation in
             presentation.musicKey = key

@@ -1300,6 +1300,7 @@ final class ServiceControls {
         let setup = ShowSetup.shared
         setup.stageLayoutOverride = presentation.stageLayoutId
         setup.streamThemeOverride = presentation.streamThemeId
+        setup.streamFullScreenDeck = presentation.streamFullScreen == true
         let isMessage = isMessage(presentation, contextID: contextID)
         let isAnnouncements = PresentationTypes.category(of: presentation) == PresentationTypes.announcements
         if isAnnouncements { startAnnouncementsTimer() }

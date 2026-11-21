@@ -152,3 +152,18 @@ import Testing
     let bare = Theme(id: "t", name: "T", fontFamily: "", fontSize: 40, textColorHex: "#FFFFFF", backgroundColorHex: "#000000")
     #expect(bare.streamThemeReferences.isEmpty)
 }
+
+@Test func aFullScreenPresentationFillsTheStreamWhateverItsSlidesOrTheSwitchSay() {
+    let picture = StreamDesign.lowerThirdImage("lt")
+    for slide in [nil, StreamDesign(category: "", mode: .clear), StreamDesign(category: "", mode: .design), picture] {
+        let design = StreamPrecedence.liveDesign(slide: slide, wholeStream: true)
+        for global in [StreamPrecedence.GlobalMode.lowerThird, .fullScreen, .transparent] {
+            #expect(StreamPrecedence.decide(global: global, design: design, video: .none) == .audience)
+        }
+        // Without it, the slide's own choice stands.
+        #expect(StreamPrecedence.liveDesign(slide: slide, wholeStream: false) == slide)
+    }
+    // A video in it still decides first: once over, nothing sits on the camera.
+    let design = StreamPrecedence.liveDesign(slide: nil, wholeStream: true)
+    #expect(StreamPrecedence.decide(global: .lowerThird, design: design, video: .over) == .nothing)
+}

@@ -1788,6 +1788,11 @@
           "optional": true
         },
         {
+          "name": "streamFullScreen",
+          "type": "bool",
+          "optional": true
+        },
+        {
           "name": "stageLayoutId",
           "type": "string",
           "optional": true

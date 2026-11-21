@@ -247,11 +247,12 @@ struct SongEditorView: View {
             Picker("Audience", selection: binding(\.themeId, empty: "")) {
                 ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
             }
-            Picker("Livestream", selection: optionalBinding(\.streamThemeId)) {
+            Picker("Livestream", selection: livestreamBinding()) {
                 // Left empty, the song follows its type, so the label says
                 // what that is.
                 Text(presentation.map { InheritedLivestreamLabel.text(for: $0, model: model, catalog: lowerThirds) } ?? "Type default")
                     .tag("")
+                Text(PresentationLivestream.fullScreenLabel).tag(PresentationLivestream.fullScreenTag)
                 Divider()
                 ForEach(model.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
             }
@@ -268,6 +269,15 @@ struct SongEditorView: View {
         Binding(
             get: { presentation?[keyPath: path] ?? empty },
             set: { value in model.updatePresentation(presentationID) { $0[keyPath: path] = value } })
+    }
+
+    private func livestreamBinding() -> Binding<String> {
+        Binding(
+            get: { PresentationLivestream.tag(presentation) },
+            set: { tag in
+                _ = model.updatePresentation(presentationID) { PresentationLivestream.apply(tag, to: &$0) }
+                PresentationLivestream.followIfLive(presentationID: presentationID, tag: tag, model: model)
+            })
     }
 
     private func optionalBinding(_ path: WritableKeyPath<Presentation, String?>) -> Binding<String> {
