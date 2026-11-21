@@ -96,6 +96,11 @@ final class ShowSetup {
     /// The live presentation's own livestream theme, which wins over its
     /// slides' themes for the lower third.
     var streamThemeOverride: String? { didSet { changed() } }
+    /// The live presentation is set to Full Screen as a whole: every slide
+    /// of it takes the whole livestream, whatever the slide says.
+    var streamFullScreenDeck = false {
+        didSet { if streamFullScreenDeck != oldValue { changed() } }
+    }
     /// The stage follows what's live: Worship for songs, Message for the
     /// message. Turned off, the stage only changes when someone changes it.
     var stageFollowsItems: Bool {

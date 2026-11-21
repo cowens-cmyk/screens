@@ -155,6 +155,21 @@ struct StageStreamTagsTests {
         #expect(StageStreamTags.tags(for: plan.items[0], in: plan, library: library([own], themes: [plainTheme]))?.stage == "Own layout")
     }
 
+    @Test func aPresentationSetToFullScreenSaysFullScreenWhateverItsSlidesSay() {
+        var pre = deck("pre", themeId: "lyrics", slides: [
+            slide("a", stream: StreamDesign(category: "", mode: .clear)), slide("b", stream: .lowerThirdImage("lt")), slide("c"),
+        ])
+        pre.streamFullScreen = true
+        let plan = Service(id: "p", name: "", serviceDate: "", items: [item("i", ref: "pre"), item("x", ref: "other")])
+        let lib = library([pre], themes: [lyricsTheme])
+        #expect(StageStreamTags.tags(for: plan.items[0], in: plan, library: lib)?.stream == "Full screen")
+        for one in pre.slides {
+            #expect(StageStreamTags.tags(for: one, of: plan.items[0], in: plan, library: lib)?.stream == "Full screen")
+        }
+        pre.streamFullScreen = nil
+        #expect(StageStreamTags.tags(for: plan.items[0], in: plan, library: library([pre], themes: [lyricsTheme]))?.stream == "Varies by slide")
+    }
+
     @Test func screensByTypeDecidesBeforeTheTheme() {
         var settings = SlideBuildingSettings(id: "s")
         settings.updateScreens(forType: PresentationTypes.worship) { $0.livestream = .audience }

@@ -1438,6 +1438,9 @@
         "streamThemeId": {
           "type": "string"
         },
+        "streamFullScreen": {
+          "type": "boolean"
+        },
         "stageLayoutId": {
           "type": "string"
         },

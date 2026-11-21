@@ -224,11 +224,13 @@ struct PresentationScreensSheet: View {
                 .help("Its type picks its livestream lower third and stage display, set for each type in Settings › Livestream › Lower Thirds")
                 Picker("Livestream", selection: $streamTheme) {
                     Text("From its type").tag("")
+                    Text(PresentationLivestream.fullScreenLabel).tag(PresentationLivestream.fullScreenTag)
+                    Divider()
                     ForEach(model.entries(of: .theme).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }, id: \.id) {
                         Text($0.name).tag($0.id)
                     }
                 }
-                .help("A theme whose lower third this presentation uses on the livestream")
+                .help("A theme whose lower third this presentation uses on the livestream. \(PresentationLivestream.fullScreenHelp)")
                 Picker("Stage", selection: $stage) {
                     Text("From its type").tag("")
                     Text(StageWording.audience).tag(StageLayouts.audienceID)
@@ -256,7 +258,7 @@ struct PresentationScreensSheet: View {
             guard !loaded, let presentation else { return }
             loaded = true
             type = PresentationTypes.category(of: presentation) ?? ""
-            streamTheme = presentation.streamThemeId ?? ""
+            streamTheme = PresentationLivestream.tag(presentation)
             stage = presentation.stageLayoutId ?? ""
         }
     }
@@ -265,7 +267,7 @@ struct PresentationScreensSheet: View {
         let type = self.type, streamTheme = self.streamTheme, stage = self.stage, reset = resetSlides
         _ = model.updatePresentation(presentationID) { deck in
             deck.category = type.isEmpty ? nil : type
-            deck.streamThemeId = streamTheme.isEmpty ? nil : streamTheme
+            PresentationLivestream.apply(streamTheme, to: &deck)
             deck.stageLayoutId = stage.isEmpty ? nil : stage
             if reset {
                 for index in deck.slides.indices {
@@ -274,6 +276,7 @@ struct PresentationScreensSheet: View {
                 }
             }
         }
+        PresentationLivestream.followIfLive(presentationID: presentationID, tag: streamTheme, model: model)
         dismiss()
     }
 }

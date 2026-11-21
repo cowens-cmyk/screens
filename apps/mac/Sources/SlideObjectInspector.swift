@@ -268,10 +268,11 @@ struct SlideObjectInspector: View {
                 // label says what that is.
                 Text(InheritedLivestreamLabel.text(for: model.presentation, model: model.appModel, catalog: lowerThirds))
                     .tag("")
+                Text(PresentationLivestream.fullScreenLabel).tag(PresentationLivestream.fullScreenTag)
                 Divider()
                 ForEach(model.appModel.entries(of: .theme), id: \.id) { Text($0.name).tag($0.id) }
             }
-            .help("Set for every presentation of this type in More › Lower Thirds. A theme picked here wins for this presentation; a slide's own Livestream wins over both.")
+            .help("Set for every presentation of this type in More › Lower Thirds. A theme picked here wins for this presentation; a slide's own Livestream wins over both. \(PresentationLivestream.fullScreenHelp)")
             .task(id: model.appModel.version(of: .theme)) { lowerThirds = await LowerThirdCatalog.load(model.appModel) }
 
             Button("Attach Chord Chart…") { attachChordChart() }
@@ -326,8 +327,8 @@ struct SlideObjectInspector: View {
 
     private func streamThemeBinding() -> Binding<String> {
         Binding(
-            get: { model.presentation.streamThemeId ?? "" },
-            set: { model.setStreamTheme($0.isEmpty ? nil : $0) }
+            get: { PresentationLivestream.tag(model.presentation) },
+            set: { model.setLivestream($0) }
         )
     }
 

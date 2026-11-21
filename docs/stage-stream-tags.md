@@ -72,6 +72,8 @@ Strings are exact. Help text: `Stage display: <stage>. Livestream: <stream>.`
 
 ## Presentation items: livestream, first match wins
 
+0. `item.isWalkout == true`, or `presentation.streamFullScreen == true` →
+   **Full screen** (they take the whole stream, whatever each slide says)
 1. Video only → **Full screen**
 2. First action with `kind == "setStreamMode"` and `streamMode != "auto"`:
    `fullScreen` → **Full screen**, `off` → **Camera only**
@@ -117,4 +119,5 @@ Strings are exact. Help text: `Stage display: <stage>. Livestream: <stream>.`
 | Transition: one slide, the bumper video as its background | Video time left | Full screen |
 | Pre-service slideshow | Before service | (its slides' look) |
 | Walkout with a Full Screen stream action, last in the plan | Before service | Full screen |
-| Walkout item (`isWalkout`), any slide of it | Before service | (its slides' look) |
+| Walkout item (`isWalkout`), any slide of it | Before service | Full screen |
+| Pre-service slideshow with Livestream set to Full Screen (every slide) | Before service | Full screen |

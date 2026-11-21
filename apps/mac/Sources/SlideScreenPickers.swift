@@ -41,6 +41,42 @@ enum StageWording {
     static let showOnStage = "Show on Stage Display"
 }
 
+/// A presentation's own Livestream picker: its type's look, a theme's lower
+/// third, or Full Screen for every slide. Full Screen is its own field
+/// (`streamFullScreen`) rather than a theme id, so it can't be mistaken for
+/// a theme that left the library.
+enum PresentationLivestream {
+    static let fullScreenTag = "presentation-full-screen"
+    static let fullScreenLabel = "Full Screen (every slide)"
+    static let fullScreenHelp = "Full Screen: every slide of this presentation fills the livestream, whatever the slide itself says."
+
+    static func tag(_ presentation: Presentation?) -> String {
+        guard let presentation else { return "" }
+        return presentation.streamFullScreen == true ? fullScreenTag : (presentation.streamThemeId ?? "")
+    }
+
+    static func apply(_ tag: String, to presentation: inout Presentation) {
+        if tag == fullScreenTag {
+            presentation.streamFullScreen = true
+            presentation.streamThemeId = nil
+        } else {
+            presentation.streamFullScreen = nil
+            presentation.streamThemeId = tag.isEmpty ? nil : tag
+        }
+    }
+
+    /// The presentation on screen takes the change now, not the next time
+    /// it goes up: setting the pre-service slideshow to Full Screen while
+    /// it plays should cover the stream at once.
+    @MainActor
+    static func followIfLive(presentationID: String, tag: String, model: AppModel) {
+        guard model.onAirDeckID == presentationID else { return }
+        let setup = ShowSetup.shared
+        setup.streamFullScreenDeck = tag == fullScreenTag
+        setup.streamThemeOverride = tag.isEmpty || tag == fullScreenTag ? nil : tag
+    }
+}
+
 extension StreamDesign {
     /// A slide's Lower Third names no design: it takes its theme's lower
     /// third for its category, so it follows theme edits.

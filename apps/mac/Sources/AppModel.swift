@@ -215,7 +215,7 @@ final class AppModel {
         }
     }
 
-    @ObservationIgnored private var onAirDeckID: String?
+    @ObservationIgnored private(set) var onAirDeckID: String?
 
     func warmLiveSet() {
         let service = currentServiceID.flatMap { try? self.service($0) }

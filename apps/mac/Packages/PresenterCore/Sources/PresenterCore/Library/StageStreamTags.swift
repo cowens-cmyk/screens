@@ -39,6 +39,8 @@ import Foundation
 /// usual), first match wins:
 /// 1. A header has no tags.
 /// 1a. `item.isWalkout`: "Full screen" (the Walkout takes the whole stream).
+/// 1b. `presentation.streamFullScreen`: "Full screen" (every slide, whatever
+///    each one says).
 /// 2. A video that plays once (stage rule 5): "Full screen".
 /// 3. A media item that is a picture, or a looping video: "No change".
 /// 4. A `setStreamMode` action (same places as stage rule 4) by
@@ -177,6 +179,7 @@ public enum StageStreamTags {
         item: ServiceItem, slide: Slide?, presentation: Presentation, plan: Service, library: Library
     ) -> String {
         if item.isWalkout == true { return fullScreen }
+        if presentation.streamFullScreen == true { return fullScreen }
         if videoOnly(slide: slide, presentation: presentation, library: library) { return fullScreen }
         if let mode = actions(item: item, slide: slide, presentation: presentation, library: library)
             .first(where: { $0.kind == .setStreamMode && $0.streamMode != "auto" })?.streamMode {
