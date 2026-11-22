@@ -20,7 +20,8 @@ In the order the plan reaches them (stage layouts first):
 - **Which media, in what order** is `PlanPreloadPlan.mediaIDs`
   (PresenterCore, tested): stage layouts; then per item a video item's file,
   or a deck's themes' media, backgrounds, slides' media (a slide's livestream
-  lower-third picture included, `MediaReferences.ids(in: slide)`), the media
+  lower-third picture and Side TVs picture included,
+  `MediaReferences.ids(in: slide)`), the media
   its type's actions fire (`PresentationTypes.actions`), and the media the
   item's own macros fire; then the livestream themes' media.
 - **Pictures.** `MediaEngine.standBy(still:)` decodes the file to a texture

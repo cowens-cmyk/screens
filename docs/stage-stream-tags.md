@@ -116,6 +116,7 @@ Strings are exact. Help text: `Stage display: <stage>. Livestream: <stream>.`
 | A song with a lyrics theme | Lyrics + chords | Lyrics lower third |
 | The message, series set on the plan | Message timer | Series lower third |
 | The message with `_LowerThird` pictures on every slide | Message timer | Lower third picture |
+| The message with `_LowerThird` and `_SideTVs` pictures (Side TVs don't change the tags) | Message timer | Lower third picture |
 | Transition: one slide, the bumper video as its background | Video time left | Full screen |
 | Pre-service slideshow | Before service | (its slides' look) |
 | Walkout with a Full Screen stream action, last in the plan | Before service | Full screen |

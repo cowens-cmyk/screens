@@ -2171,19 +2171,28 @@ final class ServiceControls {
             .applyingMediaEffects { appModel.mediaSceneEffects(id: $0) }
             .framingMedia { appModel.mediaPixelSize(id: $0) }
         }
-        // The picture stands in for the slide, so it leaves with it: a
-        // cleared slide clears the picture too.
-        for (key, mediaID) in slideImageOverrides where state.liveSlide != nil {
-            let size = appModel.media(mediaID).flatMap { item -> CGSize? in
+        func pixelSize(_ mediaID: String) -> CGSize? {
+            appModel.media(mediaID).flatMap { item -> CGSize? in
                 guard let width = item.pixelWidth, let height = item.pixelHeight else { return nil }
                 return CGSize(width: width, height: height)
             }
-            variants[key] = StreamLowerThirdImage.scene(replacingSlideOf: base, mediaID: mediaID, imageSize: size)
         }
-        // The side TVs carry the room's scene with a song's lyrics larger,
-        // made from the same base each time so they never drift from it.
+        // The picture stands in for the slide, so it leaves with it: a
+        // cleared slide clears the picture too.
+        for (key, mediaID) in slideImageOverrides where state.liveSlide != nil {
+            variants[key] = StreamLowerThirdImage.scene(replacingSlideOf: base, mediaID: mediaID, imageSize: pixelSize(mediaID))
+        }
+        // The side TVs carry the live slide's own picture for them when it
+        // has one (a sermon slide's "_SideTVs"), else the room's scene with
+        // a song's lyrics larger, made from the same base each time so they
+        // never drift from it.
         let setup = ShowSetup.shared
-        if setup.sideTVsOn {
+        sideTVsPictureID = setup.sideTVsOn
+            ? SideTVsPicture.mediaID(of: state.liveSlide?.slide) { appModel.media($0) != nil } : nil
+        if let picture = sideTVsPictureID {
+            variants[SideScreenLyrics.variantKey] = SideTVsPicture.scene(
+                replacingSlideOf: base, mediaID: picture, imageSize: pixelSize(picture))
+        } else if setup.sideTVsOn {
             variants[SideScreenLyrics.variantKey] = SideScreenLyrics.scene(
                 base, presentation: state.liveSlide?.presentation, scale: setup.sideTVsLyricScale,
                 dim: setup.sideTVsDim)
@@ -2205,6 +2214,9 @@ final class ServiceControls {
 
     /// A slide's lower-third picture for the livestream, by routing key.
     private var slideImageOverrides: [String: String] = [:]
+
+    /// The live slide's side TVs picture while the side TVs show it.
+    private var sideTVsPictureID: String?
 
     func setSlideThemeOverrides(_ overrides: [String: Theme], images: [String: String] = [:]) {
         guard overrides != slideThemeOverrides || images != slideImageOverrides else { return }
@@ -2311,6 +2323,7 @@ final class ServiceControls {
         )
         .merging(confidenceMediaWants) { show, _ in show }
         .merging(slideImageOverrides.values.map { ($0, Bool?.none) }) { show, _ in show }
+        .merging([sideTVsPictureID].compactMap { $0 }.map { ($0, Bool?.none) }) { show, _ in show }
         let wanted = MonitoringMedia.wanted(onAir: onAir, monitoring: previewMediaWants)
         let wantedIDs = Set(wanted.keys)
 

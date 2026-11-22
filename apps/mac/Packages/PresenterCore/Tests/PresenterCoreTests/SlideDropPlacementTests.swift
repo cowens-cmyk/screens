@@ -195,6 +195,22 @@ struct SlideDropPlacementTests {
         #expect(existing.existingLowerThirds == ["old": "l"])
     }
 
+    @Test func aSideTVsPictureRidesOnItsPicture() {
+        let made = MediaSlideBuilder.make([
+            media("w", "Slide01_Wide", .image), media("l", "Slide01_LowerThird", .image),
+            media("t", "Slide01_SideTVs", .image),
+        ])
+        #expect(made.slides.count == 1)
+        #expect(made.slides[0].streamDesign == .lowerThirdImage("l"))
+        #expect(made.slides[0].sideTVsMediaId == "t")
+        #expect(MediaReferences.ids(in: made.slides[0]) == ["w", "l", "t"])
+        let existing = MediaSlideBuilder.make(
+            [media("t", "Slide02_SideTV", .image)], existing: [(id: "old", name: "Slide02_Wide")])
+        #expect(existing.slides.isEmpty)
+        #expect(existing.existingSideTVs == ["old": "t"])
+        #expect(existing.changesExisting)
+    }
+
     @Test func onlyPicturesVideosAndFoldersMakeSlides() {
         #expect(MediaSlideBuilder.makesSlides(URL(fileURLWithPath: "/tmp/a.png")))
         #expect(MediaSlideBuilder.makesSlides(URL(fileURLWithPath: "/tmp/a.MOV")))

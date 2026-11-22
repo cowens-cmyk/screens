@@ -82,3 +82,56 @@ private func picture(_ name: String, isImage: Bool = true) -> LowerThirdPairing.
     let all = LowerThirdPairing.addingPartners(to: [wide, lower]) { _ in [wide, lower] }
     #expect(all == [wide, lower])
 }
+
+@Test func sideTVsPicturesNameTheirSlide() {
+    #expect(LowerThirdPairing.name("Slide01_SideTVs.png") == .init(key: "slide01", role: .sideTVs))
+    #expect(LowerThirdPairing.name("Slide01_SideTV.jpg") == .init(key: "slide01", role: .sideTVs))
+    #expect(LowerThirdPairing.name("slide01 side tvs") == .init(key: "slide01", role: .sideTVs))
+    #expect(LowerThirdPairing.name("Slide01-Side-TV") == .init(key: "slide01", role: .sideTVs))
+    #expect(LowerThirdPairing.name("_SideTVs") == nil)
+}
+
+@Test func threePicturesPerSlideMakeOneSlideEach() {
+    let numbers = (1...3).map { String(format: "%02d", $0) }
+    let dropped = numbers.flatMap { [picture("Slide\($0)_Wide"), picture("Slide\($0)_LowerThird"), picture("Slide\($0)_SideTVs")] }
+    let plan = LowerThirdPairing.plan(dropped: dropped)
+    #expect(plan.slideMedia == numbers.map { "Slide\($0)_Wide" })
+    #expect(plan.lowerThirds["Slide02_Wide"] == "Slide02_LowerThird")
+    #expect(plan.sideTVs["Slide02_Wide"] == "Slide02_SideTVs")
+    #expect(plan.sideTVs.count == 3)
+}
+
+@Test func aSlideCanHaveSideTVsWithoutALowerThird() {
+    let plan = LowerThirdPairing.plan(dropped: [picture("Slide01_Wide"), picture("Slide01_SideTV")])
+    #expect(plan.slideMedia == ["Slide01_Wide"])
+    #expect(plan.lowerThirds.isEmpty)
+    #expect(plan.sideTVs == ["Slide01_Wide": "Slide01_SideTV"])
+}
+
+@Test func sideTVsPicturesDroppedOnAPresentationGoOnItsSlides() {
+    let existing = [(id: "s1", name: "Slide01_Wide"), (id: "s2", name: "Slide02_Wide")]
+    let plan = LowerThirdPairing.plan(
+        dropped: [picture("Slide01_SideTVs"), picture("Slide02_LowerThird"), picture("Slide09_SideTVs")],
+        existing: existing)
+    #expect(plan.existingSideTVs == ["s1": "Slide01_SideTVs"])
+    #expect(plan.existingSlides == ["s2": "Slide02_LowerThird"])
+    #expect(plan.slideMedia == ["Slide09_SideTVs"], "a side TVs picture with nothing to go on is a slide")
+}
+
+@Test func aVideoCantBeTheSideTVsPicture() {
+    let plan = LowerThirdPairing.plan(dropped: [picture("Clip_Wide"), picture("Clip_SideTVs", isImage: false)])
+    #expect(plan.sideTVs.isEmpty)
+    #expect(plan.slideMedia == ["Clip_Wide", "Clip_SideTVs"])
+}
+
+@Test func droppingOnlyTheWidePicturesBringsTheirSideTVsToo() {
+    let folder = URL(fileURLWithPath: "/Shows/Sunday", isDirectory: true)
+    let listing = ["Slide01_Wide.png", "Slide01_LowerThird.png", "Slide01_SideTVs.png", "Slide02_Wide.png", "Slide02_SideTV.png"]
+        .map { folder.appendingPathComponent($0) }
+    let dropped = [folder.appendingPathComponent("Slide01_Wide.png"), folder.appendingPathComponent("Slide02_Wide.png")]
+    let all = LowerThirdPairing.addingPartners(to: dropped) { $0.standardizedFileURL == folder.standardizedFileURL ? listing : [] }
+    #expect(all.map(\.lastPathComponent) == [
+        "Slide01_Wide.png", "Slide02_Wide.png", "Slide01_LowerThird.png", "Slide01_SideTVs.png", "Slide02_SideTV.png",
+    ])
+}
+

@@ -2207,8 +2207,11 @@ final class SlideEditorModel {
         for (slideID, lowerThird) in made.existingLowerThirds {
             updateSlide(slideID) { $0.streamDesign = .lowerThirdImage(lowerThird) }
         }
+        for (slideID, side) in made.existingSideTVs {
+            updateSlide(slideID) { $0.sideTVsMediaId = side }
+        }
         let added = made.slides
-        guard !added.isEmpty else { return !made.existingLowerThirds.isEmpty }
+        guard !added.isEmpty else { return made.changesExisting }
         updateDocument { presentation in
             let index = beforeSlideID.flatMap { id in
                 presentation.slides.firstIndex { $0.id == id }

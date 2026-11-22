@@ -807,10 +807,11 @@ public struct Slide: Codable, Sendable, Equatable, Identifiable {
     public var history: [SlideVersion]?
     public var lookPresetId: String?
     public var streamDesign: StreamDesign?
+    public var sideTVsMediaId: String?
     public var stageLayoutId: String?
     public var sourceEvent: WebsiteEventTag?
 
-    public init(id: String, name: String, objects: [SlideObject], background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sectionId: String? = nil, folder: String? = nil, themeSlideName: String? = nil, themeId: String? = nil, unthemed: Bool? = nil, overrideDesigns: [OverrideDesign]? = nil, actions: [SlideAction]? = nil, notes: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, animationOrder: [String]? = nil, buildOrder: [String]? = nil, keepWords: Bool? = nil, history: [SlideVersion]? = nil, lookPresetId: String? = nil, streamDesign: StreamDesign? = nil, stageLayoutId: String? = nil, sourceEvent: WebsiteEventTag? = nil) {
+    public init(id: String, name: String, objects: [SlideObject], background: CueMedia? = nil, backgroundFill: ObjectFill? = nil, sectionId: String? = nil, folder: String? = nil, themeSlideName: String? = nil, themeId: String? = nil, unthemed: Bool? = nil, overrideDesigns: [OverrideDesign]? = nil, actions: [SlideAction]? = nil, notes: String? = nil, autoAdvance: AutoAdvance? = nil, transition: Transition? = nil, animationOrder: [String]? = nil, buildOrder: [String]? = nil, keepWords: Bool? = nil, history: [SlideVersion]? = nil, lookPresetId: String? = nil, streamDesign: StreamDesign? = nil, sideTVsMediaId: String? = nil, stageLayoutId: String? = nil, sourceEvent: WebsiteEventTag? = nil) {
         self.id = id
         self.name = name
         self.objects = objects
@@ -832,6 +833,7 @@ public struct Slide: Codable, Sendable, Equatable, Identifiable {
         self.history = history
         self.lookPresetId = lookPresetId
         self.streamDesign = streamDesign
+        self.sideTVsMediaId = sideTVsMediaId
         self.stageLayoutId = stageLayoutId
         self.sourceEvent = sourceEvent
     }
