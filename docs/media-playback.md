@@ -90,3 +90,29 @@ synchronous `tracks(withMediaType:)`. The transport (read by the main
 thread's 4 Hz polls) doesn't take the player's state lock, and frame pulls
 copy the pixel buffer and make its texture under a separate pull lock, so
 the main thread's picture checks don't wait on a 4K frame copy.
+
+## Every screen its own frame
+
+One `MediaPlayer` feeds every screen showing its video: the Audience
+preview (at the display's refresh, asking for its next refresh), the docked
+previews at 15 fps, each DeckLink port at its own rate and clock, the side
+TVs and the stage. The player's `AVPlayerItemVideoOutput` hands each frame
+out once. It used to keep only the newest, so whichever screen asked
+furthest ahead took the next frame and every other screen showed it early;
+each screen's picture moved on at another screen's clock, held for one
+refresh and then three. On Nov 22 the pre-service loop's 30 fps videos
+juddered on the room screens: on the Audience preview, captured at 60 Hz
+from the booth display, gaps of 16 and 50 ms between picture changes
+outnumbered the steady 33 and 67 ms ones about two to one (a plain
+`AVPlayerLayer` playing the same way measured 1% uneven).
+
+`MediaPlayer.surface(at:)` now pulls every frame due by the asking screen's
+time, in order (`nextPull`), into a small ring (`FrameRing`, 8 frames), and
+each screen takes the newest frame whose time has come at its own time. A
+new item (a loop's next pass), a seek or a pause starts the ring again.
+`testEachScreenGetsTheFrameForItsOwnTime` plays a 30 fps clip to a 60 Hz
+screen and a 50 Hz one asking 25 ms ahead: the 60 Hz screen held its frames
+for the steady two refreshes a third of the time before, nine in ten or
+more now. The sandboxed perf build can't show it end to end (it has no
+DeckLink ports, and with previews only both builds were even); the booth's
+Audience preview is the place to measure it again after a release.
