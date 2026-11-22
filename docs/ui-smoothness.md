@@ -93,6 +93,17 @@ every item, so anything each item does per frame is multiplied by the plan.
 - **Tiles.** Anything a tile works out from its slide that takes more than a
   lookup is cached by slide (`TileStepCache` for animation steps), not done in
   `body`.
+- **A tile's picture is keyed by its slide**, not by its deck. The key was
+  the deck's stamp, so moving, dropping or retyping one slide drew every
+  slide of the deck again, and each tile updated a second time as its
+  picture landed: on Nov 22 the 109-slide sermon's drags and drops during
+  the service ran 100-1200 ms passes for seconds after each, with
+  thumbnail bodies at up to 192 a second. `ThumbnailStore.slideFingerprint`
+  is the slide's own content (worked out once per slide per deck change)
+  with the deck's size; a library or theme view's own stamp still decides.
+  `scripts/perf/edit-storm.sh` (40 drops, a deck growing from 8 to 48):
+  thumbnail bodies 2590 to 1726, main thread 4.0 to 3.4 s, worst frame 86
+  to 65-78 ms. The saving grows with the deck.
 
 - **Accessibility.** Each slide tile is one accessibility element (a button
   with its number and label), not one per text run and overlay. Something on
@@ -272,6 +283,31 @@ half a second after the click (the idle rows), none inside the glide.
 - A fast value (a meter, a position) is read by the small view that shows it,
   never by a bar or a panel's top-level body.
 
+## The window
+
+- **Not movable by its title bar.** The main window runs its content up
+  under a transparent title bar with the top bar drawn there. While it is
+  movable, AppKit asks the content for its title-bar drag region after
+  every layout, and SwiftUI answers by walking every clickable view in the
+  window, the plan page's tiles included (`NSThemeFrame
+  _regionForOpaqueDescendants` → `MultiViewResponder.addContentPath`): 13-14%
+  of the main thread through a wheel scroll or a run of plan-list clicks.
+  `TopBarWindowChrome` sets `isMovable = false` (back to true when it
+  restores the window), and the bar's empty space moves it instead
+  (`TopBarDragArea`, movable for that one drag). Against the same build
+  with the window movable, `scripts/perf/volunteer.sh`, two rounds each
+  (Nov 22, M1 Max): a scroll's frames over 33 ms 24 to 4-7, its worst frame
+  86-101 to 48-55 ms; plan picks' busy runs over 9 ms 142-155 to 34-36.
+- **Hover.** As tiles slide under a still pointer, SwiftUI sends a hover
+  update each frame and brings the whole graph up to date first
+  (`EventBindingManager.enqueueHoverUpdateIfNeeded`, 7-9%). It shrinks
+  with everything else here; there is nothing of the app's own in it.
+- **Rows kept and built ahead.** Tried and not kept (Nov 22): keeping built
+  rows six screens out instead of two cut a scroll's frames over 17 ms by
+  40% but doubled plan picks' frames over 33 ms (more built tiles for the
+  glide to update); building two screens ahead made more frames over
+  33 ms.
+
 ## Drawing
 
 Metal specifics (command buffers, feeds, validation): `docs/metal.md`.
@@ -288,3 +324,13 @@ runs it against its own 302-song library with no network, and compares with
 `scripts/perf/baseline.json`. On the booth Mac: **Help › Save Performance
 Report…**, the breadcrumbs (`perf.pass`, `perf.hitch`, `perf.pulse`) and
 `sample Screens 10` while reproducing.
+
+On the booth Mac with Screens live, `run.sh` would quit it: stage with
+`MXU_PERF_BUILD_ONLY=1 run.sh <commit>`, build the library once with
+`scripts/perf/library.sh <label>`, then `scripts/perf/volunteer.sh <label>`
+(clicks, idle, scrolls, plan picks) and `scripts/perf/edit-storm.sh
+<label>` (drops into a growing deck). Both run the staged build in its own
+sandbox home beside the live one, which keeps its screens and outputs. For
+the live app itself, `xcrun xctrace record --template 'Time Profiler'
+--attach <pid> --time-limit 20s` reads it without the pauses `sample`
+causes (each `sample` showed up as a 0.5-1.2 s `perf.pass`).
