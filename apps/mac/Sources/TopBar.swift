@@ -352,6 +352,15 @@ struct TopBarWindowChrome: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titlebarSeparatorStyle = .none
             if !window.styleMask.contains(.fullSizeContentView) { window.styleMask.insert(.fullSizeContentView) }
+            // A movable window with its content under the title bar has
+            // AppKit ask the content for its title-bar drag region after
+            // every layout, and SwiftUI answers by walking every clickable
+            // view in the window, the plan page's tiles included: 13-14% of
+            // the main thread through a scroll or a run of plan clicks, and
+            // the frames over 33 ms of a wheel scroll went from 24 to 4-7
+            // without it (scripts/perf, vol.sh, 2026-11-22). The bar's own
+            // empty space moves the window instead (TopBarDragArea).
+            window.isMovable = false
             watchFullScreen(window)
             if window.styleMask.contains(.fullScreen) { enterFullScreen(window) } else { installToolbar(window) }
             #if DEBUG
@@ -440,6 +449,7 @@ struct TopBarWindowChrome: NSViewRepresentable {
             window.titleVisibility = .visible
             window.titlebarAppearsTransparent = false
             window.titlebarSeparatorStyle = .automatic
+            window.isMovable = true
             if window.toolbar?.identifier == TopBarWindowChrome.toolbarID { window.toolbar = nil }
         }
     }
@@ -487,7 +497,12 @@ struct TopBarDragArea: NSViewRepresentable {
                 default: window.zoom(nil)
                 }
             } else {
+                // The main window isn't movable by its title bar
+                // (TopBarWindowChrome), so it is made movable for this drag.
+                let movable = window.isMovable
+                window.isMovable = true
                 window.performDrag(with: event)
+                window.isMovable = movable
             }
         }
     }
