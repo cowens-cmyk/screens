@@ -182,16 +182,24 @@ public enum MediaSlideBuilder {
         /// Lower thirds dropped for slides already in the presentation:
         /// slide id → the picture's media id.
         public var existingLowerThirds: [String: String]
+        /// Side TVs pictures dropped for slides already in the
+        /// presentation: slide id → the picture's media id.
+        public var existingSideTVs: [String: String]
 
-        public init(slides: [Slide] = [], existingLowerThirds: [String: String] = [:]) {
+        public init(slides: [Slide] = [], existingLowerThirds: [String: String] = [:], existingSideTVs: [String: String] = [:]) {
             self.slides = slides
             self.existingLowerThirds = existingLowerThirds
+            self.existingSideTVs = existingSideTVs
         }
+
+        /// Whether the drop put anything on slides already there.
+        public var changesExisting: Bool { !existingLowerThirds.isEmpty || !existingSideTVs.isEmpty }
     }
 
     /// A picture named for one of the others, or for a slide in `existing`
-    /// ("Slide01_LowerThird" for "Slide01_Wide"), is that slide's livestream
-    /// lower third rather than a slide of its own.
+    /// ("Slide01_LowerThird" or "Slide01_SideTVs" for "Slide01_Wide"), is
+    /// that slide's livestream lower third or side TVs picture rather than
+    /// a slide of its own.
     public static func make(
         _ items: [MediaItem], sectionId: String? = nil,
         existing: [(id: String, name: String)] = [],
@@ -208,9 +216,10 @@ public enum MediaSlideBuilder {
                 objects: [],
                 background: CueMedia.droppedAsNewSlide(for: item),
                 sectionId: sectionId,
-                streamDesign: plan.lowerThirds[item.id].map(StreamDesign.lowerThirdImage))
+                streamDesign: plan.lowerThirds[item.id].map(StreamDesign.lowerThirdImage),
+                sideTVsMediaId: plan.sideTVs[item.id])
         }
-        return Made(slides: slides, existingLowerThirds: plan.existingSlides)
+        return Made(slides: slides, existingLowerThirds: plan.existingSlides, existingSideTVs: plan.existingSideTVs)
     }
 
     /// Whether something from the Finder can make slides: a picture, a

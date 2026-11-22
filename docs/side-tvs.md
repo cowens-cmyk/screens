@@ -44,6 +44,26 @@ Mac stops drawing it.
   alerts.
 - **Anything else** (message, scripture, announcements, videos, a cleared
   slide): exactly the Audience screen.
+- **A slide with its own Side TVs picture** (`Slide.sideTVsMediaId`): that
+  picture instead of any of the above, centred with its proportions kept,
+  over black so the room's background doesn't show around it. Overlays and
+  alerts stay. A picture that's left the library falls back to the room's
+  slide.
+
+## Sermon slides made three ways
+
+A sermon slide can be exported three times: `Slide01_Wide` for the wall,
+`Slide01_LowerThird` for the livestream and `Slide01_SideTVs` (or
+`Slide01_SideTV`) for the TVs. Dropping them on a presentation, or uploading
+them in the CMS, makes one slide each: the wide picture is the slide, the
+lower third its livestream picture, the side TVs one its Side TVs picture.
+Dropping only the `_Wide` pictures brings the other two from the same
+folder; dropping only `_SideTVs` pictures onto a presentation puts each on
+the slide with its name. Case, and a space or hyphen for the underscore,
+don't matter (`LowerThirdPairing`, and `pairName`/`pairPlan` in the CMS).
+Right-click a slide › **Side TVs** to see, choose or clear its picture
+(**Room's Slide** clears it). A change shows the next time the slide goes
+live.
 
 ## Every output comes back
 
@@ -66,7 +86,11 @@ a quit and a kill.
   `SlideSceneTests/SideScreenLyricsTests.swift`.
 - `ServiceControls.apply()` makes it from the same base scene it gives the
   room, every time the room's scene is made, as one of the live scene
-  variants (key `side-tvs-lyrics`). Each variant has its own transition
+  variants (key `side-tvs-lyrics`). When the live slide has a Side TVs
+  picture, `SlideScene/SideTVsPicture.swift` makes that variant instead (the
+  slide layer swapped for black and the picture; tests in
+  `SideTVsPictureTests.swift`), and the picture is added to the media the
+  screens want (`syncMedia`). Each variant has its own transition
   engine, so the TVs dissolve between slides with the room.
 - `StreamRouter.republishStream()` routes the Side TVs screen to that key in
   the output manager's slide-theme routing, beside the livestream's designs.

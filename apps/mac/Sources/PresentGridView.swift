@@ -1108,6 +1108,7 @@ struct SlideGridBody: View {
         Button("Screens…") { screensTarget = SlideScreensTarget(slideIDs: slideIDs) }
         themeMenu(slideIDs)
         livestreamMenu(slideIDs)
+        sideTVsMenu(slideIDs)
         stageToggle(slideIDs)
         listenButton()
         Menu("Add Action") {
@@ -1304,6 +1305,7 @@ struct SlideGridBody: View {
         Button("Screens…") { screensTarget = SlideScreensTarget(slideIDs: [slide.id]) }
         themeMenu([slide.id])
         livestreamMenu([slide.id])
+        sideTVsMenu([slide.id])
         stageToggle([slide.id])
         listenButton()
         Divider()
@@ -1577,6 +1579,42 @@ struct SlideGridBody: View {
             if !withImage.isEmpty {
                 // Back to Theme Default, and only on the slides that had one.
                 Button(StreamWording.removeLowerThirdImage) { setStreamDesign(nil, of: withImage) }
+            }
+        }
+    }
+
+    /// Side TVs › a picture of the slide's own for the TVs (a sermon slide's
+    /// "_SideTVs"), shown there in place of the room's slide while it's live.
+    private func sideTVsMenu(_ slideIDs: [String]) -> some View {
+        let chosen = presentation.slides.filter { slideIDs.contains($0.id) }
+        let pictures = Set(chosen.map { $0.sideTVsMediaId ?? "" })
+        let withPicture = chosen.filter { !($0.sideTVsMediaId ?? "").isEmpty }.map(\.id)
+        return Menu("Side TVs") {
+            Button((withPicture.isEmpty ? "✓ " : "") + "Room's Slide") { setSideTVsPicture(nil, of: slideIDs) }
+            Divider()
+            if pictures.count == 1, let only = pictures.first, !only.isEmpty {
+                Button("✓ " + (model.media(only)?.name ?? "Side TVs Picture")) {}
+                    .disabled(true)
+            }
+            Button("Side TVs Picture…") {
+                LowerThirdImagePicker.choose(model, message: "The slide laid out for the side TVs, 1920 × 1080.") {
+                    setSideTVsPicture($0, of: slideIDs)
+                }
+            }
+        }
+    }
+
+    private func setSideTVsPicture(_ mediaID: String?, of slideIDs: [String]) {
+        setSideTVsPictures(Dictionary(slideIDs.map { ($0, mediaID ?? "") }, uniquingKeysWith: { first, _ in first }))
+    }
+
+    /// Slide id → its side TVs picture ("" takes it off).
+    private func setSideTVsPictures(_ pictures: [String: String]) {
+        guard !pictures.isEmpty else { return }
+        model.updateSlides(presentationID: presentation.id, undoLabel: "Side TVs Picture") { deck in
+            for index in deck.slides.indices {
+                guard let picture = pictures[deck.slides[index].id] else { continue }
+                deck.slides[index].sideTVsMediaId = picture.isEmpty ? nil : picture
             }
         }
     }
@@ -1914,8 +1952,9 @@ struct SlideGridBody: View {
         for (slideID, lowerThird) in made.existingLowerThirds {
             setStreamDesign(.lowerThirdImage(lowerThird), of: [slideID])
         }
+        setSideTVsPictures(made.existingSideTVs)
         let added = made.slides
-        guard !added.isEmpty else { return !made.existingLowerThirds.isEmpty }
+        guard !added.isEmpty else { return made.changesExisting }
         // The new slides join the section beside them; when it repeats (a
         // chorus sung three times) they'd show in every repeat, so ask first
         // as a slide drag does.

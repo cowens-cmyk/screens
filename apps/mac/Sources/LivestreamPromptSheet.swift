@@ -8,10 +8,14 @@ import UniformTypeIdentifiers
 /// deck and shows in Media.
 @MainActor
 enum LowerThirdImagePicker {
-    static func choose(_ model: AppModel, then use: @escaping @MainActor (String) -> Void) {
+    static func choose(
+        _ model: AppModel,
+        message: String = "A PNG with transparency, 1920 × 1080 or a strip for the bottom.",
+        then use: @escaping @MainActor (String) -> Void
+    ) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.png, .image]
-        panel.message = "A PNG with transparency, 1920 × 1080 or a strip for the bottom."
+        panel.message = message
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             Task { @MainActor in

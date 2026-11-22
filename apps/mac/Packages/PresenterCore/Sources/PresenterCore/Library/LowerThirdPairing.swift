@@ -1,25 +1,51 @@
 import Foundation
 import UniformTypeIdentifiers
 
-/// Pairs a picture made for the room with the lower third made for the
-/// livestream by file name, so a folder exported as "Slide01_Wide" and
-/// "Slide01_LowerThird" becomes slides that already know what the stream
-/// shows, with no question to answer for each one.
+/// Pairs a picture made for the room with the pictures made for the other
+/// screens by file name, so a folder exported as "Slide01_Wide",
+/// "Slide01_LowerThird" and "Slide01_SideTVs" becomes slides that already
+/// know what the livestream and the side TVs show, with no question to
+/// answer for each one.
 ///
 /// The names match on what's left once the ending is taken off: "_Wide"
-/// on the room's picture (optional — "Slide01" pairs too) and
-/// "_LowerThird" on the stream's. Case, and a space or hyphen in place of
-/// the underscore, don't matter.
+/// on the room's picture (optional — "Slide01" pairs too), "_LowerThird"
+/// on the stream's and "_SideTVs" (or "_SideTV") on the side TVs'. Case,
+/// and a space or hyphen in place of the underscore, don't matter.
 public enum LowerThirdPairing {
 
+    /// Which screen a picture was made for.
+    public enum Role: Equatable, Sendable {
+        /// The room's: it becomes the slide.
+        case room
+        /// The livestream's lower third, over the camera.
+        case lowerThird
+        /// The side TVs', in place of the room's picture.
+        case sideTVs
+    }
+
     public struct Name: Equatable, Sendable {
-        /// What the pair has in common, lowercased: "slide01".
+        /// What the set has in common, lowercased: "slide01".
         public var key: String
-        public var isLowerThird: Bool
+        public var role: Role
+
+        public var isLowerThird: Bool { role == .lowerThird }
+        /// Made for another screen, so it goes on a slide, not in place of one.
+        public var isPartner: Bool { role != .room }
+
+        public init(key: String, role: Role) {
+            self.key = key
+            self.role = role
+        }
+
+        public init(key: String, isLowerThird: Bool) {
+            self.init(key: key, role: isLowerThird ? .lowerThird : .room)
+        }
     }
 
     private static let lowerThirdEnding = try! NSRegularExpression(
         pattern: #"^(.*?)[\s_.-]*lower[\s_-]?thirds?$"#, options: [.caseInsensitive])
+    private static let sideTVsEnding = try! NSRegularExpression(
+        pattern: #"^(.*?)[\s_.-]*side[\s_-]?tvs?$"#, options: [.caseInsensitive])
     private static let wideEnding = try! NSRegularExpression(
         pattern: #"^(.*?)[\s_.-]+wide$"#, options: [.caseInsensitive])
 
@@ -32,15 +58,18 @@ public enum LowerThirdPairing {
            type.conforms(to: .image) || type.conforms(to: .audiovisualContent) {
             text = (text as NSString).deletingPathExtension
         }
-        var isLowerThird = false
+        var role = Role.room
         if let base = stem(text, lowerThirdEnding) {
             text = base
-            isLowerThird = true
+            role = .lowerThird
+        } else if let base = stem(text, sideTVsEnding) {
+            text = base
+            role = .sideTVs
         } else if let base = stem(text, wideEnding) {
             text = base
         }
         let key = text.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "_.-"))).lowercased()
-        return key.isEmpty ? nil : Name(key: key, isLowerThird: isLowerThird)
+        return key.isEmpty ? nil : Name(key: key, role: role)
     }
 
     private static func stem(_ text: String, _ pattern: NSRegularExpression) -> String? {
@@ -68,53 +97,73 @@ public enum LowerThirdPairing {
         public var slideMedia: [String] = []
         /// A new slide's media → its lower third's media.
         public var lowerThirds: [String: String] = [:]
+        /// A new slide's media → its side TVs picture.
+        public var sideTVs: [String: String] = [:]
         /// A slide already in the presentation → the lower third dropped
         /// for it.
         public var existingSlides: [String: String] = [:]
+        /// A slide already in the presentation → the side TVs picture
+        /// dropped for it.
+        public var existingSideTVs: [String: String] = [:]
     }
 
-    /// What a drop makes: each lower third goes on the dropped picture with
-    /// its name, else on a slide already in the presentation with its name,
-    /// and only if neither is there does it become a slide of its own.
-    /// `existing` is the presentation's slides as (id, name).
+    /// What a drop makes: each lower third or side TVs picture goes on the
+    /// dropped picture with its name, else on a slide already in the
+    /// presentation with its name, and only if neither is there does it
+    /// become a slide of its own. `existing` is the presentation's slides
+    /// as (id, name).
     public static func plan(dropped: [Item], existing: [(id: String, name: String)] = []) -> Plan {
         var plan = Plan()
-        var lowerThirdFor: [String: String] = [:]
+        // Role → key → the first picture dropped for it.
+        var partnerFor: [Role: [String: String]] = [:]
         for item in dropped where item.isImage {
-            if let name = name(item.name), name.isLowerThird, lowerThirdFor[name.key] == nil {
-                lowerThirdFor[name.key] = item.id
+            if let name = name(item.name), name.isPartner, partnerFor[name.role]?[name.key] == nil {
+                partnerFor[name.role, default: [:]][name.key] = item.id
             }
+        }
+        func isPartner(_ item: Item, _ name: Name?) -> Bool {
+            guard let name, name.isPartner else { return false }
+            return partnerFor[name.role]?[name.key] == item.id
         }
         var used = Set<String>()
         for item in dropped {
             let name = name(item.name)
-            if let name, name.isLowerThird, lowerThirdFor[name.key] == item.id { continue }
+            if isPartner(item, name) { continue }
             plan.slideMedia.append(item.id)
-            if let name, !name.isLowerThird, let lowerThird = lowerThirdFor[name.key] {
+            guard let name, !name.isPartner else { continue }
+            if let lowerThird = partnerFor[.lowerThird]?[name.key] {
                 plan.lowerThirds[item.id] = lowerThird
                 used.insert(lowerThird)
             }
+            if let side = partnerFor[.sideTVs]?[name.key] {
+                plan.sideTVs[item.id] = side
+                used.insert(side)
+            }
         }
         for slide in existing {
-            guard let name = name(slide.name), !name.isLowerThird,
-                  let lowerThird = lowerThirdFor[name.key], !used.contains(lowerThird)
-            else { continue }
-            plan.existingSlides[slide.id] = lowerThird
+            guard let name = name(slide.name), !name.isPartner else { continue }
+            if let lowerThird = partnerFor[.lowerThird]?[name.key], !used.contains(lowerThird) {
+                plan.existingSlides[slide.id] = lowerThird
+            }
+            if let side = partnerFor[.sideTVs]?[name.key], !used.contains(side) {
+                plan.existingSideTVs[slide.id] = side
+            }
         }
-        // A lower third with nothing to go on is an ordinary slide, in the
-        // place it was dropped.
-        let placed = used.union(plan.existingSlides.values)
+        // A partner picture with nothing to go on is an ordinary slide, in
+        // the place it was dropped.
+        let placed = used.union(plan.existingSlides.values).union(plan.existingSideTVs.values)
         let slides = Set(plan.slideMedia)
-        let lowerThirds = Set(lowerThirdFor.values)
+        let partners = Set(partnerFor.values.flatMap(\.values))
         plan.slideMedia = dropped.map(\.id).filter { id in
-            slides.contains(id) || (lowerThirds.contains(id) && !placed.contains(id))
+            slides.contains(id) || (partners.contains(id) && !placed.contains(id))
         }
         return plan
     }
 
-    /// The dropped files plus the lower thirds beside them in their folders
-    /// that weren't dropped, so dropping only the "_Wide" pictures still
-    /// brings each one's lower third. `contents` lists a folder.
+    /// The dropped files plus the lower thirds and side TVs pictures beside
+    /// them in their folders that weren't dropped, so dropping only the
+    /// "_Wide" pictures still brings each one's partners. `contents` lists
+    /// a folder.
     public static func addingPartners(
         to urls: [URL], contents: (URL) -> [URL] = { folder in
             (try? FileManager.default.contentsOfDirectory(
@@ -124,7 +173,7 @@ public enum LowerThirdPairing {
         let dropped = Set(urls.map(\.standardizedFileURL))
         var wanted: [URL: Set<String>] = [:]
         for url in urls where !url.hasDirectoryPath {
-            guard let name = name(url.lastPathComponent), !name.isLowerThird else { continue }
+            guard let name = name(url.lastPathComponent), !name.isPartner else { continue }
             wanted[url.deletingLastPathComponent().standardizedFileURL, default: []].insert(name.key)
         }
         var partners: [URL] = []
@@ -133,7 +182,7 @@ public enum LowerThirdPairing {
                 let file = file.standardizedFileURL
                 guard !dropped.contains(file),
                       UTType(filenameExtension: file.pathExtension)?.conforms(to: .image) == true,
-                      let name = name(file.lastPathComponent), name.isLowerThird, keys.contains(name.key)
+                      let name = name(file.lastPathComponent), name.isPartner, keys.contains(name.key)
                 else { continue }
                 partners.append(file)
             }

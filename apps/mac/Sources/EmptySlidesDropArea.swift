@@ -162,8 +162,9 @@ enum MediaSlides {
 
     /// New slides, one per picture or video, with it as the background, the
     /// same as dropping media between slides. A picture named for one of
-    /// them, or for a slide in `existing` ("Slide01_LowerThird" for
-    /// "Slide01_Wide"), is its livestream lower third rather than a slide.
+    /// them, or for a slide in `existing` ("Slide01_LowerThird" or
+    /// "Slide01_SideTVs" for "Slide01_Wide"), is its livestream lower third
+    /// or side TVs picture rather than a slide.
     @MainActor
     static func make(_ mediaIDs: [String], model: AppModel, sectionId: String? = nil, existing: [Slide] = []) -> Made {
         MediaSlideBuilder.make(
@@ -172,7 +173,8 @@ enum MediaSlides {
     }
 
     /// Files dropped from Finder to become slides, with the lower thirds
-    /// beside them in their folders that weren't dropped.
+    /// and side TVs pictures beside them in their folders that weren't
+    /// dropped.
     static func withLowerThirds(_ urls: [URL]) async -> [URL] {
         await Task.detached { LowerThirdPairing.addingPartners(to: urls) }.value
     }

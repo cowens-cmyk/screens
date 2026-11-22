@@ -1562,6 +1562,11 @@
           "optional": true
         },
         {
+          "name": "sideTVsMediaId",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "stageLayoutId",
           "type": "string",
           "optional": true

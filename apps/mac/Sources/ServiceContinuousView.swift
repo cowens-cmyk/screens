@@ -1055,8 +1055,17 @@ struct ServiceContinuousPage: View, Equatable {
                 actionRouter?.noteStreamDesign(.lowerThirdImage(lowerThird), forSlides: [slideID])
             }
         }
+        if !made.existingSideTVs.isEmpty {
+            model.updateSlides(presentationID: presentationID, undoLabel: "Side TVs Picture") { deck in
+                for index in deck.slides.indices {
+                    if let side = made.existingSideTVs[deck.slides[index].id] {
+                        deck.slides[index].sideTVsMediaId = side
+                    }
+                }
+            }
+        }
         let added = made.slides
-        guard !added.isEmpty else { return !made.existingLowerThirds.isEmpty }
+        guard !added.isEmpty else { return made.changesExisting }
         model.insertSlides(presentationID, slides: added, afterSlideID: afterSlideID)
         let asked = LivestreamPromptRequest.make(model, presentationID: presentationID, added: added) { design, ids in
             let chosen = Set(ids)
