@@ -24,6 +24,31 @@ final class ThumbnailStore {
 
     private let posters = NSCache<NSString, Box>()
     private let contents = NSCache<NSString, Box>()
+
+    /// A slide's own content as a short key, worked out once per slide per
+    /// change of its deck (the deck's stamp). A plan page tile's picture is
+    /// keyed by this, not by the deck's stamp: with the stamp, moving or
+    /// retyping one slide drew every slide of the deck again and each tile
+    /// updated a second time as its picture landed (Nov 22: a 109-slide
+    /// sermon's drags and drops, 100-1200 ms passes for seconds after each).
+    @ObservationIgnored private var fingerprints: [String: String] = [:]
+    @ObservationIgnored private let fingerprintEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return encoder
+    }()
+
+    func slideFingerprint(_ slide: Slide, deckStamp: String) -> String {
+        let key = slide.id + "|" + deckStamp
+        if let known = fingerprints[key] { return known }
+        guard let data = try? fingerprintEncoder.encode(slide) else { return deckStamp }
+        var hasher = Hasher()
+        hasher.combine(data)
+        let fingerprint = "c\(data.count)-\(String(UInt(bitPattern: hasher.finalize()), radix: 36))"
+        if fingerprints.count > 20_000 { fingerprints.removeAll(keepingCapacity: true) }
+        fingerprints[key] = fingerprint
+        return fingerprint
+    }
     private var postersInFlight: [String: Task<CGImage?, Never>] = [:]
     private let faceValues = NSCache<NSString, AnyObject>()
 

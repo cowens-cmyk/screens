@@ -2638,12 +2638,18 @@ struct SlideThumbnailView: View {
     private func contentImage() -> CGImage? {
 
         let identity = "\(presentation.id)|\(slide.id)|\(SlideSceneBuilder.lookKey(for: slide, theme: theme))|\(legibleText)"
+        let canvas = SlideSceneBuilder.canvasSize(for: presentation)
+        // The slide's own content, not the deck's stamp: an edit elsewhere
+        // in the deck keeps this slide's picture (ThumbnailStore.slideFingerprint).
+        // A caller's own stamp (library and theme views) still decides.
+        let stamp = contentStamp
+            ?? "\(ThumbnailStore.shared.slideFingerprint(slide, deckStamp: updatedStamp))|\(Int(canvas.width))x\(Int(canvas.height))"
         let image = ThumbnailStore.shared.slideContent(
             slide: slide, theme: theme,
             render: render, model: model,
             legibleText: legibleText,
-            canvas: SlideSceneBuilder.canvasSize(for: presentation),
-            cacheKey: "\(identity)|\(updatedStamp)",
+            canvas: canvas,
+            cacheKey: "\(identity)|\(stamp)",
             identity: identity,
             mediaEffects: { model.mediaSceneEffects(id: $0) }
         )
