@@ -182,6 +182,67 @@ final class PlaybackIntegrationTests: XCTestCase {
         XCTAssertEqual(stats.framesDropped, 0, "stats charged drops on a seamless loop")
     }
 
+    /// Two screens drawing one video on different clocks: a 60 Hz one asking
+    /// for now, and a 50 Hz one asking 25 ms ahead (as a preview asks for
+    /// its next refresh). The 60 Hz screen must hold each 30 fps frame for
+    /// two refreshes; with only the newest frame kept it showed the frame
+    /// the screen ahead had taken, held for one refresh then three.
+    func testEachScreenGetsTheFrameForItsOwnTime() async throws {
+        let url = tempDir.appendingPathComponent("cadence.mov")
+        try await MediaAuthoring.writeMovie(
+            to: url, codec: .h264, size: CGSize(width: 320, height: 180), frameCount: 90
+        ) { context, frame in
+            context.setFillColor(CGColor(srgbRed: 0.1, green: 0.1, blue: 0.1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 320, height: 180))
+            context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+            context.fill(CGRect(x: CGFloat(frame) * 3, y: 0, width: 3, height: 180))
+        }
+        let engine = try MediaEngine(device: device)
+        let media = try await engine.prepare(url: url)
+        engine.play(media, id: "two", loop: true)
+        defer { engine.stopAll() }
+
+        let warmup = Date(timeIntervalSinceNow: 5)
+        while (engine.stats(for: "two")?.framesDisplayed ?? 0) == 0, Date() < warmup {
+            _ = engine.surface(for: "two", hostTime: CACurrentMediaTime())
+            try await Task.sleep(for: .milliseconds(8))
+        }
+
+        func identity(_ surface: MediaSurface?) -> ObjectIdentifier? {
+            switch surface {
+            case .ycbcrBiplanar(let luma, _, _, _): ObjectIdentifier(luma as AnyObject)
+            case .bgra(let texture, _, _): ObjectIdentifier(texture as AnyObject)
+            case nil: nil
+            }
+        }
+        let start = CACurrentMediaTime() + 0.05
+        var ahead = 0, display = 0
+        var shown: [ObjectIdentifier] = []
+        while shown.count < 150 {
+            let aheadCall = start + Double(ahead) / 50
+            let displayCall = start + Double(display) / 60
+            let isDisplay = displayCall <= aheadCall
+            let call = isDisplay ? displayCall : aheadCall
+            while CACurrentMediaTime() < call { usleep(500) }
+            if isDisplay {
+                display += 1
+                if let id = identity(engine.surface(for: "two", hostTime: call)) { shown.append(id) }
+            } else {
+                ahead += 1
+                _ = engine.surface(for: "two", hostTime: call + 0.025)
+            }
+        }
+        var holds: [Int] = []
+        var run = 1
+        for (previous, next) in zip(shown, shown.dropFirst()) {
+            if next == previous { run += 1 } else { holds.append(run); run = 1 }
+        }
+        let steady = holds.dropFirst().filter { $0 == 2 }.count
+        XCTAssertGreaterThanOrEqual(
+            Double(steady) / Double(max(1, holds.count - 1)), 0.9,
+            "the 60 Hz screen's frames held for \(holds.prefix(30)) refreshes")
+    }
+
     func testSurfacePullsAreIndependentOfMainThreadStalls() async throws {
         let engine = try MediaEngine(device: device)
         let media = try await engine.prepare(url: makeOneSecondLoop())
