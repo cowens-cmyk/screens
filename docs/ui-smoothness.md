@@ -337,6 +337,31 @@ sizes (`make-library.py --big`), and makes `volunteer.sh` use it.
 - **First scroll after a launch** builds every row it passes for the first
   time: on the booth right after a relaunch, 93% busy and a 535 ms frame.
 
+- **A lighter tile** (0.45.4). A tile that kept only its picture, number
+  and title (a test, `MXU_EXP_LITETILE`) cut a big plan's scroll frames
+  over 33 ms from 32-48 to 6-14 and a plan click's work by a quarter. Taking
+  the tile apart one piece at a time (overlays, caption, the step-count task,
+  accessibility) put the cost about evenly on the overlays, the caption and
+  the task. Now, with every feature kept:
+  - the group edge (`TileGroupEdge`, the bottom of the tile's shape), the
+    outline, the lyric-follow suggestion and the LIVE tag are one overlay,
+    not four;
+  - the number and title are one text run (an en space at 11 pt is the old
+    5 pt gap), in one frame instead of two;
+  - the paged step count is worked out once per slide off the main thread
+    (`TilePagedSteps`), not by a `.task` on every tile;
+  - posters come from `ThumbnailStore.posterNow`, which loads each once and
+    redraws only the views showing it, not a `.task` and state per poster;
+  - the checkerboard under a picture is one path and one fill, not a fill
+    per square (~700 a tile).
+  Big plan against 0.45.3, two rounds each: a scroll's frames over 33 ms
+  22-26 to 5, a plan click's work 2640-2760 to 2400-2420 ms and its runs over
+  9 ms 73-76 to 52-55: about what the picture-only tile gave.
+- **Islands, tried and not kept.** Each grid in a SwiftUI graph of its own
+  (`NSHostingController` per item) made scrolling worse (frames over 33 ms
+  30 to 40-45) and plan clicks no better: the work is the tiles, not the
+  page around them.
+
 ## Drawing
 
 Metal specifics (command buffers, feeds, validation): `docs/metal.md`.
