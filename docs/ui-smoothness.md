@@ -357,6 +357,27 @@ sizes (`make-library.py --big`), and makes `volunteer.sh` use it.
   Big plan against 0.45.3, two rounds each: a scroll's frames over 33 ms
   22-26 to 5, a plan click's work 2640-2760 to 2400-2420 ms and its runs over
   9 ms 73-76 to 52-55: about what the picture-only tile gave.
+- **A poster that can't be made** (0.45.7). `posterNow` signalled its views
+  when a load finished, found or not; with no file and no poster on disk
+  the views asked again, another load started, and so on for good: the big
+  perf plan, whose videos have no files, sat at 99% main-thread busy with
+  nothing changing on screen (both builds, every phase). A miss now signals
+  nothing and is retried only after 30 s, when a view asks. Idle went from
+  99% busy to 0%.
+- **Where a plan click's worst frame goes** (Nov 23, big plan, 0.45.7). A
+  click's work comes in three parts (`volunteer-analyze.py --phase picks
+  --timeline`): ~25 ms at the click, one 80-110 ms frame ~35 ms later as the
+  glide starts, and 20-30 ms frames half a second after landing as the rows
+  around the screen are made. In the big frame (`--worst 5`), making the
+  landing's row is ~6%; most is SwiftUI bringing the page's views up to date
+  as it measures the page (ScrollView sizeThatFits ~20%, alignment queries
+  ~25% across it). Tried and not kept: alignment guides answered from a
+  view's size (`FlatAlignment`) on items, rows and tiles, and each grid at a
+  fixed size from its row count: the measuring shrank (alignment 349 to 264
+  ms, page measure 96 to 67 ms) but a click's work and worst frames stayed
+  within run-to-run noise (2426-2578 against 2433-2670 ms). Cutting the big
+  frame further means the page holding fewer SwiftUI views (e.g. the grids
+  in AppKit), not trimming these.
 - **Islands, tried and not kept.** Each grid in a SwiftUI graph of its own
   (`NSHostingController` per item) made scrolling worse (frames over 33 ms
   30 to 40-45) and plan clicks no better: the work is the tiles, not the
