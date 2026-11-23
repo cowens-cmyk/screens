@@ -96,15 +96,13 @@ final class SurfaceFactory: @unchecked Sendable {
     ) -> (texture: MTLTexture, holder: AnyObject)? {
         let width = plane.map { CVPixelBufferGetWidthOfPlane(pixelBuffer, $0) } ?? CVPixelBufferGetWidth(pixelBuffer)
         let height = plane.map { CVPixelBufferGetHeightOfPlane(pixelBuffer, $0) } ?? CVPixelBufferGetHeight(pixelBuffer)
-        var cvTexture: CVMetalTexture?
-        let status = CVMetalTextureCacheCreateTextureFromImage(
-            kCFAllocatorDefault, textureCache, pixelBuffer, nil,
-            format, width, height, plane ?? 0, &cvTexture
-        )
-        guard status == kCVReturnSuccess, let cvTexture, let texture = CVMetalTextureGetTexture(cvTexture) else {
-            return nil
-        }
-        return (texture, cvTexture)
+        // The holder keeps the cache alive until the texture is released
+        // (see CachedTexture), wherever the last surface is let go.
+        guard let cached = CachedTexture(
+            cache: textureCache, pixelBuffer: pixelBuffer,
+            format: format, width: width, height: height, plane: plane ?? 0)
+        else { return nil }
+        return (cached.texture, cached)
     }
 
     private func attachment(_ pixelBuffer: CVPixelBuffer, _ key: CFString) -> CFString? {
