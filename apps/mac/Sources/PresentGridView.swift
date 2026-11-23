@@ -572,6 +572,7 @@ struct SlideGridBody: View {
                         }
                     }
                 }
+                .modifier(FixedRowFrame(cell: cell, across: across))
             }
             // No Add Slide row in Present: the last tile's + (on hover), its
             // right-click New Slide After…, the item header's Add Slide…
@@ -3440,6 +3441,26 @@ struct GridPlace: Equatable, Sendable {
 /// Whether one row of a plan page grid is built as tiles.
 @MainActor @Observable final class GridRowFlag {
     var built = false
+}
+
+/// A row of a plan page grid at the size its cells make it. Built or let
+/// go, a row is the same size, and saying so keeps SwiftUI from measuring
+/// the row's tiles, and from them the whole page column, every time a row
+/// comes or goes. On a plan the size of Nov 22's (a 115-slide message,
+/// songs of 30-43; volunteer.sh with MXU_PERF_BIG=1) a plan click's frames
+/// over 33 ms went from 10-13 to 5-6 over eight picks; scrolling the same.
+private struct FixedRowFrame: ViewModifier {
+    let cell: CGSize?
+    let across: Int
+
+    func body(content: Content) -> some View {
+        let size = cell.map { cell in
+            CGSize(
+                width: CGFloat(across) * cell.width + CGFloat(max(0, across - 1)) * SlideGridMetrics.spacing,
+                height: cell.height)
+        }
+        return content.frame(width: size?.width, height: size?.height, alignment: .topLeading)
+    }
 }
 
 /// One row of a slide grid: its tiles once built, else empty cells of the
