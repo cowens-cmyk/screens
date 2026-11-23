@@ -571,6 +571,12 @@ struct SlideGridBody: View {
                             }
                         }
                     }
+                    // Pictures only: nothing here takes a click or a hover.
+                    // Hit-testable, each was a view SwiftUI and AppKit walked
+                    // several times a frame while the page scrolled under the
+                    // pointer (routing the wheel, hover, the cursor): 40% of
+                    // the booth's main thread on a fast scroll (Nov 23).
+                    .allowsHitTesting(false)
                 }
                 .modifier(FixedRowFrame(cell: cell, across: across))
             }
