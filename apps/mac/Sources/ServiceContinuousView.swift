@@ -224,6 +224,8 @@ struct ServiceContinuousPage: View, Equatable {
                                 }
                             }
 
+                            // No hit-testing while the operator scrolls.
+                            .modifier(PageScrollHitGate())
                             .padding(.horizontal, Self.pageMargin)
                             .padding(.bottom, 12)
 
@@ -2440,5 +2442,15 @@ private struct StickySection<Content: View, Header: View>: View {
                     }
             }
         }
+    }
+}
+
+
+/// Leaves the page's items out of hit-testing while the operator scrolls
+/// (PageScrolling). Read in a modifier of its own, so a scroll starting or
+/// stopping re-runs this and nothing on the page.
+private struct PageScrollHitGate: ViewModifier {
+    func body(content: Content) -> some View {
+        content.allowsHitTesting(!PageScrolling.shared.active)
     }
 }

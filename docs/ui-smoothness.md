@@ -408,6 +408,15 @@ down the whole page and back at ~3600 pt/s, plan picks.
   66-68% to 34% busy, frames over 17 ms 111-117 to 15-16, over 33 ms
   45-47 to 2-4 (the way back up the same); fires the same; plan picks'
   work 2137-2208 to 2455-2476 ms (the pictures being drawn between picks).
+- **Nothing answers the pointer while the page scrolls** (0.45.9-0.45.10).
+  The perf scroll above has no pointer; on the booth, real wheel events
+  over the page made 40% of a fast scroll's main thread hit-testing:
+  routing each wheel event, hover and the cursor asked what was under the
+  still pointer several times a frame, and every built tile (its hover for
+  the + button, its drag source, an AppKit view of its own) answered. The
+  picture rows are out of hit-testing for good, and the whole page while
+  the operator scrolls (`PageScrolling`, until 0.12 s after the last wheel
+  event; a click ends it).
 - **Tried and not kept:** every row built ahead while still, none let go,
   far rows out of hit-testing. SwiftUI then updated all ~990 tiles' display
   items each scroll frame: 85-92% busy and frames of 0.5-3 s. The page has

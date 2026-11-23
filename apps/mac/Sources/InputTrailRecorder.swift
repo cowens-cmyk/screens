@@ -43,6 +43,7 @@ final class InputTrailRecorder {
     /// view, past the event monitor that notes a real one.
     func notePerfPageScroll() {
         lastPageScroll = ProcessInfo.processInfo.systemUptime
+        PageScrolling.shared.wheel()
     }
     #endif
 
@@ -111,14 +112,19 @@ final class InputTrailRecorder {
             what = "key \(key)\(event.isARepeat ? " held" : "") to \(focusDescription())"
         case .scrollWheel:
             let place = region(at: event.locationInWindow, in: event.window)
-            if place == Self.page { lastPageScroll = now }
+            if place == Self.page {
+                lastPageScroll = now
+                PageScrolling.shared.wheel()
+            }
             if place == Self.grid { lastGridScroll = now }
             what = "scroll in \(place)"
         case .rightMouseDown:
+            PageScrolling.shared.pointerDown()
             what = "right-click in \(region(at: event.locationInWindow, in: event.window))"
         case .otherMouseDown:
             what = "other-click in \(region(at: event.locationInWindow, in: event.window))"
         default:
+            PageScrolling.shared.pointerDown()
             let click = event.clickCount > 1 ? "double-click" : "click"
             let place = region(at: event.locationInWindow, in: event.window)
             if place == Self.page { lastPageClick = now }
@@ -554,6 +560,49 @@ final class PresentCardFrames {
                     "present.focus.landed",
                     detail: "\(label) after: wanted \(target) \"\(name(target))\" (its top at \(wanted) pt);"
                         + " at the top: \(atTop?.id ?? "-") \"\(name(atTop?.id))\"")
+            }
+        }
+    }
+}
+
+
+/// Whether the operator is scrolling the plan page: from the first wheel
+/// event over it until `rest` after the last (momentum included). While it
+/// is, the page's content answers no hit-tests (PageScrollHitGate). On the
+/// booth a fast scroll's main thread was 40% hit-testing: AppKit and SwiftUI
+/// asked, several times a frame, what was under the still pointer as the
+/// page moved under it (to route each wheel event, for hover and for the
+/// cursor), and each built tile, with its hover and its drag source (an
+/// AppKit view of its own), answered. Nothing on the page needs the pointer
+/// while it scrolls; a click ends it at once.
+@MainActor @Observable final class PageScrolling {
+    static let shared = PageScrolling()
+
+    private(set) var active = false
+    @ObservationIgnored private var lastWheel: TimeInterval = 0
+    @ObservationIgnored private var checking = false
+    static let rest: TimeInterval = 0.12
+
+    func wheel() {
+        lastWheel = ProcessInfo.processInfo.systemUptime
+        if !active { active = true }
+        check()
+    }
+
+    func pointerDown() {
+        if active { active = false }
+    }
+
+    private func check() {
+        guard !checking else { return }
+        checking = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.rest) { [self] in
+            checking = false
+            guard active else { return }
+            if ProcessInfo.processInfo.systemUptime - lastWheel >= Self.rest {
+                active = false
+            } else {
+                check()
             }
         }
     }
