@@ -196,6 +196,14 @@ final class ThumbnailStore {
     @ObservationIgnored private let contentSignals = KeyedSignals<String>()
     @ObservationIgnored private let posterSignals = KeyedSignals<String>()
     @ObservationIgnored private var posterRequests: Set<String> = []
+    /// Posters that couldn't be made (no file, no poster on disk), and when.
+    /// Without this, a failed load signalled its views, they asked again,
+    /// and a slide whose media was missing kept the main thread busy for
+    /// good (the big perf plan, Nov 23: 99% busy with nothing on screen
+    /// changing). A miss is tried again only after `posterRetry`, and only
+    /// when a view asks for another reason.
+    @ObservationIgnored private var posterMisses: [String: TimeInterval] = [:]
+    static let posterRetry: TimeInterval = 30
 
     private func landContent(
         key: String, identity: String?, frame: RenderedFrame?,
@@ -311,15 +319,24 @@ final class ThumbnailStore {
         posterSignals.observe(key)
         guard !posterRequests.contains(key) else { return nil }
         if let item, blobs == nil { return nil }
+        let now = ProcessInfo.processInfo.systemUptime
+        if let missed = posterMisses[key], now - missed < Self.posterRetry { return nil }
         posterRequests.insert(key)
         Task { @MainActor in
+            let image: CGImage?
             if let item, let blobs {
-                _ = await self.poster(for: item, blobs: blobs)
+                image = await self.poster(for: item, blobs: blobs)
             } else {
-                _ = await self.tombstonePoster(id: id)
+                image = await self.tombstonePoster(id: id)
             }
             self.posterRequests.remove(key)
-            self.posterSignals.fire(key)
+            if image == nil {
+                // The views already show no poster: nothing to redraw.
+                self.posterMisses[key] = ProcessInfo.processInfo.systemUptime
+            } else {
+                self.posterMisses[key] = nil
+                self.posterSignals.fire(key)
+            }
         }
         return nil
     }
