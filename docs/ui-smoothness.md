@@ -308,6 +308,35 @@ half a second after the click (the idle rows), none inside the glide.
   glide to update); building two screens ahead made more frames over
   33 ms.
 
+## Big plans
+
+Nov 22's plan (a 115-slide message, songs of 30-43 slides, a 17-slide
+pre-service loop, a 2560-wide window) was far heavier than the perf
+library's 8-slide decks: on the booth, a plan click ran 100-260 ms passes
+and a wheel scroll had frames up to 158 ms. `MXU_PERF_BIG=1` makes
+`library.sh` build `library-<key>-big`, whose present plan has those
+sizes (`make-library.py --big`), and makes `volunteer.sh` use it.
+
+- **Rows at a fixed size** (`FixedRowFrame`). A row built or let go is the
+  same size, and saying so keeps SwiftUI from measuring the row's tiles,
+  and from them the whole page column, each time one comes or goes. Big
+  plan, two rounds each: a plan click's frames over 33 ms 10-13 to 5-6;
+  scrolling unchanged.
+- **Tried and not kept:** no glide on a plan click (instant jump): 25%
+  less work per click but the same worst frames (114-148 ms), which are a
+  row of tiles made and measured; not worth the change in feel.
+- **Accessibility.** The booth's SwiftUI accessibility tree is kept up to
+  date only while some app reads Screens through accessibility; then it
+  was ~20% of a scroll (`AccessibilityViewGraph.update`; the sandboxed
+  copy, which nothing reads, 0 ms). On Nov 22 it was on from 6:33 AM
+  through the service. Freshly relaunched with BetterSnapTool running it
+  was off (0 ms), so BetterSnapTool alone isn't it. Any tool that reads the
+  window's accessibility tree (UI automation, screen readers, remote
+  helpers) turns it on until Screens quits; `perf.hitch.stack` lines that
+  name `Accessib` show when.
+- **First scroll after a launch** builds every row it passes for the first
+  time: on the booth right after a relaunch, 93% busy and a 535 ms frame.
+
 ## Drawing
 
 Metal specifics (command buffers, feeds, validation): `docs/metal.md`.

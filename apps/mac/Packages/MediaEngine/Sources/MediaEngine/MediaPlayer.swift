@@ -28,6 +28,11 @@ final class MediaPlayer: @unchecked Sendable {
         var recentSurfaces: [MediaSurface] = []
 
         var lastVendedPTS: Double?
+
+        /// The frames handed out lately, for the item `ringItem`; each
+        /// screen takes the one for its own time (FrameRing).
+        var ring = FrameRing<MediaSurface>()
+        var ringItem: ObjectIdentifier?
     }
 
     private let guarded: Locked<Guarded>
@@ -323,6 +328,7 @@ final class MediaPlayer: @unchecked Sendable {
         guarded.withLock { state in
             state.lastVendedPTS = nil
             state.stats.noteSeek()
+            state.ring.removeAll()
         }
         let tolerance = precise ? CMTime.zero : CMTime(seconds: 0.25, preferredTimescale: 600)
         player.seek(
@@ -348,6 +354,8 @@ final class MediaPlayer: @unchecked Sendable {
             state.outputs.removeAll()
             state.currentSurface = nil
             state.recentSurfaces.removeAll()
+            state.ring.removeAll()
+            state.ringItem = nil
         }
         player.removeAllItems()
     }
@@ -360,32 +368,58 @@ final class MediaPlayer: @unchecked Sendable {
         }
         pullLock.lock()
         defer { pullLock.unlock() }
+        let itemID = ObjectIdentifier(item)
+        let tolerance = media.frameDuration > 0 ? media.frameDuration / 4 : 0.004
         // What the pull needs is read under `guarded` and the lock let go
         // before the decoder is asked for a frame.
-        let (output, requestTime, current) = guarded.withLock { state -> (AVPlayerItemVideoOutput?, CMTime, MediaSurface?) in
-            guard let output = state.outputs[ObjectIdentifier(item)] else {
-                return (nil, .invalid, state.currentSurface)
-            }
+        let (output, itemTime, paused) = guarded.withLock { state -> (AVPlayerItemVideoOutput?, CMTime, Bool) in
+            guard let output = state.outputs[itemID] else { return (nil, .invalid, false) }
             let itemTime = output.itemTime(forHostTime: hostTime)
-            guard itemTime.isValid else { return (nil, .invalid, state.currentSurface) }
-            let requestTime = player.rate == 0
-                ? itemTime
-                : pullTime(itemTime: itemTime, state: state)
-            return (output, requestTime, state.currentSurface)
+            guard itemTime.isValid else { return (nil, .invalid, false) }
+            let paused = player.rate == 0
+            // A loop's next pass is a new item; paused, a seek can show any
+            // frame; a time well before the frames held is a seek too.
+            if state.ringItem != itemID || paused {
+                state.ring.removeAll()
+                state.ringItem = itemID
+            } else if let oldest = state.ring.oldestPTS, itemTime.seconds < oldest - 2 * media.frameDuration {
+                state.ring.removeAll()
+            }
+            return (output, itemTime, paused)
         }
-        guard let output else { return current }
+        guard let output else { return guarded.value.currentSurface }
 
+        if paused {
+            _ = pull(from: output, at: itemTime, item: itemID)
+            return guarded.value.currentSurface
+        }
+        // Every frame due by this screen's time, in order, so a screen
+        // asking later still finds its own (FrameRing).
+        for _ in 0 ..< 6 {
+            guard let want = guarded.withLock({ nextPull(itemTime: itemTime, state: $0) }),
+                  pull(from: output, at: want, item: itemID)
+            else { break }
+            if want == itemTime { break }
+        }
+        return guarded.withLock { state in
+            state.ring.frame(at: itemTime.seconds, tolerance: tolerance) ?? state.currentSurface
+        }
+    }
+
+    /// Takes the decoder's frame for `time`, if it has one not taken yet,
+    /// and keeps it. False when there was none (or the player stopped).
+    private func pull(from output: AVPlayerItemVideoOutput, at time: CMTime, item: ObjectIdentifier) -> Bool {
         var displayTime = CMTime.invalid
-        guard output.hasNewPixelBuffer(forItemTime: requestTime),
-              let pixelBuffer = output.copyPixelBuffer(forItemTime: requestTime, itemTimeForDisplay: &displayTime),
+        guard output.hasNewPixelBuffer(forItemTime: time),
+              let pixelBuffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: &displayTime),
               let surface = factory.makeSurface(from: pixelBuffer)
-        else { return current }
+        else { return false }
 
-        let frameTime = displayTime.isNumeric ? displayTime.seconds : requestTime.seconds
+        let frameTime = displayTime.isNumeric ? displayTime.seconds : time.seconds
         onFrameVended.value?(frameTime)
         return guarded.withLock { state in
             // Stopped while the frame was copied: keep nothing.
-            guard state.outputs[ObjectIdentifier(item)] != nil else { return state.currentSurface }
+            guard state.outputs[item] != nil else { return false }
             state.stats.recordFrame(
                 at: frameTime,
                 frameDuration: media.frameDuration,
@@ -397,11 +431,16 @@ final class MediaPlayer: @unchecked Sendable {
             if state.recentSurfaces.count > 3 {
                 state.recentSurfaces.removeFirst(state.recentSurfaces.count - 3)
             }
-            return state.currentSurface
+            if state.ringItem == item { state.ring.append(pts: frameTime, frame: surface) }
+            return true
         }
     }
 
-    private func pullTime(itemTime: CMTime, state: Guarded) -> CMTime {
+    /// When to ask the decoder for the next frame: the one after the last
+    /// taken, once its time has come at `itemTime`; `itemTime` itself after
+    /// a seek or when the pulls fell more than three frames behind; nil when
+    /// the next frame isn't due yet.
+    private func nextPull(itemTime: CMTime, state: Guarded) -> CMTime? {
         let frameDuration = media.frameDuration
         guard let last = state.lastVendedPTS, frameDuration > 0 else { return itemTime }
         var expected = last + frameDuration
@@ -412,7 +451,7 @@ final class MediaPlayer: @unchecked Sendable {
         let now = itemTime.seconds
 
         if expected > now + frameDuration / 4 {
-            return itemTime
+            return nil
         }
 
         if now > expected + 3 * frameDuration {
