@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import MediaEngine
 import MetricKit
 import PresenterCore
 import QuartzCore
@@ -37,6 +38,16 @@ final class DiagnosticsStore: NSObject, MXMetricManagerSubscriber, @unchecked Se
             DiagnosticsStore.shared.note(event, detail: detail)
         }
         MainActor.assumeIsolated { MainPassObserver.shared.start() }
+        // How evenly each screen shows a playing video, every 10 s
+        // (CadenceProbe). `defaults write com.example.mxuslides
+        // diagnostics.cadenceTrace -bool YES` also writes every render to
+        // Diagnostics/cadence-<day>.tsv (read when Screens opens).
+        CadenceProbe.shared.onSummary.value = { line in
+            DiagnosticsStore.shared.note("media.cadence", detail: line)
+        }
+        if UserDefaults.standard.bool(forKey: "diagnostics.cadenceTrace") {
+            CadenceProbe.shared.traceFolder.value = Self.folder
+        }
         startPerfPulse()
         scheduleSyntheticStall()
         scheduleSyntheticSpin()

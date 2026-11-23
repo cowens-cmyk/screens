@@ -240,6 +240,10 @@ public final class OutputMirror: @unchecked Sendable {
     }
 
     public func tick(at hostTime: CFTimeInterval) {
+        RenderConsumer.with("\(activity.kind) \(activity.label) at \(framesPerSecond) fps") { tickBody(at: hostTime) }
+    }
+
+    private func tickBody(at hostTime: CFTimeInterval) {
         let sawFirst = firstTickSeen.withLock { seen -> Bool in
             defer { seen = true }
             return !seen

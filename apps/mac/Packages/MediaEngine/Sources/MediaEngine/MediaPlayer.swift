@@ -401,9 +401,18 @@ final class MediaPlayer: @unchecked Sendable {
             else { break }
             if want == itemTime { break }
         }
-        return guarded.withLock { state in
-            state.ring.frame(at: itemTime.seconds, tolerance: tolerance) ?? state.currentSurface
+        let chosen = guarded.withLock { state -> (pts: Double?, surface: MediaSurface?) in
+            if let entry = state.ring.entry(at: itemTime.seconds, tolerance: tolerance) {
+                return (entry.pts, entry.frame)
+            }
+            return (nil, state.currentSurface)
         }
+        if let pts = chosen.pts {
+            CadenceProbe.shared.record(
+                player: ObjectIdentifier(self), hostTime: hostTime, itemTime: itemTime.seconds, pts: pts,
+                frameDuration: media.frameDuration, tolerance: tolerance)
+        }
+        return chosen.surface
     }
 
     /// Takes the decoder's frame for `time`, if it has one not taken yet,

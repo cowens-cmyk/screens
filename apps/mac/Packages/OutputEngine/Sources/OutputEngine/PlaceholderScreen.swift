@@ -129,8 +129,10 @@ public final class PlaceholderScreen: Identifiable {
             return
         }
         let encodeStart = CACurrentMediaTime()
-        compositor.render(
-            scene: scene, into: texture, at: hostTime, adjustments: adjustments, mask: mask)
+        RenderConsumer.with("\(activity.label) at \(framesPerSecond) fps") {
+            compositor.render(
+                scene: scene, into: texture, at: hostTime, adjustments: adjustments, mask: mask)
+        }
         RenderPulse.shared.placeholderFrame(
             encodeMS: (CACurrentMediaTime() - encodeStart) * 1000)
         frameCounter.withLock { $0 += 1 }
