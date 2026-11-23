@@ -41,7 +41,12 @@ struct FrameRing<Frame> {
     /// The frame showing at `time`: the newest whose time has come, within
     /// `tolerance`; a time before every frame held gets the oldest.
     func frame(at time: Double, tolerance: Double) -> Frame? {
+        entry(at: time, tolerance: tolerance)?.frame
+    }
+
+    /// The same, with the frame's time.
+    func entry(at time: Double, tolerance: Double) -> (pts: Double, frame: Frame)? {
         guard let first = frames.first else { return nil }
-        return frames.last(where: { $0.pts <= time + tolerance })?.frame ?? first.frame
+        return frames.last(where: { $0.pts <= time + tolerance }) ?? first
     }
 }

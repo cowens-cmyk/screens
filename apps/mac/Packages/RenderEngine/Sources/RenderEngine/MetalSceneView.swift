@@ -162,6 +162,8 @@ public final class MetalSceneView: NSView {
     }
 
     private let transparentBackground: Bool
+    /// This view as RenderConsumer names it: "preview" and its frame-rate cap.
+    private let consumerLabel = Locked("preview")
     private let metalLayer = CAMetalLayer()
     private var displayLink: CAMetalDisplayLink?
 
@@ -250,6 +252,7 @@ public final class MetalSceneView: NSView {
         guard let displayLink else { return }
         let screenFPS = Float(window?.screen?.maximumFramesPerSecond ?? 60)
         let maxFPS = min(screenFPS, maximumFramesPerSecond ?? screenFPS)
+        consumerLabel.value = "preview at \(Int(maxFPS)) fps"
         displayLink.preferredFrameRateRange = CAFrameRateRange(
             minimum: min(30, maxFPS),
             maximum: maxFPS,
@@ -316,6 +319,10 @@ extension MetalSceneView: CAMetalDisplayLinkDelegate {
         _ link: CAMetalDisplayLink,
         needsUpdate update: CAMetalDisplayLink.Update
     ) {
+        RenderConsumer.with(consumerLabel.value) { draw(update) }
+    }
+
+    private nonisolated func draw(_ update: CAMetalDisplayLink.Update) {
 
         let targetTimestamp = update.targetTimestamp
         tickState.withLock { $0.record(targetTimestamp: targetTimestamp) }

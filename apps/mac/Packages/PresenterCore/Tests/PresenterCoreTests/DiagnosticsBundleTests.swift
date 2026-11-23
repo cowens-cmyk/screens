@@ -48,3 +48,25 @@ private func file(_ name: String, daysAgo: Double, bytes: Int = 10) -> Diagnosti
     let found = DiagnosticsBundle.candidates(in: folder)
     #expect(found.map(\.url.lastPathComponent) == ["breadcrumbs.log"] && found.first?.byteSize == 5)
 }
+
+
+@Test func anotherAppsCrashIsNotThisRunsCrash() {
+    let lastLaunch = Date(timeIntervalSince1970: 1_000)
+    let file = { (name: String) in
+        DiagnosticsBundle.Candidate(url: URL(fileURLWithPath: "/tmp/\(name)"), modified: Date(timeIntervalSince1970: 2_000), byteSize: 10)
+    }
+    let files = [file("Screens-perf.ips"), file("Screens-real.ips"), file("Screens-old-format.crash")]
+    let ids = ["Screens-perf.ips": "com.example.mxuslides.perf", "Screens-real.ips": "com.example.mxuslides"]
+    let found = DiagnosticsBundle.crashReports(
+        in: files, since: lastLaunch, bundleID: "com.example.mxuslides",
+        reportBundleID: { ids[$0.lastPathComponent] })
+    #expect(found.map(\.url.lastPathComponent) == ["Screens-real.ips", "Screens-old-format.crash"])
+}
+
+@Test func aReportsBundleIDComesFromItsHeader() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("Screens-\(UUID().uuidString).ips")
+    let text = #"{"app_name":"Screens","bundleID":"com.example.mxuslides.perf","name":"Screens"}"# + "\n" + #"{"pid":1}"#
+    try Data(text.utf8).write(to: url)
+    defer { try? FileManager.default.removeItem(at: url) }
+    #expect(DiagnosticsBundle.reportBundleID(url) == "com.example.mxuslides.perf")
+}

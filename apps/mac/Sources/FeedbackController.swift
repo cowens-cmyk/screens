@@ -27,7 +27,8 @@ final class FeedbackController {
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastLaunchKey)
         Task.detached(priority: .utility) {
             let crashes = DiagnosticsBundle.crashReports(
-                in: DiagnosticsBundle.candidates(in: Self.crashReportsFolder), since: previousLaunch)
+                in: DiagnosticsBundle.candidates(in: Self.crashReportsFolder), since: previousLaunch,
+                bundleID: Bundle.main.bundleIdentifier)
             let expired = DiagnosticsBundle.expired(
                 from: DiagnosticsBundle.candidates(in: DiagnosticsStore.folder), now: Date())
             for file in expired { try? FileManager.default.removeItem(at: file.url) }
