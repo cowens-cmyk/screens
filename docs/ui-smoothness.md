@@ -383,6 +383,36 @@ sizes (`make-library.py --big`), and makes `volunteer.sh` use it.
   30 to 40-45) and plan clicks no better: the work is the tiles, not the
   page around them.
 
+## A fast scroll through a whole plan
+
+Volunteers flick two fingers down Sunday's plan. On the booth (Nov 23, the
+Nov 22 plan) the first pass down ran 10 frames over 33 ms in 4 s (worst
+140 ms) while scrolling back over the same rows had none over 9 ms: the
+cost is rows of tiles being made as they come near the screen, a 30 ms
+frame each, and with them SwiftUI's hit-testing caches thrown away.
+`scripts/perf/longscroll.sh <label>` (with `MXU_PERF_BIG=1`) measures it:
+the page still for a while (`MXU_PERF_STILL`, seconds), six fires, a scroll
+down the whole page and back at ~3600 pt/s, plan picks.
+
+- **Rows are made once the scroll stops** (`RowBuildPacer.scrollRest`,
+  0.15 s after the last wheel event), nearest the screen first; nothing is
+  made or let go while the operator scrolls. A glide to a pick still builds
+  where it lands.
+- **A row not built shows its tiles' pictures** (`TileStills`): each tile
+  drawn with nothing live, next or selected on it (`ImageRenderer`), while
+  the page is still, three times (at once, 1.5 s and 8 s later, in case its
+  pictures were still loading), kept by deck stamp, tile size and look up
+  to 768 MB. One image per cell costs the page next to nothing; the rings
+  and LIVE tag come back as the row is built when the scroll stops.
+- Big plan, two rounds each against 0.45.7: the scroll down's main thread
+  66-68% to 34% busy, frames over 17 ms 111-117 to 15-16, over 33 ms
+  45-47 to 2-4 (the way back up the same); fires the same; plan picks'
+  work 2137-2208 to 2455-2476 ms (the pictures being drawn between picks).
+- **Tried and not kept:** every row built ahead while still, none let go,
+  far rows out of hit-testing. SwiftUI then updated all ~990 tiles' display
+  items each scroll frame: 85-92% busy and frames of 0.5-3 s. The page has
+  to hold few live tiles; the rest are pictures.
+
 ## Drawing
 
 Metal specifics (command buffers, feeds, validation): `docs/metal.md`.

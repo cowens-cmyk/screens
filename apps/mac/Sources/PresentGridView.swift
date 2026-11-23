@@ -561,7 +561,7 @@ struct SlideGridBody: View {
                 } empty: {
                     HStack(alignment: .top, spacing: SlideGridMetrics.spacing) {
                         ForEach(row.indices, id: \.self) { index in
-                            placeholderCell(cell: cell, aspect: aspect)
+                            stillCell(index: index, cell: cell, aspect: aspect)
                                 .id(Self.tileAnchor(contextID: contextID, index: index))
                         }
 
@@ -578,6 +578,52 @@ struct SlideGridBody: View {
             // right-click New Slide After…, the item header's Add Slide…
             // and File › New Slide still add one.
         }
+    }
+
+    /// A row not built yet: each slide's picture as its tile last looked
+    /// (TileStills), drawn while the page was still, or the faint box until
+    /// there is one.
+    @ViewBuilder
+    private func stillCell(index: Int, cell: CGSize?, aspect: CGFloat) -> some View {
+        if let cell {
+            let slide = slides[index]
+            let key = stillKey(index: index, slide: slide, cell: cell)
+            TileStillCell(key: key, cell: cell) {
+                AnyView(
+                    tileLook(index: index, slide: slide, aspect: aspect)
+                        .frame(width: cell.width, height: cell.height, alignment: .top))
+            } placeholder: {
+                placeholderCell(cell: cell, aspect: aspect)
+            }
+        } else {
+            placeholderCell(cell: nil, aspect: aspect)
+        }
+    }
+
+    /// What a tile looks like with nothing live, next or selected on it,
+    /// for its still.
+    private func tileLook(index: Int, slide: Slide, aspect: CGFloat) -> some View {
+        SlideTile(
+            model: model, render: render,
+            slide: slide, index: index, aspect: aspect,
+            presentation: presentation,
+            theme: slide.themeId != nil || slide.unthemed == true ? model.theme(for: slide, in: presentation) : theme,
+            arrangementId: arrangementId,
+            controls: nil,
+            roundedCorners: roundedCorners,
+            hideScopedBackgrounds: hideScopedBackgrounds,
+            legibleText: legibleText,
+            contextID: contextID
+        ) {}
+        .environment(\.colorScheme, .dark)
+    }
+
+    /// Everything a still shows: the slide at that place in the deck as the
+    /// deck is now, the tile's size and the grid's look.
+    private func stillKey(index: Int, slide: Slide, cell: CGSize) -> String {
+        "\(presentation.id)|\(arrangementId ?? "-")|\(model.deckStamp(presentation.id))|\(index)|\(slide.id)"
+            + "|\(theme?.id ?? "-")|\(Int(cell.width))x\(Int(cell.height))"
+            + "|\(roundedCorners)|\(hideScopedBackgrounds)|\(legibleText)"
     }
 
     @ViewBuilder
@@ -3428,6 +3474,119 @@ struct GridPlace: Equatable, Sendable {
     var built = false
 }
 
+/// Pictures of slide tiles, for the rows of the plan page that aren't built.
+/// A row of real tiles is a 30 ms frame to make; a picture costs the page
+/// next to nothing. So the rows a fast scroll passes show their tiles'
+/// pictures, and the tiles are made once the page stops (RowBuildPacer).
+/// Each picture is drawn while the page is still, a few per pass, in the
+/// order the page asked for them; drawn three times (at once, 1.5 s and
+/// 8 s later), since the first can come before the slide's own picture or
+/// a poster has loaded. Kept by key (TileStills keys change with the deck, the tile's
+/// size and the grid's look), up to a memory limit.
+@MainActor final class TileStills {
+    static let shared = TileStills()
+
+    private final class Still {
+        let image: CGImage
+        let scale: CGFloat
+        init(image: CGImage, scale: CGFloat) { self.image = image; self.scale = scale }
+    }
+
+    private struct Job {
+        let key: String
+        let make: () -> AnyView
+        var notBefore: TimeInterval
+        var pass: Int
+    }
+
+    private let cache = NSCache<NSString, Still>()
+    private let signals = KeyedSignals<String>()
+    private var queued: Set<String> = []
+    private var finished: Set<String> = []
+    private var jobs: [Job] = []
+    private var scheduled = false
+    /// Main-thread time a pass may spend drawing.
+    static let budget: TimeInterval = 0.008
+    static let pace: TimeInterval = 0.05
+    /// When each later drawing comes, after the one before.
+    static let passGaps: [TimeInterval] = [1.5, 6.5]
+
+    private init() {
+        cache.totalCostLimit = 768 << 20
+    }
+
+    /// The still for `key`, asking for one when there is none (`make` is
+    /// the tile to draw). The caller redraws when it comes.
+    func image(_ key: String, make: @escaping () -> AnyView) -> (CGImage, CGFloat)? {
+        signals.observe(key)
+        let still = cache.object(forKey: key as NSString)
+        if still == nil { finished.remove(key) }
+        if !finished.contains(key), !queued.contains(key) {
+            queued.insert(key)
+            jobs.append(Job(key: key, make: make, notBefore: 0, pass: still == nil ? 1 : Self.passGaps.count + 1))
+            schedule()
+        }
+        return still.map { ($0.image, $0.scale) }
+    }
+
+    private func schedule() {
+        guard !scheduled, !jobs.isEmpty else { return }
+        scheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pace) { [self] in
+            scheduled = false
+            run()
+        }
+    }
+
+    private func run() {
+        guard RowBuildPacer.pageStill else { schedule(); return }
+        let start = ProcessInfo.processInfo.systemUptime
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        var index = 0
+        while index < jobs.count, ProcessInfo.processInfo.systemUptime - start < Self.budget {
+            guard jobs[index].notBefore <= start else { index += 1; continue }
+            var job = jobs.remove(at: index)
+            let renderer = ImageRenderer(content: job.make())
+            renderer.scale = scale
+            renderer.isOpaque = false
+            if let image = renderer.cgImage {
+                cache.setObject(
+                    Still(image: image, scale: scale), forKey: job.key as NSString,
+                    cost: image.bytesPerRow * image.height)
+                signals.fire(job.key)
+            }
+            if job.pass <= Self.passGaps.count {
+                job.notBefore = ProcessInfo.processInfo.systemUptime + Self.passGaps[job.pass - 1]
+                job.pass += 1
+                jobs.append(job)
+            } else {
+                queued.remove(job.key)
+                finished.insert(job.key)
+            }
+        }
+        schedule()
+    }
+}
+
+/// A tile's still, or `placeholder` until it has one. Reads only its own
+/// key's signal.
+private struct TileStillCell<Placeholder: View>: View {
+    let key: String
+    let cell: CGSize
+    let make: () -> AnyView
+    @ViewBuilder let placeholder: () -> Placeholder
+
+    var body: some View {
+        if let still = TileStills.shared.image(key, make: make) {
+            Image(decorative: still.0, scale: still.1)
+                .resizable()
+                .frame(width: cell.width, height: cell.height)
+        } else {
+            placeholder()
+        }
+    }
+}
+
 /// A row of a plan page grid at the size its cells make it. Built or let
 /// go, a row is the same size, and saying so keeps SwiftUI from measuring
 /// the row's tiles, and from them the whole page column, every time a row
@@ -3483,6 +3642,8 @@ private struct GridRowSwitch<Built: View, Empty: View>: View {
     /// frame, which nobody sees with nothing moving.
     static let idleAfter: TimeInterval = 0.5
     static let idlePace: TimeInterval = 0.05
+    /// How long after the last scroll event the page counts as stopped.
+    static let scrollRest: TimeInterval = 0.15
     private var waiting: [RowBuildQueue] = []
     private var scheduled = false
     private var last: TimeInterval = 0
@@ -3510,6 +3671,15 @@ private struct GridRowSwitch<Built: View, Empty: View>: View {
     /// scrolling: there the rows ahead are what is coming next, and they
     /// keep being made, a row a frame, so the scroll never reaches empty
     /// cells.
+    /// Nothing moving and nobody at the page for a moment: time for work
+    /// nobody waits on (TileStills).
+    static var pageStill: Bool {
+        if PageGlide.shared.landingTop != nil { return false }
+        let input = InputTrailRecorder.shared
+        return [input.sincePageScroll(), input.sinceKey(), input.sinceClick(), input.sinceFocusScroll()]
+            .allSatisfy { ($0 ?? .infinity) >= idleAfter }
+    }
+
     private var operatorBusy: Bool {
         if PageGlide.shared.landingTop != nil { return true }
         let input = InputTrailRecorder.shared
@@ -3519,6 +3689,18 @@ private struct GridRowSwitch<Built: View, Empty: View>: View {
     }
 
     private func run() {
+        // Nothing is made or let go while the operator scrolls the page: a
+        // row of tiles is a 30 ms frame, and a fast scroll through a big plan
+        // made one nearly every frame (the Nov 22 plan on the booth: 10
+        // frames over 33 ms in the first 4 s). The rows it passes show their
+        // tiles' pictures (TileStills) until it stops. A glide to a pick
+        // still builds where it lands.
+        if PageGlide.shared.landingTop == nil,
+           (InputTrailRecorder.shared.sincePageScroll() ?? .infinity) < Self.scrollRest {
+            last = ProcessInfo.processInfo.systemUptime
+            schedule(after: 0.05)
+            return
+        }
         waiting.removeAll { $0.settled }
         let next = waiting.min { (a, b) in
             (a.buildDistance ?? .max) < (b.buildDistance ?? .max)
