@@ -5,7 +5,9 @@ Exports the Time Profiler table, keeps the main thread's samples, groups
 them into busy runs (samples less than 3 ms apart), and prints per phase:
 busy ms, runs over 9 / 17 / 33 ms (a dropped frame at 120 / 60 / 30 Hz),
 the worst run, and the heaviest app and SwiftUI frames.
-  volunteer-analyze.py <run folder> [--top N] [--phase NAME [--under SYMBOL | --over SYMBOL]]
+  volunteer-analyze.py <run folder> [--top N] [--phase NAME [--under SYMBOL | --over SYMBOL | --worst N]]
+--worst N: the heaviest frames inside that phase's N longest busy runs (the
+freezes felt), each run's length and what was on top during it.
 """
 import collections, datetime, json, os, re, subprocess, sys
 import xml.etree.ElementTree as ET
@@ -92,7 +94,8 @@ for (a, name), (b, _) in zip(phases, phases[1:]):
             print(f"      {c:7.0f}  {f[:150]}")
 json.dump(res, open(os.path.join(out, "vol.json"), "w"), indent=1)
 
-if "--phase" in sys.argv:
+skip = re.compile(r"^(runApp|static App|static MxUSlides|specialized runApp|<deduplicated|UC::|CA::Transaction|stepTransaction|__CFRUNLOOP|NSDisplayCycle|_NSDisplay|__NSWindowGetDisplay|NSPerformVisually|-\[NSView _layout|__36-\[NSView|__56-\[NSView|-\[NSWindow|_NSViewLayout|___NSViewLayout|\+\[NSAnimationContext|closure #1 in NSHostingView.layout|NSHostingView.layout|@objc NSHostingView.layout|-\[NSApplication|_DPS|RunCurrent|ReceiveNext|_BlockUntil|__CFRun|_CFRun|main$|start$|thunk for|partial apply|specialized thunk|0x)")
+if "--phase" in sys.argv and not "--worst" in sys.argv:
     want = sys.argv[sys.argv.index("--phase") + 1]
     a, b = next((x[0], y[0]) for x, y in zip(phases, phases[1:]) if x[1] == want)
     ph = [s for s in samples if a <= s[0] < b and busy(s)]
@@ -137,3 +140,36 @@ if "--over" in sys.argv:
         for f in set(s[2][idx+1:idx+14]): inc[f] += s[1]
     print(f"== callers of {key}: {n:.0f} ms")
     for f, c in inc.most_common(40): print(f"  {c:6.0f}  {f[:170]}")
+
+if "--worst" in sys.argv:
+    want = sys.argv[sys.argv.index("--phase") + 1]
+    n = int(sys.argv[sys.argv.index("--worst") + 1])
+    a, b = next((x[0], y[0]) for x, y in zip(phases, phases[1:]) if x[1] == want)
+    ph = [s for s in samples if a <= s[0] < b and busy(s)]
+    runs = []
+    for s in ph:
+        if runs and s[0] - runs[-1][-1][0] <= 0.003: runs[-1].append(s)
+        else: runs.append([s])
+    runs.sort(key=lambda r: -sum(s[1] for s in r))
+    worst = runs[:n]
+    print(f"== {want}: {n} longest runs: " + ", ".join(f"{sum(s[1] for s in r):.0f} ms" for r in worst))
+    inc = collections.Counter()
+    for r in worst:
+        for s in r:
+            for f in set(s[2]): inc[f] += s[1]
+    for f, c in inc.most_common(3000):
+        if not skip.match(f): print(f"  {c:6.0f}  {f[:160]}")
+        if c < 15: break
+
+if "--timeline" in sys.argv:
+    want = sys.argv[sys.argv.index("--phase") + 1]
+    a, b = next((x[0], y[0]) for x, y in zip(phases, phases[1:]) if x[1] == want)
+    ph = [s for s in samples if a <= s[0] < b and busy(s)]
+    runs = []
+    for s in ph:
+        if runs and s[0] - runs[-1][-1][0] <= 0.003: runs[-1].append(s)
+        else: runs.append([s])
+    print(f"== {want}: busy runs over 15 ms, seconds from the phase's start")
+    for r in runs:
+        ms = sum(s[1] for s in r)
+        if ms > 15: print(f"  {r[0][0] - a:7.3f}  {ms:5.0f} ms")
