@@ -14,6 +14,44 @@ struct TransparencyGrid: View {
     var body: some View {
 
         let dark = colorScheme == .dark
+        Group {
+            if phase == .zero, let tile = Self.tile(square: square, dark: dark) {
+                // A two-by-two tile repeated by the GPU. The Canvas below
+                // was drawn on the CPU, square by square, each time a slide
+                // tile came into view: a fast scroll down the booth's plan
+                // spent a tenth of its main thread there (RB::Path in
+                // CGDrawingLayer.draw, Nov 23).
+                Image(decorative: tile, scale: Self.tileScale).resizable(resizingMode: .tile)
+            } else {
+                checkerCanvas(dark: dark)
+            }
+        }
+        .background(dark ? Color.black.opacity(0.45) : Color.primary.opacity(0.025))
+        .allowsHitTesting(false)
+    }
+
+    private static let tileScale: CGFloat = 2
+    @MainActor private static var tiles: [String: CGImage] = [:]
+
+    /// Two squares by two, the top-left and bottom-right inked.
+    @MainActor private static func tile(square: CGFloat, dark: Bool) -> CGImage? {
+        let key = "\(square)|\(dark)"
+        if let tile = tiles[key] { return tile }
+        let side = Int((square * tileScale).rounded())
+        guard side > 0, let context = CGContext(
+            data: nil, width: side * 2, height: side * 2, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.setFillColor(dark ? CGColor(gray: 1, alpha: 0.045) : CGColor(gray: 0, alpha: 0.07))
+        context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+        context.fill(CGRect(x: side, y: side, width: side, height: side))
+        let tile = context.makeImage()
+        tiles[key] = tile
+        return tile
+    }
+
+    private func checkerCanvas(dark: Bool) -> some View {
         Canvas { context, size in
             let firstColumn = Int((phase.x / square).rounded(.down))
             let firstRow = Int((phase.y / square).rounded(.down))
@@ -33,7 +71,5 @@ struct TransparencyGrid: View {
             }
             context.fill(squares, with: .color(squareInk))
         }
-        .background(dark ? Color.black.opacity(0.45) : Color.primary.opacity(0.025))
-        .allowsHitTesting(false)
     }
 }
