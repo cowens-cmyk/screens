@@ -116,3 +116,25 @@ for the steady two refreshes a third of the time before, nine in ten or
 more now. The sandboxed perf build can't show it end to end (it has no
 DeckLink ports, and with previews only both builds were even); the booth's
 Audience preview is the place to measure it again after a release.
+
+### Away from the frame edges
+
+The `media.cadence` breadcrumbs (CadenceProbe, every 10 s per screen) then
+showed one more case, on 0.45.5: a whole video uneven on every DeckLink
+port while the others were even. A port renders on its own steady timer,
+and where its ticks fall against the video's frames depends on when the
+video started. For "Ways to Give" they fell within 2 ms of a frame's edge
+on 91-95% of renders, so a millisecond of timer jitter flipped each render
+between two frames: 16-44% of holds uneven, about 50 frames skipped in 10 s
+on the LED wall. The next video started at another phase and was even.
+
+`CadenceLock` (in FrameRing.swift) gives each screen, by its RenderConsumer
+label, a fixed shift of the time its frame is chosen for, once its interval
+is known and fits the frame evenly (30 fps at 15, 30 or 60 Hz): the renders
+then fall half an interval past an edge, as far from one as they can be.
+The shift stays under half a frame and moves again only when the clocks
+drift a render to within a sixth of an interval of an edge. Rates that
+can't be even (25 fps at 60 Hz) keep the old choice. `CadenceLockTests`
+replays the LED wall's case: the old choice skips frames, the lock holds
+every frame once. Live, "near a frame edge" in the breadcrumbs should stay
+low on every port.

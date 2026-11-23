@@ -33,6 +33,9 @@ final class MediaPlayer: @unchecked Sendable {
         /// screen takes the one for its own time (FrameRing).
         var ring = FrameRing<MediaSurface>()
         var ringItem: ObjectIdentifier?
+        /// Each screen's lock on the frame edges (CadenceLock), by its
+        /// RenderConsumer label.
+        var cadence: [String: CadenceLock] = [:]
     }
 
     private let guarded: Locked<Guarded>
@@ -329,6 +332,7 @@ final class MediaPlayer: @unchecked Sendable {
             state.lastVendedPTS = nil
             state.stats.noteSeek()
             state.ring.removeAll()
+            state.cadence.removeAll()
         }
         let tolerance = precise ? CMTime.zero : CMTime(seconds: 0.25, preferredTimescale: 600)
         player.seek(
@@ -356,6 +360,7 @@ final class MediaPlayer: @unchecked Sendable {
             state.recentSurfaces.removeAll()
             state.ring.removeAll()
             state.ringItem = nil
+            state.cadence.removeAll()
         }
         player.removeAllItems()
     }
@@ -369,23 +374,35 @@ final class MediaPlayer: @unchecked Sendable {
         pullLock.lock()
         defer { pullLock.unlock() }
         let itemID = ObjectIdentifier(item)
-        let tolerance = media.frameDuration > 0 ? media.frameDuration / 4 : 0.004
+        let frameDuration = media.frameDuration
+        let tolerance = frameDuration > 0 ? frameDuration / 4 : 0.004
+        let consumer = RenderConsumer.current
         // What the pull needs is read under `guarded` and the lock let go
         // before the decoder is asked for a frame.
-        let (output, itemTime, paused) = guarded.withLock { state -> (AVPlayerItemVideoOutput?, CMTime, Bool) in
-            guard let output = state.outputs[itemID] else { return (nil, .invalid, false) }
+        let (output, itemTime, paused, pick) = guarded.withLock {
+            state -> (AVPlayerItemVideoOutput?, CMTime, Bool, Double) in
+            guard let output = state.outputs[itemID] else { return (nil, .invalid, false, 0) }
             let itemTime = output.itemTime(forHostTime: hostTime)
-            guard itemTime.isValid else { return (nil, .invalid, false) }
+            guard itemTime.isValid else { return (nil, .invalid, false, 0) }
             let paused = player.rate == 0
             // A loop's next pass is a new item; paused, a seek can show any
             // frame; a time well before the frames held is a seek too.
             if state.ringItem != itemID || paused {
                 state.ring.removeAll()
                 state.ringItem = itemID
-            } else if let oldest = state.ring.oldestPTS, itemTime.seconds < oldest - 2 * media.frameDuration {
+                state.cadence.removeAll()
+            } else if let oldest = state.ring.oldestPTS, itemTime.seconds < oldest - 2 * frameDuration {
                 state.ring.removeAll()
+                state.cadence.removeAll()
             }
-            return (output, itemTime, paused)
+            // The time this screen's frame is chosen for (CadenceLock).
+            var pick = itemTime.seconds + tolerance
+            if let consumer, !paused {
+                pick = state.cadence[consumer, default: CadenceLock()].pickTime(
+                    for: itemTime.seconds, frameDuration: frameDuration,
+                    gridPTS: state.ring.newestPTS ?? state.lastVendedPTS)
+            }
+            return (output, itemTime, paused, pick)
         }
         guard let output else { return guarded.value.currentSurface }
 
@@ -394,15 +411,17 @@ final class MediaPlayer: @unchecked Sendable {
             return guarded.value.currentSurface
         }
         // Every frame due by this screen's time, in order, so a screen
-        // asking later still finds its own (FrameRing).
+        // asking later still finds its own (FrameRing). nextPull takes the
+        // frames due by a quarter frame after the time it's given.
+        let pullTime = CMTime(seconds: pick - tolerance, preferredTimescale: 60000)
         for _ in 0 ..< 6 {
-            guard let want = guarded.withLock({ nextPull(itemTime: itemTime, state: $0) }),
+            guard let want = guarded.withLock({ nextPull(itemTime: pullTime, state: $0) }),
                   pull(from: output, at: want, item: itemID)
             else { break }
-            if want == itemTime { break }
+            if want == pullTime { break }
         }
         let chosen = guarded.withLock { state -> (pts: Double?, surface: MediaSurface?) in
-            if let entry = state.ring.entry(at: itemTime.seconds, tolerance: tolerance) {
+            if let entry = state.ring.entry(at: pick, tolerance: 0) {
                 return (entry.pts, entry.frame)
             }
             return (nil, state.currentSurface)
@@ -410,7 +429,7 @@ final class MediaPlayer: @unchecked Sendable {
         if let pts = chosen.pts {
             CadenceProbe.shared.record(
                 player: ObjectIdentifier(self), hostTime: hostTime, itemTime: itemTime.seconds, pts: pts,
-                frameDuration: media.frameDuration, tolerance: tolerance)
+                frameDuration: frameDuration, tolerance: pick - itemTime.seconds)
         }
         return chosen.surface
     }
