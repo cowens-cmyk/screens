@@ -63,7 +63,22 @@ def path_text_deck(template):
     deck["slides"] = slides
     return deck
 
-def build(port, token, fixtures, count):
+# Slides per deck for --big, in the order the present scenario's plan uses
+# them (decks sorted by name): Nov 22's plan, a 115-slide message among
+# songs of 30-43 and a 17-slide pre-service loop.
+BIG_SIZES = [17, 37, 39, 43, 37, 30, 17, 8, 115, 20, 8, 37, 39, 43]
+
+def grown(deck, size):
+    slides = deck["slides"]
+    out = []
+    for number in range(size):
+        source = slides[number % len(slides)]
+        text = json.dumps(source).replace(source["id"], f"{source['id']}.{number}")
+        out.append(json.loads(text))
+    deck["slides"] = out
+    return deck
+
+def build(port, token, fixtures, count, big=False):
     with open(os.path.join(fixtures, "bulk-deck.json")) as handle:
         bulk = json.load(handle)
     with open(os.path.join(fixtures, "path-text-deck.json")) as handle:
@@ -74,6 +89,8 @@ def build(port, token, fixtures, count):
         deck = json.loads(json.dumps(bulk).replace(source_id, f"bulk{index:03d}"))
         deck["id"] = f"bulk{index:03d}"
         deck["name"] = f"Bulk Deck {index:03d}"
+        if big and index < len(BIG_SIZES):
+            deck = grown(deck, BIG_SIZES[index])
         request(port, token, "POST", "/v1/documents/presentations", deck)
     print(f"created {count + 1} decks")
 
@@ -87,11 +104,12 @@ def main(argv):
     building.add_argument("--token", required=True)
     building.add_argument("--fixtures", required=True)
     building.add_argument("--decks", type=int, default=300)
+    building.add_argument("--big", action="store_true", help="give the present plan's decks Nov 22's sizes")
     args = parser.parse_args(argv)
     if args.command == "mint":
         mint(args.path)
     else:
-        build(args.port, args.token, args.fixtures, args.decks)
+        build(args.port, args.token, args.fixtures, args.decks, args.big)
     return 0
 
 if __name__ == "__main__":

@@ -3,6 +3,8 @@
 # live Screens (run.sh quits it to measure): for volunteer.sh and
 # edit-storm.sh on the booth Mac while a service plan is up.
 #   scripts/perf/library.sh <staged label>
+# MXU_PERF_BIG=1 builds library-<key>-big: the present plan's decks at Nov 22's
+# sizes (make-library.py --big), for volunteer.sh with the same variable.
 set -u
 LABEL=$1
 HERE=${0:A:h}
@@ -11,7 +13,7 @@ BIN="$WORK/Stage/$LABEL.app/Contents/MacOS/Screens"
 DOMAIN=com.example.mxuslides.perf
 PORT=6989
 KEY=$(cat "$HERE"/fixtures/*.json "$HERE/make-library.py" | shasum | cut -c1-10)
-LIB=$WORK/library-$KEY
+LIB=$WORK/library-$KEY${MXU_PERF_BIG:+-big}
 [[ -f $LIB/ready ]] && { print "library ready: $LIB"; exit 0 }
 rm -rf "$LIB" && mkdir -p "$LIB"
 H=$LIB/home
@@ -29,7 +31,7 @@ for _ in {1..600}; do
   curl -sf -o /dev/null -H "Authorization: Bearer $SECRET" "http://127.0.0.1:$PORT/v1/documents/presentations" && break
   sleep 0.2
 done
-python3 "$HERE/make-library.py" build --port $PORT --token "$SECRET" --fixtures "$HERE/fixtures" || { kill $PID; exit 1 }
+python3 "$HERE/make-library.py" build --port $PORT --token "$SECRET" --fixtures "$HERE/fixtures" ${MXU_PERF_BIG:+--big} || { kill $PID; exit 1 }
 sleep 3
 kill -TERM $PID; sleep 3; kill -KILL $PID 2>/dev/null
 defaults delete $DOMAIN >/dev/null 2>&1

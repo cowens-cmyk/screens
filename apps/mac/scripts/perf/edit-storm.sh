@@ -16,7 +16,7 @@ DOMAIN=com.example.mxuslides.perf
 OUT=$WORK/runs/edit-$LABEL-r$ROUND-$(date +%H%M%S)
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 [[ -x $BIN ]] || { print -r -- "no staged build at $APP" >&2; exit 2 }
-LIB=$(ls -d $WORK/library-*/home 2>/dev/null | head -1)
+LIB=$(ls -d $WORK/library-*${MXU_PERF_BIG:+-big}/home 2>/dev/null | grep -v -- "${MXU_PERF_BIG:+NOTHING}${MXU_PERF_BIG:--big/}" | head -1)
 [[ -n $LIB ]] || { print -r -- "no perf library yet" >&2; exit 2 }
 mkdir -p $OUT
 caffeinate -dimsu -t 150 &
