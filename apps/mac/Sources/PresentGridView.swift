@@ -2152,27 +2152,30 @@ struct SlideTile: View {
             )
             .aspectRatio(aspect, contentMode: .fit)
             .background(Color.black.opacity(0.35))
-            .overlay(alignment: .bottom) {
-                if let groupColor {
-                    Rectangle().fill(groupColor).frame(height: 3)
-                }
-            }
             .clipShape(tileShape)
-            .overlay { outline }
-            // Its own view, so a new suggestion redraws one outline, not every tile.
-            .overlay { FollowSuggestionOutline(controls: controls, contextID: contextID, index: index, shape: tileShape) }
+            // Group edge, outline, suggestion and LIVE tag in one overlay: as
+            // four, each tile carried four overlays' layout and display items
+            // whether or not any of them showed.
             .overlay(alignment: .topLeading) {
-                if isLive {
-                    Text("LIVE")
-                        .font(.system(size: 9, weight: .heavy))
-                        .tracking(0.6)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(HopeStyle.live, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
-                        .padding(5)
-                        .allowsHitTesting(false)
+                ZStack(alignment: .topLeading) {
+                    if let groupColor {
+                        TileGroupEdge(cornerRadius: cornerRadius).fill(groupColor)
+                    }
+                    outline
+                    // Its own view, so a new suggestion redraws one outline, not every tile.
+                    FollowSuggestionOutline(controls: controls, contextID: contextID, index: index, shape: tileShape)
+                    if isLive {
+                        Text("LIVE")
+                            .font(.system(size: 9, weight: .heavy))
+                            .tracking(0.6)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(HopeStyle.live, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                            .padding(5)
+                    }
                 }
+                .allowsHitTesting(false)
             }
             // The caption is words and badge glyphs with nothing of its own
             // to click or point at (their tooltips are off, tileHelp). Left
@@ -2195,13 +2198,6 @@ struct SlideTile: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { fire() }
 
-        .task(id: stepCountKey) {
-            let slide = slide
-            let theme = theme
-            pagedStepCount = await Task.detached(priority: .utility) {
-                PlaceholderAnimations.advanceCount(slide: slide, themes: [theme])
-            }.value
-        }
     }
 
     /// Live is a heavy red ring just outside the slide, so it never covers
@@ -2306,22 +2302,12 @@ struct SlideTile: View {
 
 
     private var stepCount: Int {
-        pagedStepCount ?? TileStepCache.steps(slide: slide, theme: theme).count
+        TilePagedSteps.shared.count(slide: slide, theme: theme)
+            ?? TileStepCache.steps(slide: slide, theme: theme).count
     }
-
-    @State private var pagedStepCount: Int?
 
     private var hasAnySteps: Bool {
         TileStepCache.steps(slide: slide, theme: theme).hasAny
-    }
-
-    private struct StepCountKey: Equatable {
-        let slide: Slide
-        let theme: Theme?
-    }
-
-    private var stepCountKey: StepCountKey {
-        StepCountKey(slide: slide, theme: theme)
     }
 
     private var actionBadges: [GlyphKind] {
@@ -2381,6 +2367,19 @@ struct SlideTile: View {
     }
 }
 
+/// A tile's group color: a 3 pt band along its bottom edge, inside its
+/// rounded corners (drawn as the bottom of the tile's shape, not clipped).
+struct TileGroupEdge: Shape {
+    let cornerRadius: CGFloat
+    var height: CGFloat = 3
+
+    func path(in rect: CGRect) -> Path {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: rect)
+        let band = Path(CGRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height))
+        return shape.intersection(band)
+    }
+}
+
 /// The label under a tile: the slide's number small, what the slide is in
 /// 13 pt semibold, and the detail (translation, which point, the lyric's
 /// first line) smaller under it, with the slide's badges at the end of that
@@ -2396,18 +2395,11 @@ struct TileCaption<Badges: View>: View {
     var body: some View {
         let secondRow = label.detail != nil || hasBadges
         VStack(alignment: .leading, spacing: 1) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                if let number {
-                    Text("\(number)")
-                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(isLive ? HopeStyle.live : Color.secondary)
-                }
-                Text(label.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.primary)
-                    .lineLimit(secondRow ? 1 : 2)
-                    .truncationMode(label.isReference ? .middle : .tail)
-            }
+            // Number and title in one text run (an en space at 11 pt is the
+            // 5 pt the two used to stand apart): one view per tile, not three.
+            titleLine
+                .lineLimit(secondRow ? 1 : 2)
+                .truncationMode(label.isReference ? .middle : .tail)
             if secondRow {
                 HStack(spacing: 4) {
                     if let detail = label.detail {
@@ -2422,8 +2414,20 @@ struct TileCaption<Badges: View>: View {
             }
         }
         .padding(.horizontal, 2)
-        .frame(height: SlideGridMetrics.labelHeight, alignment: .top)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(
+            maxWidth: .infinity, minHeight: SlideGridMetrics.labelHeight,
+            maxHeight: SlideGridMetrics.labelHeight, alignment: .topLeading)
+    }
+
+    private var titleLine: Text {
+        let title = Text(label.title)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color.primary)
+        guard let number else { return title }
+        return Text("\(number)\u{2002}")
+            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+            .foregroundStyle(isLive ? HopeStyle.live : Color.secondary)
+            + title
     }
 }
 
@@ -2665,13 +2669,11 @@ struct PosterImage: View {
     let model: AppModel
     let mediaId: String
 
-    @State private var image: CGImage?
-    @State private var missing = false
-
     var body: some View {
-
         let item = model.media(mediaId)
-        let stamp = "\(mediaId)|\(item?.fileHash ?? "gone")|\(item.map(MediaPosterStore.posterTime(of:)) ?? 0)"
+        // Gone from the library, or its file not on this Mac: dimmed, flagged.
+        let missing = item.map { model.isMediaFileMissing($0) } ?? true
+        let image = ThumbnailStore.shared.posterNow(for: item, id: mediaId, blobs: model.blobs)
         ZStack {
             if let image {
                 Image(decorative: image, scale: 1)
@@ -2686,23 +2688,6 @@ struct PosterImage: View {
                     .foregroundStyle(.yellow)
                     .help("Media file missing")
             }
-        }
-        .task(id: stamp) {
-            guard let item = model.media(mediaId) else {
-
-                missing = true
-                image = await ThumbnailStore.shared.tombstonePoster(id: mediaId)
-                return
-            }
-            guard let blobs = model.blobs else { return }
-            missing = model.isMediaFileMissing(item)
-            if !missing, let cached = ThumbnailStore.shared.cachedPoster(for: item) {
-                image = cached
-                return
-            }
-
-            image = nil
-            image = await ThumbnailStore.shared.poster(for: item, blobs: blobs)
         }
     }
 }
@@ -3624,6 +3609,48 @@ private struct PageGlideEndFollow: ViewModifier {
 /// A tile's animation steps, worked out once per slide and theme. Counting
 /// builds the slide's whole composition two or three times over, and the
 /// caption asked on every pass of every tile.
+/// A slide's click count with paged text counted (PlaceholderAnimations,
+/// paging on), worked out once per slide off the main thread. Each tile used
+/// to run its own `.task` for it: a task, its state and its attributes for
+/// every tile built, about 7% of a plan click's work on a big plan
+/// (scripts/perf/volunteer.sh, MXU_PERF_BIG=1). Until a count is in, a tile
+/// shows TileStepCache's count without paging, and the tile alone redraws
+/// when it lands.
+@MainActor
+final class TilePagedSteps {
+    static let shared = TilePagedSteps()
+
+    private struct Entry {
+        let slide: Slide
+        let theme: Theme?
+        var count: Int?
+    }
+
+    private var entries: [String: Entry] = [:]
+    private let signals = KeyedSignals<String>()
+
+    func count(slide: Slide, theme: Theme?) -> Int? {
+        if let entry = entries[slide.id], entry.slide == slide, entry.theme == theme {
+            if entry.count == nil { signals.observe(slide.id) }
+            return entry.count
+        }
+        if entries.count > 5000 { entries.removeAll(keepingCapacity: true) }
+        entries[slide.id] = Entry(slide: slide, theme: theme, count: nil)
+        signals.observe(slide.id)
+        let id = slide.id
+        Task.detached(priority: .utility) {
+            let count = PlaceholderAnimations.advanceCount(slide: slide, themes: [theme])
+            await MainActor.run {
+                guard let entry = TilePagedSteps.shared.entries[id], entry.slide == slide, entry.theme == theme
+                else { return }
+                TilePagedSteps.shared.entries[id]?.count = count
+                TilePagedSteps.shared.signals.fire(id)
+            }
+        }
+        return nil
+    }
+}
+
 @MainActor
 enum TileStepCache {
     private struct Entry {

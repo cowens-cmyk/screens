@@ -194,6 +194,8 @@ final class ThumbnailStore {
 
     /// The tiles waiting for a picture, each on its own key.
     @ObservationIgnored private let contentSignals = KeyedSignals<String>()
+    @ObservationIgnored private let posterSignals = KeyedSignals<String>()
+    @ObservationIgnored private var posterRequests: Set<String> = []
 
     private func landContent(
         key: String, identity: String?, frame: RenderedFrame?,
@@ -297,6 +299,29 @@ final class ThumbnailStore {
 
     func cachedPoster(for item: MediaItem) -> CGImage? {
         posters.object(forKey: posterKey(item) as NSString)?.image
+    }
+
+    /// A media's poster for a view to show now: the cached one, or nil while
+    /// it loads, the asking view redrawing (it alone) when it lands. Media
+    /// gone from the library shows its last poster (a tombstone). Each
+    /// poster on a plan tile used to load through its own `.task` and state.
+    func posterNow(for item: MediaItem?, id: String, blobs: BlobStore?) -> CGImage? {
+        let key = item.map(posterKey) ?? "tombstone|\(id)"
+        if let hit = posters.object(forKey: key as NSString) { return hit.image }
+        posterSignals.observe(key)
+        guard !posterRequests.contains(key) else { return nil }
+        if let item, blobs == nil { return nil }
+        posterRequests.insert(key)
+        Task { @MainActor in
+            if let item, let blobs {
+                _ = await self.poster(for: item, blobs: blobs)
+            } else {
+                _ = await self.tombstonePoster(id: id)
+            }
+            self.posterRequests.remove(key)
+            self.posterSignals.fire(key)
+        }
+        return nil
     }
 
     func poster(
