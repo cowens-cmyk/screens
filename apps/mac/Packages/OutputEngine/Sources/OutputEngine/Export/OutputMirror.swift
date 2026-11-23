@@ -516,7 +516,7 @@ public final class PixelBufferConverter: @unchecked Sendable {
     /// A frame converted on the GPU inside its own render's command buffer.
     final class DirectFrame: @unchecked Sendable {
         let pixelBuffer: CVPixelBuffer
-        fileprivate var wrapper: CVMetalTexture?
+        fileprivate var wrapper: CachedTexture?
         fileprivate var commandBuffer: MTLCommandBuffer?
         /// The conversion went into the render, so the texture is not to be
         /// read again on the CPU whatever happens.

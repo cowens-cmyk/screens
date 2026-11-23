@@ -82,10 +82,9 @@ final class GPUFrameConverter: @unchecked Sendable {
         self.straightAlpha = straightAlpha
     }
 
-    /// `pixelBuffer` as a texture the kernel can write, kept alive by the
-    /// returned wrapper until the GPU is done with it.
-    private func destination(for pixelBuffer: CVPixelBuffer, matching texture: MTLTexture)
-        -> (texture: MTLTexture, wrapper: CVMetalTexture)? {
+    /// `pixelBuffer` as a texture the kernel can write, kept alive (with
+    /// the cache it came from) until the GPU is done with it.
+    private func destination(for pixelBuffer: CVPixelBuffer, matching texture: MTLTexture) -> CachedTexture? {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         guard width == texture.width, height == texture.height,
@@ -94,14 +93,9 @@ final class GPUFrameConverter: @unchecked Sendable {
         let attributes = [
             kCVMetalTextureUsage: NSNumber(value: MTLTextureUsage([.shaderWrite, .shaderRead]).rawValue)
         ] as CFDictionary
-        var wrapped: CVMetalTexture?
-        guard CVMetalTextureCacheCreateTextureFromImage(
-            kCFAllocatorDefault, textureCache, pixelBuffer, attributes,
-            .bgra8Unorm, width, height, 0, &wrapped) == kCVReturnSuccess,
-              let wrapped,
-              let destination = CVMetalTextureGetTexture(wrapped)
-        else { return nil }
-        return (destination, wrapped)
+        return CachedTexture(
+            cache: textureCache, pixelBuffer: pixelBuffer, attributes: attributes,
+            format: .bgra8Unorm, width: width, height: height)
     }
 
     /// Adds the conversion of `texture` into `pixelBuffer` to work already
@@ -110,7 +104,7 @@ final class GPUFrameConverter: @unchecked Sendable {
     /// be kept until `commandBuffer` completes; nil when the buffer could
     /// not be wrapped, and nothing was added.
     func encode(texture: MTLTexture, into pixelBuffer: CVPixelBuffer, on commandBuffer: MTLCommandBuffer)
-        -> CVMetalTexture? {
+        -> CachedTexture? {
         guard let target = destination(for: pixelBuffer, matching: texture),
               let encoder = commandBuffer.makeComputeCommandEncoder()
         else { return nil }
@@ -127,7 +121,7 @@ final class GPUFrameConverter: @unchecked Sendable {
         encoder.dispatchThreads(
             MTLSize(width: texture.width, height: texture.height, depth: 1), threadsPerThreadgroup: group)
         encoder.endEncoding()
-        return target.wrapper
+        return target
     }
 
     /// Writes `texture` into `pixelBuffer` (32BGRA, IOSurface-backed) and
