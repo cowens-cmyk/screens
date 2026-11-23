@@ -52,11 +52,33 @@ public enum DiagnosticsBundle {
             && ["ips", "crash", "hang", "spin", "diag"].contains((name as NSString).pathExtension)
     }
 
-    public static func crashReports(in candidates: [Candidate], since previousLaunch: Date?) -> [Candidate] {
+    /// This app's crash reports since its last launch. `bundleID` leaves out
+    /// reports of other apps named Screens: a staged perf build
+    /// (com.example.mxuslides.perf) that crashed on the booth Mac had the
+    /// next real launch ask what the operator was doing when it quit.
+    /// Reports with no bundle id in their header (older formats) still count.
+    public static func crashReports(
+        in candidates: [Candidate], since previousLaunch: Date?, bundleID: String? = nil,
+        reportBundleID: (URL) -> String? = Self.reportBundleID
+    ) -> [Candidate] {
         candidates.filter { candidate in
-            isCrashReport(fileName: candidate.url.lastPathComponent)
-                && previousLaunch.map { candidate.modified > $0 } == true
+            guard isCrashReport(fileName: candidate.url.lastPathComponent),
+                  previousLaunch.map({ candidate.modified > $0 }) == true
+            else { return false }
+            guard let bundleID, let reported = reportBundleID(candidate.url) else { return true }
+            return reported == bundleID
         }
+    }
+
+    /// The bundle id in a report's header: an .ips file's first line is a
+    /// JSON object with a "bundleID" key.
+    public static func reportBundleID(_ url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: 4096) else { return nil }
+        let firstLine = data.split(separator: UInt8(ascii: "\n"), maxSplits: 1).first ?? data[...]
+        let header = (try? JSONSerialization.jsonObject(with: Data(firstLine))) as? [String: Any]
+        return header?["bundleID"] as? String
     }
 
     public static func candidates(in folder: URL) -> [Candidate] {
