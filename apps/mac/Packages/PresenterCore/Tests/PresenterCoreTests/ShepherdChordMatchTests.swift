@@ -372,4 +372,31 @@ import Testing
         #expect(tidied.text == "I'll praise when I'm sure")
         #expect(tidied.chords?.map { "\($0.column):\($0.symbol)" } == ["0:1", "21:5"])
     }
+
+    /// The song calls a wordless part "Turnaround" where the chart says
+    /// "Refrain": it takes the chart's chords for the part in that place.
+    @Test func aWordlessPartNamedOtherwiseTakesTheChartsPartInItsPlace() throws {
+        let chart = try song("""
+        Chorus
+        [4]Thank You [1]Jesus
+
+        Refrain
+        [1] [1] [4] [4]
+
+        Verse 2
+        [1]Amazing grace how [4]sweet the sound
+        """)
+        var mine = chart
+        // Rename the chart's Refrain to Turnaround and blank its chords.
+        guard let refrain = mine.sections?.firstIndex(where: { $0.name == "Refrain" }) else { Issue.record("no refrain"); return }
+        mine.sections?[refrain].name = "Turnaround"
+        let id = mine.sections![refrain].id
+        for s in mine.slides.indices where mine.slides[s].sectionId == id {
+            for o in mine.slides[s].objects.indices { mine.slides[s].objects[o].chords = nil }
+        }
+        let result = ShepherdChordMatch.matching(mine, to: chart)
+        #expect(result.chordOnlySlides == 1)
+        let slide = try #require(result.presentation.slides.first { $0.sectionId == id })
+        #expect(ChordEdits.lyricObject(of: slide)?.chords?.map(\.symbol) == ["1", "1", "4", "4"])
+    }
 }

@@ -252,9 +252,58 @@ public enum TextRasterizer {
         let unconstrained = CGSize(
             width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude
         )
-        return CTFramesetterSuggestFrameSizeWithConstraints(
+        let words = CTFramesetterSuggestFrameSizeWithConstraints(
             framesetter, CFRange(location: 0, length: 0), nil, unconstrained, nil
         ).width
+        return max(words, chordReach(text, attributed: attributed, fontScale: fontScale))
+    }
+
+    /// How far a line's chords reach, laid out as chordPlacements lays them
+    /// out (each at its letter, pushed right of the one before): chords
+    /// after the last word, or crowded at the end, can reach past the words.
+    /// Fitting counts them, so the line gets smaller rather than its last
+    /// chords being pushed back over the words before ("1" over "like"
+    /// where the chart has it over "a").
+    private static func chordReach(_ text: StyledText, attributed: NSAttributedString, fontScale: Double) -> CGFloat {
+        guard !text.chords.isEmpty else { return 0 }
+        let display = attributed.string as NSString
+        let lines = (attributed.string).components(separatedBy: "\n")
+        var starts: [Int] = []
+        var running = 0
+        for line in lines {
+            starts.append(running)
+            running += (line as NSString).length + 1
+        }
+        let chordFontSize = text.fontSize * chordSizeFactor * fontScale
+        let font = boldChordFont(name: text.fontName, size: chordFontSize)
+        let gap = chordFontSize * chordGapEms
+        var reach: CGFloat = 0
+        for (index, line) in lines.enumerated() {
+            let chords = text.chords.filter { $0.line == index }.sorted { $0.column < $1.column }
+            guard !chords.isEmpty else { continue }
+            let length = (line as NSString).length
+            guard starts[index] + length <= display.length else { continue }
+            let ctLine = CTLineCreateWithAttributedString(
+                attributed.attributedSubstring(from: NSRange(location: starts[index], length: length)))
+            var cursor = -CGFloat.greatestFiniteMagnitude
+            for chord in chords {
+                let column: Int
+                if chord.column >= line.count {
+                    column = length
+                } else {
+                    let at = line.index(line.startIndex, offsetBy: max(0, chord.column))
+                    column = line.utf16.distance(from: line.utf16.startIndex, to: at)
+                }
+                let anchor = CTLineGetOffsetForStringIndex(ctLine, column, nil)
+                let run = CTLineCreateWithAttributedString(NSAttributedString(
+                    string: chord.symbol, attributes: [NSAttributedString.Key(kCTFontAttributeName as String): font]))
+                let width = CGFloat(CTLineGetTypographicBounds(run, nil, nil, nil))
+                let x = max(anchor, cursor)
+                reach = max(reach, x + width)
+                cursor = x + width + gap
+            }
+        }
+        return reach
     }
 
     private static func measuredHeight(_ text: StyledText, fontScale: Double, width: CGFloat) -> CGFloat {
