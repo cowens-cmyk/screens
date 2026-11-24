@@ -123,4 +123,24 @@ import Testing
         let next = try line(result.presentation, "All creation cries")
         #expect(ChordEdits.chords(at: next, in: result.presentation).map(\.symbol) == ["1/3"])
     }
+
+    /// "freedom [4/6] Your stripes": the song breaks the line before "Your",
+    /// and the chord starts the second line, as in the chart.
+    @Test func aChordInTheGapGoesWithTheWordAfterIt() throws {
+        let chart = try song("""
+        Bridge 1
+        [1] Your cross my freedom [4/6] Your stripes my healing
+        """)
+        var mine = chart
+        let ref = try line(mine, "Your cross my freedom Your stripes my healing")
+        let slide = try #require(mine.slides.firstIndex { $0.id == ref.slideID })
+        let object = try #require(mine.slides[slide].objects.firstIndex { $0.id == ref.objectID })
+        mine.slides[slide].objects[object].text = "Your cross my freedom \nYour stripes my healing"
+        mine.slides[slide].objects[object].chords = nil
+        let result = ShepherdChordMatch.matching(mine, to: chart)
+        let first = try line(result.presentation, "Your cross my freedom")
+        let second = try line(result.presentation, "Your stripes my healing")
+        #expect(ChordEdits.chords(at: first, in: result.presentation).map(\.symbol) == ["1"])
+        #expect(ChordEdits.chords(at: second, in: result.presentation).map { "\($0.column):\($0.symbol)" } == ["0:4/6"])
+    }
 }
