@@ -252,7 +252,10 @@ public enum Reflow {
 
                 var slide = Slide(id: UUID().uuidString, name: "", objects: [])
                 if !content.isEmpty {
-                    let extracted = ChordMath.extract(content)
+                    // One space between words, none at the ends, whatever
+                    // spaces the chords came out of.
+                    let raw = ChordMath.extract(content)
+                    let extracted = ChordMath.tidiedSpaces(raw.text, chords: raw.chords)
                     var lyrics = SlideObject(
                         id: UUID().uuidString, objectKind: .text,
                         name: "Lyrics", text: extracted.text

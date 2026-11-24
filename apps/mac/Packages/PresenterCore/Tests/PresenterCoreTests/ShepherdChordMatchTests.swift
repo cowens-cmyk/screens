@@ -328,4 +328,48 @@ import Testing
         let thank = try line(result.presentation, "Thank You Jesus You have set me free")
         #expect(ChordEdits.chords(at: thank, in: result.presentation).map(\.symbol) == ["4", "1", "6m", "5sus"])
     }
+
+    /// A chord between spaces leaves no extra space once it comes out: not
+    /// before the first word, not two between words, not after the last.
+    @Test func importedLinesHaveOneSpaceBetweenWords() throws {
+        let chart = try song("""
+        Chorus
+        [1] Oh God, my God I [5/7]need You,[6m7] oh God
+        Thank You [1] Jesus    [6m] You have [5sus]set me free [1]
+        """)
+        let lines = ChordEdits.lines(of: chart).filter { !$0.text.isEmpty }
+        for ref in lines {
+            #expect(!ref.text.hasPrefix(" "))
+            #expect(!ref.text.hasSuffix(" "))
+            #expect(!ref.text.contains("  "))
+        }
+        let thank = try line(chart, "Thank You Jesus You have set me free")
+        let placed = ChordEdits.chords(at: thank, in: chart)
+        let text = Array(thank.text)
+        // 1 on "Jesus", 6m on "You", 1 after "free".
+        #expect(String(text[placed[0].column...]).hasPrefix("Jesus"))
+        #expect(String(text[placed[1].column...]).hasPrefix("You have"))
+        #expect(placed.last?.column == text.count)
+    }
+
+    /// An older import's spacing is tidied, chords kept on their words.
+    @Test func matchingTidiesExtraSpaces() throws {
+        let chart = try song("""
+        Verse 1
+        [1]I'll praise when I'm [5]sure
+        """)
+        var mine = chart
+        let ref = try line(mine, "I'll praise when I'm sure")
+        let slide = try #require(mine.slides.firstIndex { $0.id == ref.slideID })
+        let object = try #require(mine.slides[slide].objects.firstIndex { $0.id == ref.objectID })
+        mine.slides[slide].objects[object].text = " I'll praise  when I'm sure "
+        mine.slides[slide].objects[object].chords = [ChordPlacement(line: 0, column: 1, symbol: "1"),
+                                                     ChordPlacement(line: 0, column: 22, symbol: "5")]
+        let result = ShepherdChordMatch.matching(mine, to: chart)
+        #expect(result.spacedLines == 1)
+        #expect(result.changed)
+        let tidied = result.presentation.slides[slide].objects[object]
+        #expect(tidied.text == "I'll praise when I'm sure")
+        #expect(tidied.chords?.map { "\($0.column):\($0.symbol)" } == ["0:1", "21:5"])
+    }
 }
