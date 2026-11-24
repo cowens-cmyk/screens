@@ -183,13 +183,16 @@ public enum ShepherdChordMatch {
                     let offset = gap ? 0 : chord.column - part.words[onWord].start
                     // A chord over a word the song lacks ("Ho-ly" where the
                     // song has "Holy") stays on its line: the next word both
-                    // have on that line, else the last before it on that
-                    // line; only a line with none goes to the nearest word.
+                    // have on that line, else the last before it on that line.
                     let sameLine = Set(indices)
                     let after = (onWord ..< part.words.count).filter { chartToMine[$0] != nil }
                     let before = (0 ..< onWord).reversed().filter { chartToMine[$0] != nil }
-                    guard let pick = after.first(where: sameLine.contains) ?? before.first(where: sameLine.contains)
-                        ?? after.first ?? before.first, let target = chartToMine[pick]
+                    // A chart line with none of its words in the song (a
+                    // repeat the song shows fewer times) isn't in it: its
+                    // chords go nowhere, rather than piling up on the nearest
+                    // word ("1 6m7 1/3 42 1 6m7 …" over "to me").
+                    guard let pick = after.first(where: sameLine.contains) ?? before.first(where: sameLine.contains),
+                          let target = chartToMine[pick]
                     else { continue }
                     // Moved back onto an earlier word: to its end, not its start.
                     let movedBack = pick < onWord
