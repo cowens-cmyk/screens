@@ -363,6 +363,6 @@ public enum ChordMath {
     ]
 
     static let symbolRegex = try! NSRegularExpression(
-        pattern: "^([A-G][#b]?)((?:maj|min|dim|aug|sus|add|[mM0-9()#b+°ø*Δ-])*)(?:/([A-G][#b]?))?$"
+        pattern: "^([A-G][#b]?)((?:maj|min|ma|mi|dim|aug|sus|add|[mM0-9()#b+°ø*Δ-])*)(?:/([A-G][#b]?))?$"
     )
 }
