@@ -22,6 +22,8 @@ enum ShepherdChordSync {
         var joined: [String] = []
         /// Intro, Instrumental and other wordless slides given the chart's chords.
         var chordOnly = 0
+        /// Lines with extra spaces, now one space between words.
+        var spaced = 0
         /// The Shepherd song it now follows, when the link was missing or gone.
         var relinkedTo: String?
     }
@@ -99,7 +101,7 @@ enum ShepherdChordSync {
                     id: song.id, name: song.name, before: song, after: after,
                     changedLines: match.changedLines, droppedHandEdits: match.droppedHandEdits,
                     unmatched: match.unmatchedWords, examples: match.examples,
-                    joined: match.joinedWords, chordOnly: match.chordOnlySlides,
+                    joined: match.joinedWords, chordOnly: match.chordOnlySlides, spaced: match.spacedLines,
                     relinkedTo: relinked ? detail.title : nil))
             }
         }
@@ -163,11 +165,14 @@ enum ShepherdChordSync {
         let lines = survey.changes.reduce(0) { $0 + $1.changedLines + $1.chordOnly }
         let list = survey.changes.map { change -> String in
             var parts: [String] = []
-            if change.changedLines > 0 || change.chordOnly == 0 {
+            if change.changedLines > 0 || (change.chordOnly == 0 && change.spaced == 0) {
                 parts.append("\(change.changedLines) \(change.changedLines == 1 ? "line" : "lines")")
             }
             if change.chordOnly > 0 {
                 parts.append("\(change.chordOnly) chord-only \(change.chordOnly == 1 ? "slide" : "slides") (Intro, Instrumental…)")
+            }
+            if change.spaced > 0 {
+                parts.append("extra spaces out of \(change.spaced) \(change.spaced == 1 ? "line" : "lines")")
             }
             if !change.joined.isEmpty {
                 let words = Array(Set(change.joined)).sorted().map { "“\($0)”" }.joined(separator: ", ")
@@ -183,12 +188,14 @@ enum ShepherdChordSync {
 
             Chords on the lines whose words are in the chart become the chart's; chords set by hand on those lines \
             are dropped. Wordless slides (Intro, Instrumental…) get the chart's chord rows, and a word shown split \
-            in two is joined as the chart writes it. Otherwise words, slides and order stay as they are. Lines the \
+            in two is joined as the chart writes it, and extra spaces between words come out. Otherwise words, slides and order stay as they are. Lines the \
             chart doesn't have keep their chords.
             \(notes.isEmpty ? "" : "\n" + notes.joined(separator: "\n"))
             This changes the songs for every Mac on the library, and Undo can't reverse it.
             """
-        let title = "Match \(lines) \(lines == 1 ? "line" : "lines") in \(survey.changes.count) \(survey.changes.count == 1 ? "song" : "songs") to Shepherd?"
+        let title = lines == 0
+            ? "Tidy spacing in \(survey.changes.count) \(survey.changes.count == 1 ? "song" : "songs")?"
+            : "Match \(lines) \(lines == 1 ? "line" : "lines") in \(survey.changes.count) \(survey.changes.count == 1 ? "song" : "songs") to Shepherd?"
         guard QuitConfirmation.ask(title: title, message: message, button: "Match Chords") else { return }
         let done = await apply(survey.changes, model: model)
         if done.count < survey.changes.count {

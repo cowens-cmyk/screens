@@ -68,7 +68,7 @@ final class StageRenderRun: XCTestCase {
                 let arrangement = ShepherdSongImport.trackedArrangement(of: song, id: p.shepherdArrangementId)
                 if let chart = ShepherdSongImport.presentation(song: song, arrangement: arrangement) {
                     let match = ShepherdChordMatch.matching(p, to: chart)
-                    index += "\(p.name): matched — \(match.changedLines) lines, \(match.chordOnlySlides) chord-only, joined \(match.joinedWords)\n"
+                    index += "\(p.name): matched — \(match.changedLines) lines, \(match.chordOnlySlides) chord-only, \(match.spacedLines) spaced, joined \(match.joinedWords)\n"
                     p = match.presentation
                 }
             }

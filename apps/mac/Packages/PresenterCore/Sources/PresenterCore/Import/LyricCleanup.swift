@@ -105,6 +105,15 @@ public enum LyricCleanup {
         }
         text = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
+        // A chord between spaces ("You [1] Jesus", "[Db] Oh God", "Jesus [1]")
+        // would leave two spaces, or one before the first word or after the
+        // last, once it comes out: it goes onto the next word instead, or
+        // after the last one, with one space between the words.
+        let chord = "[\(markerClass)]"
+        text = text.replacingOccurrences(of: "(?<=\(chord)) +(?=\(chord))", with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: " (\(chord)+) ", with: " $1", options: .regularExpression)
+        text = text.replacingOccurrences(of: "^(\(chord)+) ", with: "$1", options: .regularExpression)
+        text = text.replacingOccurrences(of: " (\(chord)+)$", with: "$1", options: .regularExpression)
 
         let words = text.unicodeScalars.filter { !isMarker($0) }
         guard String(String.UnicodeScalarView(words)).contains(where: { $0.isLetter || $0.isNumber }) else { return nil }

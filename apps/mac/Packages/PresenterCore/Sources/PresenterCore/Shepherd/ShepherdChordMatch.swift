@@ -34,9 +34,12 @@ public enum ShepherdChordMatch {
         /// Parts with chords and no words (an Intro, an Instrumental) whose
         /// chords became the chart's.
         public var chordOnlySlides: Int = 0
+        /// Lines that had a space before the first word, after the last, or
+        /// two between words, now with one.
+        public var spacedLines: Int = 0
 
         public var changed: Bool {
-            changedLines > 0 || droppedHandEdits > 0 || !joinedWords.isEmpty || chordOnlySlides > 0
+            changedLines > 0 || droppedHandEdits > 0 || !joinedWords.isEmpty || chordOnlySlides > 0 || spacedLines > 0
         }
     }
 
@@ -152,7 +155,8 @@ public enum ShepherdChordMatch {
     /// the chart's in order, whatever lines they are broken into, and each
     /// chart chord moved onto its word.
     public static func matching(_ original: Presentation, to chart: Presentation) -> Result {
-        let (song, joinedWords) = joiningSplitWords(original, as: chart)
+        let (spaced, spacedLines) = tidyingSpaces(original)
+        let (song, joinedWords) = joiningSplitWords(spaced, as: chart)
         let chartSections: [(name: String, words: [Word], refs: [ChordEdits.LineRef])] =
             sectionLines(chart).map { (name: $0.name, words: words(of: $0.refs), refs: $0.refs) }
         var result = song
@@ -350,7 +354,31 @@ public enum ShepherdChordMatch {
         return Result(
             presentation: result, changedLines: changed, matchedLines: matched, unmatchedLines: unmatched,
             unmatchedWords: unmatchedWords, droppedHandEdits: dropped, examples: examples,
-            joinedWords: joinedWords, chordOnlySlides: chordOnly.changed)
+            joinedWords: joinedWords, chordOnlySlides: chordOnly.changed, spacedLines: spacedLines)
+    }
+
+    // MARK: Spaces
+
+    /// The song with each line's words one space apart, and none before the
+    /// first or after the last (left by older imports where a chord sat
+    /// between spaces, "You [1] Jesus"). Each chord stays on its letter; one
+    /// that was in a gap goes onto the word after it.
+    public static func tidyingSpaces(_ song: Presentation) -> (Presentation, Int) {
+        var result = song
+        var count = 0
+        for s in result.slides.indices {
+            for o in result.slides[s].objects.indices where result.slides[s].objects[o].objectKind == .text {
+                var object = result.slides[s].objects[o]
+                let tidied = ChordMath.tidiedSpaces(object.text, chords: object.chords ?? [])
+                guard tidied.text != object.text else { continue }
+                count += zip(object.text.components(separatedBy: "\n"), tidied.text.components(separatedBy: "\n"))
+                    .filter { $0 != $1 }.count
+                object.text = tidied.text
+                object.chords = tidied.chords.isEmpty ? nil : tidied.chords
+                result.slides[s].objects[o] = object
+            }
+        }
+        return (result, count)
     }
 
     // MARK: Words split in two

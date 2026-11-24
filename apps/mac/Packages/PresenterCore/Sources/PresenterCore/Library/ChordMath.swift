@@ -328,6 +328,31 @@ public enum ChordMath {
         return (text, chords)
     }
 
+    /// Words one space apart on each line, with none before the first or
+    /// after the last; each chord stays on its letter, and one that was in
+    /// a gap that closed goes onto the word after it.
+    public static func tidiedSpaces(_ text: String, chords: [ChordPlacement]) -> (text: String, chords: [ChordPlacement]) {
+        var lines = text.components(separatedBy: "\n")
+        var chords = chords
+        for l in lines.indices {
+            let chars = Array(lines[l])
+            var kept: [Character] = []
+            var map = [Int](repeating: 0, count: chars.count + 1)
+            for (index, c) in chars.enumerated() {
+                map[index] = kept.count
+                if c == " ", kept.isEmpty || kept.last == " " || chars[index...].allSatisfy({ $0 == " " }) { continue }
+                kept.append(c)
+            }
+            map[chars.count] = kept.count
+            guard kept.count != chars.count else { continue }
+            lines[l] = String(kept)
+            for c in chords.indices where chords[c].line == l {
+                chords[c].column = map[min(max(0, chords[c].column), chars.count)]
+            }
+        }
+        return (lines.joined(separator: "\n"), chords)
+    }
+
     public static func extract(_ text: String) -> (text: String, chords: [ChordPlacement]) {
         var cleanLines: [String] = []
         var placements: [ChordPlacement] = []
