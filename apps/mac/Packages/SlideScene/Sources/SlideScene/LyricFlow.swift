@@ -71,7 +71,13 @@ public enum LyricFlow {
         guard !trimmed.isEmpty else { return original }
         let positions = original.chords.compactMap { chord -> (Int, String)? in
             guard starts.indices.contains(chord.line) else { return nil }
-            return (starts[chord.line] + max(0, chord.column), chord.symbol)
+            // A chord past its line's last letter ("already won [G]") stays
+            // at that line's end: where the line ends in a space no space is
+            // added between the lines, and its column was the next line's
+            // first letter, so the chord went onto the next line.
+            let end = starts[chord.line] + lines[chord.line].count
+            let last = chord.line + 1 < starts.count ? min(end, starts[chord.line + 1] - 1) : end
+            return (starts[chord.line] + min(max(0, chord.column), max(0, last - starts[chord.line])), chord.symbol)
         }
 
         let font = CTFontCreateWithName((key.fontName ?? "HelveticaNeue-Bold") as CFString, key.fontSize, nil)
@@ -83,6 +89,34 @@ public enum LyricFlow {
         // A line with chords over it is about this much taller than one without.
         let lineHeight = key.fontSize * (original.chords.isEmpty ? 1.2 : 1.75)
 
+        // How far a line's chords reach, laid out as the renderer lays them
+        // out (each at its letter, pushed right of the one before it): a
+        // chord after the last word, or a few crowded at the end, reach past
+        // the words, and fitting the words alone cut them off at the box's
+        // edge ("6m" for 6m7).
+        let chordFont = CTFontCreateCopyWithSymbolicTraits(
+            CTFontCreateWithName((key.fontName ?? "HelveticaNeue-Bold") as CFString, key.fontSize * 0.9, nil),
+            key.fontSize * 0.9, nil, .traitBold, .traitBold)
+            ?? CTFontCreateWithName("HelveticaNeue-Bold" as CFString, key.fontSize * 0.9, nil)
+        let chordGap = key.fontSize * 0.9 * 0.35
+        func chordWidth(_ symbol: String) -> Double {
+            let line = CTLineCreateWithAttributedString(
+                NSAttributedString(string: symbol, attributes: [.init(kCTFontAttributeName as String): chordFont]))
+            return CTLineGetTypographicBounds(line, nil, nil, nil)
+        }
+        let sortedPositions = positions.sorted { $0.0 < $1.0 }
+        func reach(from: Int, through last: Int) -> Double {
+            var cursor = -Double.greatestFiniteMagnitude
+            var right = 0.0
+            for (position, symbol) in sortedPositions where position >= from && position <= last {
+                let x = max(offsets[min(position, joined.count)] - offsets[from], cursor)
+                let width = chordWidth(symbol)
+                right = max(right, x + width)
+                cursor = x + width + chordGap
+            }
+            return right
+        }
+
         var best: (scale: Double, breaks: [Int])?
         for count in 1 ... max(1, min(key.maxLines, spaces.count + 1)) {
             let breaks = balancedBreaks(count: count, spaces: spaces, phraseEnds: phraseEnds,
@@ -90,7 +124,7 @@ public enum LyricFlow {
             var widest = 0.0
             var from = 0
             for end in breaks + [joined.count] {
-                widest = max(widest, offsets[end] - offsets[from])
+                widest = max(widest, offsets[end] - offsets[from], reach(from: from, through: end))
                 from = min(end + 1, joined.count)
             }
             let scale = min(1, key.width / max(widest, 1), key.height / (Double(count) * lineHeight))
@@ -104,7 +138,9 @@ public enum LyricFlow {
         var widestOriginal = 0.0
         for (index, line) in lines.enumerated() {
             let start = starts[index]
-            widestOriginal = max(widestOriginal, offsets[start + line.count] - offsets[start])
+            let through = index + 1 < starts.count ? starts[index + 1] - 1 : joined.count
+            widestOriginal = max(widestOriginal, offsets[start + line.count] - offsets[start],
+                                 reach(from: start, through: max(start, through)))
         }
         let originalScale = min(1, key.width / max(widestOriginal, 1),
                                 key.height / (Double(lines.count) * lineHeight))

@@ -61,6 +61,19 @@ public enum LyricCleanup {
         // Word splits first, so they aren't taken for dashes: "ever- more"
         // and "ever -more" anywhere; "vic - tory" only in a chart.
         let letter = #"[\p{L}\#(markerClass)]"#
+        if isChart {
+            // A split word with its chords beside the dash ("moun  [C]- tain",
+            // "Ho [F]-  [G]ly"): the syllables joined and the chords kept
+            // between them, not "moun tain" with a space in the word.
+            // Only with a chord beside the dash: the rules below join the rest,
+            // and leave "Spirit-filled" whole.
+            let some = #"[\#(markerClass)]+"#, any = #"[\#(markerClass)]*"#
+            for (before, after) in [(some, any), (any, some)] {
+                text = text.replacingOccurrences(
+                    of: #"(?<=\p{L})[ ]*(\#(before))[ ]*[-–—][ ]*(\#(after))[ ]*(?=\p{L})"#,
+                    with: "$1$2", options: .regularExpression)
+            }
+        }
         text = text.replacingOccurrences(of: #"(?<=\#(letter))-[ ]+(?=\#(letter))"#, with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: #"(?<=\#(letter))[ ]+-(?=\#(letter))"#, with: "", options: .regularExpression)
         if isChart {

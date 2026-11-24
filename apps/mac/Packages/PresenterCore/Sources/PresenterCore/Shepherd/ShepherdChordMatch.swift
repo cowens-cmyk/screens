@@ -172,13 +172,22 @@ public enum ShepherdChordMatch {
                 for chord in ChordEdits.chords(at: ref, in: chart) {
                     let onWord = indices.last { part.words[$0].start <= chord.column } ?? indices[0]
                     let offset = chord.column - part.words[onWord].start
-                    // A chord over a word the song lacks goes to the next
-                    // word both have, else the last before it.
-                    guard let target = (onWord ..< part.words.count).lazy.compactMap({ chartToMine[$0] }).first
-                        ?? (0 ..< onWord).reversed().lazy.compactMap({ chartToMine[$0] }).first
+                    // A chord over a word the song lacks ("Ho-ly" where the
+                    // song has "Holy") stays on its line: the next word both
+                    // have on that line, else the last before it on that
+                    // line; only a line with none goes to the nearest word.
+                    let sameLine = Set(indices)
+                    let after = (onWord ..< part.words.count).filter { chartToMine[$0] != nil }
+                    let before = (0 ..< onWord).reversed().filter { chartToMine[$0] != nil }
+                    guard let pick = after.first(where: sameLine.contains) ?? before.first(where: sameLine.contains)
+                        ?? after.first ?? before.first, let target = chartToMine[pick]
                     else { continue }
+                    // Moved back onto an earlier word: to its end, not its start.
+                    let movedBack = pick < onWord
                     let word = mine[target]
-                    let column = min(max(0, word.start + offset), word.ref.text.count)
+                    let column = movedBack
+                        ? min(word.start + word.length, word.ref.text.count)
+                        : min(max(0, word.start + offset), word.ref.text.count)
                     wanted[lineID(word.ref), default: []]
                         .append(ChordPlacement(line: word.ref.line, column: column, symbol: chord.symbol))
                 }

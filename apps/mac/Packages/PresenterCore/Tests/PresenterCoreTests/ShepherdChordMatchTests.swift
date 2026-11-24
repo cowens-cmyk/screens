@@ -102,4 +102,25 @@ import Testing
         #expect(ChordEdits.chords(at: joined, in: result.presentation).map(\.symbol) == ["1", "5", "4", "1"])
         #expect(result.unmatchedLines == 0)
     }
+
+    @Test func syllableChordsStayOnTheirLine() throws {
+        // Chart and song with words that don't line up at the line's end.
+        let chart = try song("""
+        Chorus
+        And the angels [42]cry Ho [6m7]ly [5]
+        All creation [1/3]cries
+        """)
+        var mine = chart
+        let ref = try line(mine, "And the angels cry Ho ly")
+        let slide = try #require(mine.slides.firstIndex { $0.id == ref.slideID })
+        let object = try #require(mine.slides[slide].objects.firstIndex { $0.id == ref.objectID })
+        var lines = mine.slides[slide].objects[object].text.components(separatedBy: "\n")
+        lines[ref.line] = "And the angels cry Holy"
+        mine.slides[slide].objects[object].text = lines.joined(separator: "\n")
+        let result = ShepherdChordMatch.matching(mine, to: chart)
+        let holy = try line(result.presentation, "And the angels cry Holy")
+        #expect(ChordEdits.chords(at: holy, in: result.presentation).map(\.symbol).contains("6m7"))
+        let next = try line(result.presentation, "All creation cries")
+        #expect(ChordEdits.chords(at: next, in: result.presentation).map(\.symbol) == ["1/3"])
+    }
 }
