@@ -54,10 +54,24 @@ final class StageRenderRun: XCTestCase {
         let compositor = try Compositor()
         let files = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("lib"), includingPropertiesForKeys: nil)
         var index = ""
+        // With STAGE_MATCH_KEY_FILE (a Shepherd API key), each song is first
+        // put through Match Chords to Shepherd, to see the stage after it.
+        let client = try ProcessInfo.processInfo.environment["STAGE_MATCH_KEY_FILE"].map {
+            ShepherdClient(apiKey: try String(contentsOfFile: $0, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines))
+        }
         for file in files where file.pathExtension == "automerge" {
-            let p = try await Self.load(Presentation.self, file)
+            var p = try await Self.load(Presentation.self, file)
             guard p.presentationKind == .song else { continue }
             if let only, !only.split(separator: ",").contains(where: { p.name.localizedCaseInsensitiveContains($0) }) { continue }
+            if let client, let id = p.shepherdSongId {
+                let song = try await client.song(id: id)
+                let arrangement = ShepherdSongImport.trackedArrangement(of: song, id: p.shepherdArrangementId)
+                if let chart = ShepherdSongImport.presentation(song: song, arrangement: arrangement) {
+                    let match = ShepherdChordMatch.matching(p, to: chart)
+                    index += "\(p.name): matched — \(match.changedLines) lines, \(match.chordOnlySlides) chord-only, joined \(match.joinedWords)\n"
+                    p = match.presentation
+                }
+            }
             let names = Dictionary((p.sections ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
             let slides = Self.slides(p)
             let folder = root.appendingPathComponent("out/\(p.name)")
