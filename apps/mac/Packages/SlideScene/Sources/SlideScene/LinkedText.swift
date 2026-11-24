@@ -118,6 +118,14 @@ public enum LinkedText {
                     musicKey: slide.musicKey, displayKey: slide.displayKey,
                     notation: object.textStyle?.chordNotation ?? .chords
                 )
+                // Lead-in chords stacked before a word get room before it.
+                if object.textStyle?.showChords == true, heading == nil, chords.count > 1 {
+                    let padded = ChordStackPadding.padded(
+                        resolved.text, chords: chords,
+                        fontName: object.textStyle?.fontName, fontSize: object.textStyle?.fontSize ?? 0)
+                    resolved.text = padded.text
+                    chords = padded.chords
+                }
                 resolved.chords = chords.isEmpty ? nil : chords
             }
             if let ink = warningColorHex(for: link, info: info, at: date) {

@@ -66,7 +66,13 @@ final class StageRenderRun: XCTestCase {
             if let client, let id = p.shepherdSongId {
                 let song = try await client.song(id: id)
                 let arrangement = ShepherdSongImport.trackedArrangement(of: song, id: p.shepherdArrangementId)
-                if let chart = ShepherdSongImport.presentation(song: song, arrangement: arrangement) {
+                if let chart = ShepherdSongImport.presentation(song: song, arrangement: arrangement),
+                   let rebuild = ProcessInfo.processInfo.environment["STAGE_REBUILD"],
+                   rebuild.split(separator: ",").contains(where: { p.name.localizedCaseInsensitiveContains($0) }) {
+                    // As Update from Shepherd would leave it.
+                    p = ShepherdSongImport.replacing(p, with: chart)
+                    index += "\(p.name): rebuilt from Shepherd\n"
+                } else if let chart = ShepherdSongImport.presentation(song: song, arrangement: arrangement) {
                     let match = ShepherdChordMatch.matching(p, to: chart)
                     index += "\(p.name): matched — \(match.changedLines) lines, \(match.chordOnlySlides) chord-only, \(match.spacedLines) spaced, joined \(match.joinedWords)\n"
                     p = match.presentation
