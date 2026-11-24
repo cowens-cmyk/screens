@@ -878,6 +878,15 @@ struct SlideGridBody: View {
             }
         }
         .coordinateSpace(name: "slideGrid")
+        // The whole grid is one accessibility element, not one per tile.
+        // Something on the booth Mac (BetterSnapTool, Jump Desktop) keeps
+        // Screens' accessibility tree alive, and SwiftUI then updates it
+        // with every change: at each slide advance about half of a 200 ms
+        // main-thread pass was AccessibilityViewGraph.update walking the
+        // plan page's tiles. Slides are clicked with the pointer and keys,
+        // so nothing that reads the tree needs them one by one.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(presentation.name): \(presentation.slides.count) slides")
         .background {
             if !runOnly {
                 SlideGridAnchor(press: menuPress) { tileFrames }
