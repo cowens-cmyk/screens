@@ -575,6 +575,7 @@ public enum TextRasterizer {
                 }
                 cursor = frameRect.minX + lyricOrigin.x - rowWidth * alignmentFactor
             }
+            let rowStart = placed.count
             for entry in runs {
                 let anchorX = frameRect.minX + lyricOrigin.x + CTLineGetOffsetForStringIndex(
                     lyricLine, lyricStart + entry.chord.utf16Column, nil
@@ -585,6 +586,17 @@ public enum TextRasterizer {
                     width: entry.width, ascent: entry.ascent, descent: entry.descent
                 ))
                 cursor = x + entry.width + gap
+            }
+            // A chord after the line's last word, or a few crowded at its end,
+            // could reach past the box and be cut off at the screen's edge
+            // ("6m" for 6m7 on the stage display): those move left just
+            // enough to show whole, each still after the one before.
+            var limit = frameRect.maxX
+            for index in stride(from: placed.count - 1, through: rowStart, by: -1) {
+                if placed[index].origin.x + placed[index].width > limit {
+                    placed[index].origin.x = max(frameRect.minX, limit - placed[index].width)
+                }
+                limit = placed[index].origin.x - gap
             }
         }
         return placed

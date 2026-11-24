@@ -84,6 +84,11 @@ public enum ShepherdSongImport {
             if chart.revision > 1 { parts.append("chart-revision-2") }
             // Parts with chords and no words now carry their chords.
             if chart.hasChordOnlySections { parts.append("chord-only-sections") }
+            // A word split with a chord beside the dash ("moun [C]- tain") is
+            // now joined, not shown "moun tain".
+            if text.range(of: #"\p{L}[ ]+\[[^\]]*\][ ]*[-–—]|[-–—][ ]*\[[^\]]*\][ ]+\p{L}"#, options: .regularExpression) != nil {
+                parts.append("syllables-joined")
+            }
         }
         return sha256(parts.joined(separator: "\u{1F}"))
     }
