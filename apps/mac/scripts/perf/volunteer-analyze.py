@@ -173,3 +173,12 @@ if "--timeline" in sys.argv:
     for r in runs:
         ms = sum(s[1] for s in r)
         if ms > 15: print(f"  {r[0][0] - a:7.3f}  {ms:5.0f} ms")
+
+if "--seconds" in sys.argv:
+    want = sys.argv[sys.argv.index("--phase") + 1]
+    a, b = next((x[0], y[0]) for x, y in zip(phases, phases[1:]) if x[1] == want)
+    ph = [s for s in samples if a <= s[0] < b and busy(s)]
+    print(f"== {want}: busy ms per second")
+    buckets = collections.Counter()
+    for s in ph: buckets[int(s[0] - a)] += s[1]
+    for k in sorted(buckets): print(f"  {k:3d}s  {buckets[k]:5.0f}")

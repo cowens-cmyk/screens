@@ -1453,6 +1453,11 @@ struct LibraryCommands: Commands {
                 if let model { Task { await SongSlideFit.runFromMenu(model: model) } }
             }
             .disabled(model == nil || runOnly)
+            // Stage display chords drifted from the band's Shepherd charts.
+            Button("Match Chords to Shepherd…") {
+                if let model { Task { await ShepherdChordSync.runFromMenu(model: model) } }
+            }
+            .disabled(model == nil || runOnly)
             Divider()
             Button("Export Library Backup…") { exportBackup() }
                 .disabled(model == nil || runOnly)
