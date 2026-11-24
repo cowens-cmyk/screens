@@ -28,8 +28,16 @@ public enum ShepherdChordMatch {
         public var droppedHandEdits: Int
         /// A few changed lines, "Verse 1 “words”: 1 4 → 1 4 5".
         public var examples: [String]
+        /// Words the song showed split in two that the chart writes as one
+        /// ("faithful ness" → "faithfulness"), now joined.
+        public var joinedWords: [String] = []
+        /// Parts with chords and no words (an Intro, an Instrumental) whose
+        /// chords became the chart's.
+        public var chordOnlySlides: Int = 0
 
-        public var changed: Bool { changedLines > 0 || droppedHandEdits > 0 }
+        public var changed: Bool {
+            changedLines > 0 || droppedHandEdits > 0 || !joinedWords.isEmpty || chordOnlySlides > 0
+        }
     }
 
     /// Words as compared: lower case, apostrophes dropped ("I’ll" and "Ill"
@@ -143,7 +151,8 @@ public enum ShepherdChordMatch {
     /// its Shepherd song): section by section, the song's words matched to
     /// the chart's in order, whatever lines they are broken into, and each
     /// chart chord moved onto its word.
-    public static func matching(_ song: Presentation, to chart: Presentation) -> Result {
+    public static func matching(_ original: Presentation, to chart: Presentation) -> Result {
+        let (song, joinedWords) = joiningSplitWords(original, as: chart)
         let chartSections: [(name: String, words: [Word], refs: [ChordEdits.LineRef])] =
             sectionLines(chart).map { (name: $0.name, words: words(of: $0.refs), refs: $0.refs) }
         var result = song
@@ -197,9 +206,17 @@ public enum ShepherdChordMatch {
                     // Moved back onto an earlier word: to its end, not its start.
                     let movedBack = pick < onWord
                     let word = mine[target]
-                    let column = movedBack
+                    var column = movedBack
                         ? min(word.start + word.length, word.ref.text.count)
                         : min(max(0, word.start + offset), word.ref.text.count)
+                    // A chord after the chart line's last word stays after
+                    // that word where the song runs on into the next line's
+                    // words ("of Jesus [1]" then "Over every heart"): short of
+                    // the next word, not over it.
+                    if !movedBack, offset >= part.words[pick].length,
+                       let next = mine.first(where: { lineID($0.ref) == lineID(word.ref) && $0.start > word.start }) {
+                        column = max(word.start + word.length, min(column, next.start - 1))
+                    }
                     wanted[lineID(word.ref), default: []]
                         .append(ChordPlacement(line: word.ref.line, column: column, symbol: chord.symbol))
                 }
@@ -207,11 +224,23 @@ public enum ShepherdChordMatch {
             return (wanted, Set(pairs.map { lineID(mine[$0.0].ref) }))
         }
 
-        func best(_ mine: [Word], in pool: [ChartPart]) -> (wanted: [String: [ChordPlacement]], lines: Set<String>)? {
-            pool.compactMap { part -> (score: Int, placed: (wanted: [String: [ChordPlacement]], lines: Set<String>))? in
+        /// The chart part `mine` lines up with best. Among parts that fit
+        /// equally (a bridge the chart writes four times, with other chords
+        /// each time), the first one no earlier part of the song took: the
+        /// song's second "I have decided" gets the chart's second.
+        var taken = Set<String>()
+        func best(
+            _ mine: [Word], in pool: [ChartPart], claim: Bool = false
+        ) -> (wanted: [String: [ChordPlacement]], lines: Set<String>)? {
+            let fits = pool.compactMap { part -> (name: String, score: Int, placed: (wanted: [String: [ChordPlacement]], lines: Set<String>))? in
                 guard let placed = place(mine, on: part) else { return nil }
-                return (placed.lines.count, placed)
-            }.max { $0.score < $1.score }?.placed
+                return (part.name, placed.lines.count, placed)
+            }
+            guard let top = fits.map(\.score).max() else { return nil }
+            let tied = fits.filter { $0.score == top }
+            let pick = tied.first { !taken.contains($0.name) } ?? tied[0]
+            if claim { taken.insert(pick.name) }
+            return pick.placed
         }
 
         var wantedAll: [String: [ChordPlacement]] = [:]
@@ -223,7 +252,8 @@ public enum ShepherdChordMatch {
             // First the chart's part of the same name, else any part.
             let named = parts.filter { normalized($0.name) == normalized(section.name) }
             var sectionMatched = Set<String>()
-            if let placed = best(mine, in: named.isEmpty ? parts : named) ?? (named.isEmpty ? nil : best(mine, in: parts)) {
+            if let placed = best(mine, in: named.isEmpty ? parts : named, claim: true)
+                ?? (named.isEmpty ? nil : best(mine, in: parts, claim: true)) {
                 wantedAll.merge(placed.wanted) { $0 + $1 }
                 sectionMatched.formUnion(placed.lines)
             }
@@ -278,16 +308,135 @@ public enum ShepherdChordMatch {
                 }
             }
         }
+        // Parts with chords and no words take the chart's chord rows.
+        let chordOnly = matchingChordOnlySlides(result, to: chart)
+        result = chordOnly.presentation
+        examples += chordOnly.examples.prefix(max(0, 8 - examples.count))
         // Hand-set chords on the lines the chart now decides go: kept, they
         // would come back over Shepherd's on the next rebuild.
         var dropped = 0
         if let edits = result.chordEdits {
-            let kept = edits.filter { !decided.contains("\($0.section)|\($0.text)|\($0.occurrence)") }
+            let kept = edits.filter {
+                !decided.contains("\($0.section)|\($0.text)|\($0.occurrence)")
+                    && !(chordOnly.sections.contains($0.section) && normalized($0.text).isEmpty)
+            }
             dropped = edits.count - kept.count
             result.chordEdits = kept.isEmpty ? nil : kept
         }
         return Result(
             presentation: result, changedLines: changed, matchedLines: matched, unmatchedLines: unmatched,
-            unmatchedWords: unmatchedWords, droppedHandEdits: dropped, examples: examples)
+            unmatchedWords: unmatchedWords, droppedHandEdits: dropped, examples: examples,
+            joinedWords: joinedWords, chordOnlySlides: chordOnly.changed)
+    }
+
+    // MARK: Words split in two
+
+    /// The song with each word it shows split in two ("faithful ness",
+    /// "Halle lujah", from charts that break a word around a chord) joined
+    /// where the chart has the whole word and not one of the pieces. Chords
+    /// after the join move back with their letters.
+    static func joiningSplitWords(_ song: Presentation, as chart: Presentation) -> (Presentation, [String]) {
+        var chartWords = Set<String>()
+        for ref in ChordEdits.lines(of: chart) {
+            for word in normalized(ref.text).split(separator: " ") { chartWords.insert(String(word)) }
+        }
+        var result = song
+        var joined: [String] = []
+        for s in result.slides.indices {
+            for o in result.slides[s].objects.indices where result.slides[s].objects[o].objectKind == .text {
+                var object = result.slides[s].objects[o]
+                var lines = object.text.components(separatedBy: "\n")
+                var chords = object.chords ?? []
+                var touched = false
+                for l in lines.indices {
+                    var changedLine = true
+                    while changedLine {
+                        changedLine = false
+                        let chars = Array(lines[l])
+                        let words = wordStarts(lines[l])
+                        for i in words.indices.dropLast() {
+                            let a = words[i], b = words[i + 1]
+                            let gap = chars[(a.start + a.length) ..< b.start]
+                            guard !gap.isEmpty, gap.allSatisfy({ $0 == " " }) else { continue }
+                            let first = normalized(String(chars[a.start ..< a.start + a.length]))
+                            let second = normalized(String(chars[b.start ..< b.start + b.length]))
+                            guard chartWords.contains(first + second),
+                                  !chartWords.contains(first) || !chartWords.contains(second)
+                            else { continue }
+                            let cut = gap.count, end = a.start + a.length
+                            joined.append(String(chars[a.start ..< b.start + b.length]))
+                            lines[l] = String(chars[..<end]) + String(chars[b.start...])
+                            for c in chords.indices where chords[c].line == l && chords[c].column >= end {
+                                chords[c].column = max(end, chords[c].column - cut)
+                            }
+                            changedLine = true
+                            touched = true
+                            break
+                        }
+                    }
+                }
+                guard touched else { continue }
+                object.text = lines.joined(separator: "\n")
+                object.chords = chords.isEmpty ? nil : chords
+                result.slides[s].objects[o] = object
+            }
+        }
+        return (result, joined)
+    }
+
+    // MARK: Parts with chords only
+
+    /// Each song slide with no words in a part the chart writes as chords
+    /// alone (Intro, Instrumental, Turnaround) shows the chart's chord rows
+    /// for that part: the first such slide the chart's first, and so on.
+    static func matchingChordOnlySlides(
+        _ song: Presentation, to chart: Presentation
+    ) -> (presentation: Presentation, changed: Int, examples: [String], sections: Set<String>) {
+        func name(_ slide: Slide, in p: Presentation) -> String {
+            let names = Dictionary((p.sections ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+            return slide.sectionId.flatMap { names[$0] } ?? ""
+        }
+        func wordless(_ slide: Slide) -> Bool {
+            slide.objects.filter { $0.objectKind == .text }.allSatisfy { normalized($0.text).isEmpty }
+        }
+        var rows: [String: [SlideObject]] = [:]
+        for slide in chart.slides where wordless(slide) {
+            guard let object = ChordEdits.lyricObject(of: slide), !(object.chords ?? []).isEmpty else { continue }
+            rows[normalized(name(slide, in: chart)), default: []].append(object)
+        }
+        var result = song
+        var changed = 0
+        var examples: [String] = []
+        var sections = Set<String>()
+        var used: [String: Int] = [:]
+        for s in result.slides.indices where wordless(result.slides[s]) {
+            let section = name(result.slides[s], in: result)
+            let key = normalized(section)
+            guard !key.isEmpty, let parts = rows[key] else { continue }
+            let index = used[key, default: 0]
+            used[key] = index + 1
+            guard index < parts.count else { continue }
+            let want = parts[index]
+            let symbols = { (o: SlideObject?) in
+                (o?.chords ?? []).sorted { ($0.line, $0.column) < ($1.line, $1.column) }
+                    .map { "\($0.line):\($0.column):\($0.symbol)" }
+            }
+            let current = ChordEdits.lyricObject(of: result.slides[s])
+            guard symbols(current) != symbols(want) || (current?.text ?? "") != want.text else { continue }
+            if let current, let o = result.slides[s].objects.firstIndex(where: { $0.id == current.id }) {
+                result.slides[s].objects[o].text = want.text
+                result.slides[s].objects[o].chords = want.chords
+            } else {
+                var object = want
+                object.id = UUID().uuidString
+                result.slides[s].objects.insert(object, at: 0)
+            }
+            changed += 1
+            sections.insert(section)
+            let before = (current?.chords ?? []).map(\.symbol).joined(separator: " ")
+            let after = (want.chords ?? []).map(\.symbol).joined(separator: " ")
+            examples.append("\(section): \(before.isEmpty ? "none" : before) → \(after)")
+        }
+        return (result, changed, examples, sections)
     }
 }

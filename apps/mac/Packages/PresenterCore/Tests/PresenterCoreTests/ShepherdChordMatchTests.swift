@@ -167,4 +167,142 @@ import Testing
         let ref = try line(result.presentation, "Great is Your faithfulness to me")
         #expect(ChordEdits.chords(at: ref, in: result.presentation).map(\.symbol) == ["6m7", "1/3", "1"])
     }
+
+    /// A song imported before Screens joined a word split around a chord
+    /// ("faithful [Gb]- ness") shows it split; matching joins it and puts
+    /// the chord inside it, as the chart has it.
+    @Test func aWordShownSplitIsJoined() throws {
+        let chart = try song("""
+        Chorus
+        I’m standing on Your [5]faithful [4]- ness
+        """)
+        var mine = chart
+        let ref = try line(mine, "I’m standing on Your faithfulness")
+        let slide = try #require(mine.slides.firstIndex { $0.id == ref.slideID })
+        let object = try #require(mine.slides[slide].objects.firstIndex { $0.id == ref.objectID })
+        mine.slides[slide].objects[object].text = "I’m standing on Your faithful ness"
+        mine.slides[slide].objects[object].chords = [ChordPlacement(line: 0, column: 20, symbol: "5"),
+                                                     ChordPlacement(line: 0, column: 20, symbol: "4")]
+        let result = ShepherdChordMatch.matching(mine, to: chart)
+        #expect(result.joinedWords == ["faithful ness"])
+        let joined = try line(result.presentation, "I’m standing on Your faithfulness")
+        #expect(joined.text == "I’m standing on Your faithfulness")
+        let theirs = try line(chart, "I’m standing on Your faithfulness")
+        #expect(ChordEdits.chords(at: joined, in: result.presentation).map { "\($0.column):\($0.symbol)" }
+            == ChordEdits.chords(at: theirs, in: chart).map { "\($0.column):\($0.symbol)" })
+        #expect(ChordEdits.chords(at: joined, in: result.presentation).map(\.symbol) == ["5", "4"])
+        #expect(result.changed)
+    }
+
+    @Test func twoRealWordsAreNotJoined() throws {
+        let chart = try song("""
+        Verse 1
+        [1]Every one of us, every[4]one
+        """)
+        let result = ShepherdChordMatch.matching(chart, to: chart)
+        #expect(result.joinedWords.isEmpty)
+    }
+
+    /// An Intro left blank by an older import shows the chart's chord row.
+    @Test func aWordlessPartGetsTheChartsChordRows() throws {
+        let chart = try song("""
+        Intro
+        [1] [4] [6m7] [5]
+
+        Verse 1
+        [1]I'll praise when I'm [5]sure
+        """)
+        var mine = chart
+        let intro = try #require(mine.slides.firstIndex { slide in
+            slide.objects.allSatisfy { ShepherdChordMatch.normalized($0.text).isEmpty } && slide.objects.contains { !($0.chords ?? []).isEmpty }
+        })
+        mine.slides[intro].objects = []
+        let result = ShepherdChordMatch.matching(mine, to: chart)
+        #expect(result.chordOnlySlides == 1)
+        #expect(result.changed)
+        let object = try #require(ChordEdits.lyricObject(of: result.presentation.slides[intro]))
+        #expect(object.chords?.map(\.symbol) == ["1", "4", "6m7", "5"])
+        #expect(ShepherdChordMatch.normalized(object.text).isEmpty)
+        // Matching again changes nothing.
+        #expect(!ShepherdChordMatch.matching(result.presentation, to: chart).changed)
+    }
+
+    /// The chart writes a bridge three times with other chords each time;
+    /// the song has it as three parts. Each gets its own pass's chords.
+    @Test func eachPassOfARepeatedPartGetsItsOwnChords() throws {
+        let chart = try song("""
+        Bridge
+        I have [1]decided to follow [4]Jesus
+
+        Bridge
+        The cross be[6m]fore me the world be[5]hind me
+
+        Bridge
+        I have [6m]decided to follow [5]Jesus
+        """)
+        // The song: Bridge 1a, Bridge 2, Bridge 1b, from the chart's slides.
+        var mine = chart
+        let names = ["Bridge 1a", "Bridge 2", "Bridge 1b"]
+        mine.sections = names.map { PresentationSection(id: $0, name: $0) }
+        var index = 0
+        for s in mine.slides.indices where mine.slides[s].objects.contains(where: { !ShepherdChordMatch.normalized($0.text).isEmpty }) {
+            mine.slides[s].sectionId = names[min(index, 2)]
+            index += 1
+            for o in mine.slides[s].objects.indices { mine.slides[s].objects[o].chords = nil }
+        }
+        let result = ShepherdChordMatch.matching(mine, to: chart)
+        let decided = ChordEdits.lines(of: result.presentation).filter { $0.text.contains("decided") }
+        #expect(decided.count == 2)
+        #expect(decided.map { ChordEdits.chords(at: $0, in: result.presentation).map(\.symbol) } == [["1", "4"], ["6m", "5"]])
+    }
+
+    /// "of [1sus]Jesus [1]" ends a chart line; the song runs it on into
+    /// "Over every heart". The 1 stays after "Jesus", not over "Over".
+    @Test func aChordEndingAChartLineStaysBeforeTheNextWords() throws {
+        let chart = try song("""
+        Verse 1
+        Speak the name of [1sus]Jesus [1]
+        [6m7]Over every heart
+        """)
+        var mine = chart
+        let first = try line(mine, "Speak the name of Jesus")
+        let slide = try #require(mine.slides.firstIndex { $0.id == first.slideID })
+        let object = try #require(mine.slides[slide].objects.firstIndex { $0.id == first.objectID })
+        mine.slides[slide].objects[object].text = "Speak the name of Jesus Over every heart"
+        mine.slides[slide].objects[object].chords = nil
+        let result = ShepherdChordMatch.matching(mine, to: chart)
+        let joined = try line(result.presentation, "Speak the name of Jesus Over every heart")
+        let placed = ChordEdits.chords(at: joined, in: result.presentation)
+        #expect(placed.map(\.symbol) == ["1sus", "1", "6m7"])
+        let over = "Speak the name of Jesus ".count
+        #expect(placed[1].column < over)
+        #expect(placed[2].column == over)
+    }
+
+    /// Chords as charts write them: in parentheses ("(4)", "(1sus … 1)"),
+    /// with their own parentheses ("2m7(4)"), and after a bracket left open.
+    @Test func chartChordsInParenthesesAndOpenBracketsAreKept() throws {
+        let chart = try song("""
+        Chorus
+        You [6m]turned me [2m7(4)]around
+        Halle[1]lu [5(4)]- jah[(4)]
+        Your name is [1]life [(1sus] [1)]
+
+        Outro
+        [1] [1/3 [4] [5/7] [1]
+        """)
+        let lines = ChordEdits.lines(of: chart)
+        func symbols(_ words: String) -> [String] {
+            lines.first { ShepherdChordMatch.normalized($0.text) == ShepherdChordMatch.normalized(words) }
+                .map { ChordEdits.chords(at: $0, in: chart).map(\.symbol) } ?? []
+        }
+        #expect(symbols("You turned me around") == ["6m", "2m7(4)"])
+        #expect(symbols("Hallelujah") == ["1", "5(4)", "(4)"])
+        #expect(symbols("Your name is life") == ["1", "(1sus", "1)"])
+        let outro = chart.slides.compactMap { ChordEdits.lyricObject(of: $0) }
+            .first { ShepherdChordMatch.normalized($0.text).isEmpty && ($0.chords?.count ?? 0) == 5 }
+        #expect(outro?.chords?.map(\.symbol) == ["1", "1/3", "4", "5/7", "1"])
+        #expect(ChordMath.display("(Gb)", musicKey: "Db", displayKey: nil, notation: .numbers) == "(4)")
+        #expect(ChordMath.display("Ebm7(4)", musicKey: "Db", displayKey: nil, notation: .numbers) == "2m7(4)")
+    }
 }

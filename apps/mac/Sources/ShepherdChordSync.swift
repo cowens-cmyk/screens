@@ -18,6 +18,10 @@ enum ShepherdChordSync {
         var droppedHandEdits: Int
         var unmatched: [String]
         var examples: [String]
+        /// Words shown split in two, now joined as the chart writes them.
+        var joined: [String] = []
+        /// Intro, Instrumental and other wordless slides given the chart's chords.
+        var chordOnly = 0
         /// The Shepherd song it now follows, when the link was missing or gone.
         var relinkedTo: String?
     }
@@ -95,6 +99,7 @@ enum ShepherdChordSync {
                     id: song.id, name: song.name, before: song, after: after,
                     changedLines: match.changedLines, droppedHandEdits: match.droppedHandEdits,
                     unmatched: match.unmatchedWords, examples: match.examples,
+                    joined: match.joinedWords, chordOnly: match.chordOnlySlides,
                     relinkedTo: relinked ? detail.title : nil))
             }
         }
@@ -155,9 +160,19 @@ enum ShepherdChordSync {
                  (["\(survey.alreadyMatching) songs checked; nothing was changed."] + notes).joined(separator: "\n\n"))
             return
         }
-        let lines = survey.changes.reduce(0) { $0 + $1.changedLines }
+        let lines = survey.changes.reduce(0) { $0 + $1.changedLines + $1.chordOnly }
         let list = survey.changes.map { change -> String in
-            var parts = ["\(change.changedLines) \(change.changedLines == 1 ? "line" : "lines")"]
+            var parts: [String] = []
+            if change.changedLines > 0 || change.chordOnly == 0 {
+                parts.append("\(change.changedLines) \(change.changedLines == 1 ? "line" : "lines")")
+            }
+            if change.chordOnly > 0 {
+                parts.append("\(change.chordOnly) chord-only \(change.chordOnly == 1 ? "slide" : "slides") (Intro, Instrumental…)")
+            }
+            if !change.joined.isEmpty {
+                let words = Array(Set(change.joined)).sorted().map { "“\($0)”" }.joined(separator: ", ")
+                parts.append("rejoins \(words)")
+            }
             if change.droppedHandEdits > 0 { parts.append("\(change.droppedHandEdits) hand-set") }
             if !change.unmatched.isEmpty { parts.append("\(change.unmatched.count) not in the chart, kept") }
             if let relinked = change.relinkedTo { parts.append("now linked to “\(relinked)”") }
@@ -167,7 +182,9 @@ enum ShepherdChordSync {
             \(list)
 
             Chords on the lines whose words are in the chart become the chart's; chords set by hand on those lines \
-            are dropped. Words, slides and order stay as they are. Lines the chart doesn't have keep their chords.
+            are dropped. Wordless slides (Intro, Instrumental…) get the chart's chord rows, and a word shown split \
+            in two is joined as the chart writes it. Otherwise words, slides and order stay as they are. Lines the \
+            chart doesn't have keep their chords.
             \(notes.isEmpty ? "" : "\n" + notes.joined(separator: "\n"))
             This changes the songs for every Mac on the library, and Undo can't reverse it.
             """

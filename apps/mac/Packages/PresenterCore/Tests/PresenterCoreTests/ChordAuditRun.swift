@@ -174,7 +174,7 @@ final class ChordAuditRun: XCTestCase {
             report.shepherdKey = fresh.musicKey
             let plan = ShepherdChordMatch.matching(p, to: fresh)
             let after = ShepherdChordMatch.matching(plan.presentation, to: fresh)
-            dryRun += "\(p.name): would change \(plan.changedLines) lines, drop \(plan.droppedHandEdits) hand edits, leave \(plan.unmatchedLines) lines the chart lacks; matched \(plan.matchedLines); after: \(after.changedLines) still differ\n"
+            dryRun += "\(p.name): would change \(plan.changedLines) lines, \(plan.chordOnlySlides) chord-only slides, join \(plan.joinedWords), drop \(plan.droppedHandEdits) hand edits, leave \(plan.unmatchedLines) lines the chart lacks; matched \(plan.matchedLines); after: \(after.changedLines) still differ\n"
             for e in plan.examples { dryRun += "    \(e)\n" }
             for u in plan.unmatchedWords { dryRun += "    UNMATCHED \(u)\n" }
 

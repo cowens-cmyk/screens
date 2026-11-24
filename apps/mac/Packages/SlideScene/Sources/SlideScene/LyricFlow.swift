@@ -86,8 +86,6 @@ public enum LyricFlow {
         // The spaces where the song's own lines meet: a break there keeps a
         // phrase together ("bright shining as the sun / We've no less days").
         let phraseEnds = Set(starts.dropFirst().map { $0 - 1 }.filter { joined.indices.contains($0) && joined[$0] == " " })
-        // A line with chords over it is about this much taller than one without.
-        let lineHeight = key.fontSize * (original.chords.isEmpty ? 1.2 : 1.75)
 
         // How far a line's chords reach, laid out as the renderer lays them
         // out (each at its letter, pushed right of the one before it): a
@@ -99,6 +97,14 @@ public enum LyricFlow {
             key.fontSize * 0.9, nil, .traitBold, .traitBold)
             ?? CTFontCreateWithName("HelveticaNeue-Bold" as CFString, key.fontSize * 0.9, nil)
         let chordGap = key.fontSize * 0.9 * 0.35
+        // A line's height as the renderer stacks it: the words' row, and
+        // over a line with chords a chord row at 0.9 of the size (measured,
+        // not guessed: a guess too small let four chorded lines be chosen
+        // where only three fit, and the last was cut off).
+        func rowHeight(_ font: CTFont) -> Double {
+            CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)
+        }
+        let lineHeight = rowHeight(font) + (original.chords.isEmpty ? 0 : rowHeight(chordFont))
         func chordWidth(_ symbol: String) -> Double {
             let line = CTLineCreateWithAttributedString(
                 NSAttributedString(string: symbol, attributes: [.init(kCTFontAttributeName as String): chordFont]))
@@ -145,7 +151,12 @@ public enum LyricFlow {
         let originalScale = min(1, key.width / max(widestOriginal, 1),
                                 key.height / (Double(lines.count) * lineHeight))
         // Re-cut only for words clearly larger: the phrasing is worth 10%.
-        if lines.count <= key.maxLines, originalScale >= bestScale * 0.9 { return original }
+        // But not when the song's lines would need the words smaller than
+        // the box lets them go: the renderer would break them again itself,
+        // into more lines than fit, and the last would be cut off.
+        let minScale = key.minFontSize.map { $0 / key.fontSize } ?? 0
+        let originalFits = originalScale >= minScale * 0.999 || bestScale <= originalScale
+        if lines.count <= key.maxLines, originalScale >= bestScale * 0.9, originalFits { return original }
 
         // Cut the joined words at the breaks; a chord lands on its letter.
         var outLines: [String] = []

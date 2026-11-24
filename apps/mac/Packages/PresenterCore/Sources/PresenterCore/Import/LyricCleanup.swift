@@ -42,6 +42,18 @@ public enum LyricCleanup {
                 rest = ""
                 break
             }
+            // A bracket left open before the next one ("[1/3 [4]"): the
+            // chord up to the next bracket, then that one.
+            if let reopen = rest[after..<close].firstIndex(of: "[") {
+                if let token = cleanChordToken(String(rest[after..<reopen])) {
+                    marked += String(marker(chords.count))
+                    chords.append(token)
+                } else {
+                    marked += rest[open..<reopen]
+                }
+                rest = rest[reopen...]
+                continue
+            }
             let token = cleanChordToken(String(rest[after..<close]))
             if let token {
                 marked += String(marker(chords.count))
@@ -132,9 +144,10 @@ public enum LyricCleanup {
             .map(String.init).joined()
     }
 
+    /// A chord as the chart writes it, parentheses and all: "(4)", and
+    /// "(1sus" … "1)" for chords in parentheses across two brackets, stay
+    /// as they are, so the stage shows what the band reads.
     static func cleanChordToken(_ token: String) -> String? {
-        let trimmed = token.trimmingCharacters(in: CharacterSet(charactersIn: " ()"))
-        if ChordMath.isChordToken(trimmed) { return trimmed }
         let written = token.trimmingCharacters(in: .whitespaces)
         return ChordMath.isBracketChord(written) ? written : nil
     }

@@ -49,6 +49,9 @@ public enum ChordMath {
         guard !trimmed.isEmpty else { return false }
         if isChordToken(trimmed) { return true }
         if trimmed.hasPrefix("*") { return trimmed.count > 1 }
+        // In parentheses, whole or opened or closed here: "(4)", "(1sus", "1)".
+        let wrap = parenthesized(trimmed)
+        if wrap.core != trimmed, !wrap.core.isEmpty { return isBracketChord(wrap.core) }
         guard !trimmed.contains(where: \.isWhitespace) else { return false }
         return Reflow.labelName(of: trimmed) == nil && readsAsChord(trimmed)
     }
@@ -136,12 +139,30 @@ public enum ChordMath {
         return (target.pitchClass - source.pitchClass + 12) % 12
     }
 
+    /// A chord's parentheses apart from it: a "(" it opens with, and a ")"
+    /// it closes with that isn't its own ("(4)", "(1sus", "1)", but not the
+    /// ones in "5(4)").
+    static func parenthesized(_ symbol: String) -> (lead: String, core: String, tail: String) {
+        var core = Substring(symbol)
+        var lead = "", tail = ""
+        if core.hasPrefix("(") { core = core.dropFirst(); lead = "(" }
+        let opens = core.filter { $0 == "(" }.count, closes = core.filter { $0 == ")" }.count
+        if core.hasSuffix(")"), closes > opens { core = core.dropLast(); tail = ")" }
+        return (lead, String(core), tail)
+    }
+
     public static func display(
         _ symbol: String,
         musicKey: String?,
         displayKey: String?,
         notation: ChordNotation
     ) -> String {
+        // A chord in parentheses is shown in them, the chord itself
+        // transposed or numbered like any other.
+        let wrap = parenthesized(symbol.trimmingCharacters(in: .whitespaces))
+        if !(wrap.lead.isEmpty && wrap.tail.isEmpty), !wrap.core.isEmpty {
+            return wrap.lead + display(wrap.core, musicKey: musicKey, displayKey: displayKey, notation: notation) + wrap.tail
+        }
         // Annotations and symbols we can't read are shown as written, less
         // the ChordPro annotation mark.
         guard let parsed = parseSymbol(symbol) else {
@@ -282,6 +303,18 @@ public enum ChordMath {
                 text += rest[open...]
                 rest = Substring("")
                 break
+            }
+            // A bracket left open before the next one ("[1/3 [4]", a typo in
+            // a chart): the chord up to the next bracket, then that one.
+            if let reopen = rest[afterOpen..<close].firstIndex(of: "[") {
+                let token = String(rest[afterOpen..<reopen])
+                if isBracketChord(token) {
+                    chords.append((column: text.count, symbol: token.trimmingCharacters(in: .whitespaces)))
+                } else {
+                    text += rest[open..<reopen]
+                }
+                rest = rest[reopen...]
+                continue
             }
             let token = String(rest[afterOpen..<close])
             if isBracketChord(token) {
