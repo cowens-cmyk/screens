@@ -197,4 +197,91 @@ struct SongSlidesTests {
         ])
         #expect(line == "Gsus4 G")
     }
+
+    /// A song as Shepherd builds it: two chords at one column, a chord
+    /// after the last word, and a chord on a line past the words.
+    private func charted() -> Presentation {
+        var p = song()
+        SongSlides.apply([card("Verse 1", [("Great is Your", ""), ("faithfulness to me", "")]),
+                          card("Chorus", [("Holy forever", "")])], to: &p)
+        p.slides[0].objects[0].chords = [
+            ChordPlacement(line: 0, column: 0, symbol: "6m7"),
+            ChordPlacement(line: 0, column: 1, symbol: "5"),
+            ChordPlacement(line: 1, column: 18, symbol: "1"),
+            ChordPlacement(line: 1, column: 20, symbol: "4"),
+            ChordPlacement(line: 2, column: 0, symbol: "5sus"),
+        ]
+        p.slides[1].objects[0].chords = [ChordPlacement(line: 0, column: 5, symbol: "1sus")]
+        p.reflowSource = "the chart"
+        return p
+    }
+
+    @Test func savingUnchangedCardsMovesNoChord() {
+        var p = charted()
+        let before = p.slides
+        SongSlides.apply(SongSlides.cards(from: p), to: &p)
+        #expect(p.slides == before)
+    }
+
+    @Test func editingOneSlideLeavesTheOthersExactly() {
+        var p = charted()
+        let first = p.slides[0]
+        var cards = SongSlides.cards(from: p)
+        cards[1].lines[0].words = "Holy, forever"
+        SongSlides.apply(cards, to: &p)
+        #expect(p.slides[0] == first)
+        #expect(p.slides[1].objects[0].text == "Holy, forever")
+    }
+
+    @Test func editingOneLineLeavesTheOtherLinesChords() {
+        var p = charted()
+        var cards = SongSlides.cards(from: p)
+        cards[0].lines[0].words = "Great is Thy"
+        SongSlides.apply(cards, to: &p)
+        let chords = p.slides[0].objects[0].chords ?? []
+        #expect(chords.filter { $0.line == 1 }.map(\.column) == [18, 20])
+        #expect(chords.filter { $0.line == 2 }.map(\.symbol) == ["5sus"])
+        // The edited line's chords are read from its chord line, as shown.
+        #expect(chords.filter { $0.line == 0 }.map(\.symbol) == ["6m7", "5"])
+    }
+
+    @Test func aChordLineRetypedTheSameIsNoEdit() {
+        let p = charted()
+        let saved = SongSlides.cards(from: p)
+        var cards = saved
+        cards[1].lines[0].chords += "   "
+        #expect(SongSlides.sameContent(cards, saved))
+        cards[1].lines[0].chords = "1sus"
+        #expect(!SongSlides.sameContent(cards, saved))
+    }
+
+    @Test func aChordTypedOverAStoredOneIsSaved() {
+        var p = charted()
+        var cards = SongSlides.cards(from: p)
+        cards[1].lines[0].chords = "4    1sus"
+        SongSlides.apply(cards, to: &p)
+        #expect(p.slides[1].objects[0].chords?.map(\.symbol) == ["4", "1sus"])
+        #expect(p.slides[1].objects[0].chords?.map(\.column) == [0, 5])
+    }
+}
+
+extension SongSlidesTests {
+    /// The song changed while the editor was open (Match Chords, another
+    /// Mac) and the operator saves theirs: only the slide they edited is
+    /// written; the others keep the newer chords.
+    @Test func savingOverANewerSongWritesOnlyTheEditedSlides() {
+        var p = song()
+        SongSlides.apply([
+            SongSlides.Card(section: "Verse 1", lines: [SongSlides.Line(words: "Great is Your", chords: "G")]),
+            SongSlides.Card(section: "Chorus", lines: [SongSlides.Line(words: "Holy forever", chords: "C")]),
+        ], to: &p)
+        let loaded = SongSlides.cards(from: p)
+        var cards = loaded
+        cards[1].lines[0].words = "Holy, forever"
+        // Meanwhile the verse's chords changed.
+        p.slides[0].objects[0].chords = [ChordPlacement(line: 0, column: 0, symbol: "D")]
+        SongSlides.apply(SongSlides.rebased(cards, loaded: loaded, onto: p), to: &p)
+        #expect(p.slides[0].objects[0].chords?.map(\.symbol) == ["D"])
+        #expect(p.slides[1].objects[0].text == "Holy, forever")
+    }
 }

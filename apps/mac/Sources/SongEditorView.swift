@@ -32,7 +32,9 @@ struct SongEditorView: View {
 
     private var presentation: Presentation? { model.presentation(presentationID) }
     private var sections: [PresentationSection] { presentation?.sections ?? [] }
-    private var unsaved: Bool { loaded && cards != saved }
+    /// Cards that say something other than they did when loaded or saved;
+    /// a field that only rewrote spaces after the last chord isn't an edit.
+    private var unsaved: Bool { loaded && !SongSlides.sameContent(cards, saved) }
     private var detailsChanged: Bool { loaded && (editedTitle != nil || editedKey != nil) }
     /// The title, when the operator changed it.
     private var editedTitle: String? {
@@ -84,7 +86,7 @@ struct SongEditorView: View {
         // opening the song here again asks which to keep.
         .onDisappear {
             if unsaved, storedChanged {
-                SongEditorPending.keepAside(presentationID, cards: cards, base: base)
+                SongEditorPending.keepAside(presentationID, cards: cards, loaded: saved, base: base)
                 if detailsChanged { saveDetails() }
             } else if unsaved {
                 commitSlides(onlyOver: base)
@@ -183,7 +185,7 @@ struct SongEditorView: View {
         guard let index = cards.firstIndex(where: { $0.id == id }) else { return }
         var copy = cards[index]
         copy.id = UUID().uuidString
-        copy.lines = copy.lines.map { SongSlides.Line(words: $0.words, chords: $0.chords) }
+        copy.lines = copy.lines.map { SongSlides.Line(words: $0.words, chords: $0.chords, stored: $0.stored) }
         cards.insert(copy, at: index + 1)
     }
 
@@ -296,6 +298,7 @@ struct SongEditorView: View {
         // under them: back in the editor, and the operator picks.
         if let kept = SongEditorPending.takeKeptAside(presentationID) {
             cards = kept.cards
+            saved = kept.loaded
             base = kept.base
             if presentation.slides != kept.base { changedUnderneath = true }
         }
@@ -304,8 +307,10 @@ struct SongEditorView: View {
     private func loadDetails(_ presentation: Presentation) {
         title = presentation.name
         key = presentation.musicKey ?? ""
-        baseTitle = title
-        baseKey = key
+        // Trimmed as the fields are read, so a title stored with a space
+        // after it doesn't count as changed.
+        baseTitle = title.trimmingCharacters(in: .whitespaces)
+        baseKey = key.trimmingCharacters(in: .whitespaces)
     }
 
     private func loadCards(_ presentation: Presentation) {
@@ -330,7 +335,7 @@ struct SongEditorView: View {
     }
 
     private func saveDetails() {
-        Self.write(nil, base: nil, title: editedTitle, key: editedKey, to: presentationID, model: model)
+        Self.write(nil, loaded: [], base: nil, title: editedTitle, key: editedKey, to: presentationID, model: model)
         detailsSaved()
     }
 
@@ -355,7 +360,7 @@ struct SongEditorView: View {
     /// only while the stored slides are still those.
     private func commitSlides(onlyOver expected: [Slide]? = nil) {
         guard let built = Self.write(
-            cards, base: expected, title: editedTitle, key: editedKey, to: presentationID, model: model)?.song
+            cards, loaded: saved, base: expected, title: editedTitle, key: editedKey, to: presentationID, model: model)?.song
         else { return }
         detailsSaved()
         base = built.slides
@@ -366,13 +371,16 @@ struct SongEditorView: View {
 
     /// Writes the cards (when given), title and key (when given) over the
     /// stored song. With `base`, the cards are written only while the
-    /// stored slides are still the ones they were made from.
+    /// stored slides are still the ones they were made from. Cards still
+    /// as `loaded` take the stored slide as it is now, so only the slides
+    /// the operator edited are written.
     @discardableResult
     private static func write(
-        _ cards: [SongSlides.Card]?, base: [Slide]?, title: String?, key: String?, to id: String, model: AppModel
+        _ cards: [SongSlides.Card]?, loaded: [SongSlides.Card], base: [Slide]?, title: String?, key: String?,
+        to id: String, model: AppModel
     ) -> (task: Task<LibraryBatch, any Error>, song: Presentation)? {
         guard var song = model.presentation(id) else { return nil }
-        if let cards { SongSlides.apply(cards, to: &song) }
+        if let cards { SongSlides.apply(SongSlides.rebased(cards, loaded: loaded, onto: song), to: &song) }
         let built = song
         let withSlides = cards != nil
         let task = model.updatePresentation(id) { current in
@@ -402,9 +410,9 @@ struct SongEditorView: View {
         // Quitting can't ask, so cards made from slides that have changed
         // since are not written over them.
         let cards: [SongSlides.Card]? = unsaved ? cards : nil
-        let (base, title, key, id, model) = (base, editedTitle, editedKey, presentationID, model)
+        let (base, loaded, title, key, id, model) = (base, saved, editedTitle, editedKey, presentationID, model)
         SongEditorPending.pending = (id, {
-            Self.write(cards, base: base, title: title, key: key, to: id, model: model)?.task
+            Self.write(cards, loaded: loaded, base: base, title: title, key: key, to: id, model: model)?.task
         })
     }
 
@@ -559,15 +567,15 @@ enum SongEditorPending {
 
     /// Cards left unsaved on a song whose slides changed under them, by
     /// song id, until the song is opened in the editor again.
-    private static var keptAside: [String: (cards: [SongSlides.Card], base: [Slide])] = [:]
+    private static var keptAside: [String: (cards: [SongSlides.Card], loaded: [SongSlides.Card], base: [Slide])] = [:]
 
-    static func keepAside(_ id: String, cards: [SongSlides.Card], base: [Slide]) {
-        keptAside[id] = (cards, base)
+    static func keepAside(_ id: String, cards: [SongSlides.Card], loaded: [SongSlides.Card], base: [Slide]) {
+        keptAside[id] = (cards, loaded, base)
     }
 
     static func hasKeptAside(_ id: String) -> Bool { keptAside[id] != nil }
 
-    static func takeKeptAside(_ id: String) -> (cards: [SongSlides.Card], base: [Slide])? {
+    static func takeKeptAside(_ id: String) -> (cards: [SongSlides.Card], loaded: [SongSlides.Card], base: [Slide])? {
         keptAside.removeValue(forKey: id)
     }
 

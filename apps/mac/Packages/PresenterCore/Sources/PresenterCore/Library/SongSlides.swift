@@ -11,11 +11,35 @@ public enum SongSlides {
         public var words: String
         /// Chords spaced over the words ("G      C"); empty for none.
         public var chords: String
+        /// The line as stored when the card was made from a slide: its
+        /// words and chords exactly (columns as stored, even ones a chord
+        /// line can't show, such as two chords at one column or a chord
+        /// past the last word). A line still reading the same is saved with
+        /// these, so opening a song and saving it moves no chord.
+        public var stored: Stored?
 
-        public init(id: String = UUID().uuidString, words: String = "", chords: String = "") {
+        public struct Stored: Equatable, Sendable {
+            public var words: String
+            public var chords: [ChordPlacement]
+        }
+
+        public init(id: String = UUID().uuidString, words: String = "", chords: String = "", stored: Stored? = nil) {
             self.id = id
             self.words = words
             self.chords = chords
+            self.stored = stored
+        }
+
+        /// The chords this line saves: the stored ones while the words and
+        /// the chord line still read as they were made, else the chord line
+        /// as typed.
+        func placements(line index: Int) -> [ChordPlacement] {
+            if let stored, stored.words == words, SongSlides.sameChords(chords, SongSlides.chordLine(stored.chords)) {
+                return stored.chords.map { ChordPlacement(line: index, column: $0.column, symbol: $0.symbol) }
+            }
+            return SongSlides.chords(inLine: chords).map {
+                ChordPlacement(line: index, column: min($0.column, words.count), symbol: $0.symbol)
+            }
         }
     }
 
@@ -49,6 +73,28 @@ public enum SongSlides {
         return result
     }
 
+    /// Two chord lines say the same: the same chords at the same columns,
+    /// whatever spaces trail them.
+    static func sameChords(_ a: String, _ b: String) -> Bool {
+        let x = chords(inLine: a), y = chords(inLine: b)
+        return x.count == y.count && zip(x, y).allSatisfy { $0.column == $1.column && $0.symbol == $1.symbol }
+    }
+
+    /// Two sets of cards say the same: the same slides in the same order,
+    /// sections, words and chords. Line ids and stored copies don't count.
+    public static func sameContent(_ a: [Card], _ b: [Card]) -> Bool {
+        guard a.count == b.count else { return false }
+        return zip(a, b).allSatisfy { x, y in
+            x.id == y.id && sameContent(x, y)
+        }
+    }
+
+    static func sameContent(_ x: Card, _ y: Card) -> Bool {
+        x.section.trimmingCharacters(in: .whitespaces) == y.section.trimmingCharacters(in: .whitespaces)
+            && x.lines.count == y.lines.count
+            && zip(x.lines, y.lines).allSatisfy { $0.words == $1.words && sameChords($0.chords, $1.chords) }
+    }
+
     /// The chord line for a lyric line's chords, each at its column; one
     /// that would run into the last is moved along a space past it.
     public static func chordLine(_ chords: [ChordPlacement]) -> String {
@@ -66,17 +112,40 @@ public enum SongSlides {
     public static func cards(from presentation: Presentation) -> [Card] {
         let names = Dictionary((presentation.sections ?? []).map { ($0.id, $0.name) },
                                uniquingKeysWith: { first, _ in first })
-        return presentation.slides.map { slide in
-            let lyric = slide.objects.first { $0.objectKind == .text }
-            let words = (lyric?.text ?? "").components(separatedBy: "\n")
-            let chords = Dictionary(grouping: lyric?.chords ?? [], by: \.line)
-            let lines = words.enumerated().map { index, text in
-                Line(words: text, chords: chordLine(chords[index] ?? []))
-            }
-            return Card(
-                id: slide.id,
-                section: slide.sectionId.flatMap { names[$0] } ?? "",
-                lines: lyric == nil ? [Line()] : lines)
+        return presentation.slides.map { card(from: $0, names: names) }
+    }
+
+    static func card(from slide: Slide, names: [String: String]) -> Card {
+        let lyric = slide.objects.first { $0.objectKind == .text }
+        var words = (lyric?.text ?? "").components(separatedBy: "\n")
+        let chords = Dictionary(grouping: lyric?.chords ?? [], by: \.line)
+        // A chord stored on a line past the words gets a line of its own,
+        // so it's shown and kept.
+        if let last = chords.keys.max(), last >= words.count {
+            words += Array(repeating: "", count: last + 1 - words.count)
+        }
+        let lines = words.enumerated().map { index, text in
+            let own = chords[index] ?? []
+            return Line(words: text, chords: chordLine(own), stored: Line.Stored(words: text, chords: own))
+        }
+        return Card(
+            id: slide.id,
+            section: slide.sectionId.flatMap { names[$0] } ?? "",
+            lines: lyric == nil ? [Line()] : lines)
+    }
+
+    /// Cards made from an older copy of the song, put over the song as it
+    /// is now: a card the operator didn't touch (it still says what it did
+    /// when `loaded`) becomes its slide as stored now, so saving writes only
+    /// the slides the operator edited and leaves newer ones (a Shepherd
+    /// update, another Mac) alone.
+    public static func rebased(_ cards: [Card], loaded: [Card], onto song: Presentation) -> [Card] {
+        let before = Dictionary(loaded.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let now = Dictionary(song.slides.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let names = Dictionary((song.sections ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        return cards.map { card in
+            guard let old = before[card.id], sameContent(card, old), let slide = now[card.id] else { return card }
+            return Self.card(from: slide, names: names)
         }
     }
 
@@ -102,7 +171,9 @@ public enum SongSlides {
                 result += cards
             } else {
                 result += cards.map { card in
-                    Card(section: card.section, lines: card.lines.map { Line(words: $0.words, chords: $0.chords) })
+                    Card(section: card.section, lines: card.lines.map {
+                        Line(words: $0.words, chords: $0.chords, stored: $0.stored)
+                    })
                 }
             }
         }
@@ -212,6 +283,9 @@ public enum SongSlides {
     private static func slide(for card: Card, section: String, keeping old: Slide?, themeSlideName: String) -> Slide {
         var slide = old ?? Slide(id: card.id, name: "", objects: [])
         slide.sectionId = section
+        // A card still reading as its slide does keeps the slide exactly
+        // as stored: its words, its chords, its look.
+        if let old, sameContent(card, Self.card(from: old, names: [:]).with(section: card.section)) { return slide }
         if slide.themeSlideName == nil { slide.themeSlideName = themeSlideName }
         // Trailing empty lines aren't part of the slide.
         var lines = card.lines
@@ -220,13 +294,7 @@ public enum SongSlides {
             lines.removeLast()
         }
         let text = lines.map(\.words).joined(separator: "\n")
-        var placements: [ChordPlacement] = []
-        for (index, line) in lines.enumerated() {
-            for chord in chords(inLine: line.chords) {
-                placements.append(ChordPlacement(
-                    line: index, column: min(chord.column, line.words.count), symbol: chord.symbol))
-            }
-        }
+        let placements = lines.enumerated().flatMap { index, line in line.placements(line: index) }
         let lyricIndex = slide.objects.firstIndex { $0.objectKind == .text }
         if lines.isEmpty {
             if let lyricIndex { slide.objects.remove(at: lyricIndex) }
@@ -253,12 +321,18 @@ public enum SongSlides {
                 lastSection = section
             }
             for line in card.lines where !line.words.isEmpty || !line.chords.isEmpty {
-                let placements = chords(inLine: line.chords).map {
-                    ChordPlacement(line: 0, column: min($0.column, line.words.count), symbol: $0.symbol)
-                }
+                let placements = line.placements(line: 0)
                 out.append(ChordMath.bracketed(line.words, chords: placements))
             }
         }
         return out.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+private extension SongSlides.Card {
+    func with(section: String) -> Self {
+        var card = self
+        card.section = section
+        return card
     }
 }
