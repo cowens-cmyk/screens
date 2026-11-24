@@ -143,4 +143,28 @@ import Testing
         #expect(ChordEdits.chords(at: first, in: result.presentation).map(\.symbol) == ["1"])
         #expect(ChordEdits.chords(at: second, in: result.presentation).map { "\($0.column):\($0.symbol)" } == ["0:4/6"])
     }
+
+    /// The chart sings a line three times, the song shows it once: the
+    /// line gets its chords once, not the other repeats' piled on it.
+    @Test func repeatsTheSongLacksDontPileUp() throws {
+        let chart = try song("""
+        Chorus
+        [6m7]Great is Your [1/3]faithfulness to [1]me
+        [6m7]Great is Your [1/3]faithfulness to [1]me
+        [6m7]Great is Your [1/3]faithfulness to [1]me
+        """)
+        var mine = chart
+        // Only the first line kept.
+        for index in mine.slides.indices {
+            for object in mine.slides[index].objects.indices where mine.slides[index].objects[object].objectKind == .text {
+                let first = mine.slides[index].objects[object].text.components(separatedBy: "\n").first ?? ""
+                mine.slides[index].objects[object].text = first
+                mine.slides[index].objects[object].chords = nil
+            }
+        }
+        mine.slides = Array(mine.slides.filter { $0.objects.contains { !$0.text.isEmpty } }.prefix(1))
+        let result = ShepherdChordMatch.matching(mine, to: chart)
+        let ref = try line(result.presentation, "Great is Your faithfulness to me")
+        #expect(ChordEdits.chords(at: ref, in: result.presentation).map(\.symbol) == ["6m7", "1/3", "1"])
+    }
 }
