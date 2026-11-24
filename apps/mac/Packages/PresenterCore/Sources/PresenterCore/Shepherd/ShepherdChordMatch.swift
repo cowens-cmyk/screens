@@ -170,8 +170,17 @@ public enum ShepherdChordMatch {
                 let indices = byLine[lineID(ref)] ?? []
                 guard !indices.isEmpty else { continue }
                 for chord in ChordEdits.chords(at: ref, in: chart) {
-                    let onWord = indices.last { part.words[$0].start <= chord.column } ?? indices[0]
-                    let offset = chord.column - part.words[onWord].start
+                    // A chord in the gap before a word ("freedom [4/6] Your
+                    // stripes") is that word's: the song may break the line
+                    // there, and the chord belongs at the start of the next
+                    // line, not the end of this one. Past the line's last
+                    // word it stays at the end.
+                    let inWord = indices.last { part.words[$0].start <= chord.column }
+                        .map { chord.column < part.words[$0].start + part.words[$0].length } ?? false
+                    let nextWord = indices.first { part.words[$0].start > chord.column }
+                    let gap = !inWord && nextWord != nil
+                    let onWord = gap ? nextWord! : (indices.last { part.words[$0].start <= chord.column } ?? indices[0])
+                    let offset = gap ? 0 : chord.column - part.words[onWord].start
                     // A chord over a word the song lacks ("Ho-ly" where the
                     // song has "Holy") stays on its line: the next word both
                     // have on that line, else the last before it on that
