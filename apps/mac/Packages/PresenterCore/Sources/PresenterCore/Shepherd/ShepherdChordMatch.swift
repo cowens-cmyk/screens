@@ -167,7 +167,9 @@ public enum ShepherdChordMatch {
         /// The song's `mine` words lined up with `part`'s: the chart chords
         /// moved onto the song's lines, and which song lines had a word
         /// lined up. Nil when they share too few words to be the same words.
-        func place(_ mine: [Word], on part: ChartPart) -> (wanted: [String: [ChordPlacement]], lines: Set<String>)? {
+        typealias Placed = (wanted: [String: [ChordPlacement]], lines: Set<String>, strong: Set<String>,
+                            coverage: [String: Double])
+        func place(_ mine: [Word], on part: ChartPart) -> Placed? {
             let pairs = align(mine.map(\.text), part.words.map(\.text))
             guard !pairs.isEmpty, pairs.count * 2 >= mine.count || pairs.count * 2 >= part.words.count
             else { return nil }
@@ -221,7 +223,13 @@ public enum ShepherdChordMatch {
                         .append(ChordPlacement(line: word.ref.line, column: column, symbol: chord.symbol))
                 }
             }
-            return (wanted, Set(pairs.map { lineID(mine[$0.0].ref) }))
+            // Lines at least half of whose words line up: a line sharing
+            // only "You" and "me" with this part is only weakly its.
+            let perLine = Dictionary(grouping: mine.indices, by: { lineID(mine[$0].ref) }).mapValues(\.count)
+            let aligned = Dictionary(grouping: pairs.map { lineID(mine[$0.0].ref) }, by: { $0 }).mapValues(\.count)
+            let strong = Set(aligned.filter { id, count in count * 2 >= (perLine[id] ?? 0) }.keys)
+            let coverage = aligned.mapValues(Double.init).merging(perLine.mapValues(Double.init)) { $0 / max($1, 1) }
+            return (wanted, Set(aligned.keys), strong, coverage)
         }
 
         /// The chart part `mine` lines up with best. Among parts that fit
@@ -229,16 +237,18 @@ public enum ShepherdChordMatch {
         /// each time), the first one no earlier part of the song took: the
         /// song's second "I have decided" gets the chart's second.
         var taken = Set<String>()
-        func best(
-            _ mine: [Word], in pool: [ChartPart], claim: Bool = false
-        ) -> (wanted: [String: [ChordPlacement]], lines: Set<String>)? {
-            let fits = pool.compactMap { part -> (name: String, score: Int, placed: (wanted: [String: [ChordPlacement]], lines: Set<String>))? in
+        func baseName(_ name: String) -> String {
+            normalized(name.replacingOccurrences(of: #"\s*\(\d+\)$"#, with: "", options: .regularExpression))
+        }
+        func best(_ mine: [Word], in pool: [ChartPart], claim: Bool = false) -> Placed? {
+            let fits = pool.compactMap { part -> (name: String, score: Int, placed: Placed)? in
                 guard let placed = place(mine, on: part) else { return nil }
                 return (part.name, placed.lines.count, placed)
             }
-            guard let top = fits.map(\.score).max() else { return nil }
-            let tied = fits.filter { $0.score == top }
-            let pick = tied.first { !taken.contains($0.name) } ?? tied[0]
+            guard let top = fits.map(\.score).max(), let first = fits.first(where: { $0.score == top }) else { return nil }
+            // Only the same part written again ("Bridge", "Bridge (3)").
+            let tied = fits.filter { $0.score == top && baseName($0.name) == baseName(first.name) }
+            let pick = tied.first { !taken.contains($0.name) } ?? first
             if claim { taken.insert(pick.name) }
             return pick.placed
         }
@@ -252,10 +262,12 @@ public enum ShepherdChordMatch {
             // First the chart's part of the same name, else any part.
             let named = parts.filter { normalized($0.name) == normalized(section.name) }
             var sectionMatched = Set<String>()
+            var weak = Set<String>()
             if let placed = best(mine, in: named.isEmpty ? parts : named, claim: true)
                 ?? (named.isEmpty ? nil : best(mine, in: parts, claim: true)) {
                 wantedAll.merge(placed.wanted) { $0 + $1 }
                 sectionMatched.formUnion(placed.lines)
+                weak = placed.lines.subtracting(placed.strong)
             }
             // Then each run of lines still unmatched, against every part: a
             // verse Screens shows as one that the chart writes as two, words
@@ -272,6 +284,18 @@ public enum ShepherdChordMatch {
                 if sectionMatched.contains(lineID(ref)) { flush() } else { run.append(ref) }
             }
             flush()
+            // A line the part matched only weakly (a chorus line sharing
+            // "You" and "me" with the post-chorus it was matched with) takes
+            // the chords of a part that has it whole, when one does.
+            for ref in section.refs where weak.contains(lineID(ref)) {
+                let id = lineID(ref)
+                let lineWords = words(of: [ref])
+                // Most of its words, not just half: a verse the chart
+                // doesn't have shares half its words with many a part.
+                guard !lineWords.isEmpty, let placed = best(lineWords, in: parts),
+                      (placed.coverage[id] ?? 0) >= 0.75 else { continue }
+                wantedAll[id] = placed.wanted[id] ?? []
+            }
             matchedLines.formUnion(sectionMatched)
 
             for ref in section.refs {

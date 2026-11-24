@@ -304,5 +304,28 @@ import Testing
         #expect(outro?.chords?.map(\.symbol) == ["1", "1/3", "4", "5/7", "1"])
         #expect(ChordMath.display("(Gb)", musicKey: "Db", displayKey: nil, notation: .numbers) == "(4)")
         #expect(ChordMath.display("Ebm7(4)", musicKey: "Db", displayKey: nil, notation: .numbers) == "2m7(4)")
+        #expect(ChordMath.display("Gbma9", musicKey: "Db", displayKey: nil, notation: .numbers) == "4ma9")
+    }
+
+    /// Screens' "Chorus 1" is the chart's Chorus and Post-Chorus: a chorus
+    /// line sharing only "You" and "me" with the post-chorus still gets the
+    /// chorus's chords.
+    @Test func aLineSharingAFewWordsWithAnotherPartIsntItsLine() throws {
+        let chart = try song("""
+        Chorus
+        [4]Thank You [1]Jesus [6m]You have [5sus]set me free
+
+        Post-Chorus
+        [4]Hallelujah it [5]really is
+        You [1]welcomed me in and You [5]gave me peace
+        """)
+        var mine = chart
+        // One section holding both parts' words.
+        mine.sections = [PresentationSection(id: "c1", name: "Chorus 1")]
+        for s in mine.slides.indices { mine.slides[s].sectionId = "c1" }
+        for s in mine.slides.indices { for o in mine.slides[s].objects.indices { mine.slides[s].objects[o].chords = nil } }
+        let result = ShepherdChordMatch.matching(mine, to: chart)
+        let thank = try line(result.presentation, "Thank You Jesus You have set me free")
+        #expect(ChordEdits.chords(at: thank, in: result.presentation).map(\.symbol) == ["4", "1", "6m", "5sus"])
     }
 }
